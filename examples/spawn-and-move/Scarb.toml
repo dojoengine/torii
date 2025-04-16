@@ -1,0 +1,31 @@
+[package]
+cairo-version = "=2.9.4"
+name = "dojo_examples"
+version = "1.4.1"
+# Use the prelude with the less imports as possible
+# from corelib.
+edition = "2024_07"
+
+[cairo]
+sierra-replace-ids = true
+
+[[target.starknet-contract]]
+build-external-contracts = [ "dojo::world::world_contract::world", "armory::m_Flatbow", "bestiary::m_RiverSkale" ]
+allowed-libfuncs-list.name = "experimental"
+
+[dependencies]
+openzeppelin = "0.20.0"
+armory = { path = "../game-lib/armory" }
+bestiary = { path = "../game-lib/bestiary" }
+dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
+starknet = "2.9.4"
+
+[dev-dependencies]
+cairo_test = "2.9.4"
+dojo_cairo_test = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
+
+[features]
+default = [ "dungeon" ]
+dungeon = [  ]
+
+[profile.saya]

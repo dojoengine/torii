@@ -1,0 +1,80 @@
+[world]
+description = "example world"
+name = "example"
+seed = "dojo_examples"
+
+[[models]]
+tag = "ns-Message"
+description = "Message sent by a player"
+
+[[models]]
+tag = "ns-Position"
+description = "position of a player in the world"
+
+[[models]]
+tag = "ns-Moves"
+description = "move of a player in the world"
+
+[[events]]
+tag = "ns-Moved"
+description = "when a player has moved"
+
+[[contracts]]
+tag = "ns-actions"
+description = "set of actions for a player"
+
+[[external_contracts]]
+contract_name = "ERC20Token"
+instance_name = "GoldToken"
+salt = "1"
+constructor_data = ["0x2af9427c5a277474c079a1283c880ee8a6f0f8fbf73ce969c08d88befec1bba", "str:Gold", "str:GOLD", "u256:0x10000000000000", "0x2af9427c5a277474c079a1283c880ee8a6f0f8fbf73ce969c08d88befec1bba"]
+
+[[external_contracts]]
+contract_name = "ERC20Token"
+instance_name = "WoodToken"
+salt = "1"
+constructor_data = ["0x2af9427c5a277474c079a1283c880ee8a6f0f8fbf73ce969c08d88befec1bba", "str:Wood", "str:WOOD", "u256:0x10000000000000", "0x2af9427c5a277474c079a1283c880ee8a6f0f8fbf73ce969c08d88befec1bba"]
+
+[[external_contracts]]
+contract_name = "ERC721Token"
+instance_name = "Badge"
+salt = "1"
+constructor_data = ["0x2af9427c5a277474c079a1283c880ee8a6f0f8fbf73ce969c08d88befec1bba", "str:Badge", "str:BDG", "str:https://badge.com/" ]
+
+[[external_contracts]]
+contract_name = "ERC1155Token"
+instance_name = "Rewards"
+salt = "1"
+constructor_data = ["0x2af9427c5a277474c079a1283c880ee8a6f0f8fbf73ce969c08d88befec1bba", "str:https://rewards.com/" ]
+
+[[external_contracts]]
+contract_name = "Bank"
+salt = "1"
+constructor_data = ["0x2af9427c5a277474c079a1283c880ee8a6f0f8fbf73ce969c08d88befec1bba"]
+
+[[external_contracts]]
+contract_name = "Saloon"
+constructor_data = []
+salt = "1"
+
+[lib_versions]
+"ns-simple_math" = "0_1_0"
+
+[namespace]
+default = "ns"
+
+[env]
+rpc_url = "http://localhost:5050/"
+# Default account for katana with seed = 0
+account_address = "0x2af9427c5a277474c079a1283c880ee8a6f0f8fbf73ce969c08d88befec1bba"
+private_key = "0x1800000000300000180000000000030000000000003006001800006600"
+world_address = "0x5cb84ccfa869ea8cf9acb0c77b2d1a67a7e9e8fd4a877a1c111e3c2b1eb0f03"
+ipfs_config.url = "https://ipfs.infura.io:5001"
+ipfs_config.username = "2EBrzr7ZASQZKH32sl2xWauXPSA"
+ipfs_config.password = "12290b883db9138a8ae3363b6739d220"
+
+[init_call_args]
+"ns-others" = ["0xff"]
+
+[writers]
+"ns" = [ "ns-mock_token", "ns-actions", "ns-others" ]

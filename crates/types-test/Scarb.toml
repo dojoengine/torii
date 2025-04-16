@@ -8,7 +8,7 @@ version = "1.4.1"
 sierra-replace-ids = true
 
 [dependencies]
-dojo = { path = "../../dojo/core" }
+dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
 
 [[target.starknet-contract]]
 build-external-contracts = ["dojo::world::world_contract::world"]

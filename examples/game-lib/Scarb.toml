@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "armory",
+    "bestiary"
+]
+
+[workspace.package]
+version = "0.1.0"
+description = "Example game library for Dojo"
+edition = "2024_07"
+
+[workspace.dependencies]
+dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }

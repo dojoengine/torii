@@ -64,7 +64,7 @@ where
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("../../dojo/core", "../../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -206,7 +206,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("../../dojo/core", "../../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -309,7 +309,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("../../dojo/core", "../../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -464,7 +464,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("../../dojo/core", "../../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -634,7 +634,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("../../dojo/core", "../../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -754,7 +754,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_update_with_set_record(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("../../dojo/core", "../../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -831,7 +831,7 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("../../dojo/core", "../../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -933,7 +933,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("../../dojo/core", "../../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
