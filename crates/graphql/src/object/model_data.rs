@@ -35,7 +35,15 @@ impl ModelDataObject {
         let where_input = WhereInputObject::new(type_name.as_str(), &type_mapping);
         let order_input = OrderInputObject::new(type_name.as_str(), &type_mapping);
         let plural_name = format!("{}Models", name);
-        Self { name, plural_name, type_name, type_mapping, schema, where_input, order_input }
+        Self {
+            name,
+            plural_name,
+            type_name,
+            type_mapping,
+            schema,
+            where_input,
+            order_input,
+        }
     }
 }
 
@@ -152,7 +160,11 @@ fn data_objects_recursion(type_data: &TypeData, path_array: &Vec<String>) -> Vec
             });
 
             objects.extend(nested_objects);
-            objects.push(object(&nested_type.to_string(), nested_mapping, path_array.clone()));
+            objects.push(object(
+                &nested_type.to_string(),
+                nested_mapping,
+                path_array.clone(),
+            ));
         }
         TypeData::List(inner) => {
             let nested_objects = data_objects_recursion(inner, path_array);
@@ -258,22 +270,26 @@ fn entity_field() -> Field {
 }
 
 fn event_message_field() -> Field {
-    Field::new("eventMessage", TypeRef::named(EVENT_MESSAGE_TYPE_NAME), |ctx| {
-        FieldFuture::new(async move {
-            match ctx.parent_value.try_to_value()? {
-                Value::Object(indexmap) => {
-                    let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
-                    let entity_id = utils::extract::<String>(indexmap, INTERNAL_ENTITY_ID_KEY)?;
-                    let data =
-                        fetch_single_row(&mut conn, EVENT_MESSAGE_TABLE, ID_COLUMN, &entity_id)
-                            .await?;
-                    let event_message =
-                        value_mapping_from_row(&data, &ENTITY_TYPE_MAPPING, false, true)?;
+    Field::new(
+        "eventMessage",
+        TypeRef::named(EVENT_MESSAGE_TYPE_NAME),
+        |ctx| {
+            FieldFuture::new(async move {
+                match ctx.parent_value.try_to_value()? {
+                    Value::Object(indexmap) => {
+                        let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                        let entity_id = utils::extract::<String>(indexmap, INTERNAL_ENTITY_ID_KEY)?;
+                        let data =
+                            fetch_single_row(&mut conn, EVENT_MESSAGE_TABLE, ID_COLUMN, &entity_id)
+                                .await?;
+                        let event_message =
+                            value_mapping_from_row(&data, &ENTITY_TYPE_MAPPING, false, true)?;
 
-                    Ok(Some(Value::Object(event_message)))
+                        Ok(Some(Value::Object(event_message)))
+                    }
+                    _ => Err("incorrect value, requires Value::Object".into()),
                 }
-                _ => Err("incorrect value, requires Value::Object".into()),
-            }
-        })
-    })
+            })
+        },
+    )
 }

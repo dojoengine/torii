@@ -142,14 +142,19 @@ pub fn build_sql_query(
             }
             Ty::Tuple(t) => {
                 for (i, child) in t.iter().enumerate() {
-                    let new_path =
-                        if path.is_empty() { format!("{}", i) } else { format!("{}.{}", path, i) };
+                    let new_path = if path.is_empty() {
+                        format!("{}", i)
+                    } else {
+                        format!("{}.{}", path, i)
+                    };
                     collect_columns(table_prefix, &new_path, child, selections);
                 }
             }
             Ty::Enum(e) => {
                 // Add the enum variant column with table prefix and alias
-                selections.push(format!("[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",));
+                selections.push(format!(
+                    "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
+                ));
 
                 // Add columns for each variant's value (if not empty tuple)
                 for option in &e.options {
@@ -163,7 +168,9 @@ pub fn build_sql_query(
                 }
             }
             Ty::Array(_) | Ty::Primitive(_) | Ty::ByteArray(_) => {
-                selections.push(format!("[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",));
+                selections.push(format!(
+                    "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
+                ));
             }
         }
     }
@@ -174,7 +181,9 @@ pub fn build_sql_query(
     // Add base table columns
     selections.push(format!("{}.id", table_name));
     selections.push(format!("{}.keys", table_name));
-    selections.push(format!("group_concat({model_relation_table}.model_id) as model_ids"));
+    selections.push(format!(
+        "group_concat({model_relation_table}.model_id) as model_ids"
+    ));
 
     // Process each model schema
     for model in schemas {
@@ -195,7 +204,10 @@ pub fn build_sql_query(
     let selections_clause = selections.join(", ");
     let joins_clause = joins.join(" ");
 
-    let mut query = format!("SELECT {} FROM [{}] {}", selections_clause, table_name, joins_clause);
+    let mut query = format!(
+        "SELECT {} FROM [{}] {}",
+        selections_clause, table_name, joins_clause
+    );
 
     // Include model_ids in the subquery and put WHERE before GROUP BY
     let mut count_query = format!(
@@ -245,7 +257,11 @@ pub fn map_row_to_ty(
     // the row that contains non dynamic data for Ty
     row: &SqliteRow,
 ) -> Result<(), Error> {
-    let column_name = if path.is_empty() { name } else { &format!("{}.{}", path, name) };
+    let column_name = if path.is_empty() {
+        name
+    } else {
+        &format!("{}.{}", path, name)
+    };
 
     match ty {
         Ty::Primitive(primitive) => {
@@ -434,14 +450,19 @@ pub async fn fetch_entities(
             }
             Ty::Tuple(t) => {
                 for (i, child) in t.iter().enumerate() {
-                    let new_path =
-                        if path.is_empty() { format!("{}", i) } else { format!("{}.{}", path, i) };
+                    let new_path = if path.is_empty() {
+                        format!("{}", i)
+                    } else {
+                        format!("{}.{}", path, i)
+                    };
                     collect_columns(table_prefix, &new_path, child, selections);
                 }
             }
             Ty::Enum(e) => {
                 // Add the enum variant column with table prefix and alias
-                selections.push(format!("[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",));
+                selections.push(format!(
+                    "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
+                ));
 
                 // Add columns for each variant's value (if not empty tuple)
                 for option in &e.options {
@@ -455,7 +476,9 @@ pub async fn fetch_entities(
                 }
             }
             Ty::Array(_) | Ty::Primitive(_) | Ty::ByteArray(_) => {
-                selections.push(format!("[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",));
+                selections.push(format!(
+                    "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
+                ));
             }
         }
     }
@@ -472,7 +495,9 @@ pub async fn fetch_entities(
         // Add base table columns
         selections.push(format!("{}.id", table_name));
         selections.push(format!("{}.keys", table_name));
-        selections.push(format!("group_concat({model_relation_table}.model_id) as model_ids"));
+        selections.push(format!(
+            "group_concat({model_relation_table}.model_id) as model_ids"
+        ));
 
         // Process each model schema in the chunk
         for model in chunk {
@@ -514,8 +539,10 @@ pub async fn fetch_entities(
 
         if chunk_count > 0 {
             // Build main query
-            let mut query =
-                format!("SELECT {} FROM [{}] {}", selections_clause, table_name, joins_clause);
+            let mut query = format!(
+                "SELECT {} FROM [{}] {}",
+                selections_clause, table_name, joins_clause
+            );
 
             if let Some(where_clause) = where_clause {
                 query += &format!(" WHERE {}", where_clause);
@@ -634,7 +661,10 @@ mod tests {
                         name: "Option<u32>".into(),
                         option: None,
                         options: vec![
-                            EnumOption { name: "None".into(), ty: Ty::Tuple(vec![]) },
+                            EnumOption {
+                                name: "None".into(),
+                                ty: Ty::Tuple(vec![]),
+                            },
                             EnumOption {
                                 name: "Some".into(),
                                 ty: Ty::Primitive("u32".parse().unwrap()),

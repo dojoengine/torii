@@ -120,7 +120,10 @@ impl Sql {
         Ok((
             indexer
                 .0
-                .map(|h| h.try_into().map_err(|_| anyhow!("Head value {} doesn't fit in u64", h)))
+                .map(|h| {
+                    h.try_into()
+                        .map_err(|_| anyhow!("Head value {} doesn't fit in u64", h))
+                })
                 .transpose()?
                 .unwrap_or(0),
             indexer.1.map(|f| Felt::from_str(&f)).transpose()?,
@@ -136,11 +139,15 @@ impl Sql {
         contract_address: Felt,
     ) -> Result<()> {
         let head_arg = Argument::Int(
-            head.try_into().map_err(|_| anyhow!("Head value {} doesn't fit in i64", head))?,
+            head.try_into()
+                .map_err(|_| anyhow!("Head value {} doesn't fit in i64", head))?,
         );
         let last_block_timestamp_arg =
             Argument::Int(last_block_timestamp.try_into().map_err(|_| {
-                anyhow!("Last block timestamp value {} doesn't fit in i64", last_block_timestamp)
+                anyhow!(
+                    "Last block timestamp value {} doesn't fit in i64",
+                    last_block_timestamp
+                )
             })?);
         let id = Argument::FieldElement(contract_address);
 
@@ -369,10 +376,19 @@ impl Sql {
             "INSERT INTO entity_model (entity_id, model_id) VALUES (?, ?) ON CONFLICT(entity_id, \
              model_id) DO NOTHING"
                 .to_string(),
-            vec![Argument::String(entity_id.clone()), Argument::String(model_id.clone())],
+            vec![
+                Argument::String(entity_id.clone()),
+                Argument::String(model_id.clone()),
+            ],
         ))?;
 
-        self.set_entity_model(&namespaced_name, event_id, &entity_id, &entity, block_timestamp)?;
+        self.set_entity_model(
+            &namespaced_name,
+            event_id,
+            &entity_id,
+            &entity,
+            block_timestamp,
+        )?;
 
         Ok(())
     }
@@ -397,7 +413,10 @@ impl Sql {
         let (model_namespace, model_name) = namespaced_name.split_once('-').unwrap();
 
         let entity_id = format!("{:#x}", poseidon_hash_many(&keys));
-        let model_id = format!("{:#x}", compute_selector_from_names(model_namespace, model_name));
+        let model_id = format!(
+            "{:#x}",
+            compute_selector_from_names(model_namespace, model_name)
+        );
 
         let keys_str = felts_to_sql_string(&keys);
         let block_timestamp_str = utc_dt_string_from_timestamp(block_timestamp);
@@ -505,13 +524,17 @@ impl Sql {
         let statement = format!("UPDATE metadata SET {} WHERE id = ?", update.join(","));
         arguments.push(Argument::FieldElement(*resource));
 
-        self.executor.send(QueryMessage::other(statement, arguments))?;
+        self.executor
+            .send(QueryMessage::other(statement, arguments))?;
 
         Ok(())
     }
 
     pub async fn model(&self, selector: Felt) -> Result<Model> {
-        self.model_cache.model(&selector).await.map_err(|e| e.into())
+        self.model_cache
+            .model(&selector)
+            .await
+            .map_err(|e| e.into())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -652,8 +675,10 @@ impl Sql {
                 }
                 Ty::Array(array) => {
                     columns.push(format!("\"{}\"", prefix));
-                    let values =
-                        array.iter().map(|v| v.to_json_value()).collect::<Result<Vec<_>, _>>()?;
+                    let values = array
+                        .iter()
+                        .map(|v| v.to_json_value())
+                        .collect::<Result<Vec<_>, _>>()?;
                     arguments.push(Argument::String(serde_json::to_string(&values)?));
                 }
                 Ty::Primitive(ty) => {
@@ -678,7 +703,8 @@ impl Sql {
             model_name,
             columns.join(","),
             placeholders.join(","),
-            columns.iter()
+            columns
+                .iter()
                 .skip(1) // Skip internal_id which is the primary key
                 .map(|col| format!("{0}=excluded.{0}", col))
                 .collect::<Vec<_>>()
@@ -686,7 +712,8 @@ impl Sql {
         );
 
         // Execute the single query
-        self.executor.send(QueryMessage::other(insert_statement, arguments))?;
+        self.executor
+            .send(QueryMessage::other(insert_statement, arguments))?;
 
         Ok(())
     }
@@ -751,15 +778,18 @@ impl Sql {
         // Execute the queries
         if upgrade_diff.is_some() {
             for alter_query in alter_table_queries {
-                self.executor.send(QueryMessage::other(alter_query, vec![]))?;
+                self.executor
+                    .send(QueryMessage::other(alter_query, vec![]))?;
             }
         } else {
-            self.executor.send(QueryMessage::other(create_table_query, vec![]))?;
+            self.executor
+                .send(QueryMessage::other(create_table_query, vec![]))?;
         }
 
         // Create indices
         for index_query in indices {
-            self.executor.send(QueryMessage::other(index_query, vec![]))?;
+            self.executor
+                .send(QueryMessage::other(index_query, vec![]))?;
         }
 
         Ok(())
@@ -777,17 +807,26 @@ impl Sql {
         upgrade_diff: Option<&Ty>,
         is_key: bool,
     ) -> Result<()> {
-        let column_prefix = if path.len() > 1 { path[1..].join(".") } else { String::new() };
+        let column_prefix = if path.len() > 1 {
+            path[1..].join(".")
+        } else {
+            String::new()
+        };
 
         let mut add_column = |name: &str, sql_type: &str| {
             if upgrade_diff.is_some() {
-                alter_table_queries
-                    .push(format!("ALTER TABLE [{table_id}] ADD COLUMN [{name}] {sql_type}"));
+                alter_table_queries.push(format!(
+                    "ALTER TABLE [{table_id}] ADD COLUMN [{name}] {sql_type}"
+                ));
             } else {
                 columns.push(format!("[{name}] {sql_type}"));
             }
 
-            let model_indices = self.config.model_indices.iter().find(|m| m.model_tag == table_id);
+            let model_indices = self
+                .config
+                .model_indices
+                .iter()
+                .find(|m| m.model_tag == table_id);
 
             if model_indices.is_some_and(|m| m.fields.contains(&name.to_string()))
                 || (model_indices.is_none() && (self.config.all_model_indices || is_key))
@@ -799,32 +838,31 @@ impl Sql {
             }
         };
 
-        let modify_column = |alter_table_queries: &mut Vec<String>,
-                             name: &str,
-                             sql_type: &str,
-                             sql_value: &str| {
-            // SQLite doesn't support ALTER COLUMN directly, so we need to:
-            // 1. Create a temporary table to store the current values
-            // 2. Drop the old column & index
-            // 3. Create new column with new type/constraint
-            // 4. Copy values back & create new index
-            alter_table_queries.push(format!(
+        let modify_column =
+            |alter_table_queries: &mut Vec<String>, name: &str, sql_type: &str, sql_value: &str| {
+                // SQLite doesn't support ALTER COLUMN directly, so we need to:
+                // 1. Create a temporary table to store the current values
+                // 2. Drop the old column & index
+                // 3. Create new column with new type/constraint
+                // 4. Copy values back & create new index
+                alter_table_queries.push(format!(
                 "CREATE TEMPORARY TABLE [tmp_values_{name}] AS SELECT internal_id, [{name}] FROM \
                  [{table_id}]"
             ));
-            alter_table_queries.push(format!("DROP INDEX IF EXISTS [idx_{table_id}_{name}]"));
-            alter_table_queries.push(format!("ALTER TABLE [{table_id}] DROP COLUMN [{name}]"));
-            alter_table_queries
-                .push(format!("ALTER TABLE [{table_id}] ADD COLUMN [{name}] {sql_type}"));
-            alter_table_queries.push(format!(
+                alter_table_queries.push(format!("DROP INDEX IF EXISTS [idx_{table_id}_{name}]"));
+                alter_table_queries.push(format!("ALTER TABLE [{table_id}] DROP COLUMN [{name}]"));
+                alter_table_queries.push(format!(
+                    "ALTER TABLE [{table_id}] ADD COLUMN [{name}] {sql_type}"
+                ));
+                alter_table_queries.push(format!(
                 "UPDATE [{table_id}] SET [{name}] = (SELECT {sql_value} FROM [tmp_values_{name}] \
                  WHERE [tmp_values_{name}].internal_id = [{table_id}].internal_id)"
             ));
-            alter_table_queries.push(format!("DROP TABLE [tmp_values_{name}]"));
-            alter_table_queries.push(format!(
+                alter_table_queries.push(format!("DROP TABLE [tmp_values_{name}]"));
+                alter_table_queries.push(format!(
                 "CREATE INDEX IF NOT EXISTS [idx_{table_id}_{name}] ON [{table_id}] ([{name}]);"
             ));
-        };
+            };
 
         match ty {
             Ty::Struct(s) => {
@@ -862,23 +900,25 @@ impl Sql {
                 }
             }
             Ty::Tuple(tuple) => {
-                let elements_to_process = if let Some(diff) =
-                    upgrade_diff.and_then(|d| d.as_tuple())
-                {
-                    // Only process elements from the diff
-                    diff.iter()
-                        .filter_map(|m| {
-                            tuple.iter().position(|member| member == m).map(|idx| (idx, m, Some(m)))
-                        })
-                        .collect()
-                } else {
-                    // Process all elements
-                    tuple
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, member)| (idx, member, None))
-                        .collect::<Vec<_>>()
-                };
+                let elements_to_process =
+                    if let Some(diff) = upgrade_diff.and_then(|d| d.as_tuple()) {
+                        // Only process elements from the diff
+                        diff.iter()
+                            .filter_map(|m| {
+                                tuple
+                                    .iter()
+                                    .position(|member| member == m)
+                                    .map(|idx| (idx, m, Some(m)))
+                            })
+                            .collect()
+                    } else {
+                        // Process all elements
+                        tuple
+                            .iter()
+                            .enumerate()
+                            .map(|(idx, member)| (idx, member, None))
+                            .collect::<Vec<_>>()
+                    };
 
                 for (idx, member, member_diff) in elements_to_process {
                     let mut new_path = path.to_vec();
@@ -896,8 +936,11 @@ impl Sql {
                 }
             }
             Ty::Array(_) => {
-                let column_name =
-                    if column_prefix.is_empty() { "value".to_string() } else { column_prefix };
+                let column_name = if column_prefix.is_empty() {
+                    "value".to_string()
+                } else {
+                    column_prefix
+                };
 
                 add_column(&column_name, "TEXT");
             }
@@ -908,8 +951,11 @@ impl Sql {
                     None
                 };
 
-                let column_name =
-                    if column_prefix.is_empty() { "option".to_string() } else { column_prefix };
+                let column_name = if column_prefix.is_empty() {
+                    "option".to_string()
+                } else {
+                    column_prefix
+                };
 
                 let all_options = e
                     .options
@@ -971,14 +1017,20 @@ impl Sql {
                 }
             }
             Ty::ByteArray(_) => {
-                let column_name =
-                    if column_prefix.is_empty() { "value".to_string() } else { column_prefix };
+                let column_name = if column_prefix.is_empty() {
+                    "value".to_string()
+                } else {
+                    column_prefix
+                };
 
                 add_column(&column_name, "TEXT");
             }
             Ty::Primitive(p) => {
-                let column_name =
-                    if column_prefix.is_empty() { "value".to_string() } else { column_prefix };
+                let column_name = if column_prefix.is_empty() {
+                    "value".to_string()
+                } else {
+                    column_prefix
+                };
 
                 if let Some(upgrade_diff) = upgrade_diff {
                     if let Some(old_primitive) = upgrade_diff.as_primitive() {
@@ -1050,7 +1102,10 @@ impl Sql {
             Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
         ];
 
-        self.executor.send(QueryMessage::other(insert_controller.to_string(), arguments))?;
+        self.executor.send(QueryMessage::other(
+            insert_controller.to_string(),
+            arguments,
+        ))?;
 
         Ok(())
     }

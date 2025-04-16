@@ -65,32 +65,28 @@ impl ResolvableObject for EventMessageObject {
     }
 
     fn subscriptions(&self) -> Option<Vec<SubscriptionField>> {
-        Some(vec![
-            SubscriptionField::new(
-                "eventMessageUpdated",
-                TypeRef::named_nn(self.type_name()),
-                |ctx| {
-                    SubscriptionFieldFuture::new(async move {
-                        let id = match ctx.args.get("id") {
-                            Some(id) => Some(id.string()?.to_string()),
-                            None => None,
-                        };
-                        Ok(SimpleBroker::<EventMessage>::subscribe().filter_map(
-                            move |entity: EventMessage| {
-                                if id.is_none() || id == Some(entity.id.clone()) {
-                                    Some(Ok(Value::Object(EventMessageObject::value_mapping(
-                                        entity,
-                                    ))))
-                                } else {
-                                    None
-                                }
-                            },
-                        ))
-                    })
-                },
-            )
-            .argument(InputValue::new("id", TypeRef::named(TypeRef::ID))),
-        ])
+        Some(vec![SubscriptionField::new(
+            "eventMessageUpdated",
+            TypeRef::named_nn(self.type_name()),
+            |ctx| {
+                SubscriptionFieldFuture::new(async move {
+                    let id = match ctx.args.get("id") {
+                        Some(id) => Some(id.string()?.to_string()),
+                        None => None,
+                    };
+                    Ok(SimpleBroker::<EventMessage>::subscribe().filter_map(
+                        move |entity: EventMessage| {
+                            if id.is_none() || id == Some(entity.id.clone()) {
+                                Some(Ok(Value::Object(EventMessageObject::value_mapping(entity))))
+                            } else {
+                                None
+                            }
+                        },
+                    ))
+                })
+            },
+        )
+        .argument(InputValue::new("id", TypeRef::named(TypeRef::ID)))])
     }
 }
 
@@ -154,8 +150,10 @@ fn model_union_field() -> Field {
                             "SELECT * FROM [{}] WHERE internal_event_message_id = ?",
                             table_name
                         );
-                        let row =
-                            sqlx::query(&query).bind(&entity_id).fetch_one(&mut *conn).await?;
+                        let row = sqlx::query(&query)
+                            .bind(&entity_id)
+                            .fetch_one(&mut *conn)
+                            .await?;
 
                         // Use value_mapping_from_row to handle nested structures
                         let data = value_mapping_from_row(&row, &type_mapping, false, false)?;

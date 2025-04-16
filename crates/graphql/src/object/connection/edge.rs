@@ -14,7 +14,10 @@ pub struct EdgeObject {
 impl EdgeObject {
     pub fn new(name: String, type_name: String) -> Self {
         let type_mapping = TypeMapping::from([
-            (Name::new("node"), TypeData::Simple(TypeRef::named(type_name.clone()))),
+            (
+                Name::new("node"),
+                TypeData::Simple(TypeRef::named(type_name.clone())),
+            ),
             (
                 Name::new("cursor"),
                 TypeData::Simple(TypeRef::named(GraphqlType::Cursor.to_string())),

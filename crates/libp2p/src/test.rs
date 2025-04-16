@@ -63,8 +63,14 @@ async fn test_client_messaging() -> Result<(), Box<dyn Error>> {
     let account = sequencer.account_data(0);
 
     let (shutdown_tx, _) = broadcast::channel(1);
-    let (mut executor, sender) =
-        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider), 100).await.unwrap();
+    let (mut executor, sender) = Executor::new(
+        pool.clone(),
+        shutdown_tx.clone(),
+        Arc::clone(&provider),
+        100,
+    )
+    .await
+    .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });
@@ -73,7 +79,10 @@ async fn test_client_messaging() -> Result<(), Box<dyn Error>> {
     let mut db = Sql::new(
         pool.clone(),
         sender,
-        &[Contract { address: Felt::ZERO, r#type: ContractType::WORLD }],
+        &[Contract {
+            address: Felt::ZERO,
+            r#type: ContractType::WORLD,
+        }],
         model_cache,
     )
     .await
@@ -182,7 +191,10 @@ async fn test_client_messaging() -> Result<(), Box<dyn Error>> {
 
     client
         .command_sender
-        .publish(Message { message: typed_data, signature: vec![signature.r, signature.s] })
+        .publish(Message {
+            message: typed_data,
+            signature: vec![signature.r, signature.s],
+        })
         .await?;
 
     loop {
@@ -207,7 +219,9 @@ async fn test_client_connection_wasm() -> Result<(), Box<dyn Error>> {
 
     tracing_wasm::set_as_global_default();
 
-    let _ = tracing_subscriber::fmt().with_env_filter("torii::relay=debug").try_init();
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("torii::relay=debug")
+        .try_init();
     // Initialize the first client (listener)
     // Make sure the cert hash is correct - corresponding to the cert in the relay server
     let mut client = RelayClient::new(
@@ -220,9 +234,15 @@ async fn test_client_connection_wasm() -> Result<(), Box<dyn Error>> {
         client.event_loop.lock().await.run().await;
     });
 
-    client.command_sender.subscribe("mawmaw".to_string()).await?;
+    client
+        .command_sender
+        .subscribe("mawmaw".to_string())
+        .await?;
     client.command_sender.wait_for_relay().await?;
-    client.command_sender.publish("mawmaw".to_string(), "mimi".as_bytes().to_vec()).await?;
+    client
+        .command_sender
+        .publish("mawmaw".to_string(), "mimi".as_bytes().to_vec())
+        .await?;
 
     let timeout = wasm_timer::Delay::new(std::time::Duration::from_secs(2));
     let mut message_future = client.message_receiver.lock().await;

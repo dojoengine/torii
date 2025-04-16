@@ -76,16 +76,16 @@ impl Runner {
             return Err(anyhow::anyhow!("Please specify a world address."));
         };
 
-        self.args
-            .indexing
-            .contracts
-            .push(Contract { address: world_address, r#type: ContractType::WORLD });
+        self.args.indexing.contracts.push(Contract {
+            address: world_address,
+            r#type: ContractType::WORLD,
+        });
 
         if self.args.indexing.controllers {
-            self.args
-                .indexing
-                .contracts
-                .push(Contract { address: UDC_ADDRESS, r#type: ContractType::UDC });
+            self.args.indexing.contracts.push(Contract {
+                address: UDC_ADDRESS,
+                r#type: ContractType::UDC,
+            });
         }
 
         // Setup cancellation for graceful shutdown
@@ -268,7 +268,10 @@ impl Runner {
 
         let proxy_server = Arc::new(Proxy::new(
             addr,
-            self.args.server.http_cors_origins.filter(|cors_origins| !cors_origins.is_empty()),
+            self.args
+                .server
+                .http_cors_origins
+                .filter(|cors_origins| !cors_origins.is_empty()),
             Some(grpc_addr),
             None,
             Some(artifacts_addr),
@@ -299,8 +302,10 @@ impl Runner {
         }
 
         if self.args.metrics.metrics {
-            let addr =
-                SocketAddr::new(self.args.metrics.metrics_addr, self.args.metrics.metrics_port);
+            let addr = SocketAddr::new(
+                self.args.metrics.metrics_addr,
+                self.args.metrics.metrics_port,
+            );
             info!(target: LOG_TARGET, %addr, "Starting metrics endpoint.");
             let prometheus_handle = PrometheusRecorder::install("torii")?;
             let server = dojo_metrics::Server::new(prometheus_handle).with_process_metrics();
@@ -363,8 +368,9 @@ async fn verify_contracts_deployed(
     let verification_futures = contracts.iter().map(|contract| {
         let contract = *contract;
         async move {
-            let result =
-                provider.get_class_at(BlockId::Tag(BlockTag::Pending), contract.address).await;
+            let result = provider
+                .get_class_at(BlockId::Tag(BlockTag::Pending), contract.address)
+                .await;
             (contract, result)
         }
     });

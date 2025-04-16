@@ -148,8 +148,9 @@ impl StoreTransactionProcessor {
         let calldata_len: usize = calldata[selector_offset + 1].try_into().unwrap();
         let contract_address = calldata[to_offset];
 
-        let contract_class =
-            contract_class_cache.get(contract_address, BlockId::Tag(BlockTag::Pending)).await?;
+        let contract_class = contract_class_cache
+            .get(contract_address, BlockId::Tag(BlockTag::Pending))
+            .await?;
 
         let entrypoint = get_entrypoint_name_from_class(&contract_class, calldata[selector_offset])
             .unwrap_or(format!("{:#x}", calldata[selector_offset]));

@@ -59,10 +59,14 @@ mod tests {
         let (shutdown_tx, _) = broadcast::channel(1);
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider), 100)
-                .await
-                .unwrap();
+        let (mut executor, sender) = Executor::new(
+            pool.clone(),
+            shutdown_tx.clone(),
+            Arc::clone(&provider),
+            100,
+        )
+        .await
+        .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -70,7 +74,10 @@ mod tests {
         let mut db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract { address: Felt::ZERO, r#type: ContractType::WORLD }],
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
             model_cache,
         )
         .await
@@ -97,12 +104,22 @@ mod tests {
         // implementation to actually add those to the metadata table.
         let world_metadata: WorldMetadata = profile_config.world.into();
         db.set_metadata(&RESOURCE, URI, BLOCK_TIMESTAMP).unwrap();
-        db.update_metadata(&RESOURCE, URI, &world_metadata, &None, &Some(cover_img.to_string()))
-            .unwrap();
+        db.update_metadata(
+            &RESOURCE,
+            URI,
+            &world_metadata,
+            &None,
+            &Some(cover_img.to_string()),
+        )
+        .unwrap();
         db.execute().await.unwrap();
 
         let result = run_graphql_query(&schema, QUERY).await;
-        let value = result.get("metadatas").ok_or("metadatas not found").unwrap().clone();
+        let value = result
+            .get("metadatas")
+            .ok_or("metadatas not found")
+            .unwrap()
+            .clone();
         let connection: Connection<SqlMetadata> = serde_json::from_value(value).unwrap();
         let edge = connection.edges.first().unwrap();
         assert_eq!(edge.node.world_address, "0x0");
@@ -129,10 +146,14 @@ mod tests {
         let (shutdown_tx, _) = broadcast::channel(1);
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider), 100)
-                .await
-                .unwrap();
+        let (mut executor, sender) = Executor::new(
+            pool.clone(),
+            shutdown_tx.clone(),
+            Arc::clone(&provider),
+            100,
+        )
+        .await
+        .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -141,7 +162,10 @@ mod tests {
         let mut db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract { address: Felt::ZERO, r#type: ContractType::WORLD }],
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
             model_cache,
         )
         .await
@@ -152,7 +176,11 @@ mod tests {
         db.execute().await.unwrap();
 
         let result = run_graphql_query(&schema, QUERY).await;
-        let value = result.get("metadatas").ok_or("metadatas not found").unwrap().clone();
+        let value = result
+            .get("metadatas")
+            .ok_or("metadatas not found")
+            .unwrap()
+            .clone();
         let connection: Connection<SqlMetadata> = serde_json::from_value(value).unwrap();
         let edge = connection.edges.first().unwrap();
         assert_eq!(

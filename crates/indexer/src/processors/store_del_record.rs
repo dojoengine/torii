@@ -96,8 +96,14 @@ where
 
         let entity = model.schema;
 
-        db.delete_entity(event.entity_id, event.selector, entity, event_id, block_timestamp)
-            .await?;
+        db.delete_entity(
+            event.entity_id,
+            event.selector,
+            entity,
+            event_id,
+            block_timestamp,
+        )
+        .await?;
 
         Ok(())
     }

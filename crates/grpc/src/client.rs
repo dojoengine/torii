@@ -93,7 +93,9 @@ impl WorldClient {
             .and_then(|res| {
                 res.into_inner()
                     .metadata
-                    .ok_or(Error::Schema(SchemaError::MissingExpectedData("metadata".to_string())))
+                    .ok_or(Error::Schema(SchemaError::MissingExpectedData(
+                        "metadata".to_string(),
+                    )))
             })
             .and_then(|metadata| metadata.try_into().map_err(Error::ParseStr))
     }
@@ -128,7 +130,10 @@ impl WorldClient {
                     .into_iter()
                     .map(|c| c.to_bytes_be().to_vec())
                     .collect(),
-                token_ids: token_ids.into_iter().map(|id| id.to_be_bytes().to_vec()).collect(),
+                token_ids: token_ids
+                    .into_iter()
+                    .map(|id| id.to_be_bytes().to_vec())
+                    .collect(),
                 limit: limit.unwrap_or_default(),
                 offset: offset.unwrap_or_default(),
                 cursor: cursor.unwrap_or_default(),
@@ -148,7 +153,10 @@ impl WorldClient {
                 .into_iter()
                 .map(|c| c.to_bytes_be().to_vec())
                 .collect(),
-            token_ids: token_ids.into_iter().map(|id| id.to_be_bytes().to_vec()).collect(),
+            token_ids: token_ids
+                .into_iter()
+                .map(|id| id.to_be_bytes().to_vec())
+                .collect(),
         };
         let stream = self
             .inner
@@ -180,12 +188,17 @@ impl WorldClient {
         contract_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
     ) -> Result<(), Error> {
-        let contract_addresses =
-            contract_addresses.into_iter().map(|c| c.to_bytes_be().to_vec()).collect();
+        let contract_addresses = contract_addresses
+            .into_iter()
+            .map(|c| c.to_bytes_be().to_vec())
+            .collect();
         let request = UpdateTokenSubscriptionRequest {
             subscription_id,
             contract_addresses,
-            token_ids: token_ids.into_iter().map(|id| id.to_be_bytes().to_vec()).collect(),
+            token_ids: token_ids
+                .into_iter()
+                .map(|id| id.to_be_bytes().to_vec())
+                .collect(),
         };
         self.inner
             .update_tokens_subscription(request)
@@ -213,7 +226,10 @@ impl WorldClient {
                     .into_iter()
                     .map(|c| c.to_bytes_be().to_vec())
                     .collect(),
-                token_ids: token_ids.into_iter().map(|id| id.to_be_bytes().to_vec()).collect(),
+                token_ids: token_ids
+                    .into_iter()
+                    .map(|id| id.to_be_bytes().to_vec())
+                    .collect(),
                 limit: limit.unwrap_or_default(),
                 offset: offset.unwrap_or_default(),
                 cursor: cursor.unwrap_or_default(),
@@ -228,8 +244,15 @@ impl WorldClient {
         query: Query,
         historical: bool,
     ) -> Result<RetrieveEntitiesResponse, Error> {
-        let request = RetrieveEntitiesRequest { query: Some(query.into()), historical };
-        self.inner.retrieve_entities(request).await.map_err(Error::Grpc).map(|res| res.into_inner())
+        let request = RetrieveEntitiesRequest {
+            query: Some(query.into()),
+            historical,
+        };
+        self.inner
+            .retrieve_entities(request)
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
     }
 
     pub async fn retrieve_event_messages(
@@ -237,7 +260,10 @@ impl WorldClient {
         query: Query,
         historical: bool,
     ) -> Result<RetrieveEntitiesResponse, Error> {
-        let request = RetrieveEventMessagesRequest { query: Some(query.into()), historical };
+        let request = RetrieveEventMessagesRequest {
+            query: Some(query.into()),
+            historical,
+        };
         self.inner
             .retrieve_event_messages(request)
             .await
@@ -249,8 +275,14 @@ impl WorldClient {
         &mut self,
         query: EventQuery,
     ) -> Result<RetrieveEventsResponse, Error> {
-        let request = RetrieveEventsRequest { query: Some(query.into()) };
-        self.inner.retrieve_events(request).await.map_err(Error::Grpc).map(|res| res.into_inner())
+        let request = RetrieveEventsRequest {
+            query: Some(query.into()),
+        };
+        self.inner
+            .retrieve_events(request)
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
     }
 
     /// Subscribe to indexer updates.
@@ -258,15 +290,18 @@ impl WorldClient {
         &mut self,
         contract_address: Felt,
     ) -> Result<IndexerUpdateStreaming, Error> {
-        let request =
-            SubscribeIndexerRequest { contract_address: contract_address.to_bytes_be().to_vec() };
+        let request = SubscribeIndexerRequest {
+            contract_address: contract_address.to_bytes_be().to_vec(),
+        };
         let stream = self
             .inner
             .subscribe_indexer(request)
             .await
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
-        Ok(IndexerUpdateStreaming(stream.map_ok(Box::new(|res| res.into()))))
+        Ok(IndexerUpdateStreaming(
+            stream.map_ok(Box::new(|res| res.into())),
+        ))
     }
 
     /// Subscribe to entities updates of a World.
@@ -284,8 +319,19 @@ impl WorldClient {
 
         Ok(EntityUpdateStreaming(stream.map_ok(Box::new(|res| {
             res.entity.map_or(
-                (res.subscription_id, Entity { hashed_keys: Felt::ZERO, models: vec![] }),
-                |entity| (res.subscription_id, entity.try_into().expect("must able to serialize")),
+                (
+                    res.subscription_id,
+                    Entity {
+                        hashed_keys: Felt::ZERO,
+                        models: vec![],
+                    },
+                ),
+                |entity| {
+                    (
+                        res.subscription_id,
+                        entity.try_into().expect("must able to serialize"),
+                    )
+                },
             )
         }))))
     }
@@ -323,8 +369,19 @@ impl WorldClient {
 
         Ok(EntityUpdateStreaming(stream.map_ok(Box::new(|res| {
             res.entity.map_or(
-                (res.subscription_id, Entity { hashed_keys: Felt::ZERO, models: vec![] }),
-                |entity| (res.subscription_id, entity.try_into().expect("must able to serialize")),
+                (
+                    res.subscription_id,
+                    Entity {
+                        hashed_keys: Felt::ZERO,
+                        models: vec![],
+                    },
+                ),
+                |entity| {
+                    (
+                        res.subscription_id,
+                        entity.try_into().expect("must able to serialize"),
+                    )
+                },
             )
         }))))
     }
@@ -360,10 +417,16 @@ impl WorldClient {
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
 
-        Ok(EventUpdateStreaming(stream.map_ok(Box::new(|res| match res.event {
-            Some(event) => event.into(),
-            None => Event { keys: vec![], data: vec![], transaction_hash: Felt::ZERO },
-        }))))
+        Ok(EventUpdateStreaming(stream.map_ok(Box::new(
+            |res| match res.event {
+                Some(event) => event.into(),
+                None => Event {
+                    keys: vec![],
+                    data: vec![],
+                    transaction_hash: Felt::ZERO,
+                },
+            },
+        ))))
     }
 
     /// Subscribe to the model diff for a set of models of a World.
@@ -380,12 +443,14 @@ impl WorldClient {
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
 
-        Ok(ModelDiffsStreaming(stream.map_ok(Box::new(|res| match res.model_update {
-            Some(update) => {
-                TryInto::<StateUpdate>::try_into(update).expect("must able to serialize")
-            }
-            None => empty_state_update(),
-        }))))
+        Ok(ModelDiffsStreaming(stream.map_ok(Box::new(
+            |res| match res.model_update {
+                Some(update) => {
+                    TryInto::<StateUpdate>::try_into(update).expect("must able to serialize")
+                }
+                None => empty_state_update(),
+            },
+        ))))
     }
 
     /// Subscribe to token balances.
@@ -404,7 +469,10 @@ impl WorldClient {
                 .into_iter()
                 .map(|a| a.to_bytes_be().to_vec())
                 .collect(),
-            token_ids: token_ids.into_iter().map(|id| id.to_be_bytes().to_vec()).collect(),
+            token_ids: token_ids
+                .into_iter()
+                .map(|id| id.to_be_bytes().to_vec())
+                .collect(),
         };
         let stream = self
             .inner
@@ -446,7 +514,10 @@ impl WorldClient {
                 .into_iter()
                 .map(|a| a.to_bytes_be().to_vec())
                 .collect(),
-            token_ids: token_ids.into_iter().map(|id| id.to_be_bytes().to_vec()).collect(),
+            token_ids: token_ids
+                .into_iter()
+                .map(|id| id.to_be_bytes().to_vec())
+                .collect(),
         };
         self.inner
             .update_token_balances_subscription(request)

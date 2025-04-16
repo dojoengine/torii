@@ -42,10 +42,13 @@ fn member_to_type_data(namespace: &str, schema: &Ty) -> TypeData {
         Ty::Array(array) => TypeData::List(Box::new(member_to_type_data(namespace, &array[0]))),
         // Enums that do not have a nested member are considered as a simple Enum
         Ty::Enum(enum_)
-            if enum_
-                .options
-                .iter()
-                .all(|o| if let Ty::Tuple(t) = &o.ty { t.is_empty() } else { false }) =>
+            if enum_.options.iter().all(|o| {
+                if let Ty::Tuple(t) = &o.ty {
+                    t.is_empty()
+                } else {
+                    false
+                }
+            }) =>
         {
             TypeData::Simple(TypeRef::named("Enum"))
         }
@@ -80,13 +83,21 @@ fn parse_nested_type(namespace: &str, schema: &Ty) -> TypeData {
                 })
                 .collect::<TypeMapping>();
 
-            type_mapping.insert(Name::new("option"), TypeData::Simple(TypeRef::named("Enum")));
+            type_mapping.insert(
+                Name::new("option"),
+                TypeData::Simple(TypeRef::named("Enum")),
+            );
             type_mapping
         }
         Ty::Tuple(t) => t
             .iter()
             .enumerate()
-            .map(|(i, ty)| (Name::new(format!("_{}", i)), member_to_type_data(namespace, ty)))
+            .map(|(i, ty)| {
+                (
+                    Name::new(format!("_{}", i)),
+                    member_to_type_data(namespace, ty),
+                )
+            })
             .collect(),
         _ => return TypeData::Simple(TypeRef::named(schema.name())),
     };
@@ -302,9 +313,10 @@ fn fetch_value(
 
     match Primitive::from_str(type_name) {
         // fetch boolean
-        Ok(Primitive::Bool(_)) => {
-            Ok(Value::from(matches!(row.try_get::<i64, &str>(&column_name)?, BOOLEAN_TRUE)))
-        }
+        Ok(Primitive::Bool(_)) => Ok(Value::from(matches!(
+            row.try_get::<i64, &str>(&column_name)?,
+            BOOLEAN_TRUE
+        ))),
         // fetch integer/string base on sql type
         Ok(ty) => match ty.to_sql_type() {
             SqlType::Integer => row.try_get::<i64, &str>(&column_name).map(Value::from),

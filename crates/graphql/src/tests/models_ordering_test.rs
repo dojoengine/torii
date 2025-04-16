@@ -38,7 +38,11 @@ mod tests {
         );
 
         let result = run_graphql_query(schema, &query).await;
-        result.get("models").ok_or("models not found").unwrap().clone()
+        result
+            .get("models")
+            .ok_or("models not found")
+            .unwrap()
+            .clone()
     }
 
     // End to end test spins up a test sequencer and deploys types-test project, this takes a while

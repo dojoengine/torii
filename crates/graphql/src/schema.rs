@@ -114,7 +114,9 @@ pub async fn build_schema(pool: &SqlitePool) -> Result<Schema> {
 
 async fn build_objects(pool: &SqlitePool) -> Result<(Vec<ObjectVariant>, Vec<Union>)> {
     let mut conn = pool.acquire().await?;
-    let models: Vec<Model> = sqlx::query_as("SELECT * FROM models").fetch_all(&mut *conn).await?;
+    let models: Vec<Model> = sqlx::query_as("SELECT * FROM models")
+        .fetch_all(&mut *conn)
+        .await?;
 
     // predefined objects
     let mut objects: Vec<ObjectVariant> = vec![

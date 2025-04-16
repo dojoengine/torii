@@ -39,8 +39,12 @@ const DEFAULT_ALLOW_HEADERS: [&str; 13] = [
     "grpc-accept-encoding",
     "grpc-encoding",
 ];
-const DEFAULT_EXPOSED_HEADERS: [&str; 4] =
-    ["grpc-status", "grpc-message", "grpc-status-details-bin", "grpc-encoding"];
+const DEFAULT_EXPOSED_HEADERS: [&str; 4] = [
+    "grpc-status",
+    "grpc-message",
+    "grpc-status-details-bin",
+    "grpc-encoding",
+];
 const DEFAULT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 lazy_static::lazy_static! {
@@ -84,7 +88,11 @@ impl Proxy {
             Box::new(StaticHandler::new(artifacts_addr)),
         ]));
 
-        Self { addr, allowed_origins, handlers }
+        Self {
+            addr,
+            allowed_origins,
+            handlers,
+        }
     }
 
     pub async fn set_graphql_addr(&self, addr: SocketAddr) {
@@ -121,28 +129,34 @@ impl Proxy {
                 );
 
             let cors =
-                allowed_origins.clone().map(|allowed_origins| match allowed_origins.as_slice() {
-                    [origin] if origin == "*" => cors.allow_origin(AllowOrigin::mirror_request()),
-                    origins => cors.allow_origin(
-                        origins
-                            .iter()
-                            .map(|o| {
-                                let _ = o.parse::<http::Uri>().expect("Invalid URI");
+                allowed_origins
+                    .clone()
+                    .map(|allowed_origins| match allowed_origins.as_slice() {
+                        [origin] if origin == "*" => {
+                            cors.allow_origin(AllowOrigin::mirror_request())
+                        }
+                        origins => cors.allow_origin(
+                            origins
+                                .iter()
+                                .map(|o| {
+                                    let _ = o.parse::<http::Uri>().expect("Invalid URI");
 
-                                o.parse().expect("Invalid origin")
-                            })
-                            .collect::<Vec<_>>(),
-                    ),
-                });
+                                    o.parse().expect("Invalid origin")
+                                })
+                                .collect::<Vec<_>>(),
+                        ),
+                    });
 
             let handlers = self.handlers.clone();
-            let service = ServiceBuilder::new().option_layer(cors).service_fn(move |req| {
-                let handlers = handlers.clone();
-                async move {
-                    let handlers = handlers.read().await;
-                    handle(remote_addr, req, &handlers).await
-                }
-            });
+            let service = ServiceBuilder::new()
+                .option_layer(cors)
+                .service_fn(move |req| {
+                    let handlers = handlers.clone();
+                    async move {
+                        let handlers = handlers.read().await;
+                        handle(remote_addr, req, &handlers).await
+                    }
+                });
 
             async { Ok::<_, Infallible>(service) }
         });

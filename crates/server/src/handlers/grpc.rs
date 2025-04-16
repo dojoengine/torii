@@ -32,7 +32,10 @@ impl Handler for GrpcHandler {
     async fn handle(&self, req: Request<Body>, client_addr: IpAddr) -> Response<Body> {
         if let Some(grpc_addr) = self.grpc_addr {
             let grpc_addr = format!("http://{}", grpc_addr);
-            match crate::proxy::GRPC_PROXY_CLIENT.call(client_addr, &grpc_addr, req).await {
+            match crate::proxy::GRPC_PROXY_CLIENT
+                .call(client_addr, &grpc_addr, req)
+                .await
+            {
                 Ok(response) => response,
                 Err(_error) => {
                     error!(target: LOG_TARGET, "{:?}", _error);
@@ -43,7 +46,10 @@ impl Handler for GrpcHandler {
                 }
             }
         } else {
-            Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::empty())
+                .unwrap()
         }
     }
 }

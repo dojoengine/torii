@@ -194,7 +194,11 @@ pub async fn run_graphql_query(schema: &Schema, query: &str) -> Value {
 
     println!("Trying to execute query: {}", query);
 
-    assert!(res.errors.is_empty(), "GraphQL query returned errors: {:?}", res.errors);
+    assert!(
+        res.errors.is_empty(),
+        "GraphQL query returned errors: {:?}",
+        res.errors
+    );
     serde_json::to_value(res.data).expect("Failed to serialize GraphQL response")
 }
 
@@ -205,7 +209,14 @@ pub async fn run_graphql_subscription(
 ) -> async_graphql::Value {
     // Build dynamic schema
     let schema = build_schema(pool).await.unwrap();
-    schema.execute_stream(subscription).next().await.unwrap().into_result().unwrap().data
+    schema
+        .execute_stream(subscription)
+        .next()
+        .await
+        .unwrap()
+        .into_result()
+        .unwrap()
+        .data
     // fn subscribe() is called from inside dynamic subscription
 }
 
@@ -222,10 +233,22 @@ pub async fn model_fixtures(db: &mut Sql) {
                         name: "Depth".to_string(),
                         option: None,
                         options: vec![
-                            EnumOption { name: "Zero".to_string(), ty: Ty::Tuple(vec![]) },
-                            EnumOption { name: "One".to_string(), ty: Ty::Tuple(vec![]) },
-                            EnumOption { name: "Two".to_string(), ty: Ty::Tuple(vec![]) },
-                            EnumOption { name: "Three".to_string(), ty: Ty::Tuple(vec![]) },
+                            EnumOption {
+                                name: "Zero".to_string(),
+                                ty: Ty::Tuple(vec![]),
+                            },
+                            EnumOption {
+                                name: "One".to_string(),
+                                ty: Ty::Tuple(vec![]),
+                            },
+                            EnumOption {
+                                name: "Two".to_string(),
+                                ty: Ty::Tuple(vec![]),
+                            },
+                            EnumOption {
+                                name: "Three".to_string(),
+                                ty: Ty::Tuple(vec![]),
+                            },
                         ],
                     }),
                 },
@@ -276,9 +299,14 @@ pub async fn model_fixtures(db: &mut Sql) {
 }
 
 pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
-    let options =
-        SqliteConnectOptions::from_str(path).unwrap().create_if_missing(true).with_regexp();
-    let pool = SqlitePoolOptions::new().connect_with(options).await.unwrap();
+    let options = SqliteConnectOptions::from_str(path)
+        .unwrap()
+        .create_if_missing(true)
+        .with_regexp();
+    let pool = SqlitePoolOptions::new()
+        .connect_with(options)
+        .await
+        .unwrap();
     sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
     let setup = CompilerTestSetup::from_paths("../../dojo/core", &["../types-test"]);
@@ -286,8 +314,11 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
 
-    let seq_config = KatanaRunnerConfig { n_accounts: 10, ..Default::default() }
-        .with_db_dir(copy_types_test_db().as_str());
+    let seq_config = KatanaRunnerConfig {
+        n_accounts: 10,
+        ..Default::default()
+    }
+    .with_db_dir(copy_types_test_db().as_str());
 
     let sequencer = KatanaRunner::new_with_config(seq_config).expect("Failed to start runner.");
 
@@ -299,8 +330,11 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
 
     let world = WorldContract::new(world_address, &account);
 
-    let records_address = if let Resource::Contract((records_address, _)) =
-        world.resource(&compute_selector_from_tag("types_test-records")).call().await.unwrap()
+    let records_address = if let Resource::Contract((records_address, _)) = world
+        .resource(&compute_selector_from_tag("types_test-records"))
+        .call()
+        .await
+        .unwrap()
     {
         records_address
     } else {
@@ -343,8 +377,14 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
     let world = WorldContractReader::new(world_address, Arc::clone(&provider));
 
     let (shutdown_tx, _) = broadcast::channel(1);
-    let (mut executor, sender) =
-        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider), 100).await.unwrap();
+    let (mut executor, sender) = Executor::new(
+        pool.clone(),
+        shutdown_tx.clone(),
+        Arc::clone(&provider),
+        100,
+    )
+    .await
+    .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });
@@ -353,7 +393,10 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
     let db = Sql::new(
         pool.clone(),
         sender,
-        &[Contract { address: world_address, r#type: ContractType::WORLD }],
+        &[Contract {
+            address: world_address,
+            r#type: ContractType::WORLD,
+        }],
         model_cache,
     )
     .await
@@ -364,15 +407,27 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         world,
         db.clone(),
         Arc::clone(&provider),
-        Processors { ..Processors::default() },
+        Processors {
+            ..Processors::default()
+        },
         EngineConfig::default(),
         shutdown_tx,
         None,
-        &[Contract { address: world_address, r#type: ContractType::WORLD }],
+        &[Contract {
+            address: world_address,
+            r#type: ContractType::WORLD,
+        }],
     );
 
-    let to = account.provider().block_hash_and_number().await?.block_number;
-    let data = engine.fetch_range(0, to, &HashMap::new(), to).await.unwrap();
+    let to = account
+        .provider()
+        .block_hash_and_number()
+        .await?
+        .block_number;
+    let data = engine
+        .fetch_range(0, to, &HashMap::new(), to)
+        .await
+        .unwrap();
     engine.process_range(data).await.unwrap();
     db.execute().await.unwrap();
     Ok(pool)

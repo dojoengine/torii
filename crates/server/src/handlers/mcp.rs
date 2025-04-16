@@ -123,8 +123,9 @@ impl McpHandler {
                     Err(e) => JsonRpcResponse::parse_error(Value::Null, &e.to_string()),
                 };
 
-                if let Err(e) =
-                    write.send(Message::Text(serde_json::to_string(&response).unwrap())).await
+                if let Err(e) = write
+                    .send(Message::Text(serde_json::to_string(&response).unwrap()))
+                    .await
                 {
                     warn!("Error sending message: {}", e);
                     break;
@@ -146,7 +147,10 @@ impl McpHandler {
             let mut sessions = self.sse_sessions.write().await;
             sessions.insert(
                 session_id.clone(),
-                SseSession { tx: tx.clone(), _session_id: session_id.clone() },
+                SseSession {
+                    tx: tx.clone(),
+                    _session_id: session_id.clone(),
+                },
             );
         }
 
@@ -278,8 +282,11 @@ impl McpHandler {
     }
 
     fn handle_resources_list(&self, id: Value) -> JsonRpcResponse {
-        let resources_json: Vec<Value> =
-            self.resources.iter().map(|resource| json!({ "name": resource.name })).collect();
+        let resources_json: Vec<Value> = self
+            .resources
+            .iter()
+            .map(|resource| json!({ "name": resource.name }))
+            .collect();
 
         JsonRpcResponse::ok(id, json!({ "resources": resources_json }))
     }

@@ -55,7 +55,10 @@ impl TokenBalanceManager {
 
         // Send initial empty response
         let _ = sender
-            .send(Ok(SubscribeTokenBalancesResponse { subscription_id, balance: None }))
+            .send(Ok(SubscribeTokenBalancesResponse {
+                subscription_id,
+                balance: None,
+            }))
             .await;
 
         self.subscribers.write().await.insert(

@@ -63,8 +63,10 @@ impl ResolvableObject for EntityObject {
     }
 
     fn subscriptions(&self) -> Option<Vec<SubscriptionField>> {
-        Some(vec![
-            SubscriptionField::new("entityUpdated", TypeRef::named_nn(self.type_name()), |ctx| {
+        Some(vec![SubscriptionField::new(
+            "entityUpdated",
+            TypeRef::named_nn(self.type_name()),
+            |ctx| {
                 SubscriptionFieldFuture::new(async move {
                     let id = match ctx.args.get("id") {
                         Some(id) => Some(id.string()?.to_string()),
@@ -72,18 +74,20 @@ impl ResolvableObject for EntityObject {
                     };
                     // if id is None, then subscribe to all entities
                     // if id is Some, then subscribe to only the entity with that id
-                    Ok(SimpleBroker::<Entity>::subscribe().filter_map(move |entity: Entity| {
-                        if id.is_none() || id == Some(entity.id.clone()) {
-                            Some(Ok(Value::Object(EntityObject::value_mapping(entity))))
-                        } else {
-                            // id != entity.id , then don't send anything, still listening
-                            None
-                        }
-                    }))
+                    Ok(
+                        SimpleBroker::<Entity>::subscribe().filter_map(move |entity: Entity| {
+                            if id.is_none() || id == Some(entity.id.clone()) {
+                                Some(Ok(Value::Object(EntityObject::value_mapping(entity))))
+                            } else {
+                                // id != entity.id , then don't send anything, still listening
+                                None
+                            }
+                        }),
+                    )
                 })
-            })
-            .argument(InputValue::new("id", TypeRef::named(TypeRef::ID))),
-        ])
+            },
+        )
+        .argument(InputValue::new("id", TypeRef::named(TypeRef::ID)))])
     }
 }
 
@@ -144,10 +148,14 @@ fn model_union_field() -> Field {
                         let table_name = get_tag(&namespace, &name);
 
                         // Fetch the row data
-                        let query =
-                            format!("SELECT * FROM [{}] WHERE internal_entity_id = ?", table_name);
-                        let row =
-                            sqlx::query(&query).bind(&entity_id).fetch_one(&mut *conn).await?;
+                        let query = format!(
+                            "SELECT * FROM [{}] WHERE internal_entity_id = ?",
+                            table_name
+                        );
+                        let row = sqlx::query(&query)
+                            .bind(&entity_id)
+                            .fetch_one(&mut *conn)
+                            .await?;
 
                         // Use value_mapping_from_row to handle nested structures
                         let data = value_mapping_from_row(&row, &type_mapping, false, false)?;

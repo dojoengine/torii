@@ -117,7 +117,8 @@ where
             "Controller deployed."
         );
 
-        db.add_controller(&username, &format!("{address:#x}"), block_timestamp).await?;
+        db.add_controller(&username, &format!("{address:#x}"), block_timestamp)
+            .await?;
 
         Ok(())
     }

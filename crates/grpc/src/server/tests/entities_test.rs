@@ -37,8 +37,10 @@ use crate::types::schema::Entity;
 async fn test_entities_queries(sequencer: &RunnerCtx) {
     let tempfile = NamedTempFile::new().unwrap();
     let path = tempfile.path().to_string_lossy();
-    let options =
-        SqliteConnectOptions::from_str(&path).unwrap().create_if_missing(true).with_regexp();
+    let options = SqliteConnectOptions::from_str(&path)
+        .unwrap()
+        .create_if_missing(true)
+        .with_regexp();
     let pool = SqlitePoolOptions::new()
         .min_connections(1)
         .idle_timeout(None)
@@ -69,7 +71,10 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     let world_reader = WorldContractReader::new(world_address, Arc::clone(&provider));
 
     world
-        .grant_writer(&compute_bytearray_hash("ns"), &ContractAddress(actions_address))
+        .grant_writer(
+            &compute_bytearray_hash("ns"),
+            &ContractAddress(actions_address),
+        )
         .send_with_cfg(&TxnConfig::init_wait())
         .await
         .unwrap();
@@ -86,12 +91,20 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    TransactionWaiter::new(tx.transaction_hash, &provider).await.unwrap();
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
 
-    let (mut executor, sender) =
-        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider), 100).await.unwrap();
+    let (mut executor, sender) = Executor::new(
+        pool.clone(),
+        shutdown_tx.clone(),
+        Arc::clone(&provider),
+        100,
+    )
+    .await
+    .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });
@@ -100,7 +113,10 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     let db = Sql::new(
         pool.clone(),
         sender,
-        &[Contract { address: world_address, r#type: ContractType::WORLD }],
+        &[Contract {
+            address: world_address,
+            r#type: ContractType::WORLD,
+        }],
         model_cache,
     )
     .await
@@ -111,22 +127,36 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         world_reader,
         db.clone(),
         Arc::clone(&provider),
-        Processors { ..Processors::default() },
+        Processors {
+            ..Processors::default()
+        },
         EngineConfig::default(),
         shutdown_tx,
         None,
-        &[Contract { address: world_address, r#type: ContractType::WORLD }],
+        &[Contract {
+            address: world_address,
+            r#type: ContractType::WORLD,
+        }],
     );
 
     let to = provider.block_hash_and_number().await.unwrap().block_number;
-    let data = engine.fetch_range(0, to, &HashMap::new(), to).await.unwrap();
+    let data = engine
+        .fetch_range(0, to, &HashMap::new(), to)
+        .await
+        .unwrap();
     engine.process_range(data).await.unwrap();
 
     db.execute().await.unwrap();
 
     let (_, receiver) = tokio::sync::mpsc::channel(1);
     let model_cache = Arc::new(ModelCache::new(pool.clone()));
-    let grpc = DojoWorld::new(db.pool, receiver, world_address, provider.clone(), model_cache);
+    let grpc = DojoWorld::new(
+        db.pool,
+        receiver,
+        world_address,
+        provider.clone(),
+        model_cache,
+    );
 
     let entities = grpc
         .query_by_keys(

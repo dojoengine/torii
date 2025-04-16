@@ -107,14 +107,19 @@ impl InputObjectTrait for WhereInputObject {
     }
 
     fn input_object(&self) -> InputObject {
-        self.type_mapping.iter().fold(InputObject::new(self.type_name()), |acc, (ty_name, ty)| {
-            acc.field(InputValue::new(ty_name.to_string(), ty.type_ref()))
-        })
+        self.type_mapping
+            .iter()
+            .fold(InputObject::new(self.type_name()), |acc, (ty_name, ty)| {
+                acc.field(InputValue::new(ty_name.to_string(), ty.type_ref()))
+            })
     }
 }
 
 pub fn where_argument(field: Field, type_name: &str) -> Field {
-    field.argument(InputValue::new("where", TypeRef::named(format!("{}WhereInput", type_name))))
+    field.argument(InputValue::new(
+        "where",
+        TypeRef::named(format!("{}WhereInput", type_name)),
+    ))
 }
 
 fn parse_nested_where(
@@ -153,8 +158,10 @@ fn parse_where_value(
         TypeData::Simple(_) => {
             if type_data.type_ref() == TypeRef::named("Enum") {
                 let value = input.string()?;
-                let mut filter =
-                    parse_filter(&Name::new(field_path), FilterValue::String(value.to_string()));
+                let mut filter = parse_filter(
+                    &Name::new(field_path),
+                    FilterValue::String(value.to_string()),
+                );
                 // complex enums have a nested option field for their variant name.
                 // we trim the .option suffix to get the actual db field name
                 filter.field = filter.field.trim_end_matches(".option").to_string();
@@ -182,7 +189,10 @@ fn parse_where_value(
                 })
                 .collect::<Result<Vec<_>>>()?;
 
-            Ok(vec![parse_filter(&Name::new(field_path), FilterValue::List(values))])
+            Ok(vec![parse_filter(
+                &Name::new(field_path),
+                FilterValue::List(values),
+            )])
         }
         TypeData::Nested(_) => parse_nested_where(&input, field_path, type_data),
     }
@@ -230,7 +240,10 @@ fn parse_string(
 ) -> Result<FilterValue> {
     match input.string() {
         Ok(i) => match i.starts_with("0x") {
-            true => Ok(FilterValue::String(format!("0x{:0>64}", i.strip_prefix("0x").unwrap()))), /* safe to unwrap since we know it starts with 0x */
+            true => Ok(FilterValue::String(format!(
+                "0x{:0>64}",
+                i.strip_prefix("0x").unwrap()
+            ))), /* safe to unwrap since we know it starts with 0x */
             false => match primitive {
                 // would overflow i128
                 Primitive::U128(_) => match i.parse::<u128>() {
@@ -244,6 +257,9 @@ fn parse_string(
                 },
             },
         },
-        Err(_) => Err(GqlError::new(format!("Expected string on field {}", type_name))),
+        Err(_) => Err(GqlError::new(format!(
+            "Expected string on field {}",
+            type_name
+        ))),
     }
 }

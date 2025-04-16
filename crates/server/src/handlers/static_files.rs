@@ -27,7 +27,10 @@ impl Handler for StaticHandler {
     async fn handle(&self, req: Request<Body>, client_addr: IpAddr) -> Response<Body> {
         if let Some(artifacts_addr) = self.artifacts_addr {
             let artifacts_addr = format!("http://{}", artifacts_addr);
-            match crate::proxy::GRAPHQL_PROXY_CLIENT.call(client_addr, &artifacts_addr, req).await {
+            match crate::proxy::GRAPHQL_PROXY_CLIENT
+                .call(client_addr, &artifacts_addr, req)
+                .await
+            {
                 Ok(response) => response,
                 Err(_error) => {
                     error!(target: LOG_TARGET, "{:?}", _error);
@@ -38,7 +41,10 @@ impl Handler for StaticHandler {
                 }
             }
         } else {
-            Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::empty())
+                .unwrap()
         }
     }
 }

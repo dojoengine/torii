@@ -92,33 +92,32 @@ impl ResolvableObject for ErcBalanceObject {
     }
 
     fn subscriptions(&self) -> Option<Vec<SubscriptionField>> {
-        Some(vec![
-            SubscriptionField::new(
-                "tokenBalanceUpdated",
-                TypeRef::named_nn(self.type_name()),
-                |ctx| {
-                    SubscriptionFieldFuture::new(async move {
-                        let address = match ctx.args.get("accountAddress") {
-                            Some(addr) => Some(addr.string()?.to_string()),
-                            None => None,
-                        };
+        Some(vec![SubscriptionField::new(
+            "tokenBalanceUpdated",
+            TypeRef::named_nn(self.type_name()),
+            |ctx| {
+                SubscriptionFieldFuture::new(async move {
+                    let address = match ctx.args.get("accountAddress") {
+                        Some(addr) => Some(addr.string()?.to_string()),
+                        None => None,
+                    };
 
-                        let pool = ctx.data::<Pool<Sqlite>>()?;
-                        Ok(SimpleBroker::<TokenBalance>::subscribe()
-                            .then(move |token_balance| {
-                                let address = address.clone();
-                                let pool = pool.clone();
-                                async move {
-                                    // Filter by account address if provided
-                                    if let Some(addr) = &address {
-                                        if token_balance.account_address != *addr {
-                                            return None;
-                                        }
+                    let pool = ctx.data::<Pool<Sqlite>>()?;
+                    Ok(SimpleBroker::<TokenBalance>::subscribe()
+                        .then(move |token_balance| {
+                            let address = address.clone();
+                            let pool = pool.clone();
+                            async move {
+                                // Filter by account address if provided
+                                if let Some(addr) = &address {
+                                    if token_balance.account_address != *addr {
+                                        return None;
                                     }
+                                }
 
-                                    // Fetch associated token data
-                                    let query = format!(
-                                        "SELECT b.id, t.contract_address, t.name, t.symbol, \
+                                // Fetch associated token data
+                                let query = format!(
+                                    "SELECT b.id, t.contract_address, t.name, t.symbol, \
                                          t.decimals, b.balance, b.token_id, t.metadata, \
                                          c.contract_type
                                         FROM {} b
@@ -126,45 +125,47 @@ impl ResolvableObject for ErcBalanceObject {
                                         JOIN contracts c ON t.contract_address = \
                                          c.contract_address
                                         WHERE b.id = ?",
-                                        TOKEN_BALANCE_TABLE
-                                    );
+                                    TOKEN_BALANCE_TABLE
+                                );
 
-                                    let row = match sqlx::query(&query)
-                                        .bind(&token_balance.id)
-                                        .fetch_one(&pool)
-                                        .await
-                                    {
-                                        Ok(row) => row,
-                                        Err(_) => return None,
-                                    };
+                                let row = match sqlx::query(&query)
+                                    .bind(&token_balance.id)
+                                    .fetch_one(&pool)
+                                    .await
+                                {
+                                    Ok(row) => row,
+                                    Err(_) => return None,
+                                };
 
-                                    let row = match BalanceQueryResultRaw::from_row(&row) {
-                                        Ok(row) => row,
-                                        Err(_) => return None,
-                                    };
+                                let row = match BalanceQueryResultRaw::from_row(&row) {
+                                    Ok(row) => row,
+                                    Err(_) => return None,
+                                };
 
-                                    // Use the extracted mapping function
-                                    match token_balance_mapping_from_row(&row) {
-                                        Ok(balance_value) => {
-                                            Some(Ok(FieldValue::owned_any(balance_value)))
-                                        }
-                                        Err(err) => {
-                                            warn!(
-                                                "Failed to transform row to token balance in \
+                                // Use the extracted mapping function
+                                match token_balance_mapping_from_row(&row) {
+                                    Ok(balance_value) => {
+                                        Some(Ok(FieldValue::owned_any(balance_value)))
+                                    }
+                                    Err(err) => {
+                                        warn!(
+                                            "Failed to transform row to token balance in \
                                                  subscription: {}",
-                                                err
-                                            );
-                                            None
-                                        }
+                                            err
+                                        );
+                                        None
                                     }
                                 }
-                            })
-                            .filter_map(|result| result))
-                    })
-                },
-            )
-            .argument(InputValue::new("accountAddress", TypeRef::named(TypeRef::STRING))),
-        ])
+                            }
+                        })
+                        .filter_map(|result| result))
+                })
+            },
+        )
+        .argument(InputValue::new(
+            "accountAddress",
+            TypeRef::named(TypeRef::STRING),
+        ))])
     }
 }
 
@@ -194,12 +195,20 @@ async fn fetch_token_balances(
 
     let mut cursor_param = &connection.after;
     if let Some(after_cursor) = &connection.after {
-        conditions.push(handle_cursor(after_cursor, CursorDirection::After, ID_COLUMN)?);
+        conditions.push(handle_cursor(
+            after_cursor,
+            CursorDirection::After,
+            ID_COLUMN,
+        )?);
     }
 
     if let Some(before_cursor) = &connection.before {
         cursor_param = &connection.before;
-        conditions.push(handle_cursor(before_cursor, CursorDirection::Before, ID_COLUMN)?);
+        conditions.push(handle_cursor(
+            before_cursor,
+            CursorDirection::Before,
+            ID_COLUMN,
+        )?);
     }
 
     if !conditions.is_empty() {
@@ -208,8 +217,11 @@ async fn fetch_token_balances(
 
     let is_cursor_based = connection.first.or(connection.last).is_some() || cursor_param.is_some();
 
-    let data_limit =
-        connection.first.or(connection.last).or(connection.limit).unwrap_or(DEFAULT_LIMIT);
+    let data_limit = connection
+        .first
+        .or(connection.last)
+        .or(connection.limit)
+        .unwrap_or(DEFAULT_LIMIT);
     let limit = if is_cursor_based {
         match &cursor_param {
             Some(_) => data_limit + 2,
@@ -225,13 +237,19 @@ async fn fetch_token_balances(
         _ => Direction::Desc,
     };
 
-    query.push_str(&format!(" ORDER BY {id_column} {} LIMIT {limit}", order_direction.as_ref()));
+    query.push_str(&format!(
+        " ORDER BY {id_column} {} LIMIT {limit}",
+        order_direction.as_ref()
+    ));
 
     if let Some(offset) = connection.offset {
         query.push_str(&format!(" OFFSET {}", offset));
     }
 
-    let mut data = sqlx::query(&query).bind(felt_to_sql_string(&address)).fetch_all(conn).await?;
+    let mut data = sqlx::query(&query)
+        .bind(felt_to_sql_string(&address))
+        .fetch_all(conn)
+        .await?;
     let mut page_info = PageInfo {
         has_previous_page: false,
         has_next_page: false,
@@ -306,7 +324,10 @@ fn token_balances_connection_output<'a>(
 
         match token_balance_mapping_from_row(&row) {
             Ok(balance_value) => {
-                edges.push(ConnectionEdge { node: balance_value, cursor });
+                edges.push(ConnectionEdge {
+                    node: balance_value,
+                    cursor,
+                });
             }
             Err(err) => {
                 warn!("Failed to transform row to token balance: {}", err);
@@ -358,13 +379,15 @@ fn token_balance_mapping_from_row(row: &BalanceQueryResultRaw) -> Result<ErcToke
                     Err(e) => return Err(format!("Failed to parse metadata as JSON: {}", e)),
                 };
 
-                let metadata_name =
-                    metadata.get("name").map(|v| v.to_string().trim_matches('"').to_string());
+                let metadata_name = metadata
+                    .get("name")
+                    .map(|v| v.to_string().trim_matches('"').to_string());
                 let metadata_description = metadata
                     .get("description")
                     .map(|v| v.to_string().trim_matches('"').to_string());
-                let metadata_attributes =
-                    metadata.get("attributes").map(|v| v.to_string().trim_matches('"').to_string());
+                let metadata_attributes = metadata
+                    .get("attributes")
+                    .map(|v| v.to_string().trim_matches('"').to_string());
 
                 let image_path = format!("{}/{}", token_id.join("/"), "image");
 
@@ -413,13 +436,15 @@ fn token_balance_mapping_from_row(row: &BalanceQueryResultRaw) -> Result<ErcToke
                     Err(e) => return Err(format!("Failed to parse metadata as JSON: {}", e)),
                 };
 
-                let metadata_name =
-                    metadata.get("name").map(|v| v.to_string().trim_matches('"').to_string());
+                let metadata_name = metadata
+                    .get("name")
+                    .map(|v| v.to_string().trim_matches('"').to_string());
                 let metadata_description = metadata
                     .get("description")
                     .map(|v| v.to_string().trim_matches('"').to_string());
-                let metadata_attributes =
-                    metadata.get("attributes").map(|v| v.to_string().trim_matches('"').to_string());
+                let metadata_attributes = metadata
+                    .get("attributes")
+                    .map(|v| v.to_string().trim_matches('"').to_string());
 
                 let image_path = format!("{}/{}", token_id.join("/"), "image");
 

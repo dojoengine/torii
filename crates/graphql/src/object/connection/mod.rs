@@ -41,7 +41,10 @@ impl ConnectionObject {
                 Name::new("edges"),
                 TypeData::Simple(TypeRef::named_list(format!("{}Edge", type_name))),
             ),
-            (Name::new("totalCount"), TypeData::Simple(TypeRef::named_nn(TypeRef::INT))),
+            (
+                Name::new("totalCount"),
+                TypeData::Simple(TypeRef::named_nn(TypeRef::INT)),
+            ),
             (
                 Name::new("pageInfo"),
                 TypeData::Nested((TypeRef::named_nn(PAGE_INFO_TYPE_NAME), IndexMap::new())),
@@ -80,33 +83,48 @@ pub fn parse_connection_arguments(ctx: &ResolverContext<'_>) -> Result<Connectio
 
     if first.is_some() && last.is_some() {
         return Err(
-            "Passing both `first` and `last` to paginate a connection is not supported.".into()
+            "Passing both `first` and `last` to paginate a connection is not supported.".into(),
         );
     }
 
     if after.is_some() && before.is_some() {
         return Err(
-            "Passing both `after` and `before` to paginate a connection is not supported.".into()
+            "Passing both `after` and `before` to paginate a connection is not supported.".into(),
         );
     }
 
     if (offset.is_some() || limit.is_some())
         && (first.is_some() || last.is_some() || before.is_some() || after.is_some())
     {
-        return Err("Pass either `offset`/`limit` OR `first`/`last`/`after`/`before` to paginate \
+        return Err(
+            "Pass either `offset`/`limit` OR `first`/`last`/`after`/`before` to paginate \
                     a connection."
-            .into());
+                .into(),
+        );
     }
 
-    Ok(ConnectionArguments { first, last, after, before, offset, limit })
+    Ok(ConnectionArguments {
+        first,
+        last,
+        after,
+        before,
+        offset,
+        limit,
+    })
 }
 
 pub fn connection_arguments(field: Field) -> Field {
     field
         .argument(InputValue::new("first", TypeRef::named(TypeRef::INT)))
         .argument(InputValue::new("last", TypeRef::named(TypeRef::INT)))
-        .argument(InputValue::new("before", TypeRef::named(GraphqlType::Cursor.to_string())))
-        .argument(InputValue::new("after", TypeRef::named(GraphqlType::Cursor.to_string())))
+        .argument(InputValue::new(
+            "before",
+            TypeRef::named(GraphqlType::Cursor.to_string()),
+        ))
+        .argument(InputValue::new(
+            "after",
+            TypeRef::named(GraphqlType::Cursor.to_string()),
+        ))
         .argument(InputValue::new("offset", TypeRef::named(TypeRef::INT)))
         .argument(InputValue::new("limit", TypeRef::named(TypeRef::INT)))
 }

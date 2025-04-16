@@ -50,7 +50,12 @@ impl EventMessageManager {
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from
         // initial subscribe call
-        let _ = sender.send(Ok(SubscribeEntityResponse { entity: None, subscription_id })).await;
+        let _ = sender
+            .send(Ok(SubscribeEntityResponse {
+                entity: None,
+                subscription_id,
+            }))
+            .await;
 
         self.subscribers
             .write()
@@ -70,7 +75,10 @@ impl EventMessageManager {
             }
         };
 
-        self.subscribers.write().await.insert(id, EventMessageSubscriber { clauses, sender });
+        self.subscribers
+            .write()
+            .await
+            .insert(id, EventMessageSubscriber { clauses, sender });
     }
 
     pub(super) async fn remove_subscriber(&self, id: u64) {
@@ -135,7 +143,13 @@ impl Service {
             }
 
             // This should NEVER be None
-            let model = entity.updated_model.as_ref().unwrap().as_struct().unwrap().clone();
+            let model = entity
+                .updated_model
+                .as_ref()
+                .unwrap()
+                .as_struct()
+                .unwrap()
+                .clone();
             let resp = proto::world::SubscribeEntityResponse {
                 entity: Some(proto::types::Entity {
                     hashed_keys: hashed.to_bytes_be().to_vec(),

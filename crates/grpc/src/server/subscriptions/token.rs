@@ -50,7 +50,12 @@ impl TokenManager {
         let (sender, receiver) = channel(1);
 
         // Send initial empty response
-        let _ = sender.send(Ok(SubscribeTokensResponse { subscription_id, token: None })).await;
+        let _ = sender
+            .send(Ok(SubscribeTokensResponse {
+                subscription_id,
+                token: None,
+            }))
+            .await;
 
         self.subscribers.write().await.insert(
             subscription_id,

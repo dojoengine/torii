@@ -13,7 +13,9 @@ pub trait ExtractFromIndexMap: Sized {
 
 impl ExtractFromIndexMap for u64 {
     fn extract(indexmap: &ValueMapping, input: &str) -> Result<Self, ExtractError> {
-        let value = indexmap.get(input).ok_or_else(|| ExtractError::NotFound(input.to_string()))?;
+        let value = indexmap
+            .get(input)
+            .ok_or_else(|| ExtractError::NotFound(input.to_string()))?;
         match value {
             Value::Number(n) => Ok(n.as_u64().unwrap()),
             _ => Err(ExtractError::NotNumber(input.to_string())),
@@ -23,7 +25,9 @@ impl ExtractFromIndexMap for u64 {
 
 impl ExtractFromIndexMap for String {
     fn extract(indexmap: &ValueMapping, input: &str) -> Result<Self, ExtractError> {
-        let value = indexmap.get(input).ok_or_else(|| ExtractError::NotFound(input.to_string()))?;
+        let value = indexmap
+            .get(input)
+            .ok_or_else(|| ExtractError::NotFound(input.to_string()))?;
         match value {
             Value::String(s) => Ok(s.to_string()),
             _ => Err(ExtractError::NotString(input.to_string())),
@@ -33,7 +37,9 @@ impl ExtractFromIndexMap for String {
 
 impl ExtractFromIndexMap for Felt {
     fn extract(indexmap: &ValueMapping, input: &str) -> Result<Self, ExtractError> {
-        let value = indexmap.get(input).ok_or_else(|| ExtractError::NotFound(input.to_string()))?;
+        let value = indexmap
+            .get(input)
+            .ok_or_else(|| ExtractError::NotFound(input.to_string()))?;
         match value {
             Value::String(s) => {
                 Ok(Felt::from_str(s).map_err(|_| ExtractError::NotFelt(input.to_string()))?)
@@ -45,11 +51,14 @@ impl ExtractFromIndexMap for Felt {
 
 impl ExtractFromIndexMap for Vec<String> {
     fn extract(indexmap: &ValueMapping, input: &str) -> Result<Self, ExtractError> {
-        let value = indexmap.get(input).ok_or_else(|| ExtractError::NotFound(input.to_string()))?;
+        let value = indexmap
+            .get(input)
+            .ok_or_else(|| ExtractError::NotFound(input.to_string()))?;
         match value {
-            Value::List(list) => {
-                Ok(list.iter().map(|s| s.to_string().trim_matches('"').to_string()).collect())
-            }
+            Value::List(list) => Ok(list
+                .iter()
+                .map(|s| s.to_string().trim_matches('"').to_string())
+                .collect()),
             _ => Err(ExtractError::NotList(input.to_string())),
         }
     }
@@ -63,7 +72,11 @@ pub fn extract<T: ExtractFromIndexMap>(
 }
 
 pub fn field_name_from_names(namespace: &str, model_name: &str) -> String {
-    format!("{}{}", namespace.to_case(Case::Camel), model_name.to_case(Case::Pascal))
+    format!(
+        "{}{}",
+        namespace.to_case(Case::Camel),
+        model_name.to_case(Case::Pascal)
+    )
 }
 
 pub fn type_name_from_names(namespace: &str, model_name: &str) -> String {

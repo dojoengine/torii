@@ -51,7 +51,12 @@ pub async fn handle(pool: Arc<SqlitePool>, request: JsonRpcRequest) -> JsonRpcRe
     };
 
     let rows = match table_filter {
-        Some(table) => sqlx::query(&schema_query).bind(table).fetch_all(&*pool).await,
+        Some(table) => {
+            sqlx::query(&schema_query)
+                .bind(table)
+                .fetch_all(&*pool)
+                .await
+        }
         _ => sqlx::query(&schema_query).fetch_all(&*pool).await,
     };
 
@@ -73,8 +78,9 @@ pub async fn handle(pool: Arc<SqlitePool>, request: JsonRpcRequest) -> JsonRpcRe
                     })
                 });
 
-                if let Some(columns) =
-                    table_entry.get_mut("columns").and_then(|v| v.as_object_mut())
+                if let Some(columns) = table_entry
+                    .get_mut("columns")
+                    .and_then(|v| v.as_object_mut())
                 {
                     columns.insert(
                         column_name,

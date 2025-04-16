@@ -37,7 +37,11 @@ mod tests {
         );
 
         let result = run_graphql_query(schema, &query).await;
-        result.get("entities").ok_or("entities not found").unwrap().clone()
+        result
+            .get("entities")
+            .ok_or("entities not found")
+            .unwrap()
+            .clone()
     }
 
     async fn entity_model_query(schema: &Schema, id: &Felt) -> Value {
@@ -84,7 +88,11 @@ mod tests {
         );
 
         let result = run_graphql_query(schema, &query).await;
-        result.get("entity").ok_or("entity not found").unwrap().clone()
+        result
+            .get("entity")
+            .ok_or("entity not found")
+            .unwrap()
+            .clone()
     }
 
     // End to end test spins up a test sequencer and deploys types-test project, this takes a while

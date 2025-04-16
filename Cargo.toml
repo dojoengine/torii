@@ -6,6 +6,7 @@ members = [
 	"crates/cli",
 	"crates/client",
 	"crates/server",
+	"xtask/generate-test-db",
 ]
 
 [workspace.package]

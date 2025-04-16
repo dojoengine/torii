@@ -89,12 +89,17 @@ impl StateDiffManager {
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from
         // initial subscribe call
-        let _ = sender.send(Ok(SubscribeModelsResponse { model_update: None })).await;
+        let _ = sender
+            .send(Ok(SubscribeModelsResponse { model_update: None }))
+            .await;
 
-        self.subscribers
-            .write()
-            .await
-            .insert(id, ModelDiffSubscriber { storage_addresses, sender });
+        self.subscribers.write().await.insert(
+            id,
+            ModelDiffSubscriber {
+                storage_addresses,
+                sender,
+            },
+        );
 
         Ok(receiver)
     }
@@ -155,8 +160,14 @@ where
     ) -> PublishStateUpdateResult {
         let mut closed_stream = Vec::new();
 
-        let Some(ContractStorageDiffItem { storage_entries: diff_entries, .. }) =
-            state_update.state_diff.storage_diffs.iter().find(|d| d.address == contract_address)
+        let Some(ContractStorageDiffItem {
+            storage_entries: diff_entries,
+            ..
+        }) = state_update
+            .state_diff
+            .storage_diffs
+            .iter()
+            .find(|d| d.address == contract_address)
         else {
             return Ok(());
         };
@@ -184,7 +195,9 @@ where
                 }),
             };
 
-            let resp = proto::world::SubscribeModelsResponse { model_update: Some(model_update) };
+            let resp = proto::world::SubscribeModelsResponse {
+                model_update: Some(model_update),
+            };
 
             if sub.sender.send(Ok(resp)).await.is_err() {
                 closed_stream.push(*idx);

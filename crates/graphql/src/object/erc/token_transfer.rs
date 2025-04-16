@@ -126,12 +126,20 @@ JOIN
 
     let mut cursor_param = &connection.after;
     if let Some(after_cursor) = &connection.after {
-        conditions.push(handle_cursor(after_cursor, CursorDirection::After, ID_COLUMN)?);
+        conditions.push(handle_cursor(
+            after_cursor,
+            CursorDirection::After,
+            ID_COLUMN,
+        )?);
     }
 
     if let Some(before_cursor) = &connection.before {
         cursor_param = &connection.before;
-        conditions.push(handle_cursor(before_cursor, CursorDirection::Before, ID_COLUMN)?);
+        conditions.push(handle_cursor(
+            before_cursor,
+            CursorDirection::Before,
+            ID_COLUMN,
+        )?);
     }
 
     if !conditions.is_empty() {
@@ -140,8 +148,11 @@ JOIN
 
     let is_cursor_based = connection.first.or(connection.last).is_some() || cursor_param.is_some();
 
-    let data_limit =
-        connection.first.or(connection.last).or(connection.limit).unwrap_or(DEFAULT_LIMIT);
+    let data_limit = connection
+        .first
+        .or(connection.last)
+        .or(connection.limit)
+        .unwrap_or(DEFAULT_LIMIT);
     let limit = if is_cursor_based {
         match &cursor_param {
             Some(_) => data_limit + 2,
@@ -157,7 +168,10 @@ JOIN
         _ => Direction::Desc,
     };
 
-    query.push_str(&format!(" ORDER BY {id_column} {} LIMIT {limit}", order_direction.as_ref()));
+    query.push_str(&format!(
+        " ORDER BY {id_column} {} LIMIT {limit}",
+        order_direction.as_ref()
+    ));
 
     if let Some(offset) = connection.offset {
         query.push_str(&format!(" OFFSET {}", offset));
@@ -244,7 +258,10 @@ fn token_transfers_connection_output<'a>(
 
         match token_transfer_mapping_from_row(&row) {
             Ok(transfer_node) => {
-                edges.push(ConnectionEdge { node: transfer_node, cursor });
+                edges.push(ConnectionEdge {
+                    node: transfer_node,
+                    cursor,
+                });
             }
             Err(err) => {
                 warn!("Failed to transform row to TokenTransferNode: {}", err);
@@ -297,12 +314,15 @@ pub fn token_transfer_mapping_from_row(
                 Err(e) => return Err(format!("Failed to parse metadata as JSON: {}", e)),
             };
 
-            let metadata_name =
-                metadata.get("name").map(|v| v.to_string().trim_matches('"').to_string());
-            let metadata_description =
-                metadata.get("description").map(|v| v.to_string().trim_matches('"').to_string());
-            let metadata_attributes =
-                metadata.get("attributes").map(|v| v.to_string().trim_matches('"').to_string());
+            let metadata_name = metadata
+                .get("name")
+                .map(|v| v.to_string().trim_matches('"').to_string());
+            let metadata_description = metadata
+                .get("description")
+                .map(|v| v.to_string().trim_matches('"').to_string());
+            let metadata_attributes = metadata
+                .get("attributes")
+                .map(|v| v.to_string().trim_matches('"').to_string());
 
             let image_path = format!("{}/{}", token_id.join("/"), "image");
 
@@ -343,8 +363,9 @@ pub fn token_transfer_mapping_from_row(
                         Err(e) => return Err(format!("Failed to parse metadata as JSON: {}", e)),
                     };
 
-                    let metadata_name =
-                        metadata.get("name").map(|v| v.to_string().trim_matches('"').to_string());
+                    let metadata_name = metadata
+                        .get("name")
+                        .map(|v| v.to_string().trim_matches('"').to_string());
                     let metadata_description = metadata
                         .get("description")
                         .map(|v| v.to_string().trim_matches('"').to_string());
@@ -354,7 +375,12 @@ pub fn token_transfer_mapping_from_row(
 
                     let image_path = format!("{}/{}", token_id.join("/"), "image");
 
-                    (metadata_name, metadata_description, metadata_attributes, image_path)
+                    (
+                        metadata_name,
+                        metadata_description,
+                        metadata_attributes,
+                        image_path,
+                    )
                 };
 
             let token_metadata = ErcTokenType::Erc1155(Erc1155Token {

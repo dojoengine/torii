@@ -243,7 +243,11 @@ pub struct ServerOptions {
 
 impl Default for ServerOptions {
     fn default() -> Self {
-        Self { http_addr: DEFAULT_HTTP_ADDR, http_port: DEFAULT_HTTP_PORT, http_cors_origins: None }
+        Self {
+            http_addr: DEFAULT_HTTP_ADDR,
+            http_port: DEFAULT_HTTP_PORT,
+            http_cors_origins: None,
+        }
     }
 }
 
@@ -301,7 +305,10 @@ pub struct ErcOptions {
 
 impl Default for ErcOptions {
     fn default() -> Self {
-        Self { max_metadata_tasks: DEFAULT_ERC_MAX_METADATA_TASKS, artifacts_path: None }
+        Self {
+            max_metadata_tasks: DEFAULT_ERC_MAX_METADATA_TASKS,
+            artifacts_path: None,
+        }
     }
 }
 
@@ -402,7 +409,10 @@ fn parse_model_indices(part: &str) -> anyhow::Result<ModelIndices> {
     }
 
     let model_tag = parts[0].to_string();
-    let fields = parts[1].split(',').map(|s| s.to_string()).collect::<Vec<_>>();
+    let fields = parts[1]
+        .split(',')
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
 
     Ok(ModelIndices { model_tag, fields })
 }
@@ -434,7 +444,10 @@ where
     D: serde::Deserializer<'de>,
 {
     let contracts: Vec<String> = Vec::deserialize(deserializer)?;
-    contracts.iter().map(|s| parse_erc_contract(s).map_err(serde::de::Error::custom)).collect()
+    contracts
+        .iter()
+        .map(|s| parse_erc_contract(s).map_err(serde::de::Error::custom))
+        .collect()
 }
 
 fn serialize_contracts<S>(contracts: &Vec<Contract>, serializer: S) -> Result<S::Ok, S::Error>

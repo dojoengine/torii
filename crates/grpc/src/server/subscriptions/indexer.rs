@@ -69,7 +69,13 @@ impl IndexerManager {
                 }))
                 .await;
         }
-        self.subscribers.write().await.insert(id, IndexerSubscriber { contract_address, sender });
+        self.subscribers.write().await.insert(
+            id,
+            IndexerSubscriber {
+                contract_address,
+                sender,
+            },
+        );
 
         Ok(receiver)
     }

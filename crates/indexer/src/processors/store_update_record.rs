@@ -113,7 +113,15 @@ where
         let mut values = event.values.to_vec();
         entity.deserialize(&mut values)?;
 
-        db.set_entity(entity, event_id, block_timestamp, entity_id, model_selector, None).await?;
+        db.set_entity(
+            entity,
+            event_id,
+            block_timestamp,
+            entity_id,
+            model_selector,
+            None,
+        )
+        .await?;
         Ok(())
     }
 }

@@ -114,7 +114,11 @@ pub struct OrderBy {
 
 impl From<OrderBy> for proto::types::OrderBy {
     fn from(value: OrderBy) -> Self {
-        Self { model: value.model, member: value.member, direction: value.direction as i32 }
+        Self {
+            model: value.model,
+            member: value.member,
+            direction: value.direction as i32,
+        }
     }
 }
 
@@ -344,22 +348,32 @@ impl From<proto::types::KeysClause> for KeysClause {
         let keys = value
             .keys
             .iter()
-            .map(|k| if k.is_empty() { None } else { Some(Felt::from_bytes_be_slice(k)) })
+            .map(|k| {
+                if k.is_empty() {
+                    None
+                } else {
+                    Some(Felt::from_bytes_be_slice(k))
+                }
+            })
             .collect::<Vec<Option<Felt>>>();
 
-        Self { keys, pattern_matching: value.pattern_matching().into(), models: value.models }
+        Self {
+            keys,
+            pattern_matching: value.pattern_matching().into(),
+            models: value.models,
+        }
     }
 }
 
 impl From<Clause> for proto::types::Clause {
     fn from(value: Clause) -> Self {
         match value {
-            Clause::Keys(clause) => {
-                Self { clause_type: Some(proto::types::clause::ClauseType::Keys(clause.into())) }
-            }
-            Clause::Member(clause) => {
-                Self { clause_type: Some(proto::types::clause::ClauseType::Member(clause.into())) }
-            }
+            Clause::Keys(clause) => Self {
+                clause_type: Some(proto::types::clause::ClauseType::Keys(clause.into())),
+            },
+            Clause::Member(clause) => Self {
+                clause_type: Some(proto::types::clause::ClauseType::Member(clause.into())),
+            },
             Clause::Composite(clause) => Self {
                 clause_type: Some(proto::types::clause::ClauseType::Composite(clause.into())),
             },
@@ -378,7 +392,9 @@ impl From<EntityKeysClause> for proto::types::EntityKeysClause {
                 )),
             },
             EntityKeysClause::Keys(keys) => Self {
-                clause_type: Some(proto::types::entity_keys_clause::ClauseType::Keys(keys.into())),
+                clause_type: Some(proto::types::entity_keys_clause::ClauseType::Keys(
+                    keys.into(),
+                )),
             },
         }
     }
@@ -413,8 +429,15 @@ impl From<ModelKeysClause> for proto::types::ModelKeysClause {
 
 impl From<proto::types::ModelKeysClause> for ModelKeysClause {
     fn from(value: proto::types::ModelKeysClause) -> Self {
-        let keys = value.keys.into_iter().map(|v| Felt::from_bytes_be_slice(&v)).collect();
-        Self { model: value.model, keys }
+        let keys = value
+            .keys
+            .into_iter()
+            .map(|v| Felt::from_bytes_be_slice(&v))
+            .collect();
+        Self {
+            model: value.model,
+            keys,
+        }
     }
 }
 
@@ -424,7 +447,9 @@ impl From<MemberClause> for proto::types::MemberClause {
             model: value.model,
             member: value.member,
             operator: value.operator as i32,
-            value: Some(proto::types::MemberValue { value_type: Some(value.value.into()) }),
+            value: Some(proto::types::MemberValue {
+                value_type: Some(value.value.into()),
+            }),
         }
     }
 }
@@ -433,7 +458,11 @@ impl From<CompositeClause> for proto::types::CompositeClause {
     fn from(value: CompositeClause) -> Self {
         Self {
             operator: value.operator as i32,
-            clauses: value.clauses.into_iter().map(|clause| clause.into()).collect(),
+            clauses: value
+                .clauses
+                .into_iter()
+                .map(|clause| clause.into())
+                .collect(),
         }
     }
 }
@@ -449,7 +478,9 @@ impl From<MemberValue> for member_value::ValueType {
                 member_value::ValueType::List(proto::types::MemberValueList {
                     values: list
                         .into_iter()
-                        .map(|v| proto::types::MemberValue { value_type: Some(v.into()) })
+                        .map(|v| proto::types::MemberValue {
+                            value_type: Some(v.into()),
+                        })
                         .collect(),
                 })
             }
@@ -460,7 +491,10 @@ impl From<MemberValue> for member_value::ValueType {
 impl TryFrom<proto::types::StorageEntry> for StorageEntry {
     type Error = FromStrError;
     fn try_from(value: proto::types::StorageEntry) -> Result<Self, Self::Error> {
-        Ok(Self { key: Felt::from_str(&value.key)?, value: Felt::from_str(&value.value)? })
+        Ok(Self {
+            key: Felt::from_str(&value.key)?,
+            value: Felt::from_str(&value.value)?,
+        })
     }
 }
 
@@ -517,10 +551,22 @@ pub struct Event {
 
 impl From<proto::types::Event> for Event {
     fn from(value: proto::types::Event) -> Self {
-        let keys = value.keys.into_iter().map(|k| Felt::from_bytes_be_slice(&k)).collect();
-        let data = value.data.into_iter().map(|d| Felt::from_bytes_be_slice(&d)).collect();
+        let keys = value
+            .keys
+            .into_iter()
+            .map(|k| Felt::from_bytes_be_slice(&k))
+            .collect();
+        let data = value
+            .data
+            .into_iter()
+            .map(|d| Felt::from_bytes_be_slice(&d))
+            .collect();
         let transaction_hash = Felt::from_bytes_be_slice(&value.transaction_hash);
-        Self { keys, data, transaction_hash }
+        Self {
+            keys,
+            data,
+            transaction_hash,
+        }
     }
 }
 
@@ -533,6 +579,10 @@ pub struct EventQuery {
 
 impl From<EventQuery> for proto::types::EventQuery {
     fn from(value: EventQuery) -> Self {
-        Self { keys: Some(value.keys.into()), limit: value.limit, offset: value.offset }
+        Self {
+            keys: Some(value.keys.into()),
+            limit: value.limit,
+            offset: value.offset,
+        }
     }
 }

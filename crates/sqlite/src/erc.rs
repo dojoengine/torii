@@ -40,10 +40,13 @@ impl Sql {
         // this cache is used while applying the cache diff
         // so we need to make sure that all RegisterErc*Token queries
         // are applied before the cache diff is applied
-        let token_exists: bool =
-            !self.local_cache.try_register_token_id(token_id.to_string()).await;
+        let token_exists: bool = !self
+            .local_cache
+            .try_register_token_id(token_id.to_string())
+            .await;
         if !token_exists {
-            self.register_erc20_token_metadata(contract_address, &token_id, provider).await?;
+            self.register_erc20_token_metadata(contract_address, &token_id, provider)
+                .await?;
         }
 
         self.store_erc_transfer_event(
@@ -61,20 +64,25 @@ impl Sql {
             if from_address != Felt::ZERO {
                 // from_address/contract_address/
                 let from_balance_id = felts_to_sql_string(&[from_address, contract_address]);
-                let from_balance =
-                    erc_cache.entry((ContractType::ERC20, from_balance_id)).or_default();
+                let from_balance = erc_cache
+                    .entry((ContractType::ERC20, from_balance_id))
+                    .or_default();
                 *from_balance -= I256::from(amount);
             }
 
             if to_address != Felt::ZERO {
                 let to_balance_id = felts_to_sql_string(&[to_address, contract_address]);
-                let to_balance = erc_cache.entry((ContractType::ERC20, to_balance_id)).or_default();
+                let to_balance = erc_cache
+                    .entry((ContractType::ERC20, to_balance_id))
+                    .or_default();
                 *to_balance += I256::from(amount);
             }
         }
 
         if self.local_cache.erc_cache.read().await.len() >= 100000 {
-            self.flush().await.with_context(|| "Failed to flush in handle_erc20_transfer")?;
+            self.flush()
+                .await
+                .with_context(|| "Failed to flush in handle_erc20_transfer")?;
             self.apply_cache_diff().await?;
         }
 
@@ -100,7 +108,8 @@ impl Sql {
         // are applied before the cache diff is applied
         let token_exists: bool = !self.local_cache.try_register_token_id(id.clone()).await;
         if !token_exists {
-            self.register_nft_token_metadata(&id, contract_address, token_id).await?;
+            self.register_nft_token_metadata(&id, contract_address, token_id)
+                .await?;
         }
 
         self.store_erc_transfer_event(
@@ -117,24 +126,34 @@ impl Sql {
         {
             let mut erc_cache = self.local_cache.erc_cache.write().await;
             if from_address != Felt::ZERO {
-                let from_balance_id =
-                    format!("{}{SQL_FELT_DELIMITER}{}", felt_to_sql_string(&from_address), &id);
-                let from_balance =
-                    erc_cache.entry((ContractType::ERC721, from_balance_id)).or_default();
+                let from_balance_id = format!(
+                    "{}{SQL_FELT_DELIMITER}{}",
+                    felt_to_sql_string(&from_address),
+                    &id
+                );
+                let from_balance = erc_cache
+                    .entry((ContractType::ERC721, from_balance_id))
+                    .or_default();
                 *from_balance -= I256::from(amount);
             }
 
             if to_address != Felt::ZERO {
-                let to_balance_id =
-                    format!("{}{SQL_FELT_DELIMITER}{}", felt_to_sql_string(&to_address), &id);
-                let to_balance =
-                    erc_cache.entry((ContractType::ERC721, to_balance_id)).or_default();
+                let to_balance_id = format!(
+                    "{}{SQL_FELT_DELIMITER}{}",
+                    felt_to_sql_string(&to_address),
+                    &id
+                );
+                let to_balance = erc_cache
+                    .entry((ContractType::ERC721, to_balance_id))
+                    .or_default();
                 *to_balance += I256::from(amount);
             }
         }
 
         if self.local_cache.erc_cache.read().await.len() >= 100000 {
-            self.flush().await.with_context(|| "Failed to flush in handle_erc721_transfer")?;
+            self.flush()
+                .await
+                .with_context(|| "Failed to flush in handle_erc721_transfer")?;
             self.apply_cache_diff().await?;
         }
 
@@ -149,7 +168,10 @@ impl Sql {
         self.executor.send(QueryMessage::new(
             "".to_string(),
             vec![],
-            QueryType::UpdateNftMetadata(UpdateNftMetadataQuery { contract_address, token_id }),
+            QueryType::UpdateNftMetadata(UpdateNftMetadataQuery {
+                contract_address,
+                token_id,
+            }),
         ))?;
 
         Ok(())

@@ -23,7 +23,9 @@ async fn main() -> anyhow::Result<()> {
     let filter_layer =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("torii=info"));
 
-    let subscriber = fmt::Subscriber::builder().with_env_filter(filter_layer).finish();
+    let subscriber = fmt::Subscriber::builder()
+        .with_env_filter(filter_layer)
+        .finish();
 
     // Set the global subscriber
     tracing::subscriber::set_global_default(subscriber)

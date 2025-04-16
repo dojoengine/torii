@@ -45,15 +45,20 @@ impl ResolvableObject for EventObject {
     }
 
     fn subscriptions(&self) -> Option<Vec<SubscriptionField>> {
-        Some(vec![
-            SubscriptionField::new("eventEmitted", TypeRef::named_nn(self.type_name()), |ctx| {
+        Some(vec![SubscriptionField::new(
+            "eventEmitted",
+            TypeRef::named_nn(self.type_name()),
+            |ctx| {
                 SubscriptionFieldFuture::new(async move {
                     let input_keys = parse_keys_argument(&ctx)?;
                     Ok(EventObject::subscription_stream(input_keys))
                 })
-            })
-            .argument(InputValue::new("keys", TypeRef::named_list(TypeRef::STRING))),
-        ])
+            },
+        )
+        .argument(InputValue::new(
+            "keys",
+            TypeRef::named_list(TypeRef::STRING),
+        ))])
     }
 }
 
@@ -65,7 +70,10 @@ impl EventObject {
             (Name::new("id"), Value::from(event.id)),
             (Name::new("keys"), Value::from(keys)),
             (Name::new("data"), Value::from(data)),
-            (Name::new("transactionHash"), Value::from(event.transaction_hash)),
+            (
+                Name::new("transactionHash"),
+                Value::from(event.transaction_hash),
+            ),
             (
                 Name::new("createdAt"),
                 Value::from(event.created_at.format(DATETIME_FORMAT).to_string()),
@@ -101,8 +109,11 @@ impl EventObject {
     // Checks if the provided keys match the event's keys, allowing '*' as a wildcard. Returns true
     // if all keys match or if a wildcard is present at the respective position.
     pub fn match_keys(input_keys: &[String], event: &Event) -> bool {
-        let event_keys: Vec<&str> =
-            event.keys.split(SQL_FELT_DELIMITER).filter(|s| !s.is_empty()).collect();
+        let event_keys: Vec<&str> = event
+            .keys
+            .split(SQL_FELT_DELIMITER)
+            .filter(|s| !s.is_empty())
+            .collect();
 
         if input_keys.len() > event_keys.len() {
             return false;

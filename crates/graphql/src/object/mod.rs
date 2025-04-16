@@ -80,8 +80,9 @@ pub trait BasicObject: Send + Sync {
                     // if its not we try to downcast to known types which is a special case for
                     // tokenBalances and tokenTransfers queries
 
-                    if let Ok(values) =
-                        ctx.parent_value.try_downcast_ref::<Connection<ErcTokenType>>()
+                    if let Ok(values) = ctx
+                        .parent_value
+                        .try_downcast_ref::<Connection<ErcTokenType>>()
                     {
                         match field_name.as_str() {
                             "edges" => {
@@ -105,8 +106,9 @@ pub trait BasicObject: Send + Sync {
                         }
                     }
 
-                    if let Ok(values) =
-                        ctx.parent_value.try_downcast_ref::<ConnectionEdge<ErcTokenType>>()
+                    if let Ok(values) = ctx
+                        .parent_value
+                        .try_downcast_ref::<ConnectionEdge<ErcTokenType>>()
                     {
                         match field_name.as_str() {
                             "node" => return Ok(Some(FieldValue::borrowed_any(&values.node))),
@@ -119,8 +121,9 @@ pub trait BasicObject: Send + Sync {
                         }
                     }
 
-                    if let Ok(values) =
-                        ctx.parent_value.try_downcast_ref::<Connection<TokenTransferNode>>()
+                    if let Ok(values) = ctx
+                        .parent_value
+                        .try_downcast_ref::<Connection<TokenTransferNode>>()
                     {
                         match field_name.as_str() {
                             "edges" => {
@@ -144,8 +147,9 @@ pub trait BasicObject: Send + Sync {
                         }
                     }
 
-                    if let Ok(values) =
-                        ctx.parent_value.try_downcast_ref::<ConnectionEdge<TokenTransferNode>>()
+                    if let Ok(values) = ctx
+                        .parent_value
+                        .try_downcast_ref::<ConnectionEdge<TokenTransferNode>>()
                     {
                         match field_name.as_str() {
                             "node" => return Ok(Some(FieldValue::borrowed_any(&values.node))),
@@ -253,7 +257,10 @@ pub fn resolve_one(
     let type_mapping = type_mapping.clone();
     let table_name = table_name.to_owned();
     let id_column = id_column.to_owned();
-    let argument = InputValue::new(id_column.to_case(Case::Camel), TypeRef::named_nn(TypeRef::ID));
+    let argument = InputValue::new(
+        id_column.to_case(Case::Camel),
+        TypeRef::named_nn(TypeRef::ID),
+    );
 
     Field::new(field_name, TypeRef::named_nn(type_name), move |ctx| {
         let type_mapping = type_mapping.clone();
@@ -288,7 +295,10 @@ pub fn resolve_one_with_joins(
     let id_column = id_column.to_owned();
     let joins = joins.to_owned();
     let select_columns = select_columns.to_owned();
-    let argument = InputValue::new(id_column.to_case(Case::Camel), TypeRef::named_nn(TypeRef::ID));
+    let argument = InputValue::new(
+        id_column.to_case(Case::Camel),
+        TypeRef::named_nn(TypeRef::ID),
+    );
 
     Field::new(field_name, TypeRef::named_nn(type_name), move |ctx| {
         let type_mapping = type_mapping.clone();
@@ -329,8 +339,10 @@ pub fn resolve_many(
     let table_name = table_name.to_owned();
     let id_column = id_column.to_owned();
 
-    let mut field =
-        Field::new(field_name, TypeRef::named(format!("{}Connection", type_name)), move |ctx| {
+    let mut field = Field::new(
+        field_name,
+        TypeRef::named(format!("{}Connection", type_name)),
+        move |ctx| {
             let type_mapping = type_mapping.clone();
             let table_name = table_name.to_owned();
             let id_column = id_column.to_owned();
@@ -366,7 +378,8 @@ pub fn resolve_many(
 
                 Ok(Some(Value::Object(results)))
             })
-        });
+        },
+    );
 
     field = connection_arguments(field);
 

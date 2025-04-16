@@ -13,7 +13,10 @@ pub struct OrderInputObject {
 
 impl OrderInputObject {
     pub fn new(type_name: &str, object_types: &TypeMapping) -> Self {
-        Self { type_name: format!("{}Order", type_name), type_mapping: object_types.clone() }
+        Self {
+            type_name: format!("{}Order", type_name),
+            type_mapping: object_types.clone(),
+        }
     }
 }
 
@@ -29,7 +32,10 @@ impl InputObjectTrait for OrderInputObject {
     fn input_object(&self) -> InputObject {
         // direction and field values are required (not null)
         InputObject::new(self.type_name())
-            .field(InputValue::new("direction", TypeRef::named_nn(ORDER_DIR_TYPE_NAME)))
+            .field(InputValue::new(
+                "direction",
+                TypeRef::named_nn(ORDER_DIR_TYPE_NAME),
+            ))
             .field(InputValue::new(
                 "field",
                 TypeRef::named_nn(format!("{}Field", self.type_name())),
@@ -38,21 +44,24 @@ impl InputObjectTrait for OrderInputObject {
 
     fn enum_objects(&self) -> Option<Vec<Enum>> {
         // Direction enum has only two members ASC and DESC
-        let direction = Enum::new(ORDER_DIR_TYPE_NAME).item(ORDER_ASC).item(ORDER_DESC);
+        let direction = Enum::new(ORDER_DIR_TYPE_NAME)
+            .item(ORDER_ASC)
+            .item(ORDER_DESC);
 
         // Field Order enum consist of all members of a model
-        let field_order = self
-            .type_mapping
-            .iter()
-            .fold(Enum::new(format!("{}Field", self.type_name())), |acc, (ty_name, _)| {
-                acc.item(ty_name.to_uppercase())
-            });
+        let field_order = self.type_mapping.iter().fold(
+            Enum::new(format!("{}Field", self.type_name())),
+            |acc, (ty_name, _)| acc.item(ty_name.to_uppercase()),
+        );
         Some(vec![direction, field_order])
     }
 }
 
 pub fn order_argument(field: Field, type_name: &str) -> Field {
-    field.argument(InputValue::new("order", TypeRef::named(format!("{}Order", type_name))))
+    field.argument(InputValue::new(
+        "order",
+        TypeRef::named(format!("{}Order", type_name)),
+    ))
 }
 
 pub fn parse_order_argument(ctx: &ResolverContext<'_>) -> Option<Order> {

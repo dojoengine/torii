@@ -170,7 +170,10 @@ mod test {
 
         let torii_args = ToriiArgs::parse_from(args).with_config_file().unwrap();
 
-        assert_eq!(torii_args.world_address, Some(Felt::from_str("0x9999").unwrap()));
+        assert_eq!(
+            torii_args.world_address,
+            Some(Felt::from_str("0x9999").unwrap())
+        );
         assert_eq!(torii_args.rpc, Url::parse("http://0.0.0.0:6060").unwrap());
         assert_eq!(torii_args.db_dir, Some(PathBuf::from("/tmp/torii-test2")));
         assert!(torii_args.events.raw);
@@ -222,15 +225,30 @@ mod test {
         assert_eq!(torii_args.relay, RelayOptions::default());
         assert_eq!(torii_args.metrics, MetricsOptions::default());
 
-        assert_eq!(torii_args.indexing.blocks_chunk_size, DEFAULT_BLOCKS_CHUNK_SIZE);
-        assert_eq!(torii_args.indexing.events_chunk_size, DEFAULT_EVENTS_CHUNK_SIZE);
+        assert_eq!(
+            torii_args.indexing.blocks_chunk_size,
+            DEFAULT_BLOCKS_CHUNK_SIZE
+        );
+        assert_eq!(
+            torii_args.indexing.events_chunk_size,
+            DEFAULT_EVENTS_CHUNK_SIZE
+        );
         assert!(torii_args.indexing.pending);
-        assert_eq!(torii_args.indexing.polling_interval, DEFAULT_POLLING_INTERVAL);
-        assert_eq!(torii_args.indexing.max_concurrent_tasks, DEFAULT_MAX_CONCURRENT_TASKS);
+        assert_eq!(
+            torii_args.indexing.polling_interval,
+            DEFAULT_POLLING_INTERVAL
+        );
+        assert_eq!(
+            torii_args.indexing.max_concurrent_tasks,
+            DEFAULT_MAX_CONCURRENT_TASKS
+        );
 
         assert!(!torii_args.events.raw);
 
-        assert_eq!(torii_args.erc.max_metadata_tasks, DEFAULT_ERC_MAX_METADATA_TASKS);
+        assert_eq!(
+            torii_args.erc.max_metadata_tasks,
+            DEFAULT_ERC_MAX_METADATA_TASKS
+        );
         assert_eq!(torii_args.erc.artifacts_path, None);
 
         assert_eq!(torii_args.sql.page_size, DEFAULT_DATABASE_PAGE_SIZE);
@@ -248,7 +266,10 @@ mod test {
 
         assert_eq!(torii_args.relay.port, DEFAULT_RELAY_PORT);
         assert_eq!(torii_args.relay.webrtc_port, DEFAULT_RELAY_WEBRTC_PORT);
-        assert_eq!(torii_args.relay.websocket_port, DEFAULT_RELAY_WEBSOCKET_PORT);
+        assert_eq!(
+            torii_args.relay.websocket_port,
+            DEFAULT_RELAY_WEBSOCKET_PORT
+        );
         assert_eq!(torii_args.relay.local_key_path, None);
         assert_eq!(torii_args.relay.cert_path, None);
         assert_eq!(torii_args.relay.peers, Vec::<String>::new());
@@ -299,11 +320,17 @@ mod test {
 
         let torii_args = ToriiArgs::parse_from(args).with_config_file().unwrap();
 
-        assert_eq!(torii_args.world_address, Some(Felt::from_str("0x1234").unwrap()));
+        assert_eq!(
+            torii_args.world_address,
+            Some(Felt::from_str("0x1234").unwrap())
+        );
         assert_eq!(torii_args.rpc, Url::parse("http://0.0.0.0:2222").unwrap());
         assert_eq!(torii_args.db_dir, Some(PathBuf::from("/tmp/torii-test")));
         assert!(torii_args.events.raw);
-        assert_eq!(torii_args.sql.historical, vec!["ns-E".to_string(), "ns-EH".to_string()]);
+        assert_eq!(
+            torii_args.sql.historical,
+            vec!["ns-E".to_string(), "ns-EH".to_string()]
+        );
         assert_eq!(torii_args.indexing.events_chunk_size, 9999);
         assert_eq!(torii_args.indexing.blocks_chunk_size, 10240);
         assert!(torii_args.indexing.pending);
@@ -332,6 +359,9 @@ mod test {
         );
         assert_eq!(torii_args.server.http_addr, IpAddr::V4(Ipv4Addr::LOCALHOST));
         assert_eq!(torii_args.server.http_port, 7777);
-        assert_eq!(torii_args.server.http_cors_origins, Some(vec!["*".to_string()]));
+        assert_eq!(
+            torii_args.server.http_cors_origins,
+            Some(vec!["*".to_string()])
+        );
     }
 }

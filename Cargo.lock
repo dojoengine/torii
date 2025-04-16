@@ -11427,6 +11427,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "sozo-ops"
+version = "1.4.1"
+source = "git+https://github.com/dojoengine/dojo?tag=v1.4.1#0fab6ed063a56ca6049b51117e46e3e8acf237fa"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cainome",
+ "colored",
+ "colored_json",
+ "dojo-types 1.4.1",
+ "dojo-utils",
+ "dojo-world 1.4.1",
+ "futures",
+ "num-traits 0.2.19",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "spinoff",
+ "starknet 0.12.0",
+ "starknet-crypto 0.7.4",
+ "thiserror 1.0.63",
+ "toml 0.8.19",
+ "tracing",
+]
+
+[[package]]
 name = "sozo-scarbext"
 version = "1.4.0"
 source = "git+https://github.com/dojoengine/dojo?tag=v1.4.0#22ef7101e84429f4f06fa634f927dd6ad2c48752"
@@ -11434,6 +11460,20 @@ dependencies = [
  "anyhow",
  "camino",
  "dojo-world 1.4.0",
+ "scarb",
+ "serde",
+ "serde_json",
+ "toml 0.8.19",
+]
+
+[[package]]
+name = "sozo-scarbext"
+version = "1.4.1"
+source = "git+https://github.com/dojoengine/dojo?tag=v1.4.1#0fab6ed063a56ca6049b51117e46e3e8acf237fa"
+dependencies = [
+ "anyhow",
+ "camino",
+ "dojo-world 1.4.1",
  "scarb",
  "serde",
  "serde_json",
@@ -11453,6 +11493,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 dependencies = [
  "lock_api",
+]
+
+[[package]]
+name = "spinoff"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20aa2ed67fbb202e7b716ff8bfc6571dd9301617767380197d701c31124e88f6"
+dependencies = [
+ "colored",
+ "once_cell",
+ "paste",
 ]
 
 [[package]]
@@ -12931,7 +12982,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
- "sozo-scarbext",
+ "sozo-scarbext 1.4.0",
  "sqlx",
  "starknet 0.12.0",
  "starknet-crypto 0.7.4",
@@ -12973,7 +13024,7 @@ dependencies = [
  "scarb",
  "serde",
  "serde_json",
- "sozo-scarbext",
+ "sozo-scarbext 1.4.0",
  "sqlx",
  "starknet 0.12.0",
  "starknet-crypto 0.7.4",
@@ -13028,7 +13079,7 @@ dependencies = [
  "serde",
  "serde_json",
  "slab",
- "sozo-scarbext",
+ "sozo-scarbext 1.4.0",
  "sqlx",
  "starknet 0.12.0",
  "starknet-crypto 0.7.4",
@@ -13197,7 +13248,7 @@ dependencies = [
  "serde",
  "serde_json",
  "slab",
- "sozo-scarbext",
+ "sozo-scarbext 1.4.0",
  "sqlx",
  "starknet 0.12.0",
  "starknet-crypto 0.7.4",
@@ -14815,6 +14866,23 @@ name = "xshell-macros"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d422e8e38ec76e2f06ee439ccc765e9c6a9638b9e7c9f2e8255e4d41e8bd852"
+
+[[package]]
+name = "xtask-generate-test-db"
+version = "1.5.0"
+dependencies = [
+ "anyhow",
+ "dojo-test-utils",
+ "dojo-utils",
+ "dojo-world 1.4.1",
+ "katana-runner",
+ "reqwest 0.11.27",
+ "scarb",
+ "sozo-ops",
+ "sozo-scarbext 1.4.1",
+ "starknet 0.12.0",
+ "tokio",
+]
 
 [[package]]
 name = "xxhash-rust"

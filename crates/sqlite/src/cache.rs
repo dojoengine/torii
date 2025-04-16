@@ -44,7 +44,10 @@ pub struct ModelCache {
 
 impl ModelCache {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool, model_cache: RwLock::new(HashMap::new()) }
+        Self {
+            pool,
+            model_cache: RwLock::new(HashMap::new()),
+        }
     }
 
     pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, Error> {
@@ -140,7 +143,10 @@ impl LocalCache {
                 .await
                 .expect("Should be able to read token_id's from blances table");
 
-        let token_id_registry = token_id_registry.into_iter().map(|token_id| token_id.0).collect();
+        let token_id_registry = token_id_registry
+            .into_iter()
+            .map(|token_id| token_id.0)
+            .collect();
 
         Self {
             erc_cache: RwLock::new(HashMap::new()),
@@ -181,7 +187,10 @@ pub struct ContractClassCache<P: Provider + Sync + std::fmt::Debug> {
 
 impl<P: Provider + Sync + std::fmt::Debug> ContractClassCache<P> {
     pub fn new(provider: Arc<P>) -> Self {
-        Self { classes: RwLock::new(HashMap::new()), provider }
+        Self {
+            classes: RwLock::new(HashMap::new()),
+            provider,
+        }
     }
 
     pub async fn get(
@@ -196,18 +205,28 @@ impl<P: Provider + Sync + std::fmt::Debug> ContractClassCache<P> {
             }
         }
 
-        let class_hash = match self.provider.get_class_hash_at(block_id, contract_address).await {
+        let class_hash = match self
+            .provider
+            .get_class_hash_at(block_id, contract_address)
+            .await
+        {
             Ok(class_hash) => class_hash,
             Err(e) => match e {
                 // if we got a block not found error, we probably are in a pending block.
                 ProviderError::StarknetError(StarknetError::BlockNotFound) => {
                     block_id = BlockId::Tag(BlockTag::Pending);
-                    self.provider.get_class_hash_at(block_id, contract_address).await?
+                    self.provider
+                        .get_class_hash_at(block_id, contract_address)
+                        .await?
                 }
                 _ => return Err(Error::ProviderError(e)),
             },
         };
-        let class = match self.provider.get_class_at(block_id, contract_address).await? {
+        let class = match self
+            .provider
+            .get_class_at(block_id, contract_address)
+            .await?
+        {
             ContractClass::Sierra(sierra) => {
                 let abi: Vec<AbiEntry> = serde_json::from_str(&sierra.abi).unwrap();
                 let functions: Vec<AbiEntry> = flatten_abi_funcs_recursive(&abi);
@@ -215,7 +234,10 @@ impl<P: Provider + Sync + std::fmt::Debug> ContractClassCache<P> {
             }
             ContractClass::Legacy(legacy) => ClassAbi::Legacy(legacy.abi.unwrap_or_default()),
         };
-        self.classes.write().await.insert(contract_address, (class_hash, class.clone()));
+        self.classes
+            .write()
+            .await
+            .insert(contract_address, (class_hash, class.clone()));
         Ok(class)
     }
 }
@@ -246,12 +268,13 @@ pub fn get_entrypoint_name_from_class(class: &ClassAbi, selector: Felt) -> Optio
                 None => return None,
             };
 
-            abi.get(entrypoint_idx as usize).and_then(|function| match function {
-                AbiEntry::Function(function) => Some(function.name.clone()),
-                AbiEntry::L1Handler(l1_handler) => Some(l1_handler.name.clone()),
-                AbiEntry::Constructor(constructor) => Some(constructor.name.clone()),
-                _ => None,
-            })
+            abi.get(entrypoint_idx as usize)
+                .and_then(|function| match function {
+                    AbiEntry::Function(function) => Some(function.name.clone()),
+                    AbiEntry::L1Handler(l1_handler) => Some(l1_handler.name.clone()),
+                    AbiEntry::Constructor(constructor) => Some(constructor.name.clone()),
+                    _ => None,
+                })
         }
         ClassAbi::Legacy(abi) => abi.iter().find_map(|entry| match entry {
             LegacyContractAbiEntry::Function(function)

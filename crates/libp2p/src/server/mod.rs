@@ -112,7 +112,11 @@ impl<P: Provider + Sync> Relay<P> {
 
         let mut swarm = libp2p::SwarmBuilder::with_existing_identity(local_key)
             .with_tokio()
-            .with_tcp(tcp::Config::default(), noise::Config::new, yamux::Config::default)?
+            .with_tcp(
+                tcp::Config::default(),
+                noise::Config::new,
+                yamux::Config::default,
+            )?
             .with_quic()
             .with_other_transport(|key| {
                 webrtc::tokio::Transport::new(key.clone(), cert)
@@ -144,12 +148,15 @@ impl<P: Provider + Sync> Relay<P> {
                     gossipsub::MessageId::from(s.finish().to_string())
                 };
                 let gossipsub_config = gossipsub::ConfigBuilder::default()
-                        .heartbeat_interval(Duration::from_secs(constants::GOSSIPSUB_HEARTBEAT_INTERVAL_SECS)) // This is set to aid debugging by not cluttering the log space
-                        .validation_mode(gossipsub::ValidationMode::Strict) // This sets the kind of message validation. The default is Strict (enforce message signing)
-                        // TODO: Use this once we incorporate nonces in the message model?
-                        // .message_id_fn(message_id_fn) // content-address messages. No two messages of the same content will be propagated.
-                        .build()
-                        .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg)).unwrap(); // Temporary hack because `build` does not return a proper `std::error::Error`.
+                    .heartbeat_interval(Duration::from_secs(
+                        constants::GOSSIPSUB_HEARTBEAT_INTERVAL_SECS,
+                    )) // This is set to aid debugging by not cluttering the log space
+                    .validation_mode(gossipsub::ValidationMode::Strict) // This sets the kind of message validation. The default is Strict (enforce message signing)
+                    // TODO: Use this once we incorporate nonces in the message model?
+                    // .message_id_fn(message_id_fn) // content-address messages. No two messages of the same content will be propagated.
+                    .build()
+                    .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
+                    .unwrap(); // Temporary hack because `build` does not return a proper `std::error::Error`.
 
                 Behaviour {
                     relay: relay::Behaviour::new(key.public().to_peer_id(), Default::default()),
@@ -177,8 +184,9 @@ impl<P: Provider + Sync> Relay<P> {
         swarm.listen_on(listen_addr_tcp.clone())?;
 
         // UDP QUIC
-        let listen_addr_quic =
-            Multiaddr::from(Ipv4Addr::UNSPECIFIED).with(Protocol::Udp(port)).with(Protocol::QuicV1);
+        let listen_addr_quic = Multiaddr::from(Ipv4Addr::UNSPECIFIED)
+            .with(Protocol::Udp(port))
+            .with(Protocol::QuicV1);
         swarm.listen_on(listen_addr_quic.clone())?;
 
         // WebRTC
@@ -215,7 +223,11 @@ impl<P: Provider + Sync> Relay<P> {
             .subscribe(&IdentTopic::new(constants::PEERS_MESSAGING_TOPIC))
             .unwrap();
 
-        Ok(Self { swarm, db: pool, provider: Box::new(provider) })
+        Ok(Self {
+            swarm,
+            db: pool,
+            provider: Box::new(provider),
+        })
     }
 
     pub async fn run(&mut self) {
@@ -517,7 +529,9 @@ fn ty_keys(ty: &Ty) -> Result<Vec<Felt>, Error> {
         }
         Ok(keys)
     } else {
-        Err(Error::InvalidMessageError("Entity is not a struct".to_string()))
+        Err(Error::InvalidMessageError(
+            "Entity is not a struct".to_string(),
+        ))
     }
 }
 
@@ -620,7 +634,15 @@ async fn set_entity(
     model_id: Felt,
     keys: &str,
 ) -> anyhow::Result<()> {
-    db.set_entity(ty, message_id, block_timestamp, entity_id, model_id, Some(keys)).await?;
+    db.set_entity(
+        ty,
+        message_id,
+        block_timestamp,
+        entity_id,
+        model_id,
+        Some(keys),
+    )
+    .await?;
     db.executor.send(QueryMessage::execute())?;
     Ok(())
 }

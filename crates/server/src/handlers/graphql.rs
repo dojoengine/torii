@@ -28,7 +28,10 @@ impl Handler for GraphQLHandler {
     async fn handle(&self, req: Request<Body>, client_addr: IpAddr) -> Response<Body> {
         if let Some(addr) = self.graphql_addr {
             let graphql_addr = format!("http://{}", addr);
-            match crate::proxy::GRAPHQL_PROXY_CLIENT.call(client_addr, &graphql_addr, req).await {
+            match crate::proxy::GRAPHQL_PROXY_CLIENT
+                .call(client_addr, &graphql_addr, req)
+                .await
+            {
                 Ok(response) => response,
                 Err(_error) => {
                     error!(target: LOG_TARGET, "GraphQL proxy error: {:?}", _error);
@@ -39,7 +42,10 @@ impl Handler for GraphQLHandler {
                 }
             }
         } else {
-            Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::empty())
+                .unwrap()
         }
     }
 }

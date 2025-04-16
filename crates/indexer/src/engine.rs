@@ -124,7 +124,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Processors<P> {
                     Box::new(Erc4906BatchMetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
                 ],
             ),
-            (ContractType::UDC, vec![Box::new(ControllerProcessor) as Box<dyn EventProcessor<P>>]),
+            (
+                ContractType::UDC,
+                vec![Box::new(ControllerProcessor) as Box<dyn EventProcessor<P>>],
+            ),
         ];
 
         for (contract_type, processors) in event_processors {
@@ -260,7 +263,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         contracts: &[Contract],
     ) -> Self {
         let contracts = Arc::new(
-            contracts.iter().map(|contract| (contract.address, contract.r#type)).collect(),
+            contracts
+                .iter()
+                .map(|contract| (contract.address, contract.r#type))
+                .collect(),
         );
         let world = Arc::new(world);
         let processors = Arc::new(processors);
@@ -362,21 +368,25 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // this is non-inclusive. this just means that we stop doing events pages fetches once we
         // reach a page with an event that is after the latest block. so in our final
         // commit; we could end up with a higher head than this one.
-        let to = latest_block.block_number.min(from + self.config.blocks_chunk_size);
+        let to = latest_block
+            .block_number
+            .min(from + self.config.blocks_chunk_size);
 
         let instant = Instant::now();
         let result = if from < latest_block.block_number {
             let from = if from == 0 { from } else { from + 1 };
 
             // Fetch all events from 'from' to our blocks chunk size
-            let range =
-                self.fetch_range(from, to, &cursors.cursor_map, latest_block.block_number).await?;
+            let range = self
+                .fetch_range(from, to, &cursors.cursor_map, latest_block.block_number)
+                .await?;
 
             debug!(target: LOG_TARGET, duration = ?instant.elapsed(), from = %from, to = %range.blocks.keys().last().unwrap(), "Fetched data for range.");
             FetchDataResult::Range(range)
         } else if self.config.flags.contains(IndexingFlags::PENDING_BLOCKS) {
-            let data =
-                self.fetch_pending(latest_block.clone(), cursors.last_pending_block_tx).await?;
+            let data = self
+                .fetch_pending(latest_block.clone(), cursors.last_pending_block_tx)
+                .await?;
             debug!(target: LOG_TARGET, duration = ?instant.elapsed(), latest_block_number = %latest_block.block_number, "Fetched pending data.");
             if let Some(data) = data {
                 FetchDataResult::Pending(data)
@@ -424,7 +434,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Recursively fetch all events using batch requests
-        events.extend(self.fetch_events_recursive(event_requests, cursor_map, to).await?);
+        events.extend(
+            self.fetch_events_recursive(event_requests, cursor_map, to)
+                .await?,
+        );
 
         // Process events to get unique blocks and transactions
         let mut blocks = BTreeMap::new();
@@ -443,7 +456,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 .entry(block_number)
                 .or_insert(LinkedHashMap::new())
                 .entry(event.transaction_hash)
-                .or_insert(FetchRangeTransaction { transaction: None, events: vec![] })
+                .or_insert(FetchRangeTransaction {
+                    transaction: None,
+                    events: vec![],
+                })
                 .events
                 .push(event);
         }
@@ -456,7 +472,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             for (block_number, transactions) in &transactions {
                 for (transaction_hash, _) in transactions {
                     transaction_requests.push(ProviderRequestData::GetTransactionByHash(
-                        GetTransactionByHashRequest { transaction_hash: *transaction_hash },
+                        GetTransactionByHashRequest {
+                            transaction_hash: *transaction_hash,
+                        },
                     ));
                     block_numbers.push(*block_number);
                 }
@@ -515,7 +533,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         trace!(target: LOG_TARGET, "Transactions: {}", &transactions.len());
         trace!(target: LOG_TARGET, "Blocks: {}", &blocks.len());
 
-        Ok(FetchRangeResult { transactions, blocks })
+        Ok(FetchRangeResult {
+            transactions,
+            blocks,
+        })
     }
 
     #[async_recursion]
@@ -546,8 +567,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
             match result {
                 ProviderResponseData::GetEvents(events_page) => {
-                    let last_block_number =
-                        events_page.events.last().map_or(0, |e| e.block_number.unwrap());
+                    let last_block_number = events_page
+                        .events
+                        .last()
+                        .map_or(0, |e| e.block_number.unwrap());
 
                     // Process events for this page, only including events up to our target block
                     for event in events_page.events {
@@ -605,7 +628,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // Recursively fetch next batch if there are any continuation tokens
         if !next_requests.is_empty() {
-            events.extend(self.fetch_events_recursive(next_requests, cursor_map, to).await?);
+            events.extend(
+                self.fetch_events_recursive(next_requests, cursor_map, to)
+                    .await?,
+            );
         }
 
         Ok(events)
@@ -616,8 +642,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         block: BlockHashAndNumber,
         last_pending_block_tx: Option<Felt>,
     ) -> Result<Option<FetchPendingResult>> {
-        let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) =
-            self.provider.get_block_with_receipts(BlockId::Tag(BlockTag::Pending)).await?
+        let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
+            .provider
+            .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
+            .await?
         {
             // if the parent hash is not the hash of the latest block that we fetched, then it means
             // a new block got mined just after we fetched the latest block information
@@ -722,7 +750,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     block_tx.send(block_number).await?;
                 }
 
-                self.process_block(block_number, range.blocks[&block_number]).await?;
+                self.process_block(block_number, range.blocks[&block_number])
+                    .await?;
                 processed_blocks.insert(block_number);
             }
         }
@@ -731,7 +760,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         self.task_manager.process_tasks().await?;
 
         let (last_block_number, last_block_timestamp) = range.blocks.iter().last().unwrap();
-        self.db.update_cursors(*last_block_number, *last_block_timestamp, None, cursor_map)?;
+        self.db
+            .update_cursors(*last_block_number, *last_block_timestamp, None, cursor_map)?;
 
         Ok(())
     }
@@ -750,8 +780,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for (event_idx, event) in events.iter().enumerate() {
             // NOTE: erc* processors expect the event_id to be in this format to get
             // transaction_hash:
-            let event_id =
-                format!("{:#064x}:{:#x}:{:#04x}", block_number, transaction_hash, event_idx);
+            let event_id = format!(
+                "{:#064x}:{:#x}:{:#04x}",
+                block_number, transaction_hash, event_idx
+            );
 
             let event = Event {
                 from_address: event.from_address,
@@ -825,8 +857,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                 // NOTE: erc* processors expect the event_id to be in this format to get
                 // transaction_hash:
-                let event_id: String =
-                    format!("{:#064x}:{:#x}:{:#04x}", block_number, *transaction_hash, event_idx);
+                let event_id: String = format!(
+                    "{:#064x}:{:#x}:{:#04x}",
+                    block_number, *transaction_hash, event_idx
+                );
 
                 self.process_event(
                     block_number,
@@ -866,7 +900,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     async fn process_block(&mut self, block_number: u64, block_timestamp: u64) -> Result<()> {
         for processor in &self.processors.block {
             processor
-                .process(&mut self.db, self.provider.as_ref(), block_number, block_timestamp)
+                .process(
+                    &mut self.db,
+                    self.provider.as_ref(),
+                    block_number,
+                    block_timestamp,
+                )
                 .await?
         }
 
@@ -910,7 +949,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         contract_type: ContractType,
     ) -> Result<()> {
         if self.config.flags.contains(IndexingFlags::RAW_EVENTS) {
-            self.db.store_event(event_id, event, transaction_hash, block_timestamp)?;
+            self.db
+                .store_event(event_id, event, transaction_hash, block_timestamp)?;
         }
 
         let event_key = event.keys[0];

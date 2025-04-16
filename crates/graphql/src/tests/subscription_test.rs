@@ -35,7 +35,9 @@ mod tests {
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
         let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100).await.unwrap();
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100)
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -44,7 +46,10 @@ mod tests {
         let mut db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract { address: Felt::ZERO, r#type: ContractType::WORLD }],
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
             model_cache,
         )
         .await
@@ -56,7 +61,11 @@ mod tests {
         let model_name = "Record".to_string();
         let key = vec![Felt::ONE];
         let entity_id = format!("{:#x}", poseidon_hash_many(&key));
-        let keys_str = key.iter().map(|k| format!("{:#x}", k)).collect::<Vec<String>>().join(",");
+        let keys_str = key
+            .iter()
+            .map(|k| format!("{:#x}", k))
+            .collect::<Vec<String>>()
+            .join(",");
         let block_timestamp = 1710754478_u64;
         let type_name = utils::type_name_from_names(&namespace, &model_name);
 
@@ -91,10 +100,22 @@ mod tests {
                             name: "Depth".to_string(),
                             option: Some(0),
                             options: vec![
-                                EnumOption { name: "Zero".to_string(), ty: Ty::Tuple(vec![]) },
-                                EnumOption { name: "One".to_string(), ty: Ty::Tuple(vec![]) },
-                                EnumOption { name: "Two".to_string(), ty: Ty::Tuple(vec![]) },
-                                EnumOption { name: "Three".to_string(), ty: Ty::Tuple(vec![]) },
+                                EnumOption {
+                                    name: "Zero".to_string(),
+                                    ty: Ty::Tuple(vec![]),
+                                },
+                                EnumOption {
+                                    name: "One".to_string(),
+                                    ty: Ty::Tuple(vec![]),
+                                },
+                                EnumOption {
+                                    name: "Two".to_string(),
+                                    ty: Ty::Tuple(vec![]),
+                                },
+                                EnumOption {
+                                    name: "Three".to_string(),
+                                    ty: Ty::Tuple(vec![]),
+                                },
                             ],
                         }),
                     },
@@ -190,7 +211,9 @@ mod tests {
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
 
         let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100).await.unwrap();
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100)
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -199,7 +222,10 @@ mod tests {
         let mut db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract { address: Felt::ZERO, r#type: ContractType::WORLD }],
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
             model_cache,
         )
         .await
@@ -212,7 +238,11 @@ mod tests {
         let key = vec![Felt::ONE];
         let entity_id = format!("{:#x}", poseidon_hash_many(&key));
         let block_timestamp = 1710754478_u64;
-        let keys_str = key.iter().map(|k| format!("{:#x}", k)).collect::<Vec<String>>().join(",");
+        let keys_str = key
+            .iter()
+            .map(|k| format!("{:#x}", k))
+            .collect::<Vec<String>>()
+            .join(",");
         let type_name = utils::type_name_from_names(&namespace, &model_name);
 
         let expected_value: async_graphql::Value = value!({
@@ -243,10 +273,22 @@ mod tests {
                             name: "Depth".to_string(),
                             option: Some(0),
                             options: vec![
-                                EnumOption { name: "Zero".to_string(), ty: Ty::Tuple(vec![]) },
-                                EnumOption { name: "One".to_string(), ty: Ty::Tuple(vec![]) },
-                                EnumOption { name: "Two".to_string(), ty: Ty::Tuple(vec![]) },
-                                EnumOption { name: "Three".to_string(), ty: Ty::Tuple(vec![]) },
+                                EnumOption {
+                                    name: "Zero".to_string(),
+                                    ty: Ty::Tuple(vec![]),
+                                },
+                                EnumOption {
+                                    name: "One".to_string(),
+                                    ty: Ty::Tuple(vec![]),
+                                },
+                                EnumOption {
+                                    name: "Two".to_string(),
+                                    ty: Ty::Tuple(vec![]),
+                                },
+                                EnumOption {
+                                    name: "Three".to_string(),
+                                    ty: Ty::Tuple(vec![]),
+                                },
                             ],
                         }),
                     },
@@ -323,7 +365,9 @@ mod tests {
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
         let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100).await.unwrap();
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100)
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -332,7 +376,10 @@ mod tests {
         let mut db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract { address: Felt::ZERO, r#type: ContractType::WORLD }],
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
             model_cache,
         )
         .await
@@ -340,7 +387,10 @@ mod tests {
         // 0. Preprocess model value
         let namespace = "types_test".to_string();
         let model_name = "Subrecord".to_string();
-        let model_id = format!("{:#x}", compute_selector_from_names(&namespace, &model_name));
+        let model_id = format!(
+            "{:#x}",
+            compute_selector_from_names(&namespace, &model_name)
+        );
         let class_hash = Felt::TWO;
         let contract_address = Felt::THREE;
         let block_timestamp: u64 = 1710754478_u64;
@@ -407,7 +457,9 @@ mod tests {
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
         let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100).await.unwrap();
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100)
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -416,7 +468,10 @@ mod tests {
         let mut db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract { address: Felt::ZERO, r#type: ContractType::WORLD }],
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
             model_cache,
         )
         .await
@@ -424,7 +479,10 @@ mod tests {
         // 0. Preprocess model value
         let namespace = "types_test".to_string();
         let model_name = "Subrecord".to_string();
-        let model_id = format!("{:#x}", compute_selector_from_names(&namespace, &model_name));
+        let model_id = format!(
+            "{:#x}",
+            compute_selector_from_names(&namespace, &model_name)
+        );
         let class_hash = Felt::TWO;
         let contract_address = Felt::THREE;
         let block_timestamp: u64 = 1710754478_u64;
@@ -492,7 +550,9 @@ mod tests {
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
         let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100).await.unwrap();
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100)
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -501,7 +561,10 @@ mod tests {
         let mut db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract { address: Felt::ZERO, r#type: ContractType::WORLD }],
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
             model_cache,
         )
         .await
@@ -569,7 +632,8 @@ mod tests {
             let mut keys = Vec::new();
             for m in s.keys() {
                 keys.extend(
-                    m.serialize().map_err(|_| anyhow::anyhow!("Failed to serialize model key"))?,
+                    m.serialize()
+                        .map_err(|_| anyhow::anyhow!("Failed to serialize model key"))?,
                 );
             }
             Ok(keys)

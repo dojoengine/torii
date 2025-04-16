@@ -79,7 +79,12 @@ pub struct SseSession {
 
 impl JsonRpcResponse {
     pub fn ok(id: Value, result: Value) -> Self {
-        Self { jsonrpc: JSONRPC_VERSION.to_string(), id, result: Some(result), error: None }
+        Self {
+            jsonrpc: JSONRPC_VERSION.to_string(),
+            id,
+            result: Some(result),
+            error: None,
+        }
     }
 
     pub fn error(id: Value, code: i32, message: &str, data: Option<Value>) -> Self {
@@ -87,7 +92,11 @@ impl JsonRpcResponse {
             jsonrpc: JSONRPC_VERSION.to_string(),
             id,
             result: None,
-            error: Some(JsonRpcError { code, message: message.to_string(), data }),
+            error: Some(JsonRpcError {
+                code,
+                message: message.to_string(),
+                data,
+            }),
         }
     }
 
@@ -100,10 +109,20 @@ impl JsonRpcResponse {
     }
 
     pub fn invalid_params(id: Value, details: &str) -> Self {
-        Self::error(id, -32602, "Invalid params", Some(json!({ "details": details })))
+        Self::error(
+            id,
+            -32602,
+            "Invalid params",
+            Some(json!({ "details": details })),
+        )
     }
 
     pub fn parse_error(id: Value, details: &str) -> Self {
-        Self::error(id, -32700, "Parse error", Some(json!({ "details": details })))
+        Self::error(
+            id,
+            -32700,
+            "Parse error",
+            Some(json!({ "details": details })),
+        )
     }
 }

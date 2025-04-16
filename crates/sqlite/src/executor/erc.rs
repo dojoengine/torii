@@ -140,11 +140,12 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
         provider: Arc<P>,
     ) -> Result<()> {
         let tx = &mut self.transaction;
-        let balance: Option<(String,)> =
-            sqlx::query_as(&format!("SELECT balance FROM {TOKEN_BALANCE_TABLE} WHERE id = ?"))
-                .bind(id)
-                .fetch_optional(&mut **tx)
-                .await?;
+        let balance: Option<(String,)> = sqlx::query_as(&format!(
+            "SELECT balance FROM {TOKEN_BALANCE_TABLE} WHERE id = ?"
+        ))
+        .bind(id)
+        .fetch_optional(&mut **tx)
+        .await?;
 
         let mut balance = if let Some(balance) = balance {
             sql_string_to_u256(&balance.0)
@@ -204,7 +205,8 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
         SimpleBroker::publish(unsafe {
             std::mem::transmute::<TokenBalance, OptimisticTokenBalance>(token_balance.clone())
         });
-        self.publish_queue.push(BrokerMessage::TokenBalanceUpdated(token_balance));
+        self.publish_queue
+            .push(BrokerMessage::TokenBalanceUpdated(token_balance));
 
         Ok(())
     }
@@ -225,9 +227,14 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
                     .await
                     .context("Failed to fetch metadata from URL")?;
 
-                let bytes = response.bytes().await.context("Failed to read response bytes")?;
-                let json: serde_json::Value = serde_json::from_slice(&bytes)
-                    .context(format!("Failed to parse metadata JSON from response: {:?}", bytes))?;
+                let bytes = response
+                    .bytes()
+                    .await
+                    .context("Failed to read response bytes")?;
+                let json: serde_json::Value = serde_json::from_slice(&bytes).context(format!(
+                    "Failed to parse metadata JSON from response: {:?}",
+                    bytes
+                ))?;
 
                 Ok(json)
             }
@@ -260,7 +267,9 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
                     return Err(anyhow::anyhow!("Data URI is not of JSON type"));
                 }
 
-                let decoded = data_url.decode_to_vec().context("Failed to decode data URI")?;
+                let decoded = data_url
+                    .decode_to_vec()
+                    .context("Failed to decode data URI")?;
                 // HACK: Loot Survior NFT metadata contains control characters which makes the json
                 // DATA invalid so filter them out
                 let decoded_str = String::from_utf8_lossy(&decoded.0)
@@ -276,7 +285,10 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
 
                 Ok(json)
             }
-            uri => Err(anyhow::anyhow!("Unsupported URI scheme found in token URI: {}", uri)),
+            uri => Err(anyhow::anyhow!(
+                "Unsupported URI scheme found in token URI: {}",
+                uri
+            )),
         }
     }
 
@@ -306,7 +318,8 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
             SimpleBroker::publish(unsafe {
                 std::mem::transmute::<Token, OptimisticToken>(token.clone())
             });
-            self.publish_queue.push(BrokerMessage::TokenRegistered(token));
+            self.publish_queue
+                .push(BrokerMessage::TokenRegistered(token));
         }
 
         Ok(())

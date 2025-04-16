@@ -37,7 +37,11 @@ mod tests {
         );
 
         let result = run_graphql_query(schema, &query).await;
-        result.get("events").ok_or("events not found").unwrap().clone()
+        result
+            .get("events")
+            .ok_or("events not found")
+            .unwrap()
+            .clone()
     }
 
     #[sqlx::test(migrations = "../migrations", fixtures("./fixtures/events.sql"))]

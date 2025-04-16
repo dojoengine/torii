@@ -130,7 +130,10 @@ impl ErcTokenType {
                     (Name::new("name"), Value::String(token.name)),
                     (Name::new("symbol"), Value::String(token.symbol)),
                     (Name::new("decimals"), Value::from(token.decimals)),
-                    (Name::new("contractAddress"), Value::String(token.contract_address)),
+                    (
+                        Name::new("contractAddress"),
+                        Value::String(token.contract_address),
+                    ),
                     (Name::new("amount"), Value::String(token.amount)),
                 ]))),
                 ERC20_TYPE_NAME.to_string(),
@@ -140,19 +143,31 @@ impl ErcTokenType {
                     (Name::new("name"), Value::String(token.name)),
                     (Name::new("symbol"), Value::String(token.symbol)),
                     (Name::new("tokenId"), Value::String(token.token_id)),
-                    (Name::new("contractAddress"), Value::String(token.contract_address)),
+                    (
+                        Name::new("contractAddress"),
+                        Value::String(token.contract_address),
+                    ),
                     (Name::new("metadata"), Value::String(token.metadata)),
                     (
                         Name::new("metadataName"),
-                        token.metadata_name.map(Value::String).unwrap_or(Value::Null),
+                        token
+                            .metadata_name
+                            .map(Value::String)
+                            .unwrap_or(Value::Null),
                     ),
                     (
                         Name::new("metadataDescription"),
-                        token.metadata_description.map(Value::String).unwrap_or(Value::Null),
+                        token
+                            .metadata_description
+                            .map(Value::String)
+                            .unwrap_or(Value::Null),
                     ),
                     (
                         Name::new("metadataAttributes"),
-                        token.metadata_attributes.map(Value::String).unwrap_or(Value::Null),
+                        token
+                            .metadata_attributes
+                            .map(Value::String)
+                            .unwrap_or(Value::Null),
                     ),
                     (Name::new("imagePath"), Value::String(token.image_path)),
                 ]))),
@@ -163,20 +178,32 @@ impl ErcTokenType {
                     (Name::new("name"), Value::String(token.name)),
                     (Name::new("symbol"), Value::String(token.symbol)),
                     (Name::new("tokenId"), Value::String(token.token_id)),
-                    (Name::new("contractAddress"), Value::String(token.contract_address)),
+                    (
+                        Name::new("contractAddress"),
+                        Value::String(token.contract_address),
+                    ),
                     (Name::new("amount"), Value::String(token.amount)),
                     (Name::new("metadata"), Value::String(token.metadata)),
                     (
                         Name::new("metadataName"),
-                        token.metadata_name.map(Value::String).unwrap_or(Value::Null),
+                        token
+                            .metadata_name
+                            .map(Value::String)
+                            .unwrap_or(Value::Null),
                     ),
                     (
                         Name::new("metadataDescription"),
-                        token.metadata_description.map(Value::String).unwrap_or(Value::Null),
+                        token
+                            .metadata_description
+                            .map(Value::String)
+                            .unwrap_or(Value::Null),
                     ),
                     (
                         Name::new("metadataAttributes"),
-                        token.metadata_attributes.map(Value::String).unwrap_or(Value::Null),
+                        token
+                            .metadata_attributes
+                            .map(Value::String)
+                            .unwrap_or(Value::Null),
                     ),
                     (Name::new("imagePath"), Value::String(token.image_path)),
                 ]))),
@@ -221,12 +248,20 @@ async fn fetch_tokens(
 
     let mut cursor_param = &connection.after;
     if let Some(after_cursor) = &connection.after {
-        conditions.push(handle_cursor(after_cursor, CursorDirection::After, ID_COLUMN)?);
+        conditions.push(handle_cursor(
+            after_cursor,
+            CursorDirection::After,
+            ID_COLUMN,
+        )?);
     }
 
     if let Some(before_cursor) = &connection.before {
         cursor_param = &connection.before;
-        conditions.push(handle_cursor(before_cursor, CursorDirection::Before, ID_COLUMN)?);
+        conditions.push(handle_cursor(
+            before_cursor,
+            CursorDirection::Before,
+            ID_COLUMN,
+        )?);
     }
 
     if !conditions.is_empty() {
@@ -235,8 +270,11 @@ async fn fetch_tokens(
 
     let is_cursor_based = connection.first.or(connection.last).is_some() || cursor_param.is_some();
 
-    let data_limit =
-        connection.first.or(connection.last).or(connection.limit).unwrap_or(DEFAULT_LIMIT);
+    let data_limit = connection
+        .first
+        .or(connection.last)
+        .or(connection.limit)
+        .unwrap_or(DEFAULT_LIMIT);
     let limit = if is_cursor_based {
         match &cursor_param {
             Some(_) => data_limit + 2,
@@ -350,8 +388,10 @@ impl ResolvableObject for TokenObject {
                                     .push_str(&format!(" WHERE t.contract_address = '{}'", addr));
                             }
 
-                            let total_count: i64 =
-                                sqlx::query(&count_query).fetch_one(&mut *conn).await?.get("count");
+                            let total_count: i64 = sqlx::query(&count_query)
+                                .fetch_one(&mut *conn)
+                                .await?
+                                .get("count");
 
                             let (data, page_info) =
                                 fetch_tokens(&mut conn, contract_address, &connection, total_count)
@@ -378,7 +418,10 @@ impl ResolvableObject for TokenObject {
                         })
                     },
                 )
-                .argument(InputValue::new("contractAddress", TypeRef::named(TypeRef::STRING))),
+                .argument(InputValue::new(
+                    "contractAddress",
+                    TypeRef::named(TypeRef::STRING),
+                )),
             ),
             // Query for single token by ID
             Field::new(
@@ -398,7 +441,10 @@ impl ResolvableObject for TokenObject {
                                    JOIN contracts c ON t.contract_address = c.contract_address 
                                    WHERE t.id = ?";
 
-                        let row = sqlx::query(query).bind(token_id).fetch_optional(pool).await?;
+                        let row = sqlx::query(query)
+                            .bind(token_id)
+                            .fetch_optional(pool)
+                            .await?;
 
                         match row {
                             Some(row) => {
@@ -609,16 +655,24 @@ fn create_token_metadata_from_row(row: &SqliteRow) -> sqlx::Result<ErcTokenType>
             } else {
                 let metadata: serde_json::Value =
                     serde_json::from_str(&metadata_str).expect("metadata is always json");
-                let metadata_name =
-                    metadata.get("name").map(|v| v.to_string().trim_matches('"').to_string());
+                let metadata_name = metadata
+                    .get("name")
+                    .map(|v| v.to_string().trim_matches('"').to_string());
                 let metadata_description = metadata
                     .get("description")
                     .map(|v| v.to_string().trim_matches('"').to_string());
-                let metadata_attributes =
-                    metadata.get("attributes").map(|v| v.to_string().trim_matches('"').to_string());
+                let metadata_attributes = metadata
+                    .get("attributes")
+                    .map(|v| v.to_string().trim_matches('"').to_string());
 
                 let image_path = format!("{}/image", id.replace(":", "/"));
-                (metadata_str, metadata_name, metadata_description, metadata_attributes, image_path)
+                (
+                    metadata_str,
+                    metadata_name,
+                    metadata_description,
+                    metadata_attributes,
+                    image_path,
+                )
             };
 
             let token = Erc721Token {
@@ -651,16 +705,24 @@ fn create_token_metadata_from_row(row: &SqliteRow) -> sqlx::Result<ErcTokenType>
             } else {
                 let metadata: serde_json::Value =
                     serde_json::from_str(&metadata_str).expect("metadata is always json");
-                let metadata_name =
-                    metadata.get("name").map(|v| v.to_string().trim_matches('"').to_string());
+                let metadata_name = metadata
+                    .get("name")
+                    .map(|v| v.to_string().trim_matches('"').to_string());
                 let metadata_description = metadata
                     .get("description")
                     .map(|v| v.to_string().trim_matches('"').to_string());
-                let metadata_attributes =
-                    metadata.get("attributes").map(|v| v.to_string().trim_matches('"').to_string());
+                let metadata_attributes = metadata
+                    .get("attributes")
+                    .map(|v| v.to_string().trim_matches('"').to_string());
 
                 let image_path = format!("{}/image", id.replace(":", "/"));
-                (metadata_str, metadata_name, metadata_description, metadata_attributes, image_path)
+                (
+                    metadata_str,
+                    metadata_name,
+                    metadata_description,
+                    metadata_attributes,
+                    image_path,
+                )
             };
 
             let token = Erc1155Token {

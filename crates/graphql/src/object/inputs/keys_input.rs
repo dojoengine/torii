@@ -4,7 +4,10 @@ use async_graphql::Error;
 use crate::utils::extract;
 
 pub fn keys_argument(field: Field) -> Field {
-    field.argument(InputValue::new("keys", TypeRef::named_list(TypeRef::STRING)))
+    field.argument(InputValue::new(
+        "keys",
+        TypeRef::named_list(TypeRef::STRING),
+    ))
 }
 
 pub fn parse_keys_argument(ctx: &ResolverContext<'_>) -> Result<Option<Vec<String>>, Error> {
@@ -25,7 +28,11 @@ fn is_hex_or_star(s: &str) -> bool {
     if s == "*" {
         return true;
     }
-    let s = if let Some(stripped) = s.strip_prefix("0x") { stripped } else { s };
+    let s = if let Some(stripped) = s.strip_prefix("0x") {
+        stripped
+    } else {
+        s
+    };
 
     s.chars().all(|c| c.is_ascii_hexdigit())
 }

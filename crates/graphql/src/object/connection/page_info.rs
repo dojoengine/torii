@@ -26,8 +26,14 @@ impl BasicObject for PageInfoObject {
 impl PageInfoObject {
     pub fn value(page_info: PageInfo) -> Value {
         Value::Object(IndexMap::from([
-            (Name::new("hasPreviousPage"), Value::from(page_info.has_previous_page)),
-            (Name::new("hasNextPage"), Value::from(page_info.has_next_page)),
+            (
+                Name::new("hasPreviousPage"),
+                Value::from(page_info.has_previous_page),
+            ),
+            (
+                Name::new("hasNextPage"),
+                Value::from(page_info.has_next_page),
+            ),
             (
                 Name::new("startCursor"),
                 match page_info.start_cursor {

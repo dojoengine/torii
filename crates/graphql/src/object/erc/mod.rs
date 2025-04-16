@@ -13,7 +13,12 @@ fn handle_cursor(
     id_column: &str,
 ) -> sqlx::Result<String> {
     match cursor::decode(cursor) {
-        Ok((event_id, _)) => Ok(format!("{} {} '{}'", id_column, direction.as_ref(), event_id)),
+        Ok((event_id, _)) => Ok(format!(
+            "{} {} '{}'",
+            id_column,
+            direction.as_ref(),
+            event_id
+        )),
         Err(_) => Err(sqlx::Error::Decode("Invalid cursor format".into())),
     }
 }

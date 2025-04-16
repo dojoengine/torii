@@ -50,9 +50,14 @@ impl EventManager {
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from
         // initial subscribe call
-        let _ = sender.send(Ok(SubscribeEventsResponse { event: None })).await;
+        let _ = sender
+            .send(Ok(SubscribeEventsResponse { event: None }))
+            .await;
 
-        self.subscribers.write().await.insert(id, EventSubscriber { keys, sender });
+        self.subscribers
+            .write()
+            .await
+            .insert(id, EventSubscriber { keys, sender });
 
         Ok(receiver)
     }
@@ -72,8 +77,10 @@ pub struct Service {
 impl Service {
     pub fn new(subs_manager: Arc<EventManager>) -> Self {
         let (event_sender, event_receiver) = unbounded_channel();
-        let service =
-            Self { simple_broker: Box::pin(SimpleBroker::<Event>::subscribe()), event_sender };
+        let service = Self {
+            simple_broker: Box::pin(SimpleBroker::<Event>::subscribe()),
+            event_sender,
+        };
 
         tokio::spawn(Self::publish_updates(subs_manager, event_receiver));
 

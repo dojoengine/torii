@@ -33,7 +33,11 @@ pub fn utc_dt_string_from_timestamp(timestamp: u64) -> String {
 }
 
 pub fn felts_to_sql_string(felts: &[Felt]) -> String {
-    felts.iter().map(|k| format!("{:#x}", k)).collect::<Vec<String>>().join(SQL_FELT_DELIMITER)
+    felts
+        .iter()
+        .map(|k| format!("{:#x}", k))
+        .collect::<Vec<String>>()
+        .join(SQL_FELT_DELIMITER)
         + SQL_FELT_DELIMITER
 }
 
@@ -55,7 +59,10 @@ pub fn sql_string_to_u256(sql_string: &str) -> U256 {
 }
 
 pub fn sql_string_to_felts(sql_string: &str) -> Vec<Felt> {
-    sql_string.split(SQL_FELT_DELIMITER).map(|felt| Felt::from_str(felt).unwrap()).collect()
+    sql_string
+        .split(SQL_FELT_DELIMITER)
+        .map(|felt| Felt::from_str(felt).unwrap())
+        .collect()
 }
 
 /// Sanitizes a JSON string by escaping unescaped double quotes within string values.
@@ -170,7 +177,12 @@ pub async fn fetch_content_from_ipfs(cid: &str) -> Result<Bytes> {
     let mut backoff = INITIAL_BACKOFF;
 
     loop {
-        match IPFS_CLIENT.cat(cid).map_ok(|chunk| chunk.to_vec()).try_concat().await {
+        match IPFS_CLIENT
+            .cat(cid)
+            .map_ok(|chunk| chunk.to_vec())
+            .try_concat()
+            .await
+        {
             Ok(stream) => return Ok(Bytes::from(stream)),
             Err(e) => {
                 if retries >= REQ_MAX_RETRIES {
@@ -195,14 +207,20 @@ pub fn map_row_to_json(row: &sqlx::sqlite::SqliteRow) -> serde_json::Value {
                 .map_or(serde_json::Value::Null, serde_json::Value::String),
             "INTEGER" => row
                 .get::<Option<i64>, _>(i)
-                .map_or(serde_json::Value::Null, |n| serde_json::Value::Number(n.into())),
-            "REAL" => row.get::<Option<f64>, _>(i).map_or(serde_json::Value::Null, |f| {
-                serde_json::Number::from_f64(f)
-                    .map_or(serde_json::Value::Null, serde_json::Value::Number)
-            }),
-            "BLOB" => row.get::<Option<Vec<u8>>, _>(i).map_or(serde_json::Value::Null, |bytes| {
-                serde_json::Value::String(STANDARD.encode(bytes))
-            }),
+                .map_or(serde_json::Value::Null, |n| {
+                    serde_json::Value::Number(n.into())
+                }),
+            "REAL" => row
+                .get::<Option<f64>, _>(i)
+                .map_or(serde_json::Value::Null, |f| {
+                    serde_json::Number::from_f64(f)
+                        .map_or(serde_json::Value::Null, serde_json::Value::Number)
+                }),
+            "BLOB" => row
+                .get::<Option<Vec<u8>>, _>(i)
+                .map_or(serde_json::Value::Null, |bytes| {
+                    serde_json::Value::String(STANDARD.encode(bytes))
+                }),
             _ => {
                 // Try different types in order
                 if let Ok(val) = row.try_get::<i64, _>(i) {
@@ -236,19 +254,28 @@ pub struct I256 {
 
 impl Default for I256 {
     fn default() -> Self {
-        Self { value: U256::from(0u8), is_negative: false }
+        Self {
+            value: U256::from(0u8),
+            is_negative: false,
+        }
     }
 }
 
 impl From<U256> for I256 {
     fn from(value: U256) -> Self {
-        Self { value, is_negative: false }
+        Self {
+            value,
+            is_negative: false,
+        }
     }
 }
 
 impl From<u8> for I256 {
     fn from(value: u8) -> Self {
-        Self { value: U256::from(value), is_negative: false }
+        Self {
+            value: U256::from(value),
+            is_negative: false,
+        }
     }
 }
 
@@ -262,23 +289,34 @@ impl Add for I256 {
             && self.is_negative
             && other.is_negative
         {
-            return I256 { value: U256::from(0u8), is_negative: false };
+            return I256 {
+                value: U256::from(0u8),
+                is_negative: false,
+            };
         }
 
         if self.is_negative == other.is_negative {
             // Same sign: add the values and keep the sign
-            I256 { value: self.value + other.value, is_negative: self.is_negative }
+            I256 {
+                value: self.value + other.value,
+                is_negative: self.is_negative,
+            }
         } else {
             // Different signs: subtract the smaller value from the larger one
             match self.value.cmp(&other.value) {
-                Ordering::Greater => {
-                    I256 { value: self.value - other.value, is_negative: self.is_negative }
-                }
-                Ordering::Less => {
-                    I256 { value: other.value - self.value, is_negative: other.is_negative }
-                }
+                Ordering::Greater => I256 {
+                    value: self.value - other.value,
+                    is_negative: self.is_negative,
+                },
+                Ordering::Less => I256 {
+                    value: other.value - self.value,
+                    is_negative: other.is_negative,
+                },
                 // If both values are equal, the result is zero and not negative
-                Ordering::Equal => I256 { value: U256::from(0u8), is_negative: false },
+                Ordering::Equal => I256 {
+                    value: U256::from(0u8),
+                    is_negative: false,
+                },
             }
         }
     }
@@ -288,8 +326,15 @@ impl Sub for I256 {
     type Output = I256;
 
     fn sub(self, other: I256) -> I256 {
-        let new_sign = if other.value == U256::from(0u8) { false } else { !other.is_negative };
-        let negated_other = I256 { value: other.value, is_negative: new_sign };
+        let new_sign = if other.value == U256::from(0u8) {
+            false
+        } else {
+            !other.is_negative
+        };
+        let negated_other = I256 {
+            value: other.value,
+            is_negative: new_sign,
+        };
         self.add(negated_other)
     }
 }
@@ -365,7 +410,10 @@ mod tests {
     #[test]
     fn test_add_zero_true_and_zero_false() {
         // 0,true + 0,false == 0,false
-        let a = I256 { value: U256::from(0u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(0u8),
+            is_negative: true,
+        };
         let b = I256::default();
         let result = a + b;
         assert_eq!(result.value, U256::from(0u8));
@@ -385,7 +433,10 @@ mod tests {
     #[test]
     fn test_sub_zero_true_and_zero_false() {
         // 0,true - 0,false == 0,false
-        let a = I256 { value: U256::from(0u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(0u8),
+            is_negative: true,
+        };
         let b = I256::default();
         let result = a - b;
         assert_eq!(result.value, U256::from(0u8));
@@ -396,7 +447,10 @@ mod tests {
     fn test_add_positive_and_negative_equal_values() {
         // 5,false + 5,true == 0,false
         let a = I256::from(U256::from(5u8));
-        let b = I256 { value: U256::from(5u8), is_negative: true };
+        let b = I256 {
+            value: U256::from(5u8),
+            is_negative: true,
+        };
         let result = a + b;
         assert_eq!(result.value, U256::from(0u8));
         assert!(!result.is_negative);
@@ -406,7 +460,10 @@ mod tests {
     fn test_sub_positive_and_negative() {
         // 10,false - 5,true == 15,false
         let a = I256::from(U256::from(10u8));
-        let b = I256 { value: U256::from(5u8), is_negative: true };
+        let b = I256 {
+            value: U256::from(5u8),
+            is_negative: true,
+        };
         let result = a - b;
         assert_eq!(result.value, U256::from(15u8));
         assert!(!result.is_negative);
@@ -416,7 +473,10 @@ mod tests {
     fn test_sub_larger_from_smaller() {
         // 5,false - 10,true == 15,true
         let a = I256::from(U256::from(5u8));
-        let b = I256 { value: U256::from(10u8), is_negative: true };
+        let b = I256 {
+            value: U256::from(10u8),
+            is_negative: true,
+        };
         let result = a - b;
         assert_eq!(result.value, U256::from(15u8));
         assert!(!result.is_negative);
@@ -426,7 +486,10 @@ mod tests {
     fn test_add_mixed_signs() {
         // 15,false + 10,true == 5,false
         let a = I256::from(U256::from(15u8));
-        let b = I256 { value: U256::from(10u8), is_negative: true };
+        let b = I256 {
+            value: U256::from(10u8),
+            is_negative: true,
+        };
         let result = a + b;
         assert_eq!(result.value, U256::from(5u8));
         assert!(!result.is_negative);
@@ -436,7 +499,10 @@ mod tests {
     fn test_sub_mixed_signs() {
         // 5,false - 10,true == 15,false
         let a = I256::from(U256::from(5u8));
-        let b = I256 { value: U256::from(10u8), is_negative: true };
+        let b = I256 {
+            value: U256::from(10u8),
+            is_negative: true,
+        };
         let result = a - b;
         assert_eq!(result.value, U256::from(15u8));
         assert!(!result.is_negative);
@@ -445,8 +511,14 @@ mod tests {
     #[test]
     fn test_add_negative_and_negative() {
         // -5,true + -3,true == -8,true
-        let a = I256 { value: U256::from(5u8), is_negative: true };
-        let b = I256 { value: U256::from(3u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(5u8),
+            is_negative: true,
+        };
+        let b = I256 {
+            value: U256::from(3u8),
+            is_negative: true,
+        };
         let result = a + b;
         assert_eq!(result.value, U256::from(8u8));
         assert!(result.is_negative);
@@ -455,8 +527,14 @@ mod tests {
     #[test]
     fn test_sub_negative_and_negative() {
         // -5,true - -3,true == -2,true
-        let a = I256 { value: U256::from(5u8), is_negative: true };
-        let b = I256 { value: U256::from(3u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(5u8),
+            is_negative: true,
+        };
+        let b = I256 {
+            value: U256::from(3u8),
+            is_negative: true,
+        };
         let result = a - b;
         assert_eq!(result.value, U256::from(2u8));
         assert!(result.is_negative);
@@ -475,8 +553,14 @@ mod tests {
     #[test]
     fn test_subtraction_resulting_zero_negative() {
         // 5,true - 5,true == 0,false
-        let a = I256 { value: U256::from(5u8), is_negative: true };
-        let b = I256 { value: U256::from(5u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(5u8),
+            is_negative: true,
+        };
+        let b = I256 {
+            value: U256::from(5u8),
+            is_negative: true,
+        };
         let result = a - b;
         assert_eq!(result.value, U256::from(0u8));
         assert!(!result.is_negative);
@@ -485,7 +569,10 @@ mod tests {
     #[test]
     fn test_add_negative_and_positive_result_positive() {
         // -10,true + 15,false == 5,false
-        let a = I256 { value: U256::from(10u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(10u8),
+            is_negative: true,
+        };
         let b = I256::from(U256::from(15u8));
         let result = a + b;
         assert_eq!(result.value, U256::from(5u8));
@@ -495,7 +582,10 @@ mod tests {
     #[test]
     fn test_add_negative_and_positive_result_negative() {
         // -15,true + 5,false == -10,true
-        let a = I256 { value: U256::from(15u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(15u8),
+            is_negative: true,
+        };
         let b = I256::from(U256::from(5u8));
         let result = a + b;
         assert_eq!(result.value, U256::from(10u8));
@@ -505,8 +595,14 @@ mod tests {
     #[test]
     fn test_add_zero_true_and_fifteen_true() {
         // 0,true + 15,true == 15,true
-        let a = I256 { value: U256::from(0u8), is_negative: true };
-        let b = I256 { value: U256::from(15u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(0u8),
+            is_negative: true,
+        };
+        let b = I256 {
+            value: U256::from(15u8),
+            is_negative: true,
+        };
         let result = a + b;
         assert_eq!(result.value, U256::from(15u8));
         assert!(result.is_negative);
@@ -515,8 +611,14 @@ mod tests {
     #[test]
     fn test_sub_zero_true_and_fifteen_true() {
         // 0,true - 15,true == 15,false
-        let a = I256 { value: U256::from(0u8), is_negative: true };
-        let b = I256 { value: U256::from(15u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(0u8),
+            is_negative: true,
+        };
+        let b = I256 {
+            value: U256::from(15u8),
+            is_negative: true,
+        };
         let result = a - b;
         assert_eq!(result.value, U256::from(15u8));
         assert!(!result.is_negative);
@@ -525,8 +627,14 @@ mod tests {
     #[test]
     fn test_add_fifteen_true_and_zero_true() {
         // 15,true + 0,true == 15,true
-        let a = I256 { value: U256::from(15u8), is_negative: true };
-        let b = I256 { value: U256::from(0u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(15u8),
+            is_negative: true,
+        };
+        let b = I256 {
+            value: U256::from(0u8),
+            is_negative: true,
+        };
         let result = a + b;
         assert_eq!(result.value, U256::from(15u8));
         assert!(result.is_negative);
@@ -535,8 +643,14 @@ mod tests {
     #[test]
     fn test_sub_fifteen_true_and_zero_true() {
         // 15,true - 0,true == 15,true
-        let a = I256 { value: U256::from(15u8), is_negative: true };
-        let b = I256 { value: U256::from(0u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(15u8),
+            is_negative: true,
+        };
+        let b = I256 {
+            value: U256::from(0u8),
+            is_negative: true,
+        };
         let result = a - b;
         assert_eq!(result.value, U256::from(15u8));
         assert!(result.is_negative);
@@ -545,8 +659,14 @@ mod tests {
     #[test]
     fn test_negative_zero() {
         // 0,true + 0,true == 0,false
-        let a = I256 { value: U256::from(0u8), is_negative: true };
-        let b = I256 { value: U256::from(0u8), is_negative: true };
+        let a = I256 {
+            value: U256::from(0u8),
+            is_negative: true,
+        };
+        let b = I256 {
+            value: U256::from(0u8),
+            is_negative: true,
+        };
         let result = a + b;
         assert_eq!(result.value, U256::from(0u8));
         assert!(!result.is_negative);
@@ -556,7 +676,10 @@ mod tests {
     fn test_sub_positive_and_negative_zero() {
         // 15,false - 0,true == 15,false
         let a = I256::from(U256::from(15u8));
-        let b = I256 { value: U256::from(0u8), is_negative: true };
+        let b = I256 {
+            value: U256::from(0u8),
+            is_negative: true,
+        };
         let result = a - b;
         assert_eq!(result.value, U256::from(15u8));
         assert!(!result.is_negative);
@@ -566,7 +689,10 @@ mod tests {
     fn test_add_positive_and_negative_zero() {
         // 15,false + 0,true == 15,false
         let a = I256::from(U256::from(15u8));
-        let b = I256 { value: U256::from(0u8), is_negative: true };
+        let b = I256 {
+            value: U256::from(0u8),
+            is_negative: true,
+        };
         let result = a + b;
         assert_eq!(result.value, U256::from(15u8));
         assert!(!result.is_negative);

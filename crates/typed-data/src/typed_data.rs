@@ -81,8 +81,14 @@ fn get_preset_types() -> IndexMap<String, Vec<Field>> {
     types.insert(
         "u256".to_string(),
         vec![
-            Field::SimpleType(SimpleField { name: "low".to_string(), r#type: "u128".to_string() }),
-            Field::SimpleType(SimpleField { name: "high".to_string(), r#type: "u128".to_string() }),
+            Field::SimpleType(SimpleField {
+                name: "low".to_string(),
+                r#type: "u128".to_string(),
+            }),
+            Field::SimpleType(SimpleField {
+                name: "high".to_string(),
+                r#type: "u128".to_string(),
+            }),
         ],
     );
 
@@ -93,7 +99,10 @@ fn get_preset_types() -> IndexMap<String, Vec<Field>> {
 // Looks up both the types hashmap as well as the preset types
 // Returns the fields and the hashmap of types
 fn get_fields(name: &str, types: &IndexMap<String, Vec<Field>>) -> Result<Vec<Field>, Error> {
-    types.get(name).cloned().ok_or_else(|| Error::TypeNotFound(name.to_string()))
+    types
+        .get(name)
+        .cloned()
+        .ok_or_else(|| Error::TypeNotFound(name.to_string()))
 }
 
 fn get_dependencies(
@@ -144,14 +153,17 @@ pub fn encode_type(name: &str, types: &IndexMap<String, Vec<Field>>) -> Result<S
                 Field::SimpleType(simple_field) => {
                     // if ( at start and ) at end
                     if simple_field.r#type.starts_with('(') && simple_field.r#type.ends_with(')') {
-                        let inner_types =
-                            &simple_field.r#type[1..simple_field.r#type.len() - 1]
-                                .split(',')
-                                .map(|t| {
-                                    if !t.is_empty() { format!("\"{}\"", t) } else { t.to_string() }
-                                })
-                                .collect::<Vec<String>>()
-                                .join(",");
+                        let inner_types = &simple_field.r#type[1..simple_field.r#type.len() - 1]
+                            .split(',')
+                            .map(|t| {
+                                if !t.is_empty() {
+                                    format!("\"{}\"", t)
+                                } else {
+                                    t.to_string()
+                                }
+                            })
+                            .collect::<Vec<String>>()
+                            .join(",");
                         type_hash += &format!("\"{}\":({})", simple_field.name, inner_types);
                     } else {
                         type_hash +=
@@ -350,7 +362,11 @@ impl PrimitiveType {
                 )),
             },
             PrimitiveType::Bool(boolean) => {
-                let v = if *boolean { Felt::from(1_u32) } else { Felt::from(0_u32) };
+                let v = if *boolean {
+                    Felt::from(1_u32)
+                } else {
+                    Felt::from(0_u32)
+                };
                 Ok(v)
             }
             PrimitiveType::String(string) => match r#type {
@@ -380,7 +396,10 @@ impl PrimitiveType {
                 "timestamp" => get_hex(string),
                 "u128" => get_hex(string),
                 "i128" => get_hex(string),
-                _ => Err(Error::InvalidType(format!("Invalid type {} for string", r#type))),
+                _ => Err(Error::InvalidType(format!(
+                    "Invalid type {} for string",
+                    r#type
+                ))),
             },
             PrimitiveType::Number(number) => {
                 let felt = Felt::from_str(&number.to_string())
@@ -412,16 +431,27 @@ impl Domain {
 
     pub fn encode(&self, types: &IndexMap<String, Vec<Field>>) -> Result<Felt, Error> {
         if self.revision.as_deref().unwrap_or("1") != "1" {
-            return Err(Error::InvalidDomain("Legacy revision 0 is not supported".to_string()));
+            return Err(Error::InvalidDomain(
+                "Legacy revision 0 is not supported".to_string(),
+            ));
         }
 
         let mut object = IndexMap::new();
         object.insert("name".to_string(), PrimitiveType::String(self.name.clone()));
-        object.insert("version".to_string(), PrimitiveType::String(self.version.clone()));
-        object.insert("chainId".to_string(), PrimitiveType::String(self.chain_id.clone()));
+        object.insert(
+            "version".to_string(),
+            PrimitiveType::String(self.version.clone()),
+        );
+        object.insert(
+            "chainId".to_string(),
+            PrimitiveType::String(self.chain_id.clone()),
+        );
 
         if let Some(revision) = &self.revision {
-            object.insert("revision".to_string(), PrimitiveType::String(revision.clone()));
+            object.insert(
+                "revision".to_string(),
+                PrimitiveType::String(revision.clone()),
+            );
         }
 
         PrimitiveType::Object(object).encode(
@@ -449,10 +479,11 @@ pub fn parse_value_to_ty(value: &PrimitiveType, ty: &mut Ty) -> Result<(), Error
         PrimitiveType::Object(object) => match ty {
             Ty::Struct(struct_) => {
                 for (key, value) in object {
-                    let member =
-                        struct_.children.iter_mut().find(|member| member.name == *key).ok_or_else(
-                            || Error::FieldNotFound(format!("Member {} not found", key)),
-                        )?;
+                    let member = struct_
+                        .children
+                        .iter_mut()
+                        .find(|member| member.name == *key)
+                        .ok_or_else(|| Error::FieldNotFound(format!("Member {} not found", key)))?;
 
                     parse_value_to_ty(value, &mut member.ty)?;
                 }
@@ -495,7 +526,10 @@ pub fn parse_value_to_ty(value: &PrimitiveType, ty: &mut Ty) -> Result<(), Error
                     .map_err(|e| Error::InvalidEnum(format!("Failed to set enum option: {}", e)))?;
             }
             _ => {
-                return Err(Error::InvalidType(format!("Invalid object type for {}", ty.name())));
+                return Err(Error::InvalidType(format!(
+                    "Invalid object type for {}",
+                    ty.name()
+                )));
             }
         },
         PrimitiveType::Array(values) => match ty {
@@ -523,7 +557,10 @@ pub fn parse_value_to_ty(value: &PrimitiveType, ty: &mut Ty) -> Result<(), Error
                 }
             }
             _ => {
-                return Err(Error::InvalidType(format!("Invalid array type for {}", ty.name())));
+                return Err(Error::InvalidType(format!(
+                    "Invalid array type for {}",
+                    ty.name()
+                )));
             }
         },
         PrimitiveType::Number(number) => match ty {
@@ -560,7 +597,10 @@ pub fn parse_value_to_ty(value: &PrimitiveType, ty: &mut Ty) -> Result<(), Error
                 }
             },
             _ => {
-                return Err(Error::InvalidType(format!("Invalid number type for {}", ty.name())));
+                return Err(Error::InvalidType(format!(
+                    "Invalid number type for {}",
+                    ty.name()
+                )));
             }
         },
         PrimitiveType::Bool(boolean) => {
@@ -621,7 +661,10 @@ pub fn parse_value_to_ty(value: &PrimitiveType, ty: &mut Ty) -> Result<(), Error
                 s.clone_from(string);
             }
             _ => {
-                return Err(Error::InvalidType(format!("Invalid string type for {}", ty.name())));
+                return Err(Error::InvalidType(format!(
+                    "Invalid string type for {}",
+                    ty.name()
+                )));
             }
         },
     }
@@ -640,8 +683,9 @@ pub fn map_ty_to_primitive(ty: &Ty) -> Result<PrimitiveType, Error> {
         }
         Ty::Enum(enum_) => {
             let mut object = IndexMap::new();
-            let option =
-                enum_.option.ok_or(Error::InvalidEnum("Enum option not found".to_string()))?;
+            let option = enum_
+                .option
+                .ok_or(Error::InvalidEnum("Enum option not found".to_string()))?;
             let option = enum_
                 .options
                 .get(option as usize)
@@ -773,7 +817,10 @@ fn map_ty_type(types: &mut IndexMap<String, Vec<Field>>, name: &str, ty: Ty) -> 
 
             types.insert(struct_ty.name.clone(), fields);
 
-            Field::SimpleType(SimpleField { name: name.to_string(), r#type: struct_ty.name })
+            Field::SimpleType(SimpleField {
+                name: name.to_string(),
+                r#type: struct_ty.name,
+            })
         }
         Ty::Enum(enum_ty) => {
             let mut fields = Vec::new();
@@ -804,9 +851,10 @@ fn map_ty_type(types: &mut IndexMap<String, Vec<Field>>, name: &str, ty: Ty) -> 
                     .join(",")
             ),
         }),
-        Ty::ByteArray(_) => {
-            Field::SimpleType(SimpleField { name: name.to_string(), r#type: "string".to_string() })
-        }
+        Ty::ByteArray(_) => Field::SimpleType(SimpleField {
+            name: name.to_string(),
+            r#type: "string".to_string(),
+        }),
     }
 }
 
@@ -826,7 +874,12 @@ impl TypedData {
         domain: Domain,
         message: IndexMap<String, PrimitiveType>,
     ) -> Self {
-        Self { types, primary_type: primary_type.to_string(), domain, message }
+        Self {
+            types,
+            primary_type: primary_type.to_string(),
+            domain,
+            message,
+        }
     }
 
     pub fn from_model(model: Ty, domain: Domain) -> Result<Self, Error> {
@@ -884,7 +937,12 @@ impl TypedData {
             &mut Default::default(),
         )?;
 
-        Ok(poseidon_hash_many(&[prefix_message, domain_hash, account, message_hash]))
+        Ok(poseidon_hash_many(&[
+            prefix_message,
+            domain_hash,
+            account,
+            message_hash,
+        ]))
     }
 }
 
@@ -977,7 +1035,10 @@ mod tests {
 
         let encoded = encode_type(&typed_data.primary_type, &typed_data.types).unwrap();
 
-        assert_eq!(encoded, "\"Example\"(\"n0\":\"TokenAmount\",\"n1\":\"NftId\")");
+        assert_eq!(
+            encoded,
+            "\"Example\"(\"n0\":\"TokenAmount\",\"n1\":\"NftId\")"
+        );
     }
 
     #[test]
@@ -989,10 +1050,12 @@ mod tests {
         let types = IndexMap::new();
         let preset_types = get_preset_types();
 
-        let encoded_selector =
-            selector.encode("selector", &types, &preset_types, &mut Default::default()).unwrap();
-        let raw_encoded_selector =
-            selector_hash.encode("felt", &types, &preset_types, &mut Default::default()).unwrap();
+        let encoded_selector = selector
+            .encode("selector", &types, &preset_types, &mut Default::default())
+            .unwrap();
+        let raw_encoded_selector = selector_hash
+            .encode("felt", &types, &preset_types, &mut Default::default())
+            .unwrap();
 
         assert_eq!(encoded_selector, raw_encoded_selector);
         assert_eq!(encoded_selector, starknet_keccak("transfer".as_bytes()));

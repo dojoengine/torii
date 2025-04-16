@@ -28,7 +28,10 @@ pub async fn count_rows(
 pub async fn fetch_world_address(conn: &mut SqliteConnection) -> Result<String> {
     let query = "SELECT contract_address FROM contracts where contract_type = ?".to_string();
     // for now we only have one world contract so this works
-    let res: (String,) = sqlx::query_as(&query).bind(WORLD_CONTRACT_TYPE).fetch_one(conn).await?;
+    let res: (String,) = sqlx::query_as(&query)
+        .bind(WORLD_CONTRACT_TYPE)
+        .fetch_one(conn)
+        .await?;
     Ok(res.0)
 }
 
@@ -65,7 +68,10 @@ pub async fn fetch_single_row(
     id_column: &str,
     id: &str,
 ) -> sqlx::Result<SqliteRow> {
-    let query = format!("SELECT * FROM [{}] WHERE {} = '{}'", table_name, id_column, id);
+    let query = format!(
+        "SELECT * FROM [{}] WHERE {} = '{}'",
+        table_name, id_column, id
+    );
     sqlx::query(&query).fetch_one(conn).await
 }
 
@@ -91,7 +97,12 @@ pub async fn fetch_single_row_with_joins(
                 Some(alias) => format!("[{}] AS {}", join.table, alias),
                 None => format!("[{}]", join.table),
             };
-            format!("{} {} ON {}", join.join_type.as_sql(), table_ref, join.on_condition)
+            format!(
+                "{} {} ON {}",
+                join.join_type.as_sql(),
+                table_ref,
+                join.on_condition
+            )
         })
         .collect::<Vec<String>>()
         .join(" ");
@@ -120,12 +131,22 @@ pub async fn fetch_multiple_rows(
 
     let mut cursor_param = &connection.after;
     if let Some(after_cursor) = &connection.after {
-        conditions.push(handle_cursor(after_cursor, order, CursorDirection::After, id_column)?);
+        conditions.push(handle_cursor(
+            after_cursor,
+            order,
+            CursorDirection::After,
+            id_column,
+        )?);
     }
 
     if let Some(before_cursor) = &connection.before {
         cursor_param = &connection.before;
-        conditions.push(handle_cursor(before_cursor, order, CursorDirection::Before, id_column)?);
+        conditions.push(handle_cursor(
+            before_cursor,
+            order,
+            CursorDirection::Before,
+            id_column,
+        )?);
     }
 
     let mut query = format!("SELECT * FROM [{}]", table_name);
@@ -135,8 +156,11 @@ pub async fn fetch_multiple_rows(
 
     let is_cursor_based = connection.first.or(connection.last).is_some() || cursor_param.is_some();
 
-    let data_limit =
-        connection.first.or(connection.last).or(connection.limit).unwrap_or(DEFAULT_LIMIT);
+    let data_limit = connection
+        .first
+        .or(connection.last)
+        .or(connection.limit)
+        .unwrap_or(DEFAULT_LIMIT);
     let limit = if is_cursor_based {
         match &cursor_param {
             Some(_) => data_limit + 2,
@@ -262,7 +286,12 @@ fn handle_cursor(
                 direction.as_ref(),
                 field_value
             )),
-            None => Ok(format!("{} {} '{}'", id_column, direction.as_ref(), event_id)),
+            None => Ok(format!(
+                "{} {} '{}'",
+                id_column,
+                direction.as_ref(),
+                event_id
+            )),
         },
         Err(_) => Err(sqlx::Error::Decode("Invalid cursor format".into())),
     }

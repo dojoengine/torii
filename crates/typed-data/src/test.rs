@@ -60,7 +60,10 @@ fn test_parse_primitive_to_ty() {
     let mut ty = Ty::Primitive(Primitive::ContractAddress(None));
     let value = PrimitiveType::String("1".to_string());
     parse_value_to_ty(&value, &mut ty).unwrap();
-    assert_eq!(ty, Ty::Primitive(Primitive::ContractAddress(Some(Felt::ONE))));
+    assert_eq!(
+        ty,
+        Ty::Primitive(Primitive::ContractAddress(Some(Felt::ONE)))
+    );
 
     let mut ty = Ty::Primitive(Primitive::EthAddress(None));
     let value = PrimitiveType::String("1".to_string());
@@ -147,7 +150,11 @@ fn test_parse_complex_to_ty() {
                 ty: Ty::Primitive(Primitive::ContractAddress(None)),
                 key: true,
             },
-            Member { name: "name".to_string(), ty: Ty::ByteArray("".to_string()), key: false },
+            Member {
+                name: "name".to_string(),
+                ty: Ty::ByteArray("".to_string()),
+                key: false,
+            },
             Member {
                 name: "items".to_string(),
                 // array of PlayerItem struct
@@ -175,7 +182,10 @@ fn test_parse_complex_to_ty() {
                     name: "Option".to_string(),
                     option: None,
                     options: vec![
-                        EnumOption { name: "None".to_string(), ty: Ty::Tuple(vec![]) },
+                        EnumOption {
+                            name: "None".to_string(),
+                            ty: Ty::Tuple(vec![]),
+                        },
                         EnumOption {
                             name: "Some".to_string(),
                             ty: Ty::Struct(Struct {
@@ -204,13 +214,22 @@ fn test_parse_complex_to_ty() {
     let value = PrimitiveType::Object(
         vec![
             ("player".to_string(), PrimitiveType::String("1".to_string())),
-            ("name".to_string(), PrimitiveType::String("mimi".to_string())),
+            (
+                "name".to_string(),
+                PrimitiveType::String("mimi".to_string()),
+            ),
             (
                 "items".to_string(),
                 PrimitiveType::Array(vec![PrimitiveType::Object(
                     vec![
-                        ("item_id".to_string(), PrimitiveType::String("1".to_string())),
-                        ("quantity".to_string(), PrimitiveType::Number(Number::from(1u64))),
+                        (
+                            "item_id".to_string(),
+                            PrimitiveType::String("1".to_string()),
+                        ),
+                        (
+                            "quantity".to_string(),
+                            PrimitiveType::Number(Number::from(1u64)),
+                        ),
                     ]
                     .into_iter()
                     .collect(),
@@ -223,8 +242,14 @@ fn test_parse_complex_to_ty() {
                         "Some".to_string(),
                         PrimitiveType::Object(
                             vec![
-                                ("item_id".to_string(), PrimitiveType::String("1".to_string())),
-                                ("quantity".to_string(), PrimitiveType::Number(Number::from(1u64))),
+                                (
+                                    "item_id".to_string(),
+                                    PrimitiveType::String("1".to_string()),
+                                ),
+                                (
+                                    "quantity".to_string(),
+                                    PrimitiveType::Number(Number::from(1u64)),
+                                ),
                             ]
                             .into_iter()
                             .collect(),
@@ -281,7 +306,10 @@ fn test_parse_complex_to_ty() {
                         name: "Option".to_string(),
                         option: Some(1_u8),
                         options: vec![
-                            EnumOption { name: "None".to_string(), ty: Ty::Tuple(vec![]) },
+                            EnumOption {
+                                name: "None".to_string(),
+                                ty: Ty::Tuple(vec![])
+                            },
                             EnumOption {
                                 name: "Some".to_string(),
                                 ty: Ty::Struct(Struct {
@@ -319,7 +347,11 @@ fn test_map_ty_to_complex() {
                 ty: Ty::Primitive(Primitive::ContractAddress(Some(Felt::ONE))),
                 key: true,
             },
-            Member { name: "name".to_string(), ty: Ty::ByteArray("mimi".to_string()), key: false },
+            Member {
+                name: "name".to_string(),
+                ty: Ty::ByteArray("mimi".to_string()),
+                key: false,
+            },
             Member {
                 name: "items".to_string(),
                 ty: Ty::Array(vec![Ty::Struct(Struct {
@@ -345,7 +377,10 @@ fn test_map_ty_to_complex() {
                     name: "Option".to_string(),
                     option: Some(1_u8),
                     options: vec![
-                        EnumOption { name: "None".to_string(), ty: Ty::Tuple(vec![]) },
+                        EnumOption {
+                            name: "None".to_string(),
+                            ty: Ty::Tuple(vec![]),
+                        },
                         EnumOption {
                             name: "Some".to_string(),
                             ty: Ty::Struct(Struct {
@@ -374,13 +409,22 @@ fn test_map_ty_to_complex() {
     let value = PrimitiveType::Object(
         vec![
             ("player".to_string(), PrimitiveType::String("1".to_string())),
-            ("name".to_string(), PrimitiveType::String("mimi".to_string())),
+            (
+                "name".to_string(),
+                PrimitiveType::String("mimi".to_string()),
+            ),
             (
                 "items".to_string(),
                 PrimitiveType::Array(vec![PrimitiveType::Object(
                     vec![
-                        ("item_id".to_string(), PrimitiveType::Number(Number::from(1u64))),
-                        ("quantity".to_string(), PrimitiveType::Number(Number::from(1u64))),
+                        (
+                            "item_id".to_string(),
+                            PrimitiveType::Number(Number::from(1u64)),
+                        ),
+                        (
+                            "quantity".to_string(),
+                            PrimitiveType::Number(Number::from(1u64)),
+                        ),
                     ]
                     .into_iter()
                     .collect(),
@@ -393,8 +437,14 @@ fn test_map_ty_to_complex() {
                         "Some".to_string(),
                         PrimitiveType::Object(
                             vec![
-                                ("item_id".to_string(), PrimitiveType::Number(Number::from(1u64))),
-                                ("quantity".to_string(), PrimitiveType::Number(Number::from(1u64))),
+                                (
+                                    "item_id".to_string(),
+                                    PrimitiveType::Number(Number::from(1u64)),
+                                ),
+                                (
+                                    "quantity".to_string(),
+                                    PrimitiveType::Number(Number::from(1u64)),
+                                ),
                             ]
                             .into_iter()
                             .collect(),
@@ -422,7 +472,11 @@ fn test_model_to_typed_data() {
                 ty: Ty::Primitive(Primitive::ContractAddress(Some(Felt::ONE))),
                 key: true,
             },
-            Member { name: "name".to_string(), ty: Ty::ByteArray("mimi".to_string()), key: false },
+            Member {
+                name: "name".to_string(),
+                ty: Ty::ByteArray("mimi".to_string()),
+                key: false,
+            },
             Member {
                 name: "items".to_string(),
                 // array of PlayerItem struct
@@ -450,7 +504,10 @@ fn test_model_to_typed_data() {
                     name: "Option".to_string(),
                     option: Some(1),
                     options: vec![
-                        EnumOption { name: "None".to_string(), ty: Ty::Tuple(vec![]) },
+                        EnumOption {
+                            name: "None".to_string(),
+                            ty: Ty::Tuple(vec![]),
+                        },
                         EnumOption {
                             name: "Some".to_string(),
                             ty: Ty::Struct(Struct {
@@ -485,5 +542,8 @@ fn test_model_to_typed_data() {
 
     let file_typed_data: TypedData = serde_json::from_reader(reader).unwrap();
 
-    assert_eq!(typed_data.encode(Felt::ZERO).unwrap(), file_typed_data.encode(Felt::ZERO).unwrap());
+    assert_eq!(
+        typed_data.encode(Felt::ZERO).unwrap(),
+        file_typed_data.encode(Felt::ZERO).unwrap()
+    );
 }

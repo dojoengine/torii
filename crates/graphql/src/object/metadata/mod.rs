@@ -154,7 +154,10 @@ fn extract_socials_mapping(name: &str, serde_value: &serde_json::Value) -> (Name
             .map(|(social_name, social_url)| {
                 Value::Object(ValueMapping::from([
                     (Name::new("name"), Value::String(social_name.to_string())),
-                    (Name::new("url"), Value::String(social_url.as_str().unwrap().to_string())),
+                    (
+                        Name::new("url"),
+                        Value::String(social_url.as_str().unwrap().to_string()),
+                    ),
                 ]))
             })
             .collect::<Vec<Value>>();

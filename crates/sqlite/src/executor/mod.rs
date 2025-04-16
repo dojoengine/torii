@@ -170,7 +170,12 @@ pub struct QueryMessage {
 
 impl QueryMessage {
     pub fn new(statement: String, arguments: Vec<Argument>, query_type: QueryType) -> Self {
-        Self { statement, arguments, query_type, tx: None }
+        Self {
+            statement,
+            arguments,
+            query_type,
+            tx: None,
+        }
     }
 
     pub fn new_recv(
@@ -179,11 +184,24 @@ impl QueryMessage {
         query_type: QueryType,
     ) -> (Self, oneshot::Receiver<Result<()>>) {
         let (tx, rx) = oneshot::channel();
-        (Self { statement, arguments, query_type, tx: Some(tx) }, rx)
+        (
+            Self {
+                statement,
+                arguments,
+                query_type,
+                tx: Some(tx),
+            },
+            rx,
+        )
     }
 
     pub fn other(statement: String, arguments: Vec<Argument>) -> Self {
-        Self { statement, arguments, query_type: QueryType::Other, tx: None }
+        Self {
+            statement,
+            arguments,
+            query_type: QueryType::Other,
+            tx: None,
+        }
     }
 
     pub fn other_recv(
@@ -191,7 +209,15 @@ impl QueryMessage {
         arguments: Vec<Argument>,
     ) -> (Self, oneshot::Receiver<Result<()>>) {
         let (tx, rx) = oneshot::channel();
-        (Self { statement, arguments, query_type: QueryType::Other, tx: Some(tx) }, rx)
+        (
+            Self {
+                statement,
+                arguments,
+                query_type: QueryType::Other,
+                tx: Some(tx),
+            },
+            rx,
+        )
     }
 
     pub fn execute() -> Self {
@@ -347,11 +373,14 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
             }
             QueryType::UpdateCursors(update_cursors) => {
                 // Read all cursors from db
-                let mut cursors: Vec<ContractCursor> =
-                    sqlx::query_as("SELECT * FROM contracts").fetch_all(&mut **tx).await?;
+                let mut cursors: Vec<ContractCursor> = sqlx::query_as("SELECT * FROM contracts")
+                    .fetch_all(&mut **tx)
+                    .await?;
 
-                let new_head =
-                    update_cursors.last_block_number.try_into().expect("doesn't fit in i64");
+                let new_head = update_cursors
+                    .last_block_number
+                    .try_into()
+                    .expect("doesn't fit in i64");
                 let new_timestamp = update_cursors.last_block_timestamp;
 
                 for cursor in &mut cursors {
@@ -359,16 +388,20 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
                         .cursor_map
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
                     {
-                        let cursor_timestamp: u64 =
-                            cursor.last_block_timestamp.try_into().expect("doesn't fit in i64");
+                        let cursor_timestamp: u64 = cursor
+                            .last_block_timestamp
+                            .try_into()
+                            .expect("doesn't fit in i64");
 
                         let num_transactions = new_cursor.1;
 
                         let new_tps = if new_timestamp - cursor_timestamp != 0 {
                             num_transactions / (new_timestamp - cursor_timestamp)
                         } else {
-                            let current_time =
-                                SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+                            let current_time = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs();
 
                             num_transactions / (current_time - cursor_timestamp)
                         };
@@ -386,8 +419,9 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
                     cursor.last_block_timestamp =
                         new_timestamp.try_into().expect("doesn't fit in i64");
                     cursor.head = new_head;
-                    cursor.last_pending_block_tx =
-                        update_cursors.last_pending_block_tx.map(|felt| felt_to_sql_string(&felt));
+                    cursor.last_pending_block_tx = update_cursors
+                        .last_pending_block_tx
+                        .map(|felt| felt_to_sql_string(&felt));
 
                     sqlx::query(
                         "UPDATE contracts SET head = ?, last_block_timestamp = ?, \
@@ -403,7 +437,8 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
                     .await?;
 
                     // Send appropriate ContractUpdated publish message
-                    self.publish_queue.push(BrokerMessage::SetHead(cursor.clone()));
+                    self.publish_queue
+                        .push(BrokerMessage::SetHead(cursor.clone()));
                 }
             }
             QueryType::StoreTransaction(store_transaction) => {
@@ -441,7 +476,8 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
                 transaction.contract_addresses = store_transaction.contract_addresses;
                 transaction.calls = store_transaction.calls;
 
-                self.publish_queue.push(BrokerMessage::Transaction(transaction));
+                self.publish_queue
+                    .push(BrokerMessage::Transaction(transaction));
             }
             QueryType::SetEntity(entity) => {
                 let row = query.fetch_one(&mut **tx).await?;
@@ -537,8 +573,10 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
                 .fetch_one(&mut **tx)
                 .await?;
                 let mut entity_updated = EntityUpdated::from_row(&row)?;
-                entity_updated.updated_model =
-                    Some(Ty::Struct(Struct { name: entity.ty.name(), children: vec![] }));
+                entity_updated.updated_model = Some(Ty::Struct(Struct {
+                    name: entity.ty.name(),
+                    children: vec![],
+                }));
 
                 let count = sqlx::query_scalar::<_, i64>(
                     "SELECT count(*) FROM entity_model WHERE entity_id = ?",
@@ -559,12 +597,14 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
                 SimpleBroker::publish(unsafe {
                     std::mem::transmute::<EntityUpdated, OptimisticEntity>(entity_updated.clone())
                 });
-                self.publish_queue.push(BrokerMessage::EntityUpdated(entity_updated));
+                self.publish_queue
+                    .push(BrokerMessage::EntityUpdated(entity_updated));
             }
             QueryType::RegisterModel => {
                 let row = query.fetch_one(&mut **tx).await?;
                 let model_registered = ModelRegistered::from_row(&row)?;
-                self.publish_queue.push(BrokerMessage::ModelRegistered(model_registered));
+                self.publish_queue
+                    .push(BrokerMessage::ModelRegistered(model_registered));
             }
             QueryType::EventMessage(em_query) => {
                 // Must be executed first since other tables have foreign keys on event_messages.id.
@@ -616,7 +656,8 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
                         event_message.clone(),
                     )
                 });
-                self.publish_queue.push(BrokerMessage::EventMessageUpdated(event_message));
+                self.publish_queue
+                    .push(BrokerMessage::EventMessageUpdated(event_message));
             }
             QueryType::StoreEvent => {
                 let row = query.fetch_one(&mut **tx).await?;
@@ -626,7 +667,8 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
             QueryType::ApplyBalanceDiff(apply_balance_diff) => {
                 debug!(target: LOG_TARGET, "Applying balance diff.");
                 let instant = Instant::now();
-                self.apply_balance_diff(apply_balance_diff, self.provider.clone()).await?;
+                self.apply_balance_diff(apply_balance_diff, self.provider.clone())
+                    .await?;
                 debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied balance diff.");
             }
             QueryType::RegisterNftToken(register_nft_token) => {
@@ -739,7 +781,8 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
                 let token = query.fetch_one(&mut **tx).await?;
                 info!(target: LOG_TARGET, name = %register_erc20_token.name, symbol = %register_erc20_token.symbol, contract_address = %token.contract_address, "Registered ERC20 token.");
 
-                self.publish_queue.push(BrokerMessage::TokenRegistered(token));
+                self.publish_queue
+                    .push(BrokerMessage::TokenRegistered(token));
             }
             QueryType::Flush => {
                 debug!(target: LOG_TARGET, "Flushing query.");

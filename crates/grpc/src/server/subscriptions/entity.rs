@@ -49,7 +49,12 @@ impl EntityManager {
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from
         // initial subscribe call
-        let _ = sender.send(Ok(SubscribeEntityResponse { entity: None, subscription_id })).await;
+        let _ = sender
+            .send(Ok(SubscribeEntityResponse {
+                entity: None,
+                subscription_id,
+            }))
+            .await;
 
         self.subscribers
             .write()
@@ -69,7 +74,10 @@ impl EntityManager {
             }
         };
 
-        self.subscribers.write().await.insert(id, EntitiesSubscriber { clauses, sender });
+        self.subscribers
+            .write()
+            .await
+            .insert(id, EntitiesSubscriber { clauses, sender });
     }
 
     pub(super) async fn remove_subscriber(&self, id: u64) {
@@ -120,7 +128,13 @@ impl Service {
             .keys
             .trim_end_matches(SQL_FELT_DELIMITER)
             .split(SQL_FELT_DELIMITER)
-            .filter_map(|key| if key.is_empty() { None } else { Some(Felt::from_str(key)) })
+            .filter_map(|key| {
+                if key.is_empty() {
+                    None
+                } else {
+                    Some(Felt::from_str(key))
+                }
+            })
             .collect::<Result<Vec<_>, _>>()
             .map_err(ParseError::FromStr)?;
 
@@ -152,7 +166,13 @@ impl Service {
             }
 
             // This should NEVER be None
-            let model = entity.updated_model.as_ref().unwrap().as_struct().unwrap().clone();
+            let model = entity
+                .updated_model
+                .as_ref()
+                .unwrap()
+                .as_struct()
+                .unwrap()
+                .clone();
             let resp = proto::world::SubscribeEntityResponse {
                 entity: Some(proto::types::Entity {
                     hashed_keys: hashed.to_bytes_be().to_vec(),
