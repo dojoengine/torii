@@ -29,12 +29,12 @@ inherits = "release"
 cainome = { version = "0.5.0", features = [ "abigen-rs" ] }
 cainome-cairo-serde = { version = "0.1.0" }
 
-dojo-utils = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
-dojo-types = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
-dojo-core = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
-dojo-world = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
-dojo-test-utils = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
-dojo-metrics = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
+dojo-utils = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
+dojo-types = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
+dojo-core = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
+dojo-world = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
+dojo-test-utils = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
+dojo-metrics = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
 
 topological-sort = "0.2"
 
