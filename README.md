@@ -31,6 +31,10 @@ To rebuild the test artifacts, you can use the following script:
 
 ```bash
 bash scripts/rebuild_test_artifacts.sh /path/to/sozo /path/to/katana
+
+# If you have dojo with asdf, using `sozo` and `katana` will suffice, or if you have them already
+# in the path with correect versions:
+bash scripts/rebuild_test_artifacts.sh sozo katana
 ```
 
 Finally, you can run the tests with:
