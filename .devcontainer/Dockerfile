@@ -56,6 +56,7 @@ RUN tar -C /usr/local -xzf go.tar.gz
 ENV PATH="${PATH}:/usr/local/go/bin"
 
 RUN go install github.com/asdf-vm/asdf/cmd/asdf@v0.16.0
+ENV PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"
 RUN asdf install
 
 RUN chown -R root:root /usr/local/cargo
