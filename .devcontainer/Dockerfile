@@ -57,8 +57,14 @@ ENV PATH="${PATH}:/usr/local/go/bin"
 
 RUN go install github.com/asdf-vm/asdf/cmd/asdf@v0.16.0
 ENV PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"
-RUN `go env GOPATH`/bin/asdf plugin add scarb
-RUN `go env GOPATH`/bin/asdf install scarb 2.9.4
+ENV PATH="${PATH}:/root/go/bin"
+
+RUN asdf plugin add scarb
+RUN asdf install scarb 2.9.4
+
+# For now add katana to the path to ensure the tests can be run without issues.
+RUN asdf plugin add dojo
+RUN asdf install dojo 1.4.1
 
 RUN chown -R root:root /usr/local/cargo
 RUN chmod -R 700 /usr/local/cargo
