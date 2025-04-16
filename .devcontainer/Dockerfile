@@ -57,6 +57,7 @@ ENV PATH="${PATH}:/usr/local/go/bin"
 
 RUN go install github.com/asdf-vm/asdf/cmd/asdf@v0.16.0
 ENV PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"
+RUN `go env GOPATH`/bin/asdf plugin add scarb
 RUN `go env GOPATH`/bin/asdf install scarb 2.9.4
 
 RUN chown -R root:root /usr/local/cargo
