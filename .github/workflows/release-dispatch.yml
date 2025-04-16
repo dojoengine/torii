@@ -1,0 +1,44 @@
+name: release-dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release
+        required: true
+        type: string
+
+jobs:
+  propose-release:
+    permissions:
+      pull-requests: write
+      contents: write
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Setup toolchain"
+        uses: "actions-rs/toolchain@v1"
+        with:
+          toolchain: "stable"
+
+      - run: |
+          VERSION=${{ inputs.version }}
+          VERSION=${VERSION#v}
+          cargo install cargo-release
+          cargo release version $VERSION --execute --no-confirm && cargo release replace --execute --no-confirm
+
+      - id: version_info
+        run: |
+          cargo install cargo-get
+          echo "version=$(cargo get workspace.package.version)" >> $GITHUB_OUTPUT
+
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.CREATE_PR_TOKEN }}
+          title: "release(prepare): v${{ steps.version_info.outputs.version }}"
+          commit-message: "release(prepare): v${{ steps.version_info.outputs.version }}"
+          branch: prepare-release
+          base: main
+          delete-branch: true

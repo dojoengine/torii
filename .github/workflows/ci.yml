@@ -1,0 +1,63 @@
+name: ci
+
+on:
+#  push:
+#    branches:
+#      - main
+#  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: 1.85.0
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/dojoengine/katana-runner:latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/rust_fmt.sh
+
+  clippy:
+    needs: [fmt]
+    runs-on: ubuntu-latest-4-cores
+    container:
+      image: ghcr.io/dojoengine/katana-runner:latest
+    env:
+      MLIR_SYS_190_PREFIX: /usr/lib/llvm-19/
+      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19/
+      TABLEGEN_190_PREFIX: /usr/lib/llvm-19/
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      # Workaround for https://github.com/actions/runner-images/issues/6775
+      - run: git config --global --add safe.directory "*"
+
+      - name: Run Clippy
+        run: |
+          make test-artifacts
+          ./scripts/clippy.sh
+
+  test:
+    needs: [fmt, clippy]
+    runs-on: ubuntu-latest-32-cores
+    container:
+      image: ghcr.io/dojoengine/torii-devcontainer:latest
+    env:
+      NEXTEST_PROFILE: ci
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build Torii binary
+        run: |
+          cargo build --release --bin torii
+          echo "$PWD/target/release" >> $GITHUB_PATH
+
+      - name: Run tests
+        run: |
+          cargo llvm-cov nextest --no-report --all-features --workspace --build-jobs 20
+          cargo llvm-cov report --lcov --output-path lcov.info
