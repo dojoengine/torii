@@ -38,26 +38,27 @@ jobs:
 
       - name: Run Clippy
         run: |
-          make test-artifacts
           ./scripts/clippy.sh
 
-  test:
-    needs: [fmt, clippy]
-    runs-on: ubuntu-latest-32-cores
-    container:
-      image: ghcr.io/dojoengine/torii-dev:latest
-    env:
-      NEXTEST_PROFILE: ci
-    steps:
-      - uses: actions/checkout@v3
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Build Torii binary
-        run: |
-          cargo build --release --bin torii
-          echo "$PWD/target/release" >> $GITHUB_PATH
-
-      - name: Run tests
-        run: |
-          cargo llvm-cov nextest --no-report --all-features --workspace --build-jobs 20
-          cargo llvm-cov report --lcov --output-path lcov.info
+#  test:
+#    needs: [fmt, clippy]
+#    runs-on: ubuntu-latest-32-cores
+#    container:
+#      image: ghcr.io/dojoengine/torii-dev:latest
+#    env:
+#      NEXTEST_PROFILE: ci
+#    steps:
+#      - uses: actions/checkout@v3
+#      - uses: Swatinem/rust-cache@v2
+#
+#      - name: Build Torii binary
+#        run: |
+#          cargo build --release --bin torii
+#          echo "$PWD/target/release" >> $GITHUB_PATH
+#
+#      - name: Run tests
+#        run: |
+#          # TODO: download Katana binary from Katana repo.
+#          bash scripts/extract_test_db.sh
+#          cargo llvm-cov nextest --no-report --all-features --workspace --build-jobs 20
+#          cargo llvm-cov report --lcov --output-path lcov.info
