@@ -1,8 +1,8 @@
 [package]
-description = "Torii SQLite implementation."
+description = "Torii indexer implementation."
 edition.workspace = true
 license-file.workspace = true
-name = "torii-sqlite"
+name = "torii-indexer"
 repository.workspace = true
 version.workspace = true
 
@@ -10,10 +10,12 @@ version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-recursion = "1.0.5"
 async-trait.workspace = true
 base64.workspace = true
 bitflags = "2.6.0"
 cainome.workspace = true
+cainome-cairo-serde.workspace = true
 chrono.workspace = true
 crypto-bigint.workspace = true
 data-url.workspace = true
@@ -23,12 +25,12 @@ dojo-world.workspace = true
 futures-channel = "0.3.0"
 futures-util.workspace = true
 hashlink.workspace = true
+num-traits.workspace = true
 once_cell.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 slab = "0.4.2"
-sqlx.workspace = true
 starknet-crypto.workspace = true
 starknet.workspace = true
 thiserror.workspace = true
@@ -37,12 +39,13 @@ tokio = { version = "1.32.0", features = [ "macros", "sync" ], default-features 
 ipfs-api-backend-hyper.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
+torii-sqlite.workspace = true
+lazy_static.workspace = true
 
 [dev-dependencies]
 dojo-test-utils.workspace = true
 dojo-utils.workspace = true
-katana-runner.workspace = true
-scarb.workspace = true
-sozo-scarbext.workspace = true
+katana-runner = { git = "https://github.com/dojoengine/katana", rev = "5cb249c0fa59fa6b7c88b32557e7baf8944cdb3d" }
+sozo-scarbext = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
 tempfile.workspace = true
-torii-indexer.workspace = true
+sqlx.workspace = true

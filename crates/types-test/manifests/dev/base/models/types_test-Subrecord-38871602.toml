@@ -1,0 +1,27 @@
+kind = "DojoModel"
+class_hash = "0x625501bd7599bd72e7dfcfc1f6eecc5c644f67a2da9757ff54dbbfc2144e05e"
+original_class_hash = "0x625501bd7599bd72e7dfcfc1f6eecc5c644f67a2da9757ff54dbbfc2144e05e"
+abi = "manifests/dev/base/abis/models/types_test-Subrecord-38871602.json"
+tag = "types_test-Subrecord"
+qualified_path = "types_test::models::subrecord"
+manifest_name = "types_test-Subrecord-38871602"
+
+[[members]]
+name = "record_id"
+type = "u32"
+key = true
+
+[[members]]
+name = "subrecord_id"
+type = "u32"
+key = true
+
+[[members]]
+name = "type_u8"
+type = "u8"
+key = false
+
+[[members]]
+name = "random_u8"
+type = "u8"
+key = false

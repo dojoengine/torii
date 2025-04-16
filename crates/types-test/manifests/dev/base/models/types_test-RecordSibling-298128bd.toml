@@ -1,0 +1,17 @@
+kind = "DojoModel"
+class_hash = "0x5cbf0ca2ef519098f0f197036d4f23e8647d296acfc7a22c0358d5f04bbf5c8"
+original_class_hash = "0x5cbf0ca2ef519098f0f197036d4f23e8647d296acfc7a22c0358d5f04bbf5c8"
+abi = "manifests/dev/base/abis/models/types_test-RecordSibling-298128bd.json"
+tag = "types_test-RecordSibling"
+qualified_path = "types_test::models::record_sibling"
+manifest_name = "types_test-RecordSibling-298128bd"
+
+[[members]]
+name = "record_id"
+type = "u32"
+key = true
+
+[[members]]
+name = "random_u8"
+type = "u8"
+key = false
