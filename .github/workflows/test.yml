@@ -1,4 +1,4 @@
-name: ci
+name: test
 
 on:
   push:
@@ -25,10 +25,6 @@ jobs:
     runs-on: ubuntu-latest-4-cores
     container:
       image: ghcr.io/dojoengine/torii-dev:latest
-    env:
-      MLIR_SYS_190_PREFIX: /usr/lib/llvm-19/
-      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19/
-      TABLEGEN_190_PREFIX: /usr/lib/llvm-19/
     steps:
       - uses: actions/checkout@v3
         with:
