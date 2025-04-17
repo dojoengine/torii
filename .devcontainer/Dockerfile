@@ -61,7 +61,7 @@ ENV PATH="${PATH}:/root/go/bin"
 
 RUN asdf plugin add scarb
 RUN asdf plugin add dojo
-RUN echo "scarb 2.9.4\ndojo 1.4.1" > /.tool-versions
+RUN echo "scarb 2.9.4\ndojo 1.4.0" > /.tool-versions
 RUN asdf install
 
 RUN chown -R root:root /usr/local/cargo
