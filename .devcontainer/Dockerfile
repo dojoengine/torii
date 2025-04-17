@@ -41,6 +41,7 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ] ; then \
     rm hurl.tar.gz && \
     rustup component add llvm-tools-preview --toolchain $(cat rust_toolchain_version)-aarch64-unknown-linux-gnu; \
     curl -L https://go.dev/dl/go1.24.2.linux-arm64.tar.gz -o go.tar.gz; \
+    curl -L https://github.com/dojoengine/dojo/releases/download/v1.4.1/dojo_v1.4.1_linux_arm64.tar.gz -o dojo.tar.gz; \
     elif [ "$TARGETPLATFORM" = "linux/amd64" ] ; then \
     curl -L https://github.com/Orange-OpenSource/hurl/releases/download/4.1.0/hurl-4.1.0-x86_64-unknown-linux-gnu.tar.gz -o hurl.tar.gz && \
     tar -xzf hurl.tar.gz && \
@@ -50,8 +51,14 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ] ; then \
     rustup component add llvm-tools-preview --toolchain $(cat rust_toolchain_version)-x86_64-unknown-linux-gnu && \
     rustup target add x86_64-fortanix-unknown-sgx --toolchain $(cat nightly_rust_toolchain_version); \
     curl -L https://go.dev/dl/go1.24.2.linux-amd64.tar.gz -o go.tar.gz; \
+    curl -L https://github.com/dojoengine/dojo/releases/download/v1.4.1/dojo_v1.4.1_linux_amd64.tar.gz -o dojo.tar.gz; \
     fi
 
+# Don't use asdf for dojo, since it's aarch64 for asdf, but dojo uses `arm64`.
+RUN tar -C /usr/local -xzf dojo.tar.gz
+ENV PATH="${PATH}:/usr/local"
+
+# For asdf to be installed for the current platform automatically.
 RUN tar -C /usr/local -xzf go.tar.gz
 ENV PATH="${PATH}:/usr/local/go/bin"
 
@@ -60,9 +67,7 @@ ENV PATH="/root/.asdf/shims:$PATH"
 ENV PATH="${PATH}:/root/go/bin"
 
 RUN asdf plugin add scarb
-RUN asdf plugin add dojo
-RUN echo "scarb 2.9.4\ndojo 1.4.0" > /.tool-versions
-RUN asdf install
+RUN asdf install scarb 2.9.4
 
 RUN chown -R root:root /usr/local/cargo
 RUN chmod -R 700 /usr/local/cargo
