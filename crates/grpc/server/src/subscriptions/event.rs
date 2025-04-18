@@ -20,9 +20,9 @@ use torii_sqlite::types::Event;
 use tracing::{error, trace};
 
 use super::match_keys;
-use crate::proto;
-use crate::proto::world::SubscribeEventsResponse;
-use crate::types::EntityKeysClause;
+use torii_proto::proto::types::Event as ProtoEvent;
+use torii_proto::proto::world::SubscribeEventsResponse;
+use torii_proto::EntityKeysClause;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::event";
 
@@ -31,7 +31,7 @@ pub struct EventSubscriber {
     /// Event keys that the subscriber is interested in
     keys: Vec<EntityKeysClause>,
     /// The channel to send the response back to the subscriber.
-    sender: Sender<Result<proto::world::SubscribeEventsResponse, tonic::Status>>,
+    sender: Sender<Result<SubscribeEventsResponse, tonic::Status>>,
 }
 
 #[derive(Debug, Default)]
@@ -43,7 +43,7 @@ impl EventManager {
     pub async fn add_subscriber(
         &self,
         keys: Vec<EntityKeysClause>,
-    ) -> Result<Receiver<Result<proto::world::SubscribeEventsResponse, tonic::Status>>, Error> {
+    ) -> Result<Receiver<Result<SubscribeEventsResponse, tonic::Status>>, Error> {
         let id = rand::thread_rng().gen::<usize>();
         let (sender, receiver) = channel(1);
 
@@ -122,8 +122,8 @@ impl Service {
                 continue;
             }
 
-            let resp = proto::world::SubscribeEventsResponse {
-                event: Some(proto::types::Event {
+            let resp = SubscribeEventsResponse {
+                event: Some(ProtoEvent {
                     keys: keys.iter().map(|k| k.to_bytes_be().to_vec()).collect(),
                     data: data.iter().map(|d| d.to_bytes_be().to_vec()).collect(),
                     transaction_hash: Felt::from_str(&event.transaction_hash)

@@ -28,9 +28,10 @@ use torii_sqlite::executor::Executor;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::Sql;
 
-use crate::proto::types::KeysClause;
-use crate::server::DojoWorld;
-use crate::types::schema::Entity;
+use torii_proto::proto::types::KeysClause;
+use torii_proto::schema::Entity;
+
+use crate::DojoWorld;
 
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
@@ -48,7 +49,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
@@ -132,7 +133,6 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         },
         EngineConfig::default(),
         shutdown_tx,
-        None,
         &[Contract {
             address: world_address,
             r#type: ContractType::WORLD,
@@ -148,15 +148,8 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
 
     db.execute().await.unwrap();
 
-    let (_, receiver) = tokio::sync::mpsc::channel(1);
     let model_cache = Arc::new(ModelCache::new(pool.clone()));
-    let grpc = DojoWorld::new(
-        db.pool,
-        receiver,
-        world_address,
-        provider.clone(),
-        model_cache,
-    );
+    let grpc = DojoWorld::new(db.pool, world_address, model_cache);
 
     let entities = grpc
         .query_by_keys(

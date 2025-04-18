@@ -18,8 +18,8 @@ use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::OptimisticTokenBalance;
 use tracing::{error, trace};
 
-use crate::proto;
-use crate::proto::world::SubscribeTokenBalancesResponse;
+use torii_proto::proto::types::TokenBalance;
+use torii_proto::proto::world::SubscribeTokenBalancesResponse;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::balance";
 
@@ -176,7 +176,7 @@ impl Service {
 
             let resp = SubscribeTokenBalancesResponse {
                 subscription_id: *idx,
-                balance: Some(proto::types::TokenBalance {
+                balance: Some(TokenBalance {
                     balance: balance.to_be_bytes().to_vec(),
                     account_address: account_address.to_bytes_be().to_vec(),
                     contract_address: contract_address.to_bytes_be().to_vec(),

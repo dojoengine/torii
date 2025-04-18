@@ -49,7 +49,6 @@ where
         },
         EngineConfig::default(),
         shutdown_tx,
-        None,
         contracts,
     );
 

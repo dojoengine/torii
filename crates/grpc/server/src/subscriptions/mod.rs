@@ -1,14 +1,13 @@
 use dojo_types::schema::Ty;
 use starknet_crypto::{poseidon_hash_many, Felt};
 
-use crate::types::{EntityKeysClause, PatternMatching};
+use torii_proto::{EntityKeysClause, PatternMatching};
 
 pub mod entity;
 pub mod error;
 pub mod event;
 pub mod event_message;
 pub mod indexer;
-pub mod model_diff;
 pub mod token;
 pub mod token_balance;
 

@@ -18,8 +18,8 @@ use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::OptimisticToken;
 use tracing::{error, trace};
 
-use crate::proto;
-use crate::proto::world::SubscribeTokensResponse;
+use torii_proto::proto::types::Token;
+use torii_proto::proto::world::SubscribeTokensResponse;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::token";
 
@@ -154,7 +154,7 @@ impl Service {
 
             let resp = SubscribeTokensResponse {
                 subscription_id: *idx,
-                token: Some(proto::types::Token {
+                token: Some(Token {
                     token_id: token_id.to_be_bytes().to_vec(),
                     contract_address: contract_address.to_bytes_be().to_vec(),
                     name: token.name.clone(),

@@ -4,7 +4,7 @@ use dojo_types::schema::{Enum, EnumOption, Member, Struct, Ty};
 use serde::{Deserialize, Serialize};
 use starknet::core::types::{Felt, FromStrError};
 
-use crate::proto::{self};
+use crate::proto;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SchemaError {

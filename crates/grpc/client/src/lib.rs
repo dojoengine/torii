@@ -1,4 +1,9 @@
 //! Client implementation for the gRPC service.
+#[cfg(target_arch = "wasm32")]
+extern crate wasm_prost as prost;
+#[cfg(target_arch = "wasm32")]
+extern crate wasm_tonic as tonic;
+
 use std::num::ParseIntError;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
@@ -6,27 +11,25 @@ use std::time::Duration;
 use crypto_bigint::{Encoding, U256};
 use futures_util::stream::MapOk;
 use futures_util::{Stream, StreamExt, TryStreamExt};
-use starknet::core::types::{Felt, FromStrError, StateDiff, StateUpdate};
+use starknet::core::types::{Felt, FromStrError};
 use tonic::codec::CompressionEncoding;
 #[cfg(not(target_arch = "wasm32"))]
 use tonic::transport::Endpoint;
 
-use crate::proto::world::{
+use torii_proto::proto::world::{
     world_client, RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEntitiesRequest,
     RetrieveEntitiesResponse, RetrieveEventMessagesRequest, RetrieveEventsRequest,
     RetrieveEventsResponse, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
     RetrieveTokensRequest, RetrieveTokensResponse, SubscribeEntitiesRequest,
     SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsRequest,
     SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
-    SubscribeModelsRequest, SubscribeModelsResponse, SubscribeTokenBalancesRequest,
-    SubscribeTokenBalancesResponse, SubscribeTokensRequest, SubscribeTokensResponse,
-    UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
-    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, UpdateEntitiesSubscriptionRequest,
+    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
+    UpdateTokenSubscriptionRequest, WorldMetadataRequest,
 };
-use crate::types::schema::{Entity, SchemaError};
-use crate::types::{
-    EntityKeysClause, Event, EventQuery, IndexerUpdate, ModelKeysClause, Query, Token, TokenBalance,
-};
+use torii_proto::schema::{Entity, SchemaError};
+use torii_proto::{EntityKeysClause, Event, EventQuery, IndexerUpdate, Query, Token, TokenBalance};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -429,30 +432,6 @@ impl WorldClient {
         ))))
     }
 
-    /// Subscribe to the model diff for a set of models of a World.
-    pub async fn subscribe_model_diffs(
-        &mut self,
-        models_keys: Vec<ModelKeysClause>,
-    ) -> Result<ModelDiffsStreaming, Error> {
-        let stream = self
-            .inner
-            .subscribe_models(SubscribeModelsRequest {
-                models_keys: models_keys.into_iter().map(|e| e.into()).collect(),
-            })
-            .await
-            .map_err(Error::Grpc)
-            .map(|res| res.into_inner())?;
-
-        Ok(ModelDiffsStreaming(stream.map_ok(Box::new(
-            |res| match res.model_update {
-                Some(update) => {
-                    TryInto::<StateUpdate>::try_into(update).expect("must able to serialize")
-                }
-                None => empty_state_update(),
-            },
-        ))))
-    }
-
     /// Subscribe to token balances.
     pub async fn subscribe_token_balances(
         &mut self,
@@ -563,25 +542,8 @@ impl Stream for TokenBalanceStreaming {
     }
 }
 
-type ModelDiffMappedStream = MapOk<
-    tonic::Streaming<SubscribeModelsResponse>,
-    Box<dyn Fn(SubscribeModelsResponse) -> StateUpdate + Send>,
->;
-
-#[derive(Debug)]
-pub struct ModelDiffsStreaming(ModelDiffMappedStream);
-
-impl Stream for ModelDiffsStreaming {
-    type Item = <ModelDiffMappedStream as Stream>::Item;
-    fn poll_next(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        self.0.poll_next_unpin(cx)
-    }
-}
-
 type SubscriptionId = u64;
+
 type EntityMappedStream = MapOk<
     tonic::Streaming<SubscribeEntityResponse>,
     Box<dyn Fn(SubscribeEntityResponse) -> (SubscriptionId, Entity) + Send>,
@@ -633,21 +595,5 @@ impl Stream for IndexerUpdateStreaming {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
         self.0.poll_next_unpin(cx)
-    }
-}
-
-fn empty_state_update() -> StateUpdate {
-    StateUpdate {
-        block_hash: Felt::ZERO,
-        new_root: Felt::ZERO,
-        old_root: Felt::ZERO,
-        state_diff: StateDiff {
-            declared_classes: vec![],
-            deployed_contracts: vec![],
-            deprecated_declared_classes: vec![],
-            nonces: vec![],
-            replaced_classes: vec![],
-            storage_diffs: vec![],
-        },
     }
 }

@@ -1,0 +1,33 @@
+[package]
+edition.workspace = true
+license-file.workspace = true
+name = "torii-grpc-client"
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+futures.workspace = true
+futures-util.workspace = true
+num-traits.workspace = true
+starknet.workspace = true
+starknet-crypto.workspace = true
+thiserror.workspace = true
+torii-proto = { workspace = true, features = ["client"] }
+crypto-bigint.workspace = true
+dojo-types.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tonic-web-wasm-client.workspace = true
+wasm-prost.workspace = true
+wasm-tonic.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio.workspace = true
+tokio-stream = "0.1.14"
+tonic-reflection.workspace = true
+tonic-web.workspace = true
+tonic.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true
+wasm-tonic-build.workspace = true

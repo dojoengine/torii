@@ -190,8 +190,6 @@ impl Runner {
 
         let processors = Processors::default();
 
-        let (block_tx, block_rx) = tokio::sync::mpsc::channel(100);
-
         let mut flags = IndexingFlags::empty();
         if self.args.indexing.transactions {
             flags.insert(IndexingFlags::TRANSACTIONS);
@@ -221,20 +219,12 @@ impl Runner {
                 world_block: self.args.indexing.world_block,
             },
             shutdown_tx.clone(),
-            Some(block_tx),
             &self.args.indexing.contracts,
         );
 
         let shutdown_rx = shutdown_tx.subscribe();
-        let (grpc_addr, grpc_server) = torii_grpc::server::new(
-            shutdown_rx,
-            &readonly_pool,
-            block_rx,
-            world_address,
-            Arc::clone(&provider),
-            model_cache,
-        )
-        .await?;
+        let (grpc_addr, grpc_server) =
+            torii_grpc_server::new(shutdown_rx, &readonly_pool, world_address, model_cache).await?;
 
         let temp_dir = TempDir::new()?;
         let artifacts_path = self

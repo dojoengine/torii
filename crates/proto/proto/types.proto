@@ -45,30 +45,6 @@ message Event {
     bytes transaction_hash = 3;
 }
 
-message StorageEntry {
-    // The key of the changed value
-    string key = 1;
-    // The new value applied to the given address
-    string value = 2;
-}
-
-message StorageDiff {
-    // The contract address for which the storage changed
-    string address = 1;
-    // The changes in the storage of the contract
-    repeated StorageEntry storage_entries = 2;
-}
-
-message ModelDiff {
-    // Storage diffs
-    repeated StorageDiff storage_diffs = 1;
-}
-
-message ModelUpdate {
-    string block_hash = 1;
-    ModelDiff model_diff = 2;
-}
-
 message Query {
     Clause clause = 1;
     uint32 limit = 2;
@@ -92,11 +68,6 @@ message Clause {
         MemberClause member = 3;
         CompositeClause composite = 4;
     }
-}
-
-message ModelKeysClause {
-    string model = 2;
-    repeated bytes keys = 3;
 }
 
 message EntityKeysClause {

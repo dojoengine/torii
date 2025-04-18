@@ -18,8 +18,7 @@ use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::ContractCursor as ContractUpdated;
 use tracing::{error, trace};
 
-use crate::proto;
-use crate::proto::world::SubscribeIndexerResponse;
+use torii_proto::proto::world::SubscribeIndexerResponse;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::indexer";
 
@@ -28,7 +27,7 @@ pub struct IndexerSubscriber {
     /// Contract address that the subscriber is interested in
     contract_address: Felt,
     /// The channel to send the response back to the subscriber.
-    sender: Sender<Result<proto::world::SubscribeIndexerResponse, tonic::Status>>,
+    sender: Sender<Result<SubscribeIndexerResponse, tonic::Status>>,
 }
 
 #[derive(Debug, Default)]
@@ -41,8 +40,7 @@ impl IndexerManager {
         &self,
         pool: &Pool<Sqlite>,
         contract_address: Felt,
-    ) -> Result<Receiver<Result<proto::world::SubscribeIndexerResponse, tonic::Status>>, Error>
-    {
+    ) -> Result<Receiver<Result<SubscribeIndexerResponse, tonic::Status>>, Error> {
         let id = rand::thread_rng().gen::<usize>();
         let (sender, receiver) = channel(1);
 
