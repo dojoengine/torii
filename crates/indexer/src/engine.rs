@@ -21,7 +21,6 @@ use starknet::core::utils::get_selector_from_name;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::mpsc::Sender as BoundedSender;
 use tokio::time::{sleep, Instant};
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
@@ -238,7 +237,6 @@ pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     processors: Arc<Processors<P>>,
     config: EngineConfig,
     shutdown_tx: Sender<()>,
-    block_tx: Option<BoundedSender<u64>>,
     task_manager: TaskManager<P>,
     contracts: Arc<HashMap<Felt, ContractType>>,
     contract_class_cache: Arc<ContractClassCache<P>>,
@@ -258,7 +256,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         processors: Processors<P>,
         config: EngineConfig,
         shutdown_tx: Sender<()>,
-        block_tx: Option<BoundedSender<u64>>,
         contracts: &[Contract],
     ) -> Self {
         let contracts = Arc::new(
@@ -280,7 +277,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             processors: processors.clone(),
             config,
             shutdown_tx,
-            block_tx,
             contracts,
             task_manager: TaskManager::new(
                 db,
@@ -737,10 +733,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
             // Process block
             if !processed_blocks.contains(&block_number) {
-                if let Some(ref block_tx) = self.block_tx {
-                    block_tx.send(block_number).await?;
-                }
-
                 self.process_block(block_number, range.blocks[&block_number])
                     .await?;
                 processed_blocks.insert(block_number);
