@@ -20,9 +20,8 @@ use torii_sqlite::types::OptimisticEntity;
 use tracing::{error, trace};
 
 use super::match_entity_keys;
-use crate::proto;
-use crate::proto::world::SubscribeEntityResponse;
-use crate::types::EntityKeysClause;
+use torii_proto::EntityKeysClause;
+use torii_proto::proto::world::SubscribeEntityResponse;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::entity";
 
@@ -31,7 +30,7 @@ pub struct EntitiesSubscriber {
     /// Entity ids that the subscriber is interested in
     pub(crate) clauses: Vec<EntityKeysClause>,
     /// The channel to send the response back to the subscriber.
-    pub(crate) sender: Sender<Result<proto::world::SubscribeEntityResponse, tonic::Status>>,
+    pub(crate) sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
 }
 #[derive(Debug, Default)]
 pub struct EntityManager {
@@ -42,7 +41,7 @@ impl EntityManager {
     pub async fn add_subscriber(
         &self,
         clauses: Vec<EntityKeysClause>,
-    ) -> Result<Receiver<Result<proto::world::SubscribeEntityResponse, tonic::Status>>, Error> {
+    ) -> Result<Receiver<Result<SubscribeEntityResponse, tonic::Status>>, Error> {
         let subscription_id = rand::thread_rng().gen::<u64>();
         let (sender, receiver) = channel(1);
 
@@ -150,8 +149,8 @@ impl Service {
             }
 
             if entity.deleted {
-                let resp = proto::world::SubscribeEntityResponse {
-                    entity: Some(proto::types::Entity {
+                let resp = SubscribeEntityResponse {
+                    entity: Some(torii_proto::proto::types::Entity {
                         hashed_keys: hashed.to_bytes_be().to_vec(),
                         models: vec![],
                     }),
@@ -173,8 +172,8 @@ impl Service {
                 .as_struct()
                 .unwrap()
                 .clone();
-            let resp = proto::world::SubscribeEntityResponse {
-                entity: Some(proto::types::Entity {
+            let resp = SubscribeEntityResponse {
+                entity: Some(torii_proto::proto::types::Entity {
                     hashed_keys: hashed.to_bytes_be().to_vec(),
                     models: vec![model.into()],
                 }),

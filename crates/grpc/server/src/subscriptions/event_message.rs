@@ -13,6 +13,8 @@ use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
 use tokio::sync::RwLock;
+use torii_proto::proto::types::Entity;
+use torii_proto::EntityKeysClause;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
@@ -20,9 +22,7 @@ use torii_sqlite::types::OptimisticEventMessage;
 use tracing::{error, trace};
 
 use super::match_entity_keys;
-use crate::proto;
-use crate::proto::world::SubscribeEntityResponse;
-use crate::types::EntityKeysClause;
+use torii_proto::proto::world::SubscribeEntityResponse;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::event_message";
 
@@ -31,7 +31,7 @@ pub struct EventMessageSubscriber {
     /// Entity ids that the subscriber is interested in
     pub(crate) clauses: Vec<EntityKeysClause>,
     /// The channel to send the response back to the subscriber.
-    pub(crate) sender: Sender<Result<proto::world::SubscribeEntityResponse, tonic::Status>>,
+    pub(crate) sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
 }
 
 #[derive(Debug, Default)]
@@ -43,7 +43,7 @@ impl EventMessageManager {
     pub async fn add_subscriber(
         &self,
         clauses: Vec<EntityKeysClause>,
-    ) -> Result<Receiver<Result<proto::world::SubscribeEntityResponse, tonic::Status>>, Error> {
+    ) -> Result<Receiver<Result<SubscribeEntityResponse, tonic::Status>>, Error> {
         let subscription_id = rand::thread_rng().gen::<u64>();
         let (sender, receiver) = channel(1);
 
@@ -150,8 +150,8 @@ impl Service {
                 .as_struct()
                 .unwrap()
                 .clone();
-            let resp = proto::world::SubscribeEntityResponse {
-                entity: Some(proto::types::Entity {
+            let resp = SubscribeEntityResponse {
+                entity: Some(Entity {
                     hashed_keys: hashed.to_bytes_be().to_vec(),
                     models: vec![model.into()],
                 }),

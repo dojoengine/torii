@@ -38,6 +38,7 @@ tokio-stream = "0.1.14"
 tonic-reflection.workspace = true
 tonic-web.workspace = true
 tonic.workspace = true
+anyhow.workspace = true
 
 [dev-dependencies]
 cainome.workspace = true

@@ -12,39 +12,36 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crypto_bigint::{Encoding, U256};
+use crypto_bigint::U256;
 use dojo_types::naming::compute_selector_from_tag;
-use dojo_types::primitive::{Primitive, PrimitiveError};
+use dojo_types::primitive::Primitive;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::naming::compute_selector_from_names;
 use futures::Stream;
 use http::HeaderName;
-use torii_torii_proto::world::{
-    RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventsRequest,
-    RetrieveEventsResponse, SubscribeModelsRequest, SubscribeModelsResponse,
-    UpdateEntitiesSubscriptionRequest,
-};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use sqlx::prelude::FromRow;
 use sqlx::sqlite::SqliteRow;
 use sqlx::types::chrono::{DateTime, Utc};
 use sqlx::{Pool, Row, Sqlite};
 use starknet::core::types::Felt;
-use starknet::providers::jsonrpc::HttpTransport;
-use starknet::providers::JsonRpcClient;
 use subscriptions::event::EventManager;
 use subscriptions::indexer::IndexerManager;
 use subscriptions::token::TokenManager;
 use subscriptions::token_balance::TokenBalanceManager;
 use tokio::net::TcpListener;
-use tokio::sync::mpsc::{channel, Receiver};
+use tokio::sync::mpsc::channel;
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::codec::CompressionEncoding;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
+use torii_proto::proto::world::{
+    RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventsRequest,
+    RetrieveEventsResponse, UpdateEntitiesSubscriptionRequest,
+};
 use torii_sqlite::cache::ModelCache;
-use torii_sqlite::error::{Error, ParseError, QueryError};
+use torii_sqlite::error::{ParseError, QueryError};
 use torii_sqlite::model::{fetch_entities, map_row_to_ty};
 use torii_sqlite::types::{Token, TokenBalance};
 use torii_sqlite::utils::u256_to_sql_string;
@@ -52,12 +49,12 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use self::subscriptions::entity::EntityManager;
 use self::subscriptions::event_message::EventMessageManager;
-use self::subscriptions::model_diff::{ModelDiffRequest, StateDiffManager};
-use torii_proto::types::clause::ClauseType;
-use torii_proto::types::member_value::ValueType;
-use torii_proto::types::LogicalOperator;
-use torii_proto::world::world_server::WorldServer;
-use torii_proto::world::{
+use anyhow::Error;
+use torii_proto::proto::types::clause::ClauseType;
+use torii_proto::proto::types::member_value::ValueType;
+use torii_proto::proto::types::LogicalOperator;
+use torii_proto::proto::world::world_server::WorldServer;
+use torii_proto::proto::world::{
     RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEntitiesStreamingResponse,
     RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
     RetrieveTokensRequest, RetrieveTokensResponse, SubscribeEntitiesRequest,
@@ -67,9 +64,8 @@ use torii_proto::world::{
     UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
     UpdateTokenSubscriptionRequest, WorldMetadataRequest, WorldMetadataResponse,
 };
+use torii_proto::ComparisonOperator;
 use torii_proto::{self};
-use torii_::SchemaError;
-use torii_proto::types::ComparisonOperator;
 
 pub(crate) static ENTITIES_TABLE: &str = "entities";
 pub(crate) static ENTITIES_MODEL_RELATION_TABLE: &str = "entity_model";
@@ -83,22 +79,6 @@ pub(crate) static EVENT_MESSAGES_ENTITY_RELATION_COLUMN: &str = "internal_event_
 
 pub(crate) static EVENT_MESSAGES_HISTORICAL_TABLE: &str = "event_messages_historical";
 
-impl From<SchemaError> for Error {
-    fn from(err: SchemaError) -> Self {
-        match err {
-            SchemaError::MissingExpectedData(data) => QueryError::MissingParam(data).into(),
-            SchemaError::UnsupportedType(data) => QueryError::UnsupportedValue(data).into(),
-            SchemaError::InvalidByteLength(got, expected) => {
-                PrimitiveError::InvalidByteLength(got, expected).into()
-            }
-            SchemaError::ParseIntError(err) => ParseError::ParseIntError(err).into(),
-            SchemaError::FromSlice(err) => ParseError::FromSlice(err).into(),
-            SchemaError::FromStr(err) => ParseError::FromStr(err).into(),
-            SchemaError::FromUtf8(err) => ParseError::FromUtf8(err).into(),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct DojoWorld {
     pool: Pool<Sqlite>,
@@ -107,7 +87,6 @@ pub struct DojoWorld {
     entity_manager: Arc<EntityManager>,
     event_message_manager: Arc<EventMessageManager>,
     event_manager: Arc<EventManager>,
-    state_diff_manager: Arc<StateDiffManager>,
     indexer_manager: Arc<IndexerManager>,
     token_balance_manager: Arc<TokenBalanceManager>,
     token_manager: Arc<TokenManager>,
@@ -116,25 +95,15 @@ pub struct DojoWorld {
 impl DojoWorld {
     pub fn new(
         pool: Pool<Sqlite>,
-        block_rx: Receiver<u64>,
         world_address: Felt,
-        provider: Arc<JsonRpcClient<HttpTransport>>,
         model_cache: Arc<ModelCache>,
     ) -> Self {
         let entity_manager = Arc::new(EntityManager::default());
         let event_message_manager = Arc::new(EventMessageManager::default());
         let event_manager = Arc::new(EventManager::default());
-        let state_diff_manager = Arc::new(StateDiffManager::default());
         let indexer_manager = Arc::new(IndexerManager::default());
         let token_balance_manager = Arc::new(TokenBalanceManager::default());
         let token_manager = Arc::new(TokenManager::default());
-
-        tokio::task::spawn(subscriptions::model_diff::Service::new_with_block_rcv(
-            block_rx,
-            world_address,
-            provider,
-            Arc::clone(&state_diff_manager),
-        ));
 
         tokio::task::spawn(subscriptions::entity::Service::new(Arc::clone(
             &entity_manager,
@@ -167,7 +136,6 @@ impl DojoWorld {
             entity_manager,
             event_message_manager,
             event_manager,
-            state_diff_manager,
             indexer_manager,
             token_balance_manager,
             token_manager,
@@ -176,7 +144,7 @@ impl DojoWorld {
 }
 
 impl DojoWorld {
-    pub async fn world(&self) -> Result<torii_proto::types::WorldMetadata, Error> {
+    pub async fn world(&self) -> Result<torii_proto::proto::types::WorldMetadata, Error> {
         let world_address = sqlx::query_scalar(&format!(
             "SELECT contract_address FROM contracts WHERE id = '{:#x}'",
             self.world_address
@@ -210,7 +178,7 @@ impl DojoWorld {
                 .model(&Felt::from_str(&model.id).map_err(ParseError::FromStr)?)
                 .await?
                 .schema;
-            models_metadata.push(torii_proto::types::ModelMetadata {
+            models_metadata.push(torii_proto::proto::types::ModelMetadata {
                 namespace: model.namespace,
                 name: model.name,
                 class_hash: model.class_hash,
@@ -222,7 +190,7 @@ impl DojoWorld {
             });
         }
 
-        Ok(torii_proto::types::WorldMetadata {
+        Ok(torii_proto::proto::types::WorldMetadata {
             world_address,
             models: models_metadata,
         })
@@ -240,7 +208,7 @@ impl DojoWorld {
         order_by: Option<&str>,
         entity_models: Vec<String>,
         entity_updated_after: Option<String>,
-    ) -> Result<(Vec<torii_proto::types::Entity>, u32), Error> {
+    ) -> Result<(Vec<torii_proto::proto::types::Entity>, u32), Error> {
         self.query_by_hashed_keys(
             table,
             model_relation_table,
@@ -262,7 +230,7 @@ impl DojoWorld {
         bind_values: Vec<String>,
         limit: Option<u32>,
         offset: Option<u32>,
-    ) -> Result<Vec<torii_proto::types::Entity>, Error> {
+    ) -> Result<Vec<torii_proto::proto::types::Entity>, Error> {
         let mut query = sqlx::query_as(query);
         for value in bind_values {
             query = query.bind(value);
@@ -284,10 +252,12 @@ impl DojoWorld {
             schema
                 .from_json_value(serde_json::from_str(&data).map_err(ParseError::FromJsonStr)?)?;
 
-            let entity = entities.entry(id).or_insert_with(|| torii_proto::types::Entity {
-                hashed_keys,
-                models: vec![],
-            });
+            let entity = entities
+                .entry(id)
+                .or_insert_with(|| torii_proto::proto::types::Entity {
+                    hashed_keys,
+                    models: vec![],
+                });
             entity
                 .models
                 .push(schema.as_struct().unwrap().clone().into());
@@ -302,14 +272,14 @@ impl DojoWorld {
         table: &str,
         model_relation_table: &str,
         entity_relation_column: &str,
-        hashed_keys: Option<torii_proto::types::HashedKeysClause>,
+        hashed_keys: Option<torii_proto::proto::types::HashedKeysClause>,
         limit: Option<u32>,
         offset: Option<u32>,
         dont_include_hashed_keys: bool,
         order_by: Option<&str>,
         entity_models: Vec<String>,
         entity_updated_after: Option<String>,
-    ) -> Result<(Vec<torii_proto::types::Entity>, u32), Error> {
+    ) -> Result<(Vec<torii_proto::proto::types::Entity>, u32), Error> {
         let where_clause = match &hashed_keys {
             Some(hashed_keys) => {
                 let ids = hashed_keys
@@ -449,14 +419,14 @@ impl DojoWorld {
         table: &str,
         model_relation_table: &str,
         entity_relation_column: &str,
-        keys_clause: &torii_proto::types::KeysClause,
+        keys_clause: &torii_proto::proto::types::KeysClause,
         limit: Option<u32>,
         offset: Option<u32>,
         dont_include_hashed_keys: bool,
         order_by: Option<&str>,
         entity_models: Vec<String>,
         entity_updated_after: Option<String>,
-    ) -> Result<(Vec<torii_proto::types::Entity>, u32), Error> {
+    ) -> Result<(Vec<torii_proto::proto::types::Entity>, u32), Error> {
         let keys_pattern = build_keys_pattern(keys_clause)?;
         let model_selectors: Vec<String> = keys_clause
             .models
@@ -593,14 +563,14 @@ impl DojoWorld {
         table: &str,
         model_relation_table: &str,
         entity_relation_column: &str,
-        member_clause: torii_proto::types::MemberClause,
+        member_clause: torii_proto::proto::types::MemberClause,
         limit: Option<u32>,
         offset: Option<u32>,
         dont_include_hashed_keys: bool,
         order_by: Option<&str>,
         entity_models: Vec<String>,
         entity_updated_after: Option<String>,
-    ) -> Result<(Vec<torii_proto::types::Entity>, u32), Error> {
+    ) -> Result<(Vec<torii_proto::proto::types::Entity>, u32), Error> {
         let entity_models = entity_models
             .iter()
             .map(|model| compute_selector_from_tag(model))
@@ -609,7 +579,7 @@ impl DojoWorld {
             .expect("invalid comparison operator");
 
         fn prepare_comparison(
-            value: &torii_proto::types::MemberValue,
+            value: &torii_proto::proto::types::MemberValue,
             bind_values: &mut Vec<String>,
         ) -> Result<String, Error> {
             match &value.value_type {
@@ -729,14 +699,14 @@ impl DojoWorld {
         table: &str,
         model_relation_table: &str,
         entity_relation_column: &str,
-        composite: torii_proto::types::CompositeClause,
+        composite: torii_proto::proto::types::CompositeClause,
         limit: Option<u32>,
         offset: Option<u32>,
         dont_include_hashed_keys: bool,
         order_by: Option<&str>,
         entity_models: Vec<String>,
         entity_updated_after: Option<String>,
-    ) -> Result<(Vec<torii_proto::types::Entity>, u32), Error> {
+    ) -> Result<(Vec<torii_proto::proto::types::Entity>, u32), Error> {
         let (where_clause, bind_values) = build_composite_clause(
             table,
             model_relation_table,
@@ -797,13 +767,13 @@ impl DojoWorld {
         &self,
         namespace: &str,
         name: &str,
-    ) -> Result<torii_proto::types::ModelMetadata, Error> {
+    ) -> Result<torii_proto::proto::types::ModelMetadata, Error> {
         // selector
         let model = compute_selector_from_names(namespace, name);
 
         let model = self.model_cache.model(&model).await?;
 
-        Ok(torii_proto::types::ModelMetadata {
+        Ok(torii_proto::proto::types::ModelMetadata {
             namespace: namespace.to_string(),
             name: name.to_string(),
             class_hash: format!("{:#x}", model.class_hash),
@@ -957,41 +927,13 @@ impl DojoWorld {
         })
     }
 
-    async fn subscribe_models(
-        &self,
-        models_keys: Vec<torii_proto::types::ModelKeysClause>,
-    ) -> Result<Receiver<Result<torii_proto::world::SubscribeModelsResponse, tonic::Status>>, Error> {
-        let mut subs = Vec::with_capacity(models_keys.len());
-        for keys in models_keys {
-            let (namespace, model) = keys
-                .model
-                .split_once('-')
-                .ok_or(QueryError::InvalidNamespacedModel(keys.model.clone()))?;
-
-            let selector = compute_selector_from_names(namespace, model);
-
-            let torii_proto::types::ModelMetadata { packed_size, .. } =
-                self.model_metadata(namespace, model).await?;
-
-            subs.push(ModelDiffRequest {
-                keys,
-                model: subscriptions::model_diff::ModelMetadata {
-                    selector,
-                    packed_size: packed_size as usize,
-                },
-            });
-        }
-
-        self.state_diff_manager.add_subscriber(subs).await
-    }
-
     async fn retrieve_entities(
         &self,
         table: &str,
         model_relation_table: &str,
         entity_relation_column: &str,
-        query: torii_proto::types::Query,
-    ) -> Result<torii_proto::world::RetrieveEntitiesResponse, Error> {
+        query: torii_proto::proto::types::Query,
+    ) -> Result<torii_proto::proto::world::RetrieveEntitiesResponse, Error> {
         let order_by = query
             .order_by
             .iter()
@@ -1141,8 +1083,8 @@ impl DojoWorld {
 
     async fn retrieve_events(
         &self,
-        query: &torii_proto::types::EventQuery,
-    ) -> Result<torii_proto::world::RetrieveEventsResponse, Error> {
+        query: &torii_proto::proto::types::EventQuery,
+    ) -> Result<torii_proto::proto::world::RetrieveEventsResponse, Error> {
         let limit = if query.limit > 0 {
             Some(query.limit)
         } else {
@@ -1200,7 +1142,7 @@ impl DojoWorld {
     async fn retrieve_controllers(
         &self,
         contract_addresses: Vec<Felt>,
-    ) -> Result<torii_proto::world::RetrieveControllersResponse, Error> {
+    ) -> Result<torii_proto::proto::world::RetrieveControllersResponse, Error> {
         let query = if contract_addresses.is_empty() {
             "SELECT address, username, deployed_at FROM controllers".to_string()
         } else {
@@ -1224,7 +1166,7 @@ impl DojoWorld {
         let controllers = rows
             .into_iter()
             .map(
-                |(address, username, deployed_at)| torii_proto::types::Controller {
+                |(address, username, deployed_at)| torii_proto::proto::types::Controller {
                     address: address.parse::<Felt>().unwrap().to_bytes_be().to_vec(),
                     username,
                     deployed_at_timestamp: deployed_at.timestamp() as u64,
@@ -1249,7 +1191,9 @@ fn process_event_field(data: &str) -> Result<Vec<Vec<u8>>, Error> {
         .collect::<Result<Vec<_>, _>>()?)
 }
 
-fn map_row_to_event(row: &(String, String, String)) -> Result<torii_proto::types::Event, Error> {
+fn map_row_to_event(
+    row: &(String, String, String),
+) -> Result<torii_proto::proto::types::Event, Error> {
     let keys = process_event_field(&row.0)?;
     let data = process_event_field(&row.1)?;
     let transaction_hash = Felt::from_str(&row.2)
@@ -1257,7 +1201,7 @@ fn map_row_to_event(row: &(String, String, String)) -> Result<torii_proto::types
         .to_bytes_be()
         .to_vec();
 
-    Ok(torii_proto::types::Event {
+    Ok(torii_proto::proto::types::Event {
         keys,
         data,
         transaction_hash,
@@ -1268,7 +1212,7 @@ fn map_row_to_entity(
     row: &SqliteRow,
     schemas: &[Ty],
     dont_include_hashed_keys: bool,
-) -> Result<torii_proto::types::Entity, Error> {
+) -> Result<torii_proto::proto::types::Entity, Error> {
     let hashed_keys = Felt::from_str(&row.get::<String, _>("id")).map_err(ParseError::FromStr)?;
     let model_ids = row
         .get::<String, _>("model_ids")
@@ -1286,7 +1230,7 @@ fn map_row_to_entity(
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    Ok(torii_proto::types::Entity {
+    Ok(torii_proto::proto::types::Entity {
         hashed_keys: if !dont_include_hashed_keys {
             hashed_keys.to_bytes_be().to_vec()
         } else {
@@ -1297,7 +1241,7 @@ fn map_row_to_entity(
 }
 
 // this builds a sql safe regex pattern to match against for keys
-fn build_keys_pattern(clause: &torii_proto::types::KeysClause) -> Result<String, Error> {
+fn build_keys_pattern(clause: &torii_proto::proto::types::KeysClause) -> Result<String, Error> {
     const KEY_PATTERN: &str = "0x[0-9a-fA-F]+";
 
     let keys = if clause.keys.is_empty() {
@@ -1316,7 +1260,7 @@ fn build_keys_pattern(clause: &torii_proto::types::KeysClause) -> Result<String,
     };
     let mut keys_pattern = format!("^{}", keys.join("/"));
 
-    if clause.pattern_matching == torii_proto::types::PatternMatching::VariableLen as i32 {
+    if clause.pattern_matching == torii_proto::proto::types::PatternMatching::VariableLen as i32 {
         keys_pattern += &format!("(/{})*", KEY_PATTERN);
     }
     keys_pattern += "/$";
@@ -1328,7 +1272,7 @@ fn build_keys_pattern(clause: &torii_proto::types::KeysClause) -> Result<String,
 fn build_composite_clause(
     table: &str,
     model_relation_table: &str,
-    composite: &torii_proto::types::CompositeClause,
+    composite: &torii_proto::proto::types::CompositeClause,
     entity_updated_after: Option<String>,
 ) -> Result<(String, Vec<String>), Error> {
     let is_or = composite.operator == LogicalOperator::Or as i32;
@@ -1381,7 +1325,7 @@ fn build_composite_clause(
                     .clone()
                     .ok_or(QueryError::MissingParam("value".into()))?;
                 fn prepare_comparison(
-                    value: &torii_proto::types::MemberValue,
+                    value: &torii_proto::proto::types::MemberValue,
                     bind_values: &mut Vec<String>,
                 ) -> Result<String, Error> {
                     match &value.value_type {
@@ -1455,8 +1399,6 @@ fn build_composite_clause(
 }
 
 type ServiceResult<T> = Result<Response<T>, Status>;
-type SubscribeModelsResponseStream =
-    Pin<Box<dyn Stream<Item = Result<SubscribeModelsResponse, Status>> + Send>>;
 type SubscribeEntitiesResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeEntityResponse, Status>> + Send>>;
 type SubscribeEventsResponseStream =
@@ -1471,8 +1413,7 @@ type SubscribeTokensResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokensResponse, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl torii_proto::world::world_server::World for DojoWorld {
-    type SubscribeModelsStream = SubscribeModelsResponseStream;
+impl torii_proto::proto::world::world_server::World for DojoWorld {
     type SubscribeEntitiesStream = SubscribeEntitiesResponseStream;
     type SubscribeEventMessagesStream = SubscribeEntitiesResponseStream;
     type SubscribeEventsStream = SubscribeEventsResponseStream;
@@ -1485,12 +1426,14 @@ impl torii_proto::world::world_server::World for DojoWorld {
         &self,
         _request: Request<WorldMetadataRequest>,
     ) -> Result<Response<WorldMetadataResponse>, Status> {
-        let metadata = Some(self.world().await.map_err(|e| match e {
-            Error::Sql(sqlx::Error::RowNotFound) => Status::not_found("World not found"),
-            e => Status::internal(e.to_string()),
-        })?);
+        let metadata = self
+            .world()
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
 
-        Ok(Response::new(WorldMetadataResponse { metadata }))
+        Ok(Response::new(WorldMetadataResponse {
+            metadata: Some(metadata),
+        }))
     }
 
     async fn retrieve_controllers(
@@ -1653,20 +1596,6 @@ impl torii_proto::world::world_server::World for DojoWorld {
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(
             Box::pin(ReceiverStream::new(rx)) as Self::SubscribeIndexerStream
-        ))
-    }
-
-    async fn subscribe_models(
-        &self,
-        request: Request<SubscribeModelsRequest>,
-    ) -> ServiceResult<Self::SubscribeModelsStream> {
-        let SubscribeModelsRequest { models_keys } = request.into_inner();
-        let rx = self
-            .subscribe_models(models_keys)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-        Ok(Response::new(
-            Box::pin(ReceiverStream::new(rx)) as Self::SubscribeModelsStream
         ))
     }
 
@@ -1906,7 +1835,7 @@ impl torii_proto::world::world_server::World for DojoWorld {
 
     async fn subscribe_events(
         &self,
-        request: Request<torii_proto::world::SubscribeEventsRequest>,
+        request: Request<torii_proto::proto::world::SubscribeEventsRequest>,
     ) -> ServiceResult<Self::SubscribeEventsStream> {
         let keys = request.into_inner().keys;
         let rx = self
@@ -1940,9 +1869,7 @@ const DEFAULT_ALLOW_HEADERS: [&str; 6] = [
 pub async fn new(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     pool: &Pool<Sqlite>,
-    block_rx: Receiver<u64>,
     world_address: Felt,
-    provider: Arc<JsonRpcClient<HttpTransport>>,
     model_cache: Arc<ModelCache>,
 ) -> Result<
     (
@@ -1955,11 +1882,11 @@ pub async fn new(
     let addr = listener.local_addr()?;
 
     let reflection = tonic_reflection::server::Builder::configure()
-        .register_encoded_file_descriptor_set(torii_proto::world::FILE_DESCRIPTOR_SET)
+        .register_encoded_file_descriptor_set(torii_proto::proto::world::FILE_DESCRIPTOR_SET)
         .build()
         .unwrap();
 
-    let world = DojoWorld::new(pool.clone(), block_rx, world_address, provider, model_cache);
+    let world = DojoWorld::new(pool.clone(), world_address, model_cache);
     let server = WorldServer::new(world)
         .accept_compressed(CompressionEncoding::Gzip)
         .send_compressed(CompressionEncoding::Gzip);
