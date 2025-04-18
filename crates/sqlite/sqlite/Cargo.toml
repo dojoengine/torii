@@ -9,6 +9,8 @@ version.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+torii-sqlite-types.workspace = true
+
 anyhow.workspace = true
 async-trait.workspace = true
 base64.workspace = true
@@ -42,6 +44,7 @@ tracing.workspace = true
 dojo-test-utils.workspace = true
 dojo-utils.workspace = true
 katana-runner = { git = "https://github.com/dojoengine/katana", rev = "5cb249c0fa59fa6b7c88b32557e7baf8944cdb3d" }
+scarb = { git = "https://github.com/dojoengine/scarb", rev = "8a60513c03e72b8a84f3ac266c61aac40c565aca" }
 sozo-scarbext = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
 tempfile.workspace = true
 torii-indexer.workspace = true

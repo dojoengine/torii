@@ -6,6 +6,7 @@ members = [
 	"crates/cli",
 	"crates/client",
 	"crates/server",
+ 	"crates/sqlite/types",
 	"xtask/generate-test-db",
 ]
 
@@ -48,7 +49,8 @@ torii-indexer = { path = "crates/indexer" }
 torii-relay = { path = "crates/libp2p" }
 torii-runner = { path = "crates/runner" }
 torii-server = { path = "crates/server" }
-torii-sqlite = { path = "crates/sqlite" }
+torii-sqlite = { path = "crates/sqlite/sqlite" }
+torii-sqlite-types = { path = "crates/sqlite/types" }
 torii-typed-data = { path = "crates/typed-data" }
 torii-mcp = { path = "crates/mcp" }
 
