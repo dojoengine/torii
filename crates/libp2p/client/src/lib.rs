@@ -10,9 +10,9 @@ use libp2p::swarm::{NetworkBehaviour, Swarm, SwarmEvent};
 use libp2p::{identify, identity, noise, ping, yamux, Multiaddr, PeerId};
 use tracing::info;
 
-mod events;
-pub mod constants;
+mod constants;
 pub mod error;
+mod events;
 
 use crate::error::Error;
 use torii_libp2p_types::Message;
@@ -64,7 +64,11 @@ impl RelayClient {
         let cert = Certificate::generate(&mut thread_rng()).unwrap();
         let mut swarm = libp2p::SwarmBuilder::with_existing_identity(local_key)
             .with_tokio()
-            .with_tcp(tcp::Config::default(), noise::Config::new, yamux::Config::default)?
+            .with_tcp(
+                tcp::Config::default(),
+                noise::Config::new,
+                yamux::Config::default,
+            )?
             .with_quic()
             .with_other_transport(|key| {
                 webrtc::tokio::Transport::new(key.clone(), cert)
@@ -97,7 +101,10 @@ impl RelayClient {
         let (command_sender, command_receiver) = futures::channel::mpsc::unbounded();
         Ok(Self {
             command_sender: CommandSender::new(command_sender),
-            event_loop: Arc::new(Mutex::new(EventLoop { swarm, command_receiver })),
+            event_loop: Arc::new(Mutex::new(EventLoop {
+                swarm,
+                command_receiver,
+            })),
         })
     }
 
@@ -159,7 +166,10 @@ impl RelayClient {
         let (command_sender, command_receiver) = futures::channel::mpsc::unbounded();
         Ok(Self {
             command_sender: CommandSender::new(command_sender),
-            event_loop: Arc::new(Mutex::new(EventLoop { swarm, command_receiver })),
+            event_loop: Arc::new(Mutex::new(EventLoop {
+                swarm,
+                command_receiver,
+            })),
         })
     }
 }
@@ -177,7 +187,9 @@ impl CommandSender {
     pub async fn publish(&self, data: Message) -> Result<MessageId, Error> {
         let (tx, rx) = oneshot::channel();
 
-        self.sender.unbounded_send(Command::Publish(data, tx)).expect("Failed to send command");
+        self.sender
+            .unbounded_send(Command::Publish(data, tx))
+            .expect("Failed to send command");
 
         rx.await.expect("Failed to receive response")
     }
@@ -194,9 +206,14 @@ impl EventLoop {
             Command::Publish(data, sender) => {
                 // if the relay is not ready yet, add the message to the queue
                 if !is_relay_ready {
-                    commands_queue.lock().await.push(Command::Publish(data, sender));
+                    commands_queue
+                        .lock()
+                        .await
+                        .push(Command::Publish(data, sender));
                 } else {
-                    sender.send(self.publish(&data)).expect("Failed to send response");
+                    sender
+                        .send(self.publish(&data))
+                        .expect("Failed to send response");
                 }
             }
         }
@@ -256,7 +273,9 @@ impl EventLoop {
 
 fn build_behaviour(key: &libp2p::identity::Keypair) -> Behaviour {
     let gossipsub_config: gossipsub::Config = gossipsub::ConfigBuilder::default()
-        .heartbeat_interval(Duration::from_secs(constants::GOSSIPSUB_HEARTBEAT_INTERVAL_SECS))
+        .heartbeat_interval(Duration::from_secs(
+            constants::GOSSIPSUB_HEARTBEAT_INTERVAL_SECS,
+        ))
         .build()
         .expect("Gossipsup config is invalid");
 
