@@ -20,8 +20,8 @@ use torii_grpc::types::{
     Controller, EntityKeysClause, Event, EventQuery, Page, Query, Token, TokenBalance,
 };
 use torii_libp2p_client::RelayClient;
-use torii_relay::client::EventLoop;
-use torii_relay::types::Message;
+use torii_libp2p_client::EventLoop;
+use torii_libp2p_types::Message;
 
 use crate::client::error::Error;
 

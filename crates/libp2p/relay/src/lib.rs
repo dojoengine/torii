@@ -10,6 +10,7 @@ use chrono::Utc;
 use dojo_types::naming::is_valid_tag;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::naming::compute_selector_from_tag;
+use events::BehaviourEvent;
 use futures::StreamExt;
 use libp2p::core::multiaddr::Protocol;
 use libp2p::core::muxing::StreamMuxerBox;
@@ -38,14 +39,12 @@ pub mod error;
 
 use crate::error::Error;
 use torii_typed_data::typed_data::{parse_value_to_ty, PrimitiveType, TypedData};
-
-use crate::events::ServerEvent;
 use torii_libp2p_types::Message;
 
 pub(crate) const LOG_TARGET: &str = "torii::relay::server";
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "ServerEvent")]
+#[behaviour(out_event = "BehaviourEvent")]
 #[allow(missing_debug_implementations)]
 pub struct Behaviour {
     relay: relay::Behaviour,
@@ -223,7 +222,7 @@ impl<P: Provider + Sync> Relay<P> {
             match self.swarm.next().await.expect("Infinite Stream.") {
                 SwarmEvent::Behaviour(event) => {
                     match &event {
-                        ServerEvent::Gossipsub(gossipsub::Event::Message {
+                        BehaviourEvent::Gossipsub(gossipsub::Event::Message {
                             propagation_source: peer_id,
                             message_id,
                             message,
@@ -430,7 +429,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 ),
                             }
                         }
-                        ServerEvent::Gossipsub(gossipsub::Event::Subscribed { peer_id, topic }) => {
+                        BehaviourEvent::Gossipsub(gossipsub::Event::Subscribed { peer_id, topic }) => {
                             info!(
                                 target: LOG_TARGET,
                                 peer_id = %peer_id,
@@ -438,7 +437,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 "Subscribed to topic."
                             );
                         }
-                        ServerEvent::Gossipsub(gossipsub::Event::Unsubscribed {
+                        BehaviourEvent::Gossipsub(gossipsub::Event::Unsubscribed {
                             peer_id,
                             topic,
                         }) => {
@@ -449,7 +448,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 "Unsubscribed from topic."
                             );
                         }
-                        ServerEvent::Identify(identify::Event::Received {
+                        BehaviourEvent::Identify(identify::Event::Received {
                             connection_id,
                             info: identify::Info { observed_addr, .. },
                             peer_id,
@@ -463,7 +462,7 @@ impl<P: Provider + Sync> Relay<P> {
                             );
                             self.swarm.add_external_address(observed_addr.clone());
                         }
-                        ServerEvent::Ping(ping::Event { peer, result, .. }) => {
+                        BehaviourEvent::Ping(ping::Event { peer, result, .. }) => {
                             info!(
                                 target: LOG_TARGET,
                                 peer_id = %peer,

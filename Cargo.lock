@@ -13147,6 +13147,7 @@ dependencies = [
  "tonic 0.12.3",
  "torii-grpc",
  "torii-libp2p-client",
+ "torii-libp2p-types",
  "url",
 ]
 

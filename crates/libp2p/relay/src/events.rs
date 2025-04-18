@@ -4,32 +4,32 @@ use libp2p::ping::Event as PingEvent;
 use libp2p::relay::Event as RelayEvent;
 
 #[derive(Debug)]
-pub enum ServerEvent {
+pub enum BehaviourEvent {
     Identify(IdentifyEvent),
     Ping(PingEvent),
     Relay(RelayEvent),
     Gossipsub(GossipsubEvent),
 }
 
-impl From<IdentifyEvent> for ServerEvent {
+impl From<IdentifyEvent> for BehaviourEvent {
     fn from(event: IdentifyEvent) -> Self {
         Self::Identify(event)
     }
 }
 
-impl From<PingEvent> for ServerEvent {
+impl From<PingEvent> for BehaviourEvent {
     fn from(event: PingEvent) -> Self {
         Self::Ping(event)
     }
 }
 
-impl From<RelayEvent> for ServerEvent {
+impl From<RelayEvent> for BehaviourEvent {
     fn from(event: RelayEvent) -> Self {
         Self::Relay(event)
     }
 }
 
-impl From<GossipsubEvent> for ServerEvent {
+impl From<GossipsubEvent> for BehaviourEvent {
     fn from(event: GossipsubEvent) -> Self {
         Self::Gossipsub(event)
     }

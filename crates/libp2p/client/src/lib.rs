@@ -17,12 +17,12 @@ pub mod error;
 use crate::error::Error;
 use torii_libp2p_types::Message;
 
-use crate::events::ClientEvent;
+use crate::events::BehaviourEvent;
 
 pub(crate) const LOG_TARGET: &str = "torii::relay::client";
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "ClientEvent")]
+#[behaviour(out_event = "BehaviourEvent")]
 struct Behaviour {
     gossipsub: gossipsub::Behaviour,
     identify: identify::Behaviour,
@@ -214,7 +214,7 @@ impl EventLoop {
                 },
                 event = self.swarm.select_next_some() => {
                     match event {
-                        SwarmEvent::Behaviour(ClientEvent::Gossipsub(gossipsub::Event::Subscribed { topic, .. })) => {
+                        SwarmEvent::Behaviour(BehaviourEvent::Gossipsub(gossipsub::Event::Subscribed { topic, .. })) => {
                             // Handle behaviour events.
                             info!(target: LOG_TARGET, topic = ?topic, "Relay ready. Received subscription confirmation.");
 
