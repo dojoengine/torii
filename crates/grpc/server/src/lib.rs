@@ -20,7 +20,7 @@ use dojo_types::schema::Ty;
 use dojo_world::contracts::naming::compute_selector_from_names;
 use futures::Stream;
 use http::HeaderName;
-use proto::world::{
+use torii_proto::world::{
     RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventsRequest,
     RetrieveEventsResponse, SubscribeModelsRequest, SubscribeModelsResponse,
     UpdateEntitiesSubscriptionRequest,

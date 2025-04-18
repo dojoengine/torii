@@ -13145,7 +13145,7 @@ dependencies = [
  "tokio",
  "tonic 0.11.0",
  "tonic 0.12.3",
- "torii-grpc",
+ "torii-grpc-client",
  "torii-libp2p-client",
  "torii-libp2p-types",
  "url",
@@ -13193,7 +13193,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "torii-grpc"
+name = "torii-grpc-client"
 version = "1.5.1"
 dependencies = [
  "cainome",
@@ -13229,6 +13229,50 @@ dependencies = [
  "tonic-reflection",
  "tonic-web",
  "tonic-web-wasm-client",
+ "torii-indexer",
+ "torii-proto",
+ "torii-sqlite",
+ "tower 0.4.13",
+ "tower-http",
+ "tracing",
+]
+
+[[package]]
+name = "torii-grpc-server"
+version = "1.5.1"
+dependencies = [
+ "cainome",
+ "camino",
+ "crypto-bigint",
+ "dojo-test-utils",
+ "dojo-types 1.4.1",
+ "dojo-utils",
+ "dojo-world 1.4.1",
+ "futures",
+ "futures-util",
+ "http 0.2.12",
+ "hyper 0.14.30",
+ "katana-runner",
+ "num-traits 0.2.19",
+ "rand 0.8.5",
+ "rayon",
+ "scarb",
+ "serde",
+ "serde_json",
+ "sozo-scarbext 1.4.0",
+ "sqlx",
+ "starknet 0.12.0",
+ "starknet-crypto 0.7.4",
+ "strum 0.25.0",
+ "strum_macros 0.25.3",
+ "tempfile",
+ "thiserror 1.0.63",
+ "tokio",
+ "tokio-stream",
+ "tonic-build 0.11.0",
+ "tonic-build 0.12.3",
+ "tonic-reflection",
+ "tonic-web",
  "torii-indexer",
  "torii-proto",
  "torii-sqlite",
@@ -13407,7 +13451,7 @@ dependencies = [
  "toml 0.8.19",
  "torii-cli",
  "torii-graphql",
- "torii-grpc",
+ "torii-grpc-server",
  "torii-indexer",
  "torii-libp2p-relay",
  "torii-server",
