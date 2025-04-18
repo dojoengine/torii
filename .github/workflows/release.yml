@@ -47,7 +47,6 @@ jobs:
       PLATFORM_NAME: ${{ matrix.job.platform }}
       TARGET: ${{ matrix.job.target }}
       ARCH: ${{ matrix.job.arch }}
-      CARGO_PROFILE: performance
     strategy:
       matrix:
         job:
@@ -112,7 +111,7 @@ jobs:
       - name: Build binary
         run: |
           cargo --version
-          cargo build -p torii --profile ${CARGO_PROFILE} --target ${{ matrix.job.target }}
+          cargo build -p torii --release --target ${{ matrix.job.target }}
 
       - name: Archive binaries
         id: artifacts
@@ -120,12 +119,12 @@ jobs:
           VERSION_NAME: ${{ needs.prepare.outputs.tag_name }}
         run: |
           if [ "$PLATFORM_NAME" == "linux" ]; then
-            tar -czvf "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/${CARGO_PROFILE} torii
+            tar -czvf "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release torii
             echo "file_name=torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
           elif [ "$PLATFORM_NAME" == "darwin" ]; then
             # We need to use gtar here otherwise the archive is corrupt.
             # See: https://github.com/actions/virtual-environments/issues/2619
-            gtar -czvf "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/${CARGO_PROFILE} torii
+            gtar -czvf "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release torii
             echo "file_name=torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
           fi
         shell: bash
@@ -135,7 +134,7 @@ jobs:
         if: ${{ env.PLATFORM_NAME == 'linux' }}
         run: |
           mkdir -p $PLATFORM_NAME/$ARCH
-          mv target/${TARGET}/${CARGO_PROFILE}/torii $PLATFORM_NAME/$ARCH
+          mv target/${TARGET}/release/torii $PLATFORM_NAME/$ARCH
         shell: bash
 
       - name: Upload docker binaries
