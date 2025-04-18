@@ -13148,6 +13148,7 @@ dependencies = [
  "torii-grpc-client",
  "torii-libp2p-client",
  "torii-libp2p-types",
+ "torii-proto",
  "url",
 ]
 
@@ -13212,6 +13213,7 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "tokio-stream",
+ "tonic 0.11.0",
  "tonic-build 0.11.0",
  "tonic-build 0.12.3",
  "tonic-reflection",
@@ -13226,6 +13228,7 @@ dependencies = [
 name = "torii-grpc-server"
 version = "1.5.1"
 dependencies = [
+ "anyhow",
  "cainome",
  "camino",
  "crypto-bigint",

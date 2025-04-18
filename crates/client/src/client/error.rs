@@ -1,7 +1,7 @@
 use dojo_world::contracts::model::ModelError;
 use starknet::core::types::Felt;
 use starknet::core::utils::{CairoShortStringToFeltError, ParseCairoShortStringError};
-use torii_grpc::types::schema::SchemaError;
+use torii_proto::schema::SchemaError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -14,7 +14,7 @@ pub enum Error {
     #[error("Parsing error: {0}")]
     Parse(#[from] ParseError),
     #[error(transparent)]
-    GrpcClient(#[from] torii_grpc::client::Error),
+    GrpcClient(#[from] torii_grpc_client::Error),
     #[error(transparent)]
     RelayClient(#[from] torii_libp2p_client::error::Error),
     #[error(transparent)]
