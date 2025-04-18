@@ -16,7 +16,3 @@ tonic.workspace = true
 [build-dependencies]
 tonic-build.workspace = true
 wasm-tonic-build.workspace = true
-
-[features]
-client = []
-server = []
