@@ -27,14 +27,8 @@ jobs:
       image: ghcr.io/dojoengine/torii-dev:latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      # Workaround for https://github.com/actions/runner-images/issues/6775
-      - run: git config --global --add safe.directory "*"
-
-      - name: Run Clippy
-        run: |
-          ./scripts/clippy.sh
+      - uses: Swatinem/rust-cache@v2
+      - run: ./scripts/clippy.sh
 
   test:
     needs: [fmt, clippy]
@@ -44,6 +38,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
+
+      - name: Check env
+        run: |
+          strings /lib/x86_64-linux-gnu/libc.so.6 | grep GLIBC_
+          ldd --version
 
       # Currently Katana is downloaded from Dojo, but soon it will be from its own repository.
       - name: Download Katana for integration tests
