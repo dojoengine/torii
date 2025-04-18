@@ -12903,7 +12903,7 @@ dependencies = [
 
 [[package]]
 name = "torii"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -12916,7 +12916,7 @@ dependencies = [
 
 [[package]]
 name = "torii-cli"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -12933,7 +12933,7 @@ dependencies = [
 
 [[package]]
 name = "torii-client"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "async-trait",
  "camino",
@@ -12961,7 +12961,7 @@ dependencies = [
 
 [[package]]
 name = "torii-graphql"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -13002,7 +13002,7 @@ dependencies = [
 
 [[package]]
 name = "torii-grpc"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "cainome",
  "camino",
@@ -13050,7 +13050,7 @@ dependencies = [
 
 [[package]]
 name = "torii-indexer"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -13093,7 +13093,7 @@ dependencies = [
 
 [[package]]
 name = "torii-mcp"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -13104,7 +13104,7 @@ dependencies = [
 
 [[package]]
 name = "torii-relay"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13139,7 +13139,7 @@ dependencies = [
 
 [[package]]
 name = "torii-runner"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -13187,7 +13187,7 @@ dependencies = [
 
 [[package]]
 name = "torii-server"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13224,7 +13224,7 @@ dependencies = [
 
 [[package]]
 name = "torii-sqlite"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13262,7 +13262,7 @@ dependencies = [
 
 [[package]]
 name = "torii-typed-data"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "cainome",
  "crypto-bigint",
@@ -14869,7 +14869,7 @@ checksum = "9d422e8e38ec76e2f06ee439ccc765e9c6a9638b9e7c9f2e8255e4d41e8bd852"
 
 [[package]]
 name = "xtask-generate-test-db"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "dojo-test-utils",
