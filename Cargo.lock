@@ -13209,8 +13209,6 @@ dependencies = [
  "hyper 0.14.30",
  "katana-runner",
  "num-traits 0.2.19",
- "prost 0.12.6",
- "prost 0.13.3",
  "rand 0.8.5",
  "rayon",
  "scarb",
@@ -13226,14 +13224,13 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "tokio-stream",
- "tonic 0.11.0",
- "tonic 0.12.3",
  "tonic-build 0.11.0",
  "tonic-build 0.12.3",
  "tonic-reflection",
  "tonic-web",
  "tonic-web-wasm-client",
  "torii-indexer",
+ "torii-proto",
  "torii-sqlite",
  "tower 0.4.13",
  "tower-http",
@@ -13361,6 +13358,18 @@ dependencies = [
  "sqlx",
  "tokio",
  "torii-sqlite",
+]
+
+[[package]]
+name = "torii-proto"
+version = "1.5.1"
+dependencies = [
+ "prost 0.12.6",
+ "prost 0.13.3",
+ "tonic 0.11.0",
+ "tonic 0.12.3",
+ "tonic-build 0.11.0",
+ "tonic-build 0.12.3",
 ]
 
 [[package]]

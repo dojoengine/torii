@@ -45,6 +45,7 @@ torii-cli = { path = "crates/cli" }
 torii-client = { path = "crates/client" }
 torii-graphql = { path = "crates/graphql" }
 torii-grpc = { path = "crates/grpc" }
+torii-proto = { path = "crates/proto" }
 torii-indexer = { path = "crates/indexer" }
 torii-libp2p-client = { path = "crates/libp2p/client" }
 torii-libp2p-relay = { path = "crates/libp2p/relay" }
