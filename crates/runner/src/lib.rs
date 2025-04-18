@@ -35,6 +35,7 @@ use tokio_stream::StreamExt;
 use torii_cli::ToriiArgs;
 use torii_indexer::engine::{Engine, EngineConfig, IndexingFlags, Processors};
 use torii_indexer::processors::EventProcessorConfig;
+use torii_libp2p_relay::Relay;
 use torii_server::proxy::Proxy;
 use torii_sqlite::cache::ModelCache;
 use torii_sqlite::executor::Executor;
@@ -252,7 +253,7 @@ impl Runner {
         )
         .await?;
 
-        let mut libp2p_relay_server = torii_relay::server::Relay::new_with_peers(
+        let mut libp2p_relay_server = Relay::new_with_peers(
             db,
             provider.clone(),
             self.args.relay.port,
