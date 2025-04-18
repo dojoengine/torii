@@ -23,7 +23,7 @@ use core::fmt;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-#[allow(unused)]
+#[cfg(not(target_arch = "wasm32"))]
 use crypto_bigint::Encoding;
 use crypto_bigint::U256;
 use dojo_types::primitive::Primitive;

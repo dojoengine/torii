@@ -25,7 +25,6 @@ use torii_proto::{
 
 use crate::error::Error;
 
-#[allow(unused)]
 #[derive(Debug)]
 pub struct Client {
     /// The grpc client.
