@@ -133,7 +133,6 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         },
         EngineConfig::default(),
         shutdown_tx,
-        None,
         &[Contract {
             address: world_address,
             r#type: ContractType::WORLD,
