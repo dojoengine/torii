@@ -57,6 +57,7 @@ torii-typed-data = { path = "crates/typed-data" }
 torii-mcp = { path = "crates/mcp" }
 torii-grpc-client = { path = "crates/grpc/client" }
 torii-grpc-server = { path = "crates/grpc/server" }
+torii-adigraphmap = { path = "crates/adigraphmap" }
 
 # macros
 merge-options = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
