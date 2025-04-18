@@ -6,7 +6,6 @@ members = [
 	"crates/cli",
 	"crates/client",
 	"crates/server",
-	"crates/sqlite/sqlite",
  	"crates/sqlite/types",
 	"xtask/generate-test-db",
 ]
