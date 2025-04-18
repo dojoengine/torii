@@ -14,7 +14,7 @@ rayon.workspace = true
 starknet.workspace = true
 starknet-crypto.workspace = true
 thiserror.workspace = true
-torii-sqlite = { path = "../sqlite", optional = true }
+torii-sqlite = { workspace = true, optional = true }
 
 crypto-bigint.workspace = true
 serde.workspace = true
@@ -35,8 +35,8 @@ camino.workspace = true
 dojo-test-utils.workspace = true
 dojo-utils.workspace = true
 katana-runner = { git = "https://github.com/dojoengine/katana", rev = "5cb249c0fa59fa6b7c88b32557e7baf8944cdb3d" }
-tempfile.workspace = true
 scarb = { git = "https://github.com/dojoengine/scarb", rev = "8a60513c03e72b8a84f3ac266c61aac40c565aca" }
+tempfile.workspace = true
 sozo-scarbext = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
 torii-indexer.workspace = true
 
