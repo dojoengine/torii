@@ -45,6 +45,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
 
+      # Currently Katana is downloaded from Dojo, but soon it will be from its own repository.
+      - name: Download Katana for integration tests
+        run: |
+          curl -L https://github.com/dojoengine/dojo/releases/download/v1.4.2/dojo_v1.4.2_linux_arm64.tar.gz -o dojo.tar.gz;
+          tar -C /usr/local/bin -xzf dojo.tar.gz
+
       - name: Build Torii binary
         run: |
           cargo build --release --bin torii
