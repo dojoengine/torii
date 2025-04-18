@@ -30,6 +30,15 @@ serde_json.workspace = true
 tower.workspace = true
 tracing.workspace = true
 
+tower-http.workspace = true
+http.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tokio-stream = "0.1.14"
+tonic-reflection.workspace = true
+tonic-web.workspace = true
+tonic.workspace = true
+
 [dev-dependencies]
 cainome.workspace = true
 camino.workspace = true
@@ -40,14 +49,6 @@ scarb = { git = "https://github.com/dojoengine/scarb", rev = "8a60513c03e72b8a84
 tempfile.workspace = true
 sozo-scarbext = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
 torii-indexer.workspace = true
-
-tower-http.workspace = true
-http.workspace = true
-sqlx.workspace = true
-tokio.workspace = true
-tokio-stream = "0.1.14"
-tonic-reflection.workspace = true
-tonic-web.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

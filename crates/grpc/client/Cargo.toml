@@ -22,25 +22,6 @@ serde.workspace = true
 strum.workspace = true
 strum_macros.workspace = true
 
-# server
-dojo-world.workspace = true
-hyper.workspace = true
-rand.workspace = true
-serde_json.workspace = true
-tower.workspace = true
-tracing.workspace = true
-
-[dev-dependencies]
-cainome.workspace = true
-camino.workspace = true
-dojo-test-utils.workspace = true
-dojo-utils.workspace = true
-katana-runner = { git = "https://github.com/dojoengine/katana", rev = "5cb249c0fa59fa6b7c88b32557e7baf8944cdb3d" }
-scarb = { git = "https://github.com/dojoengine/scarb", rev = "8a60513c03e72b8a84f3ac266c61aac40c565aca" }
-tempfile.workspace = true
-sozo-scarbext = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
-torii-indexer.workspace = true
-
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 tonic-web-wasm-client.workspace = true
 

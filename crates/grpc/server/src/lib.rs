@@ -1,4 +1,3 @@
-pub mod logger;
 pub mod subscriptions;
 
 #[cfg(test)]
@@ -20,7 +19,7 @@ use dojo_types::schema::Ty;
 use dojo_world::contracts::naming::compute_selector_from_names;
 use futures::Stream;
 use http::HeaderName;
-use torii_proto::world::{
+use torii_torii_proto::world::{
     RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventsRequest,
     RetrieveEventsResponse, SubscribeModelsRequest, SubscribeModelsResponse,
     UpdateEntitiesSubscriptionRequest,
@@ -54,11 +53,11 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use self::subscriptions::entity::EntityManager;
 use self::subscriptions::event_message::EventMessageManager;
 use self::subscriptions::model_diff::{ModelDiffRequest, StateDiffManager};
-use crate::proto::types::clause::ClauseType;
-use crate::proto::types::member_value::ValueType;
-use crate::proto::types::LogicalOperator;
-use crate::proto::world::world_server::WorldServer;
-use crate::proto::world::{
+use torii_proto::types::clause::ClauseType;
+use torii_proto::types::member_value::ValueType;
+use torii_proto::types::LogicalOperator;
+use torii_proto::world::world_server::WorldServer;
+use torii_proto::world::{
     RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEntitiesStreamingResponse,
     RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
     RetrieveTokensRequest, RetrieveTokensResponse, SubscribeEntitiesRequest,
@@ -68,9 +67,9 @@ use crate::proto::world::{
     UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
     UpdateTokenSubscriptionRequest, WorldMetadataRequest, WorldMetadataResponse,
 };
-use crate::proto::{self};
-use crate::types::schema::SchemaError;
-use crate::types::ComparisonOperator;
+use torii_proto::{self};
+use torii_::SchemaError;
+use torii_proto::types::ComparisonOperator;
 
 pub(crate) static ENTITIES_TABLE: &str = "entities";
 pub(crate) static ENTITIES_MODEL_RELATION_TABLE: &str = "entity_model";
@@ -96,55 +95,6 @@ impl From<SchemaError> for Error {
             SchemaError::FromSlice(err) => ParseError::FromSlice(err).into(),
             SchemaError::FromStr(err) => ParseError::FromStr(err).into(),
             SchemaError::FromUtf8(err) => ParseError::FromUtf8(err).into(),
-        }
-    }
-}
-
-impl From<Token> for proto::types::Token {
-    fn from(value: Token) -> Self {
-        Self {
-            token_id: if value.token_id.is_empty() {
-                U256::ZERO.to_be_bytes().to_vec()
-            } else {
-                U256::from_be_hex(value.token_id.trim_start_matches("0x"))
-                    .to_be_bytes()
-                    .to_vec()
-            },
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            name: value.name,
-            symbol: value.symbol,
-            decimals: value.decimals as u32,
-            metadata: value.metadata.as_bytes().to_vec(),
-        }
-    }
-}
-
-impl From<TokenBalance> for proto::types::TokenBalance {
-    fn from(value: TokenBalance) -> Self {
-        let id = value.token_id.split(':').collect::<Vec<&str>>();
-
-        Self {
-            balance: U256::from_be_hex(value.balance.trim_start_matches("0x"))
-                .to_be_bytes()
-                .to_vec(),
-            account_address: Felt::from_str(&value.account_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            token_id: if id.len() == 2 {
-                U256::from_be_hex(id[1].trim_start_matches("0x"))
-                    .to_be_bytes()
-                    .to_vec()
-            } else {
-                U256::ZERO.to_be_bytes().to_vec()
-            },
         }
     }
 }
@@ -226,7 +176,7 @@ impl DojoWorld {
 }
 
 impl DojoWorld {
-    pub async fn world(&self) -> Result<proto::types::WorldMetadata, Error> {
+    pub async fn world(&self) -> Result<torii_proto::types::WorldMetadata, Error> {
         let world_address = sqlx::query_scalar(&format!(
             "SELECT contract_address FROM contracts WHERE id = '{:#x}'",
             self.world_address
@@ -260,7 +210,7 @@ impl DojoWorld {
                 .model(&Felt::from_str(&model.id).map_err(ParseError::FromStr)?)
                 .await?
                 .schema;
-            models_metadata.push(proto::types::ModelMetadata {
+            models_metadata.push(torii_proto::types::ModelMetadata {
                 namespace: model.namespace,
                 name: model.name,
                 class_hash: model.class_hash,
@@ -272,7 +222,7 @@ impl DojoWorld {
             });
         }
 
-        Ok(proto::types::WorldMetadata {
+        Ok(torii_proto::types::WorldMetadata {
             world_address,
             models: models_metadata,
         })
@@ -290,7 +240,7 @@ impl DojoWorld {
         order_by: Option<&str>,
         entity_models: Vec<String>,
         entity_updated_after: Option<String>,
-    ) -> Result<(Vec<proto::types::Entity>, u32), Error> {
+    ) -> Result<(Vec<torii_proto::types::Entity>, u32), Error> {
         self.query_by_hashed_keys(
             table,
             model_relation_table,
@@ -312,7 +262,7 @@ impl DojoWorld {
         bind_values: Vec<String>,
         limit: Option<u32>,
         offset: Option<u32>,
-    ) -> Result<Vec<proto::types::Entity>, Error> {
+    ) -> Result<Vec<torii_proto::types::Entity>, Error> {
         let mut query = sqlx::query_as(query);
         for value in bind_values {
             query = query.bind(value);
@@ -334,7 +284,7 @@ impl DojoWorld {
             schema
                 .from_json_value(serde_json::from_str(&data).map_err(ParseError::FromJsonStr)?)?;
 
-            let entity = entities.entry(id).or_insert_with(|| proto::types::Entity {
+            let entity = entities.entry(id).or_insert_with(|| torii_proto::types::Entity {
                 hashed_keys,
                 models: vec![],
             });
@@ -352,14 +302,14 @@ impl DojoWorld {
         table: &str,
         model_relation_table: &str,
         entity_relation_column: &str,
-        hashed_keys: Option<proto::types::HashedKeysClause>,
+        hashed_keys: Option<torii_proto::types::HashedKeysClause>,
         limit: Option<u32>,
         offset: Option<u32>,
         dont_include_hashed_keys: bool,
         order_by: Option<&str>,
         entity_models: Vec<String>,
         entity_updated_after: Option<String>,
-    ) -> Result<(Vec<proto::types::Entity>, u32), Error> {
+    ) -> Result<(Vec<torii_proto::types::Entity>, u32), Error> {
         let where_clause = match &hashed_keys {
             Some(hashed_keys) => {
                 let ids = hashed_keys
@@ -499,14 +449,14 @@ impl DojoWorld {
         table: &str,
         model_relation_table: &str,
         entity_relation_column: &str,
-        keys_clause: &proto::types::KeysClause,
+        keys_clause: &torii_proto::types::KeysClause,
         limit: Option<u32>,
         offset: Option<u32>,
         dont_include_hashed_keys: bool,
         order_by: Option<&str>,
         entity_models: Vec<String>,
         entity_updated_after: Option<String>,
-    ) -> Result<(Vec<proto::types::Entity>, u32), Error> {
+    ) -> Result<(Vec<torii_proto::types::Entity>, u32), Error> {
         let keys_pattern = build_keys_pattern(keys_clause)?;
         let model_selectors: Vec<String> = keys_clause
             .models
@@ -643,14 +593,14 @@ impl DojoWorld {
         table: &str,
         model_relation_table: &str,
         entity_relation_column: &str,
-        member_clause: proto::types::MemberClause,
+        member_clause: torii_proto::types::MemberClause,
         limit: Option<u32>,
         offset: Option<u32>,
         dont_include_hashed_keys: bool,
         order_by: Option<&str>,
         entity_models: Vec<String>,
         entity_updated_after: Option<String>,
-    ) -> Result<(Vec<proto::types::Entity>, u32), Error> {
+    ) -> Result<(Vec<torii_proto::types::Entity>, u32), Error> {
         let entity_models = entity_models
             .iter()
             .map(|model| compute_selector_from_tag(model))
@@ -659,7 +609,7 @@ impl DojoWorld {
             .expect("invalid comparison operator");
 
         fn prepare_comparison(
-            value: &proto::types::MemberValue,
+            value: &torii_proto::types::MemberValue,
             bind_values: &mut Vec<String>,
         ) -> Result<String, Error> {
             match &value.value_type {
@@ -779,14 +729,14 @@ impl DojoWorld {
         table: &str,
         model_relation_table: &str,
         entity_relation_column: &str,
-        composite: proto::types::CompositeClause,
+        composite: torii_proto::types::CompositeClause,
         limit: Option<u32>,
         offset: Option<u32>,
         dont_include_hashed_keys: bool,
         order_by: Option<&str>,
         entity_models: Vec<String>,
         entity_updated_after: Option<String>,
-    ) -> Result<(Vec<proto::types::Entity>, u32), Error> {
+    ) -> Result<(Vec<torii_proto::types::Entity>, u32), Error> {
         let (where_clause, bind_values) = build_composite_clause(
             table,
             model_relation_table,
@@ -847,13 +797,13 @@ impl DojoWorld {
         &self,
         namespace: &str,
         name: &str,
-    ) -> Result<proto::types::ModelMetadata, Error> {
+    ) -> Result<torii_proto::types::ModelMetadata, Error> {
         // selector
         let model = compute_selector_from_names(namespace, name);
 
         let model = self.model_cache.model(&model).await?;
 
-        Ok(proto::types::ModelMetadata {
+        Ok(torii_proto::types::ModelMetadata {
             namespace: namespace.to_string(),
             name: name.to_string(),
             class_hash: format!("{:#x}", model.class_hash),
@@ -1009,8 +959,8 @@ impl DojoWorld {
 
     async fn subscribe_models(
         &self,
-        models_keys: Vec<proto::types::ModelKeysClause>,
-    ) -> Result<Receiver<Result<proto::world::SubscribeModelsResponse, tonic::Status>>, Error> {
+        models_keys: Vec<torii_proto::types::ModelKeysClause>,
+    ) -> Result<Receiver<Result<torii_proto::world::SubscribeModelsResponse, tonic::Status>>, Error> {
         let mut subs = Vec::with_capacity(models_keys.len());
         for keys in models_keys {
             let (namespace, model) = keys
@@ -1020,7 +970,7 @@ impl DojoWorld {
 
             let selector = compute_selector_from_names(namespace, model);
 
-            let proto::types::ModelMetadata { packed_size, .. } =
+            let torii_proto::types::ModelMetadata { packed_size, .. } =
                 self.model_metadata(namespace, model).await?;
 
             subs.push(ModelDiffRequest {
@@ -1040,8 +990,8 @@ impl DojoWorld {
         table: &str,
         model_relation_table: &str,
         entity_relation_column: &str,
-        query: proto::types::Query,
-    ) -> Result<proto::world::RetrieveEntitiesResponse, Error> {
+        query: torii_proto::types::Query,
+    ) -> Result<torii_proto::world::RetrieveEntitiesResponse, Error> {
         let order_by = query
             .order_by
             .iter()
@@ -1191,8 +1141,8 @@ impl DojoWorld {
 
     async fn retrieve_events(
         &self,
-        query: &proto::types::EventQuery,
-    ) -> Result<proto::world::RetrieveEventsResponse, Error> {
+        query: &torii_proto::types::EventQuery,
+    ) -> Result<torii_proto::world::RetrieveEventsResponse, Error> {
         let limit = if query.limit > 0 {
             Some(query.limit)
         } else {
@@ -1250,7 +1200,7 @@ impl DojoWorld {
     async fn retrieve_controllers(
         &self,
         contract_addresses: Vec<Felt>,
-    ) -> Result<proto::world::RetrieveControllersResponse, Error> {
+    ) -> Result<torii_proto::world::RetrieveControllersResponse, Error> {
         let query = if contract_addresses.is_empty() {
             "SELECT address, username, deployed_at FROM controllers".to_string()
         } else {
@@ -1274,7 +1224,7 @@ impl DojoWorld {
         let controllers = rows
             .into_iter()
             .map(
-                |(address, username, deployed_at)| proto::types::Controller {
+                |(address, username, deployed_at)| torii_proto::types::Controller {
                     address: address.parse::<Felt>().unwrap().to_bytes_be().to_vec(),
                     username,
                     deployed_at_timestamp: deployed_at.timestamp() as u64,
@@ -1299,7 +1249,7 @@ fn process_event_field(data: &str) -> Result<Vec<Vec<u8>>, Error> {
         .collect::<Result<Vec<_>, _>>()?)
 }
 
-fn map_row_to_event(row: &(String, String, String)) -> Result<proto::types::Event, Error> {
+fn map_row_to_event(row: &(String, String, String)) -> Result<torii_proto::types::Event, Error> {
     let keys = process_event_field(&row.0)?;
     let data = process_event_field(&row.1)?;
     let transaction_hash = Felt::from_str(&row.2)
@@ -1307,7 +1257,7 @@ fn map_row_to_event(row: &(String, String, String)) -> Result<proto::types::Even
         .to_bytes_be()
         .to_vec();
 
-    Ok(proto::types::Event {
+    Ok(torii_proto::types::Event {
         keys,
         data,
         transaction_hash,
@@ -1318,7 +1268,7 @@ fn map_row_to_entity(
     row: &SqliteRow,
     schemas: &[Ty],
     dont_include_hashed_keys: bool,
-) -> Result<proto::types::Entity, Error> {
+) -> Result<torii_proto::types::Entity, Error> {
     let hashed_keys = Felt::from_str(&row.get::<String, _>("id")).map_err(ParseError::FromStr)?;
     let model_ids = row
         .get::<String, _>("model_ids")
@@ -1336,7 +1286,7 @@ fn map_row_to_entity(
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    Ok(proto::types::Entity {
+    Ok(torii_proto::types::Entity {
         hashed_keys: if !dont_include_hashed_keys {
             hashed_keys.to_bytes_be().to_vec()
         } else {
@@ -1347,7 +1297,7 @@ fn map_row_to_entity(
 }
 
 // this builds a sql safe regex pattern to match against for keys
-fn build_keys_pattern(clause: &proto::types::KeysClause) -> Result<String, Error> {
+fn build_keys_pattern(clause: &torii_proto::types::KeysClause) -> Result<String, Error> {
     const KEY_PATTERN: &str = "0x[0-9a-fA-F]+";
 
     let keys = if clause.keys.is_empty() {
@@ -1366,7 +1316,7 @@ fn build_keys_pattern(clause: &proto::types::KeysClause) -> Result<String, Error
     };
     let mut keys_pattern = format!("^{}", keys.join("/"));
 
-    if clause.pattern_matching == proto::types::PatternMatching::VariableLen as i32 {
+    if clause.pattern_matching == torii_proto::types::PatternMatching::VariableLen as i32 {
         keys_pattern += &format!("(/{})*", KEY_PATTERN);
     }
     keys_pattern += "/$";
@@ -1378,7 +1328,7 @@ fn build_keys_pattern(clause: &proto::types::KeysClause) -> Result<String, Error
 fn build_composite_clause(
     table: &str,
     model_relation_table: &str,
-    composite: &proto::types::CompositeClause,
+    composite: &torii_proto::types::CompositeClause,
     entity_updated_after: Option<String>,
 ) -> Result<(String, Vec<String>), Error> {
     let is_or = composite.operator == LogicalOperator::Or as i32;
@@ -1431,7 +1381,7 @@ fn build_composite_clause(
                     .clone()
                     .ok_or(QueryError::MissingParam("value".into()))?;
                 fn prepare_comparison(
-                    value: &proto::types::MemberValue,
+                    value: &torii_proto::types::MemberValue,
                     bind_values: &mut Vec<String>,
                 ) -> Result<String, Error> {
                     match &value.value_type {
@@ -1521,7 +1471,7 @@ type SubscribeTokensResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokensResponse, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl proto::world::world_server::World for DojoWorld {
+impl torii_proto::world::world_server::World for DojoWorld {
     type SubscribeModelsStream = SubscribeModelsResponseStream;
     type SubscribeEntitiesStream = SubscribeEntitiesResponseStream;
     type SubscribeEventMessagesStream = SubscribeEntitiesResponseStream;
@@ -1956,7 +1906,7 @@ impl proto::world::world_server::World for DojoWorld {
 
     async fn subscribe_events(
         &self,
-        request: Request<proto::world::SubscribeEventsRequest>,
+        request: Request<torii_proto::world::SubscribeEventsRequest>,
     ) -> ServiceResult<Self::SubscribeEventsStream> {
         let keys = request.into_inner().keys;
         let rx = self
@@ -2005,7 +1955,7 @@ pub async fn new(
     let addr = listener.local_addr()?;
 
     let reflection = tonic_reflection::server::Builder::configure()
-        .register_encoded_file_descriptor_set(proto::world::FILE_DESCRIPTOR_SET)
+        .register_encoded_file_descriptor_set(torii_proto::world::FILE_DESCRIPTOR_SET)
         .build()
         .unwrap();
 
