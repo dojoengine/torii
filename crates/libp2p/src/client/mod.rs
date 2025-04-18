@@ -61,11 +61,7 @@ impl RelayClient {
         let cert = Certificate::generate(&mut thread_rng()).unwrap();
         let mut swarm = libp2p::SwarmBuilder::with_existing_identity(local_key)
             .with_tokio()
-            .with_tcp(
-                tcp::Config::default(),
-                noise::Config::new,
-                yamux::Config::default,
-            )?
+            .with_tcp(tcp::Config::default(), noise::Config::new, yamux::Config::default)?
             .with_quic()
             .with_other_transport(|key| {
                 webrtc::tokio::Transport::new(key.clone(), cert)
@@ -73,7 +69,7 @@ impl RelayClient {
             })
             .expect("Failed to create WebRTC transport")
             .with_other_transport(|key| {
-                let transport = websocket::WsConfig::new(
+                let transport = websocket::Config::new(
                     dns::tokio::Transport::system(tcp::tokio::Transport::new(
                         tcp::Config::default(),
                     ))
@@ -89,11 +85,7 @@ impl RelayClient {
             .with_dns()
             .expect("Failed to create DNS transport")
             .with_behaviour(build_behaviour)?
-            .with_swarm_config(|cfg| {
-                cfg.with_idle_connection_timeout(Duration::from_secs(
-                    constants::IDLE_CONNECTION_TIMEOUT_SECS,
-                ))
-            })
+            .with_swarm_config(build_swarm_config)
             .build();
 
         info!(target: LOG_TARGET, addr = %relay_addr, "Dialing relay.");
@@ -102,10 +94,7 @@ impl RelayClient {
         let (command_sender, command_receiver) = futures::channel::mpsc::unbounded();
         Ok(Self {
             command_sender: CommandSender::new(command_sender),
-            event_loop: Arc::new(Mutex::new(EventLoop {
-                swarm,
-                command_receiver,
-            })),
+            event_loop: Arc::new(Mutex::new(EventLoop { swarm, command_receiver })),
         })
     }
 
@@ -119,11 +108,17 @@ impl RelayClient {
 
         info!(target: LOG_TARGET, peer_id = %peer_id, "Local peer id.");
 
-        // WebRTC transport is not natively supported in NodeJS, so we need to check if we are in a
-        // browser environment
+        // WebRTC transport and WebTransport are not natively supported in NodeJS, so we need to
+        // check if we are in a browser environment
         let mut swarm = match web_sys::window() {
             Some(_) => libp2p::SwarmBuilder::with_existing_identity(local_key.clone())
                 .with_wasm_bindgen()
+                .with_other_transport(|key| {
+                    libp2p_webtransport_websys::Transport::new(
+                        libp2p_webtransport_websys::Config::new(&key),
+                    )
+                })
+                .expect("Failed to create WebTransport transport")
                 .with_other_transport(|key| {
                     libp2p_webrtc_websys::Transport::new(libp2p_webrtc_websys::Config::new(&key))
                 })
@@ -137,11 +132,7 @@ impl RelayClient {
                 })
                 .expect("Failed to create WebSocket transport")
                 .with_behaviour(build_behaviour)?
-                .with_swarm_config(|cfg| {
-                    cfg.with_idle_connection_timeout(Duration::from_secs(
-                        constants::IDLE_CONNECTION_TIMEOUT_SECS,
-                    ))
-                })
+                .with_swarm_config(build_swarm_config)
                 .build(),
             None => libp2p::SwarmBuilder::with_existing_identity(local_key)
                 .with_wasm_bindgen()
@@ -155,11 +146,7 @@ impl RelayClient {
                 })
                 .expect("Failed to create WebSocket transport")
                 .with_behaviour(build_behaviour)?
-                .with_swarm_config(|cfg| {
-                    cfg.with_idle_connection_timeout(Duration::from_secs(
-                        constants::IDLE_CONNECTION_TIMEOUT_SECS,
-                    ))
-                })
+                .with_swarm_config(build_swarm_config)
                 .build(),
         };
 
@@ -169,10 +156,7 @@ impl RelayClient {
         let (command_sender, command_receiver) = futures::channel::mpsc::unbounded();
         Ok(Self {
             command_sender: CommandSender::new(command_sender),
-            event_loop: Arc::new(Mutex::new(EventLoop {
-                swarm,
-                command_receiver,
-            })),
+            event_loop: Arc::new(Mutex::new(EventLoop { swarm, command_receiver })),
         })
     }
 }
@@ -190,9 +174,7 @@ impl CommandSender {
     pub async fn publish(&self, data: Message) -> Result<MessageId, Error> {
         let (tx, rx) = oneshot::channel();
 
-        self.sender
-            .unbounded_send(Command::Publish(data, tx))
-            .expect("Failed to send command");
+        self.sender.unbounded_send(Command::Publish(data, tx)).expect("Failed to send command");
 
         rx.await.expect("Failed to receive response")
     }
@@ -209,14 +191,9 @@ impl EventLoop {
             Command::Publish(data, sender) => {
                 // if the relay is not ready yet, add the message to the queue
                 if !is_relay_ready {
-                    commands_queue
-                        .lock()
-                        .await
-                        .push(Command::Publish(data, sender));
+                    commands_queue.lock().await.push(Command::Publish(data, sender));
                 } else {
-                    sender
-                        .send(self.publish(&data))
-                        .expect("Failed to send response");
+                    sender.send(self.publish(&data)).expect("Failed to send response");
                 }
             }
         }
@@ -276,9 +253,7 @@ impl EventLoop {
 
 fn build_behaviour(key: &libp2p::identity::Keypair) -> Behaviour {
     let gossipsub_config: gossipsub::Config = gossipsub::ConfigBuilder::default()
-        .heartbeat_interval(Duration::from_secs(
-            constants::GOSSIPSUB_HEARTBEAT_INTERVAL_SECS,
-        ))
+        .heartbeat_interval(Duration::from_secs(constants::GOSSIPSUB_HEARTBEAT_INTERVAL_SECS))
         .build()
         .expect("Gossipsup config is invalid");
 
@@ -294,4 +269,9 @@ fn build_behaviour(key: &libp2p::identity::Keypair) -> Behaviour {
         )),
         ping: ping::Behaviour::new(ping::Config::default()),
     }
+}
+
+fn build_swarm_config(config: libp2p::swarm::Config) -> libp2p::swarm::Config {
+    config
+        .with_idle_connection_timeout(Duration::from_secs(constants::IDLE_CONNECTION_TIMEOUT_SECS))
 }
