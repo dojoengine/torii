@@ -50,7 +50,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         .unwrap();
     sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
-    let setup = CompilerTestSetup::from_examples("../../dojo/core", "../../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = ops::read_workspace(config.manifest_path(), &config)
