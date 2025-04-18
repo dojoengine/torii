@@ -1,4 +1,9 @@
 //! Client implementation for the gRPC service.
+#[cfg(target_arch = "wasm32")]
+extern crate wasm_prost as prost;
+#[cfg(target_arch = "wasm32")]
+extern crate wasm_tonic as tonic;
+
 use std::num::ParseIntError;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;

@@ -7,6 +7,7 @@ pub mod proto {
     pub mod world {
         tonic::include_proto!("world");
 
+        #[cfg(feature = "server")]
         pub const FILE_DESCRIPTOR_SET: &[u8] =
             tonic::include_file_descriptor_set!("world_descriptor");
     }
@@ -22,6 +23,7 @@ use core::fmt;
 use std::collections::HashMap;
 use std::str::FromStr;
 
+#[allow(unused)]
 use crypto_bigint::Encoding;
 use crypto_bigint::U256;
 use dojo_types::primitive::Primitive;
@@ -80,6 +82,7 @@ impl TryFrom<proto::types::Token> for Token {
     }
 }
 
+#[cfg(feature = "server")]
 impl From<torii_sqlite_types::Token> for proto::types::Token {
     fn from(value: torii_sqlite_types::Token) -> Self {
         Self {
@@ -122,6 +125,7 @@ impl TryFrom<proto::types::TokenBalance> for TokenBalance {
     }
 }
 
+#[cfg(feature = "server")]
 impl From<torii_sqlite_types::TokenBalance> for proto::types::TokenBalance {
     fn from(value: torii_sqlite_types::TokenBalance) -> Self {
         let id = value.token_id.split(':').collect::<Vec<&str>>();
