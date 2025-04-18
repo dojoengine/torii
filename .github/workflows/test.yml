@@ -48,13 +48,8 @@ jobs:
       # Currently Katana is downloaded from Dojo, but soon it will be from its own repository.
       - name: Download Katana for integration tests
         run: |
-          curl -L https://github.com/dojoengine/dojo/releases/download/v1.4.2/dojo_v1.4.2_linux_arm64.tar.gz -o dojo.tar.gz;
+          curl -L https://github.com/dojoengine/dojo/releases/download/v1.4.2/dojo_v1.4.2_linux_amd64.tar.gz -o dojo.tar.gz;
           tar -C /usr/local/bin -xzf dojo.tar.gz
-
-      - name: Build Torii binary
-        run: |
-          cargo build --release --bin torii
-          echo "$PWD/target/release" >> $GITHUB_PATH
 
       - name: Run tests
         run: |
