@@ -1,0 +1,13 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "torii-adigraphmap"
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+petgraph = "0.6"
+thiserror.workspace = true
+tracing.workspace = true
+futures-util.workspace = true
+tokio.workspace = true
