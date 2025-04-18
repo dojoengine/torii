@@ -20,8 +20,8 @@ use torii_sqlite::types::OptimisticEntity;
 use tracing::{error, trace};
 
 use super::match_entity_keys;
-use torii_proto::EntityKeysClause;
 use torii_proto::proto::world::SubscribeEntityResponse;
+use torii_proto::EntityKeysClause;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::entity";
 

@@ -18,8 +18,8 @@ use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::OptimisticToken;
 use tracing::{error, trace};
 
-use torii_proto::proto::world::SubscribeTokensResponse;
 use torii_proto::proto::types::Token;
+use torii_proto::proto::world::SubscribeTokensResponse;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::token";
 

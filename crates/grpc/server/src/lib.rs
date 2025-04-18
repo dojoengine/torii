@@ -93,11 +93,7 @@ pub struct DojoWorld {
 }
 
 impl DojoWorld {
-    pub fn new(
-        pool: Pool<Sqlite>,
-        world_address: Felt,
-        model_cache: Arc<ModelCache>,
-    ) -> Self {
+    pub fn new(pool: Pool<Sqlite>, world_address: Felt, model_cache: Arc<ModelCache>) -> Self {
         let entity_manager = Arc::new(EntityManager::default());
         let event_message_manager = Arc::new(EventMessageManager::default());
         let event_manager = Arc::new(EventManager::default());

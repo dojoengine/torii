@@ -11,6 +11,9 @@ use torii_grpc_client::{
     EntityUpdateStreaming, EventUpdateStreaming, IndexerUpdateStreaming, TokenBalanceStreaming,
     TokenUpdateStreaming, WorldClient,
 };
+use torii_libp2p_client::EventLoop;
+use torii_libp2p_client::RelayClient;
+use torii_libp2p_types::Message;
 use torii_proto::proto::world::{
     RetrieveControllersResponse, RetrieveEntitiesResponse, RetrieveEventsResponse,
     RetrieveTokenBalancesResponse, RetrieveTokensResponse,
@@ -19,9 +22,6 @@ use torii_proto::schema::Entity;
 use torii_proto::{
     Controller, EntityKeysClause, Event, EventQuery, Page, Query, Token, TokenBalance,
 };
-use torii_libp2p_client::EventLoop;
-use torii_libp2p_client::RelayClient;
-use torii_libp2p_types::Message;
 
 use crate::error::Error;
 
