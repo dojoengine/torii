@@ -126,6 +126,11 @@ jobs:
             # See: https://github.com/actions/virtual-environments/issues/2619
             gtar -czvf "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release torii
             echo "file_name=torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
+          else
+            cd ./target/${TARGET}/release
+            7z a -tzip "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" torii.exe
+            mv "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" ../../../
+            echo "file_name=torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" >> $GITHUB_OUTPUT
           fi
         shell: bash
 
@@ -170,7 +175,7 @@ jobs:
           echo "version=v$(cargo get workspace.package.version)" >> $GITHUB_OUTPUT
       - name: Display structure of downloaded files
         run: ls -R artifacts
-      - run: gh release create ${{ steps.version_info.outputs.version }} ./artifacts/* --generate-notes --draft
+      - run: gh release create ${{ steps.version_info.outputs.version }} ./artifacts/*.{gz,zip} --generate-notes --draft
 
   docker-build-and-push:
     runs-on: ubuntu-latest-4-cores
