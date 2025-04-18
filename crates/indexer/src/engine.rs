@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use async_recursion::async_recursion;
 use bitflags::bitflags;
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
@@ -26,133 +27,11 @@ use tokio::time::{sleep, Instant};
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::{Cursors, Sql};
+use torii_task_network::TaskNetwork;
+use torii_processors::Processors;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::constants::LOG_TARGET;
-use crate::processors::controller::ControllerProcessor;
-use crate::processors::erc1155_transfer_batch::Erc1155TransferBatchProcessor;
-use crate::processors::erc1155_transfer_single::Erc1155TransferSingleProcessor;
-use crate::processors::erc20_legacy_transfer::Erc20LegacyTransferProcessor;
-use crate::processors::erc20_transfer::Erc20TransferProcessor;
-use crate::processors::erc4906_batch_metadata_update::Erc4906BatchMetadataUpdateProcessor;
-use crate::processors::erc4906_metadata_update::Erc4906MetadataUpdateProcessor;
-use crate::processors::erc721_legacy_transfer::Erc721LegacyTransferProcessor;
-use crate::processors::erc721_transfer::Erc721TransferProcessor;
-use crate::processors::event_message::EventMessageProcessor;
-use crate::processors::metadata_update::MetadataUpdateProcessor;
-use crate::processors::raw_event::RawEventProcessor;
-use crate::processors::register_event::RegisterEventProcessor;
-use crate::processors::register_model::RegisterModelProcessor;
-use crate::processors::store_del_record::StoreDelRecordProcessor;
-use crate::processors::store_set_record::StoreSetRecordProcessor;
-use crate::processors::store_transaction::StoreTransactionProcessor;
-use crate::processors::store_update_member::StoreUpdateMemberProcessor;
-use crate::processors::store_update_record::StoreUpdateRecordProcessor;
-use crate::processors::upgrade_event::UpgradeEventProcessor;
-use crate::processors::upgrade_model::UpgradeModelProcessor;
-use crate::processors::{
-    BlockProcessor, EventProcessor, EventProcessorConfig, TransactionProcessor,
-};
-use crate::task_manager::{self, ParallelizedEvent, TaskManager};
-
-type EventProcessorMap<P> = HashMap<Felt, Vec<Box<dyn EventProcessor<P>>>>;
-
-#[allow(missing_debug_implementations)]
-pub struct Processors<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
-    pub block: Vec<Box<dyn BlockProcessor<P>>>,
-    pub transaction: Vec<Box<dyn TransactionProcessor<P>>>,
-    pub catch_all_event: Box<dyn EventProcessor<P>>,
-    pub event_processors: HashMap<ContractType, EventProcessorMap<P>>,
-}
-
-impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Default for Processors<P> {
-    fn default() -> Self {
-        Self {
-            block: vec![],
-            transaction: vec![Box::new(StoreTransactionProcessor)],
-            // We shouldn't have a catch all for now since the world doesn't forward raw events
-            // anymore.
-            catch_all_event: Box::new(RawEventProcessor) as Box<dyn EventProcessor<P>>,
-            event_processors: Self::initialize_event_processors(),
-        }
-    }
-}
-
-impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Processors<P> {
-    pub fn initialize_event_processors() -> HashMap<ContractType, EventProcessorMap<P>> {
-        let mut event_processors_map = HashMap::<ContractType, EventProcessorMap<P>>::new();
-
-        let event_processors = vec![
-            (
-                ContractType::WORLD,
-                vec![
-                    Box::new(RegisterModelProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(RegisterEventProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(UpgradeModelProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(UpgradeEventProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(StoreSetRecordProcessor),
-                    Box::new(StoreDelRecordProcessor),
-                    Box::new(StoreUpdateRecordProcessor),
-                    Box::new(StoreUpdateMemberProcessor),
-                    Box::new(MetadataUpdateProcessor),
-                    Box::new(EventMessageProcessor),
-                ],
-            ),
-            (
-                ContractType::ERC20,
-                vec![
-                    Box::new(Erc20TransferProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc20LegacyTransferProcessor) as Box<dyn EventProcessor<P>>,
-                ],
-            ),
-            (
-                ContractType::ERC721,
-                vec![
-                    Box::new(Erc721TransferProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc721LegacyTransferProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc4906MetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc4906BatchMetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
-                ],
-            ),
-            (
-                ContractType::ERC1155,
-                vec![
-                    Box::new(Erc1155TransferBatchProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc1155TransferSingleProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc4906MetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc4906BatchMetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
-                ],
-            ),
-            (
-                ContractType::UDC,
-                vec![Box::new(ControllerProcessor) as Box<dyn EventProcessor<P>>],
-            ),
-        ];
-
-        for (contract_type, processors) in event_processors {
-            for processor in processors {
-                let key = get_selector_from_name(processor.event_key().as_str())
-                    .expect("Event key is ASCII so this should never fail");
-                // event_processors_map.entry(contract_type).or_default().insert(key, processor);
-                event_processors_map
-                    .entry(contract_type)
-                    .or_default()
-                    .entry(key)
-                    .or_default()
-                    .push(processor);
-            }
-        }
-
-        event_processors_map
-    }
-
-    pub fn get_event_processor(
-        &self,
-        contract_type: ContractType,
-    ) -> &HashMap<Felt, Vec<Box<dyn EventProcessor<P>>>> {
-        self.event_processors.get(&contract_type).unwrap()
-    }
-}
 
 bitflags! {
     #[derive(Debug, Clone)]
@@ -230,6 +109,20 @@ pub struct FetchPendingResult {
     pub block_number: u64,
 }
 
+#[derive(Debug, Clone)]
+pub enum ProcessorData {
+    Transaction(Transaction),
+    Event((String, Event)),
+}
+
+#[derive(Debug, Clone)]
+pub struct ProcessorTask {
+    pub contract_type: ContractType,
+    pub block_number: u64,
+    pub block_timestamp: u64,
+    pub data: ProcessorData,
+}
+
 #[allow(missing_debug_implementations)]
 pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     world: Arc<WorldContractReader<P>>,
@@ -239,7 +132,7 @@ pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     config: EngineConfig,
     shutdown_tx: Sender<()>,
     block_tx: Option<BoundedSender<u64>>,
-    task_manager: TaskManager<P>,
+    task_network: Arc<TaskNetwork<ProcessorTask>>,
     contracts: Arc<HashMap<Felt, ContractType>>,
     contract_class_cache: Arc<ContractClassCache<P>>,
 }
@@ -262,10 +155,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         contracts: &[Contract],
     ) -> Self {
         let contracts = Arc::new(
-            contracts
-                .iter()
-                .map(|contract| (contract.address, contract.r#type))
-                .collect(),
+            contracts.iter().map(|contract| (contract.address, contract.r#type)).collect(),
         );
         let world = Arc::new(world);
         let processors = Arc::new(processors);
@@ -282,13 +172,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             shutdown_tx,
             block_tx,
             contracts,
-            task_manager: TaskManager::new(
-                db,
-                world,
-                processors,
-                max_concurrent_tasks,
-                event_processor_config,
-            ),
+            task_network: Arc::new(TaskNetwork::new(max_concurrent_tasks)),
             contract_class_cache: Arc::new(ContractClassCache::new(provider)),
         }
     }
@@ -367,25 +251,21 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // this is non-inclusive. this just means that we stop doing events pages fetches once we
         // reach a page with an event that is after the latest block. so in our final
         // commit; we could end up with a higher head than this one.
-        let to = latest_block
-            .block_number
-            .min(from + self.config.blocks_chunk_size);
+        let to = latest_block.block_number.min(from + self.config.blocks_chunk_size);
 
         let instant = Instant::now();
         let result = if from < latest_block.block_number {
             let from = if from == 0 { from } else { from + 1 };
 
             // Fetch all events from 'from' to our blocks chunk size
-            let range = self
-                .fetch_range(from, to, &cursors.cursor_map, latest_block.block_number)
-                .await?;
+            let range =
+                self.fetch_range(from, to, &cursors.cursor_map, latest_block.block_number).await?;
 
             debug!(target: LOG_TARGET, duration = ?instant.elapsed(), from = %from, to = %range.blocks.keys().last().unwrap(), "Fetched data for range.");
             FetchDataResult::Range(range)
         } else if self.config.flags.contains(IndexingFlags::PENDING_BLOCKS) {
-            let data = self
-                .fetch_pending(latest_block.clone(), cursors.last_pending_block_tx)
-                .await?;
+            let data =
+                self.fetch_pending(latest_block.clone(), cursors.last_pending_block_tx).await?;
             debug!(target: LOG_TARGET, duration = ?instant.elapsed(), latest_block_number = %latest_block.block_number, "Fetched pending data.");
             if let Some(data) = data {
                 FetchDataResult::Pending(data)
@@ -433,7 +313,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Recursively fetch all events using batch requests
-        events.extend(self.fetch_events(event_requests, cursor_map, to).await?);
+        events.extend(self.fetch_events_recursive(event_requests, cursor_map, to).await?);
 
         // Process events to get unique blocks and transactions
         let mut blocks = BTreeMap::new();
@@ -452,10 +332,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 .entry(block_number)
                 .or_insert(LinkedHashMap::new())
                 .entry(event.transaction_hash)
-                .or_insert(FetchRangeTransaction {
-                    transaction: None,
-                    events: vec![],
-                })
+                .or_insert(FetchRangeTransaction { transaction: None, events: vec![] })
                 .events
                 .push(event);
         }
@@ -468,9 +345,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             for (block_number, transactions) in &transactions {
                 for (transaction_hash, _) in transactions {
                     transaction_requests.push(ProviderRequestData::GetTransactionByHash(
-                        GetTransactionByHashRequest {
-                            transaction_hash: *transaction_hash,
-                        },
+                        GetTransactionByHashRequest { transaction_hash: *transaction_hash },
                     ));
                     block_numbers.push(*block_number);
                 }
@@ -529,103 +404,100 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         trace!(target: LOG_TARGET, "Transactions: {}", &transactions.len());
         trace!(target: LOG_TARGET, "Blocks: {}", &blocks.len());
 
-        Ok(FetchRangeResult {
-            transactions,
-            blocks,
-        })
+        Ok(FetchRangeResult { transactions, blocks })
     }
 
-    async fn fetch_events(
+    #[async_recursion]
+    async fn fetch_events_recursive(
         &self,
-        initial_requests: Vec<(Felt, ProviderRequestData)>,
+        requests: Vec<(Felt, ProviderRequestData)>,
         cursor_map: &HashMap<Felt, Felt>,
         to: u64,
     ) -> Result<Vec<EmittedEvent>> {
-        let mut all_events = Vec::new();
-        let mut current_requests = initial_requests;
-
-        while !current_requests.is_empty() {
-            let mut next_requests = Vec::new();
-            let mut events = Vec::new();
-
-            // Extract just the requests without the contract addresses
-            let batch_requests: Vec<ProviderRequestData> = current_requests
-                .iter()
-                .map(|(_, req)| req.clone())
-                .collect();
-            let batch_results = self.provider.batch_requests(batch_requests).await?;
-
-            // Process results and prepare next batch of requests if needed
-            for ((contract_address, original_request), result) in
-                current_requests.into_iter().zip(batch_results)
-            {
-                let last_contract_tx = cursor_map.get(&contract_address).cloned();
-                let mut last_contract_tx_tmp = last_contract_tx;
-
-                match result {
-                    ProviderResponseData::GetEvents(events_page) => {
-                        let last_block_number = events_page
-                            .events
-                            .last()
-                            .map_or(0, |e| e.block_number.unwrap());
-
-                        // Process events for this page, only including events up to our target
-                        // block
-                        for event in events_page.events {
-                            let block_number = event.block_number.unwrap();
-                            if block_number > to {
-                                continue;
-                            }
-
-                            // Then we skip all transactions until we reach the last pending
-                            // processed transaction (if any)
-                            if let Some(last_contract_tx) = last_contract_tx_tmp {
-                                if event.transaction_hash != last_contract_tx {
-                                    continue;
-                                }
-                                last_contract_tx_tmp = None;
-                            }
-
-                            // Skip the latest pending block transaction events
-                            // * as we might have multiple events for the same transaction
-                            if let Some(last_contract_tx) = last_contract_tx {
-                                if event.transaction_hash == last_contract_tx {
-                                    continue;
-                                }
-                            }
-
-                            events.push(event);
-                        }
-
-                        // Add continuation request to next_requests instead of recursing
-                        if let Some(continuation_token) = events_page.continuation_token {
-                            if last_block_number < to {
-                                if let ProviderRequestData::GetEvents(mut next_request) =
-                                    original_request
-                                {
-                                    next_request.filter.result_page_request.continuation_token =
-                                        Some(continuation_token);
-                                    next_requests.push((
-                                        contract_address,
-                                        ProviderRequestData::GetEvents(next_request),
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        return Err(anyhow::anyhow!(
-                            "Unexpected response type from batch events request"
-                        ));
-                    }
-                }
-            }
-
-            all_events.extend(events);
-            current_requests = next_requests;
+        if requests.is_empty() {
+            return Ok(Vec::new());
         }
 
-        Ok(all_events)
+        let mut events = Vec::new();
+        let mut next_requests = Vec::new();
+
+        // Extract just the requests without the contract addresses
+        let batch_requests: Vec<ProviderRequestData> =
+            requests.iter().map(|(_, req)| req.clone()).collect();
+        let batch_results = self.provider.batch_requests(batch_requests).await?;
+
+        // Process results and prepare next batch of requests if needed
+        for ((contract_address, original_request), result) in
+            requests.into_iter().zip(batch_results)
+        {
+            let last_contract_tx = cursor_map.get(&contract_address).cloned();
+            let mut last_contract_tx_tmp = last_contract_tx;
+
+            match result {
+                ProviderResponseData::GetEvents(events_page) => {
+                    let last_block_number =
+                        events_page.events.last().map_or(0, |e| e.block_number.unwrap());
+
+                    // Process events for this page, only including events up to our target block
+                    for event in events_page.events {
+                        let block_number = event.block_number.unwrap();
+                        if block_number > to {
+                            continue;
+                        }
+
+                        // Then we skip all transactions until we reach the last pending processed
+                        // transaction (if any)
+                        if let Some(last_contract_tx) = last_contract_tx_tmp {
+                            if event.transaction_hash != last_contract_tx {
+                                continue;
+                            }
+                            last_contract_tx_tmp = None;
+                        }
+
+                        // Skip the latest pending block transaction events
+                        // * as we might have multiple events for the same transaction
+                        if let Some(last_contract_tx) = last_contract_tx {
+                            if event.transaction_hash == last_contract_tx {
+                                continue;
+                            }
+                        }
+
+                        events.push(event);
+                    }
+
+                    // Continue fetching pages if there are more events and we haven't seen all
+                    // events up to our target block
+                    if let Some(continuation_token) = events_page.continuation_token {
+                        // Only continue if we haven't seen all events up to our target block
+                        if last_block_number < to {
+                            if let ProviderRequestData::GetEvents(mut next_request) =
+                                original_request
+                            {
+                                next_request.filter.result_page_request.continuation_token =
+                                    Some(continuation_token);
+                                next_requests.push((
+                                    contract_address,
+                                    ProviderRequestData::GetEvents(next_request),
+                                ));
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    error!(target: LOG_TARGET, "Unexpected response type from batch events request");
+                    return Err(anyhow::anyhow!(
+                        "Unexpected response type from batch events request"
+                    ));
+                }
+            }
+        }
+
+        // Recursively fetch next batch if there are any continuation tokens
+        if !next_requests.is_empty() {
+            events.extend(self.fetch_events_recursive(next_requests, cursor_map, to).await?);
+        }
+
+        Ok(events)
     }
 
     async fn fetch_pending(
@@ -633,10 +505,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         block: BlockHashAndNumber,
         last_pending_block_tx: Option<Felt>,
     ) -> Result<Option<FetchPendingResult>> {
-        let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
-            .provider
-            .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
-            .await?
+        let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) =
+            self.provider.get_block_with_receipts(BlockId::Tag(BlockTag::Pending)).await?
         {
             // if the parent hash is not the hash of the latest block that we fetched, then it means
             // a new block got mined just after we fetched the latest block information
@@ -741,8 +611,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     block_tx.send(block_number).await?;
                 }
 
-                self.process_block(block_number, range.blocks[&block_number])
-                    .await?;
+                self.process_block(block_number, range.blocks[&block_number]).await?;
                 processed_blocks.insert(block_number);
             }
         }
@@ -751,8 +620,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         self.task_manager.process_tasks().await?;
 
         let (last_block_number, last_block_timestamp) = range.blocks.iter().last().unwrap();
-        self.db
-            .update_cursors(*last_block_number, *last_block_timestamp, None, cursor_map)?;
+        self.db.update_cursors(*last_block_number, *last_block_timestamp, None, cursor_map)?;
 
         Ok(())
     }
@@ -771,10 +639,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for (event_idx, event) in events.iter().enumerate() {
             // NOTE: erc* processors expect the event_id to be in this format to get
             // transaction_hash:
-            let event_id = format!(
-                "{:#064x}:{:#x}:{:#04x}",
-                block_number, transaction_hash, event_idx
-            );
+            let event_id =
+                format!("{:#064x}:{:#x}:{:#04x}", block_number, transaction_hash, event_idx);
 
             let event = Event {
                 from_address: event.from_address,
@@ -848,10 +714,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                 // NOTE: erc* processors expect the event_id to be in this format to get
                 // transaction_hash:
-                let event_id: String = format!(
-                    "{:#064x}:{:#x}:{:#04x}",
-                    block_number, *transaction_hash, event_idx
-                );
+                let event_id: String =
+                    format!("{:#064x}:{:#x}:{:#04x}", block_number, *transaction_hash, event_idx);
 
                 self.process_event(
                     block_number,
@@ -891,12 +755,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     async fn process_block(&mut self, block_number: u64, block_timestamp: u64) -> Result<()> {
         for processor in &self.processors.block {
             processor
-                .process(
-                    &mut self.db,
-                    self.provider.as_ref(),
-                    block_number,
-                    block_timestamp,
-                )
+                .process(&mut self.db, self.provider.as_ref(), block_number, block_timestamp)
                 .await?
         }
 
@@ -912,20 +771,14 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         contract_addresses: &HashSet<Felt>,
         transaction: &Transaction,
     ) -> Result<()> {
-        for processor in &self.processors.transaction {
-            processor
-                .process(
-                    &mut self.db,
-                    self.provider.as_ref(),
-                    block_number,
-                    block_timestamp,
-                    transaction_hash,
-                    contract_addresses,
-                    transaction,
-                    self.contract_class_cache.as_ref(),
-                )
-                .await?
-        }
+        let hash = DefaultHasher::new();
+        transaction_hash.hash(&mut hash);
+        self.task_network.add_task(hash.finish(), ProcessorTask {
+            contract_type: ContractType::World,
+            block_number,
+            block_timestamp,
+            data: ProcessorData::Transaction(transaction.clone()),
+        });
 
         Ok(())
     }
@@ -940,8 +793,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         contract_type: ContractType,
     ) -> Result<()> {
         if self.config.flags.contains(IndexingFlags::RAW_EVENTS) {
-            self.db
-                .store_event(event_id, event, transaction_hash, block_timestamp)?;
+            self.db.store_event(event_id, event, transaction_hash, block_timestamp)?;
         }
 
         let event_key = event.keys[0];
@@ -988,44 +840,18 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             .find(|p| p.validate(event))
             .expect("Must find atleast one processor for the event");
 
-        let (task_priority, task_identifier) =
-            (processor.task_priority(), processor.task_identifier(event));
+        let task_identifier = processor.identifier(event);
 
-        // if our event can be parallelized, we add it to the task manager
-        if task_identifier != task_manager::TASK_ID_SEQUENTIAL {
-            self.task_manager.add_parallelized_event(
-                task_priority,
-                task_identifier,
-                ParallelizedEvent {
-                    contract_type,
-                    event_id: event_id.to_string(),
-                    event: event.clone(),
-                    block_number,
-                    block_timestamp,
-                },
-            );
-        } else {
-            // Process non-parallelized events immediately
-            // if we dont have a task identifier, we process the event immediately
-            if processor.validate(event) {
-                if let Err(e) = processor
-                    .process(
-                        &self.world,
-                        &mut self.db,
-                        block_number,
-                        block_timestamp,
-                        event_id,
-                        event,
-                        &self.config.event_processor_config,
-                    )
-                    .await
-                {
-                    error!(target: LOG_TARGET, event_name = processor.event_key(), error = ?e, "Processing event.");
-                }
-            } else {
-                warn!(target: LOG_TARGET, event_name = processor.event_key(), "Event not validated.");
-            }
-        }
+        self.task_network.add_task_with_dependencies(
+            task_identifier,
+            ProcessorTask {
+                contract_type,
+                block_number,
+                block_timestamp,
+                data: ProcessorData::Event((event_id.to_string(), event.clone())),
+            },
+            vec![],
+        );
 
         Ok(())
     }

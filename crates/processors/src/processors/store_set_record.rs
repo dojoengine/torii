@@ -2,40 +2,29 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
-use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
+use torii_sqlite::types::ContractType;
+use torii_sqlite::utils::felts_to_sql_string;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
-use super::{EventProcessor, EventProcessorConfig};
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::{EventProcessor, EventProcessorConfig, TaskProcessor};
+use crate::TaskId;
 
-pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_update_record";
+pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_set_record";
 
 #[derive(Default, Debug)]
-pub struct StoreUpdateRecordProcessor;
+pub struct StoreSetRecordProcessor;
 
-#[async_trait]
-impl<P> EventProcessor<P> for StoreUpdateRecordProcessor
-where
-    P: Provider + Send + Sync + std::fmt::Debug,
-{
-    fn event_key(&self) -> String {
-        "StoreUpdateRecord".to_string()
+impl TaskProcessor for StoreSetRecordProcessor {
+    fn dependencies(&self) -> Vec<TaskId> {
+        vec![]
     }
 
-    fn validate(&self, _event: &Event) -> bool {
-        true
-    }
-
-    fn task_priority(&self) -> TaskPriority {
-        2
-    }
-
-    fn task_identifier(&self, event: &Event) -> TaskId {
+    fn identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
         // model selector
         event.keys[1].hash(&mut hasher);
@@ -43,7 +32,25 @@ where
         event.keys[2].hash(&mut hasher);
         hasher.finish()
     }
+}
 
+#[async_trait]
+impl<P> EventProcessor<P> for StoreSetRecordProcessor
+where
+    P: Provider + Send + Sync + std::fmt::Debug,
+{
+    fn contract_type(&self) -> ContractType {
+        ContractType::World
+    }
+
+    fn event_key(&self) -> String {
+        "StoreSetRecord".to_string()
+    }
+
+    fn validate(&self, _event: &Event) -> bool {
+        true
+    }
+    
     async fn process(
         &self,
         _world: &WorldContractReader<P>,
@@ -59,17 +66,14 @@ where
         let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
             panic!(
                 "Expected {} event to be well formed.",
-                <StoreUpdateRecordProcessor as EventProcessor<P>>::event_key(self)
+                <StoreSetRecordProcessor as EventProcessor<P>>::event_key(self)
             )
         }) {
-            WorldEvent::StoreUpdateRecord(e) => e,
+            WorldEvent::StoreSetRecord(e) => e,
             _ => {
                 unreachable!()
             }
         };
-
-        let model_selector = event.selector;
-        let entity_id = event.entity_id;
 
         // If the model does not exist, silently ignore it.
         // This can happen if only specific namespaces are indexed.
@@ -96,24 +100,26 @@ where
             target: LOG_TARGET,
             namespace = %model.namespace,
             name = %model.name,
-            entity_id = format!("{:#x}", entity_id),
-            "Store update record.",
+            entity_id = format!("{:#x}", event.entity_id),
+            "Store set record.",
         );
 
+        let keys_str = felts_to_sql_string(&event.keys);
+
+        let mut keys_and_unpacked = [event.keys, event.values].concat();
+
         let mut entity = model.schema;
-        match entity {
-            Ty::Struct(ref mut struct_) => {
-                // we do not need the keys. the entity Ty has the keys in its schema
-                // so we should get rid of them to avoid trying to deserialize them
-                struct_.children.retain(|field| !field.key);
-            }
-            _ => return Err(anyhow::anyhow!("Expected struct")),
-        }
+        entity.deserialize(&mut keys_and_unpacked)?;
 
-        let mut values = event.values.to_vec();
-        entity.deserialize(&mut values)?;
-
-        db.set_entity(entity, event_id, block_timestamp, entity_id, model_selector, None).await?;
+        db.set_entity(
+            entity,
+            event_id,
+            block_timestamp,
+            event.entity_id,
+            event.selector,
+            Some(&keys_str),
+        )
+        .await?;
         Ok(())
     }
 }

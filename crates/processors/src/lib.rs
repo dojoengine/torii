@@ -1,36 +1,19 @@
 use std::collections::HashSet;
-
+use std::hash::{DefaultHasher, Hash, Hasher};
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, Transaction};
 use starknet::providers::Provider;
 use torii_sqlite::cache::ContractClassCache;
+use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
 
-use crate::task_manager::{TaskId, TaskPriority};
+mod processors;
 
-pub mod controller;
-pub mod erc1155_transfer_batch;
-pub mod erc1155_transfer_single;
-pub mod erc20_legacy_transfer;
-pub mod erc20_transfer;
-pub mod erc4906_batch_metadata_update;
-pub mod erc4906_metadata_update;
-pub mod erc721_legacy_transfer;
-pub mod erc721_transfer;
-pub mod event_message;
-pub mod metadata_update;
-pub mod raw_event;
-pub mod register_event;
-pub mod register_model;
-pub mod store_del_record;
-pub mod store_set_record;
-pub mod store_transaction;
-pub mod store_update_member;
-pub mod store_update_record;
-pub mod upgrade_event;
-pub mod upgrade_model;
+pub use processors::Processors;
+
+pub type TaskId = u64;
 
 #[derive(Clone, Debug, Default)]
 pub struct EventProcessorConfig {
@@ -49,27 +32,34 @@ pub trait EventProcessor<P>: Send + Sync
 where
     P: Provider + Sync,
 {
-    fn event_key(&self) -> String;
+    fn contract_type() -> ContractType;
+    fn event_key() -> String;
 
-    fn event_keys_as_string(&self, event: &Event) -> String {
+    fn event_keys_as_string(event: &Event) -> String {
         event.keys.iter().map(|i| format!("{:#064x}", i)).collect::<Vec<_>>().join(",")
     }
 
-    fn validate(&self, event: &Event) -> bool;
+    fn task_dependencies(event: &Event) -> Vec<TaskId> {
+        vec![]
+    }
 
-    fn task_priority(&self) -> TaskPriority;
-    fn task_identifier(&self, event: &Event) -> TaskId;
+    fn task_identifier(event: &Event) -> TaskId {
+        let mut hasher = DefaultHasher::new();
+        event.keys.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn validate(event: &Event) -> bool;
 
     #[allow(clippy::too_many_arguments)]
     async fn process(
-        &self,
         world: &WorldContractReader<P>,
         db: &mut Sql,
         block_number: u64,
         block_timestamp: u64,
         event_id: &str,
         event: &Event,
-        _config: &EventProcessorConfig,
+        config: &EventProcessorConfig,
     ) -> Result<(), Error>;
 }
 
@@ -78,7 +68,7 @@ pub trait BlockProcessor<P: Provider + Sync>: Send + Sync {
     fn get_block_number(&self) -> String;
     async fn process(
         &self,
-        db: &mut Sql,
+        db: &Sql,
         provider: &P,
         block_number: u64,
         block_timestamp: u64,
@@ -87,14 +77,13 @@ pub trait BlockProcessor<P: Provider + Sync>: Send + Sync {
 
 #[async_trait]
 pub trait TransactionProcessor<P: Provider + Sync + std::fmt::Debug>: Send + Sync {
-    #[allow(clippy::too_many_arguments)]
     async fn process(
         &self,
-        db: &mut Sql,
+        db: &Sql,
         provider: &P,
         block_number: u64,
         block_timestamp: u64,
-        transaction_hash: Felt,
+        transaction_hash: &Felt,
         contract_addresses: &HashSet<Felt>,
         transaction: &Transaction,
         contract_class_cache: &ContractClassCache<P>,
