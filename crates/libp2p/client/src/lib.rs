@@ -10,11 +10,14 @@ use libp2p::swarm::{NetworkBehaviour, Swarm, SwarmEvent};
 use libp2p::{identify, identity, noise, ping, yamux, Multiaddr, PeerId};
 use tracing::info;
 
-pub mod events;
-use crate::client::events::ClientEvent;
-use crate::constants;
+mod events;
+pub mod constants;
+pub mod error;
+
 use crate::error::Error;
-use crate::types::Message;
+use torii_libp2p_types::Message;
+
+use crate::events::ClientEvent;
 
 pub(crate) const LOG_TARGET: &str = "torii::relay::client";
 
