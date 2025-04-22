@@ -14,8 +14,8 @@ use metadata_update::MetadataUpdateProcessor;
 use raw_event::RawEventProcessor;
 use register_event::RegisterEventProcessor;
 use register_model::RegisterModelProcessor;
-use starknet::{core::utils::get_selector_from_name, providers::Provider};
 use starknet::core::types::Felt;
+use starknet::{core::utils::get_selector_from_name, providers::Provider};
 use store_del_record::StoreDelRecordProcessor;
 use store_set_record::StoreSetRecordProcessor;
 use store_transaction::StoreTransactionProcessor;
@@ -118,14 +118,22 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Processors<P> {
                     Box::new(Erc4906BatchMetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
                 ],
             ),
-            (ContractType::UDC, vec![Box::new(ControllerProcessor) as Box<dyn EventProcessor<P>>]),
+            (
+                ContractType::UDC,
+                vec![Box::new(ControllerProcessor) as Box<dyn EventProcessor<P>>],
+            ),
         ];
 
         for (contract_type, processors) in event_processors {
             for processor in processors {
                 let key = get_selector_from_name(processor.event_key().as_str())
                     .expect("Event key is ASCII so this should never fail");
-                event_processors_map.entry(contract_type).or_default().entry(key).or_default().push(processor);
+                event_processors_map
+                    .entry(contract_type)
+                    .or_default()
+                    .entry(key)
+                    .or_default()
+                    .push(processor);
             }
         }
 
