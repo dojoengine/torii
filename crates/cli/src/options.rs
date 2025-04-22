@@ -1,4 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use anyhow::Context;
@@ -7,7 +8,7 @@ use merge_options::MergeOptions;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
-use torii_sqlite::types::{Contract, ContractType, ModelIndices};
+use torii_sqlite_types::{Contract, ContractType, Hook, HookEvent, ModelIndices};
 
 pub const DEFAULT_HTTP_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 pub const DEFAULT_HTTP_PORT: u16 = 8080;
@@ -338,7 +339,7 @@ pub struct SqlOptions {
         value_parser = parse_model_indices,
         help = "Specify which fields should have indices for specific models. Format: \"model_name:field1,field2;another_model:field3,field4\""
     )]
-    pub model_indices: Option<Vec<ModelIndices>>,
+    pub model_indices: Vec<ModelIndices>,
 
     /// Models that are going to be treated as historical during indexing. Applies to event
     /// messages and entities. A list of the model tags (namespace-name)
@@ -365,16 +366,36 @@ pub struct SqlOptions {
         help = "The cache size to use for the database. A positive value determines a number of pages, a negative value determines a number of KiB."
     )]
     pub cache_size: i64,
+
+    /// A set of SQL statements to execute after some specific events.
+    /// Like after a model has been registered, or after an entity model has been updated etc...
+    #[arg(
+        long = "sql.hooks",
+        value_delimiter = ',',
+        value_parser = parse_hook,
+        help = "A set of SQL statements to execute after some specific events."
+    )]
+    pub hooks: Vec<Hook>,
+
+    /// A directory containing custom migrations to run.
+    #[arg(
+        long = "sql.migrations",
+        value_name = "PATH",
+        help = "A directory containing custom migrations to run."
+    )]
+    pub migrations: Option<PathBuf>,
 }
 
 impl Default for SqlOptions {
     fn default() -> Self {
         Self {
             all_model_indices: false,
-            model_indices: None,
+            model_indices: vec![],
             historical: vec![],
             page_size: DEFAULT_DATABASE_PAGE_SIZE,
             cache_size: DEFAULT_DATABASE_CACHE_SIZE,
+            hooks: vec![],
+            migrations: None,
         }
     }
 }
@@ -415,6 +436,72 @@ fn parse_model_indices(part: &str) -> anyhow::Result<ModelIndices> {
         .collect::<Vec<_>>();
 
     Ok(ModelIndices { model_tag, fields })
+}
+
+// Parses clap cli argument which is expected to be in the format:
+// - event:event_data:statement
+fn parse_hook(part: &str) -> anyhow::Result<Hook> {
+    let parts: Vec<&str> = part.split(':').collect();
+    if parts.len() != 3 {
+        return Err(anyhow::anyhow!(
+            "Invalid hook format. Expected 'event:event_data:statement'"
+        ));
+    }
+
+    let event_type = parts[0];
+    let event_data: Vec<String> = parts[1]
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if event_data.is_empty() {
+        return Err(anyhow::anyhow!("Event data cannot be empty"));
+    }
+
+    let event = match event_type {
+        "model_registered" => {
+            if event_data.len() != 1 {
+                return Err(anyhow::anyhow!(
+                    "model_registered event requires exactly one model tag"
+                ));
+            }
+            HookEvent::ModelRegistered {
+                model_tag: event_data[0].clone(),
+            }
+        }
+        "model_updated" => {
+            if event_data.len() != 1 {
+                return Err(anyhow::anyhow!(
+                    "model_updated event requires exactly one model tag"
+                ));
+            }
+            HookEvent::ModelUpdated {
+                model_tag: event_data[0].clone(),
+            }
+        }
+        "model_deleted" => {
+            if event_data.len() != 1 {
+                return Err(anyhow::anyhow!(
+                    "model_deleted event requires exactly one model tag"
+                ));
+            }
+            HookEvent::ModelDeleted {
+                model_tag: event_data[0].clone(),
+            }
+        }
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Invalid event type. Expected 'model_registered', 'model_updated' or \
+                 'model_deleted'"
+            ));
+        }
+    };
+
+    Ok(Hook {
+        event,
+        statement: parts[2].to_string(),
+    })
 }
 
 // Parses clap cli argument which is expected to be in the format:

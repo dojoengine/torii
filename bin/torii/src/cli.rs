@@ -7,7 +7,7 @@ use clap::Parser;
 use torii_cli::ToriiArgs;
 
 #[derive(Parser)]
-#[command(name = "torii", author, version, about, long_about = None)]
+#[command(name = "torii", author, version = env!("TORII_VERSION_SPEC"), about, long_about = None)]
 pub struct Cli {
     #[command(flatten)]
     pub args: ToriiArgs,

@@ -412,7 +412,6 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         },
         EngineConfig::default(),
         shutdown_tx,
-        None,
         &[Contract {
             address: world_address,
             r#type: ContractType::WORLD,

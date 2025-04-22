@@ -16,7 +16,7 @@ jobs:
     container:
       image: ghcr.io/dojoengine/torii-dev:latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - run: scripts/rust_fmt.sh
 
@@ -26,15 +26,9 @@ jobs:
     container:
       image: ghcr.io/dojoengine/torii-dev:latest
     steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      # Workaround for https://github.com/actions/runner-images/issues/6775
-      - run: git config --global --add safe.directory "*"
-
-      - name: Run Clippy
-        run: |
-          ./scripts/clippy.sh
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: ./scripts/clippy.sh
 
   test:
     needs: [fmt, clippy]
@@ -42,13 +36,19 @@ jobs:
     container:
       image: ghcr.io/dojoengine/torii-dev:latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build Torii binary
+      - name: Check env
         run: |
-          cargo build --release --bin torii
-          echo "$PWD/target/release" >> $GITHUB_PATH
+          strings /lib/x86_64-linux-gnu/libc.so.6 | grep GLIBC_
+          ldd --version
+
+      # This puts Katana in the path for integration tests.
+      - name: Download Katana for integration tests
+        run: |
+          curl -L https://github.com/dojoengine/katana/releases/download/v1.5.0-alpha.2/katana_v1.5.0-alpha.2_linux_amd64.tar.gz -o katana.tar.gz;
+          tar -C /usr/local/bin -xzf katana.tar.gz
 
       - name: Run tests
         run: |

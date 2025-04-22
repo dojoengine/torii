@@ -6,6 +6,7 @@ members = [
 	"crates/cli",
 	"crates/client",
 	"crates/server",
+ 	"crates/sqlite/types",
 	"xtask/generate-test-db",
 ]
 
@@ -14,7 +15,7 @@ edition = "2021"
 license = "Apache-2.0"
 license-file = "LICENSE"
 repository = "https://github.com/dojoengine/torii"
-version = "1.5.0"
+version = "1.2.3"
 
 [profile.performance]
 codegen-units = 1
@@ -43,15 +44,22 @@ topological-sort = "0.2"
 torii-cli = { path = "crates/cli" }
 torii-client = { path = "crates/client" }
 torii-graphql = { path = "crates/graphql" }
-torii-grpc = { path = "crates/grpc" }
+torii-proto = { path = "crates/proto" }
 torii-indexer = { path = "crates/indexer" }
-torii-relay = { path = "crates/libp2p" }
+torii-libp2p-client = { path = "crates/libp2p/client" }
+torii-libp2p-relay = { path = "crates/libp2p/relay" }
+torii-libp2p-types = { path = "crates/libp2p/types" }
 torii-runner = { path = "crates/runner" }
 torii-server = { path = "crates/server" }
-torii-sqlite = { path = "crates/sqlite" }
+torii-sqlite = { path = "crates/sqlite/sqlite" }
+torii-sqlite-types = { path = "crates/sqlite/types" }
 torii-typed-data = { path = "crates/typed-data" }
 torii-mcp = { path = "crates/mcp" }
 torii-processors = { path = "crates/processors" }
+torii-grpc-client = { path = "crates/grpc/client" }
+torii-grpc-server = { path = "crates/grpc/server" }
+torii-adigraphmap = { path = "crates/adigraphmap" }
+
 # macros
 merge-options = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
 

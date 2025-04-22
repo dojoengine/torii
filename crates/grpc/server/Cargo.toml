@@ -1,0 +1,56 @@
+[package]
+edition.workspace = true
+license-file.workspace = true
+name = "torii-grpc-server"
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+dojo-types.workspace = true
+futures.workspace = true
+futures-util.workspace = true
+num-traits.workspace = true
+rayon.workspace = true
+starknet.workspace = true
+starknet-crypto.workspace = true
+thiserror.workspace = true
+torii-sqlite = { workspace = true }
+torii-proto = { workspace = true, features = ["server"] }
+
+crypto-bigint.workspace = true
+serde.workspace = true
+strum.workspace = true
+strum_macros.workspace = true
+
+# server
+dojo-world.workspace = true
+hyper.workspace = true
+rand.workspace = true
+serde_json.workspace = true
+tower.workspace = true
+tracing.workspace = true
+
+tower-http.workspace = true
+http.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tokio-stream = "0.1.14"
+tonic-reflection.workspace = true
+tonic-web.workspace = true
+tonic.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+cainome.workspace = true
+camino.workspace = true
+dojo-test-utils.workspace = true
+dojo-utils.workspace = true
+katana-runner = { git = "https://github.com/dojoengine/katana", rev = "5cb249c0fa59fa6b7c88b32557e7baf8944cdb3d" }
+scarb = { git = "https://github.com/dojoengine/scarb", rev = "8a60513c03e72b8a84f3ac266c61aac40c565aca" }
+tempfile.workspace = true
+sozo-scarbext = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
+torii-indexer.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true
+wasm-tonic-build.workspace = true

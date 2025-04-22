@@ -41,8 +41,8 @@ torii-cli.workspace = true
 torii-indexer.workspace = true
 torii-sqlite.workspace = true
 torii-graphql.workspace = true
-torii-grpc = { workspace = true, features = [ "server" ] }
-torii-relay = { workspace = true, features = [ "server" ] }
+torii-grpc-server = { workspace = true }
+torii-libp2p-relay = { workspace = true }
 torii-server.workspace = true
 tower.workspace = true
 

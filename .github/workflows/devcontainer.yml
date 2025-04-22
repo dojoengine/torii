@@ -1,4 +1,4 @@
-name: build and push devcontainer
+name: devcontainer
 
 on:
   workflow_dispatch:
@@ -17,6 +17,8 @@ on:
 
 jobs:
   build-and-push:
+    # The runner even if 24.04 doesn't have glibc 2.38+ as it should.
+    # So using a lower glibc version for better compatibility.
     runs-on: ubuntu-latest-4-cores
 
     env:

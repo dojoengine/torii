@@ -15,8 +15,6 @@ pub const DEFAULT_RPC_URL: &str = "http://0.0.0.0:5050";
 /// Dojo World Indexer
 #[derive(Parser, Debug, Serialize, Deserialize, Clone, MergeOptions)]
 #[serde(default)]
-#[command(name = "torii", author, about, long_about = None)]
-#[command(next_help_heading = "Torii general options")]
 pub struct ToriiArgs {
     /// The world to index
     #[arg(short, long = "world", env = "DOJO_WORLD_ADDRESS")]
@@ -115,7 +113,7 @@ mod test {
     use std::net::{IpAddr, Ipv4Addr};
     use std::str::FromStr;
 
-    use torii_sqlite::types::{Contract, ContractType, ModelIndices};
+    use torii_sqlite_types::{Contract, ContractType, ModelIndices};
 
     use super::*;
 
@@ -184,7 +182,7 @@ mod test {
         assert_eq!(torii_args.sql.cache_size, DEFAULT_DATABASE_CACHE_SIZE);
         assert_eq!(
             torii_args.sql.model_indices,
-            Some(vec![
+            vec![
                 ModelIndices {
                     model_tag: "ns-Position".to_string(),
                     fields: vec!["vec.x".to_string(), "vec.y".to_string()],
@@ -193,7 +191,7 @@ mod test {
                     model_tag: "ns-Moves".to_string(),
                     fields: vec!["player".to_string()],
                 },
-            ])
+            ]
         );
     }
 
@@ -253,7 +251,7 @@ mod test {
 
         assert_eq!(torii_args.sql.page_size, DEFAULT_DATABASE_PAGE_SIZE);
         assert_eq!(torii_args.sql.cache_size, DEFAULT_DATABASE_CACHE_SIZE);
-        assert_eq!(torii_args.sql.model_indices, None);
+        assert_eq!(torii_args.sql.model_indices, vec![]);
         assert_eq!(torii_args.sql.historical, Vec::<String>::new());
 
         assert_eq!(torii_args.server.http_addr, DEFAULT_HTTP_ADDR);
@@ -352,10 +350,10 @@ mod test {
         );
         assert_eq!(
             torii_args.sql.model_indices,
-            Some(vec![ModelIndices {
+            vec![ModelIndices {
                 model_tag: "ns-Position".to_string(),
                 fields: vec!["vec.x".to_string(), "vec.y".to_string()],
-            }])
+            }]
         );
         assert_eq!(torii_args.server.http_addr, IpAddr::V4(Ipv4Addr::LOCALHOST));
         assert_eq!(torii_args.server.http_port, 7777);

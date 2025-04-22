@@ -47,7 +47,6 @@ jobs:
       PLATFORM_NAME: ${{ matrix.job.platform }}
       TARGET: ${{ matrix.job.target }}
       ARCH: ${{ matrix.job.arch }}
-      CARGO_PROFILE: performance
     strategy:
       matrix:
         job:
@@ -73,6 +72,10 @@ jobs:
             platform: darwin
             target: aarch64-apple-darwin
             arch: arm64
+          - os: windows-latest
+            platform: win32
+            target: x86_64-pc-windows-msvc
+            arch: amd64
 
     steps:
       - uses: actions/checkout@v4
@@ -85,32 +88,10 @@ jobs:
           cache-on-failure: true
           cache-key: ${{ matrix.job.target }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: arduino/setup-protoc@v2
         with:
-          bun-version: latest
-
-      - name: Install LLVM dependencies for Linux
-        if: ${{ matrix.job.platform == 'linux' }}
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 19
-          sudo apt-get update -y
-          sudo apt-get install -y g++ llvm-19 llvm-19-dev llvm-19-runtime clang-19 clang-tools-19 lld-19 libpolly-19-dev libmlir-19-dev mlir-19-tools
-          echo "MLIR_SYS_190_PREFIX=/usr/lib/llvm-19" >> $GITHUB_ENV
-          echo "LLVM_SYS_191_PREFIX=/usr/lib/llvm-19" >> $GITHUB_ENV
-          echo "TABLEGEN_190_PREFIX=/usr/lib/llvm-19" >> $GITHUB_ENV
-
-      - name: Install LLVM dependencies for macOS
-        if: ${{ matrix.job.platform == 'darwin' }}
-        run: |
-          brew install llvm@19 --quiet
-          brew install zstd
-          echo "MLIR_SYS_190_PREFIX=$(brew --prefix llvm@19)" >> $GITHUB_ENV
-          echo "LLVM_SYS_191_PREFIX=$(brew --prefix llvm@19)" >> $GITHUB_ENV
-          echo "TABLEGEN_190_PREFIX=$(brew --prefix llvm@19)" >> $GITHUB_ENV
-          echo "LIBRARY_PATH=$(brew --prefix zstd)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
-          echo "CPATH=$(brew --prefix zstd)/include:$CPATH" >> $GITHUB_ENV
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          version: "25.x"
 
       - name: Apple M1 setup
         if: ${{ matrix.job.target == 'aarch64-apple-darwin' }}
@@ -130,7 +111,7 @@ jobs:
       - name: Build binary
         run: |
           cargo --version
-          cargo build -p torii --profile ${CARGO_PROFILE} --target ${{ matrix.job.target }}
+          cargo build -p torii --release --target ${{ matrix.job.target }}
 
       - name: Archive binaries
         id: artifacts
@@ -138,13 +119,18 @@ jobs:
           VERSION_NAME: ${{ needs.prepare.outputs.tag_name }}
         run: |
           if [ "$PLATFORM_NAME" == "linux" ]; then
-            tar -czvf "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/${CARGO_PROFILE} torii
+            tar -czvf "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release torii
             echo "file_name=torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
           elif [ "$PLATFORM_NAME" == "darwin" ]; then
             # We need to use gtar here otherwise the archive is corrupt.
             # See: https://github.com/actions/virtual-environments/issues/2619
-            gtar -czvf "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/${CARGO_PROFILE} torii
+            gtar -czvf "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release torii
             echo "file_name=torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
+          else
+            cd ./target/${TARGET}/release
+            7z a -tzip "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" torii.exe
+            mv "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" ../../../
+            echo "file_name=torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" >> $GITHUB_OUTPUT
           fi
         shell: bash
 
@@ -153,7 +139,7 @@ jobs:
         if: ${{ env.PLATFORM_NAME == 'linux' }}
         run: |
           mkdir -p $PLATFORM_NAME/$ARCH
-          mv target/${TARGET}/${CARGO_PROFILE}/torii $PLATFORM_NAME/$ARCH
+          mv target/${TARGET}/release/torii $PLATFORM_NAME/$ARCH
         shell: bash
 
       - name: Upload docker binaries
@@ -171,11 +157,12 @@ jobs:
           retention-days: 1
 
   create-draft-release:
-    runs-on: ubuntu-20.04-4-cores
+    runs-on: ubuntu-latest-4-cores
     needs: [prepare, release]
     env:
       GITHUB_USER: ${{ github.repository_owner }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    if: ${{ !contains(needs.prepare.outputs.tag_name, 'preview') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -189,15 +176,15 @@ jobs:
           echo "version=v$(cargo get workspace.package.version)" >> $GITHUB_OUTPUT
       - name: Display structure of downloaded files
         run: ls -R artifacts
-      - run: gh release create ${{ steps.version_info.outputs.version }} ./artifacts/* --generate-notes --draft
+      - run: gh release create ${{ steps.version_info.outputs.version }} ./artifacts/*.{gz,zip} --generate-notes --draft
 
   docker-build-and-push:
-    runs-on: ubuntu-20.04-4-cores
+    runs-on: ubuntu-latest-4-cores
     needs: [prepare, release]
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Download binaries
         uses: actions/download-artifact@v4

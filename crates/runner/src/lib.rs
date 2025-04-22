@@ -35,6 +35,7 @@ use tokio_stream::StreamExt;
 use torii_cli::ToriiArgs;
 use torii_indexer::engine::{Engine, EngineConfig, IndexingFlags, Processors};
 use torii_indexer::processors::EventProcessorConfig;
+use torii_libp2p_relay::Relay;
 use torii_server::proxy::Proxy;
 use torii_sqlite::cache::ModelCache;
 use torii_sqlite::executor::Executor;
@@ -51,11 +52,12 @@ use crate::constants::LOG_TARGET;
 #[derive(Debug)]
 pub struct Runner {
     args: ToriiArgs,
+    version_spec: String,
 }
 
 impl Runner {
-    pub fn new(args: ToriiArgs) -> Self {
-        Self { args }
+    pub fn new(args: ToriiArgs, version_spec: String) -> Self {
+        Self { args, version_spec }
     }
 
     pub async fn run(mut self) -> anyhow::Result<()> {
@@ -151,7 +153,32 @@ impl Runner {
             .connect_with(readonly_options)
             .await?;
 
-        sqlx::migrate!("../migrations").run(&pool).await?;
+        if let Some(migrations) = self.args.sql.migrations {
+            // Create a temporary directory to combine migrations
+            let temp_migrations = TempDir::new()?;
+
+            // Copy default migrations first
+            let default_migrations_dir =
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../migrations");
+            for entry in std::fs::read_dir(default_migrations_dir)? {
+                let entry = entry?;
+                let target = temp_migrations.path().join(entry.file_name());
+                std::fs::copy(entry.path(), target)?;
+            }
+
+            // Copy custom migrations
+            for entry in std::fs::read_dir(&migrations)? {
+                let entry = entry?;
+                let target = temp_migrations.path().join(entry.file_name());
+                std::fs::copy(entry.path(), target)?;
+            }
+
+            // Run combined migrations
+            let migrator = sqlx::migrate::Migrator::new(temp_migrations.path()).await?;
+            migrator.run(&pool).await?;
+        } else {
+            sqlx::migrate!("../migrations").run(&pool).await?;
+        }
 
         // Get world address
         let world = WorldContractReader::new(world_address, provider.clone());
@@ -167,7 +194,7 @@ impl Runner {
 
         let model_cache = Arc::new(ModelCache::new(readonly_pool.clone()));
 
-        if self.args.sql.all_model_indices && self.args.sql.model_indices.is_some() {
+        if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
             warn!(
                 target: LOG_TARGET,
                 "all_model_indices is true, which will override any specific indices in model_indices"
@@ -181,15 +208,14 @@ impl Runner {
             model_cache.clone(),
             SqlConfig {
                 all_model_indices: self.args.sql.all_model_indices,
-                model_indices: self.args.sql.model_indices.unwrap_or_default(),
+                model_indices: self.args.sql.model_indices.clone(),
                 historical_models: self.args.sql.historical.clone().into_iter().collect(),
+                hooks: self.args.sql.hooks.clone(),
             },
         )
         .await?;
 
         let processors = Processors::default();
-
-        let (block_tx, block_rx) = tokio::sync::mpsc::channel(100);
 
         let mut flags = IndexingFlags::empty();
         if self.args.indexing.transactions {
@@ -220,20 +246,12 @@ impl Runner {
                 world_block: self.args.indexing.world_block,
             },
             shutdown_tx.clone(),
-            Some(block_tx),
             &self.args.indexing.contracts,
         );
 
         let shutdown_rx = shutdown_tx.subscribe();
-        let (grpc_addr, grpc_server) = torii_grpc::server::new(
-            shutdown_rx,
-            &readonly_pool,
-            block_rx,
-            world_address,
-            Arc::clone(&provider),
-            model_cache,
-        )
-        .await?;
+        let (grpc_addr, grpc_server) =
+            torii_grpc_server::new(shutdown_rx, &readonly_pool, world_address, model_cache).await?;
 
         let temp_dir = TempDir::new()?;
         let artifacts_path = self
@@ -252,7 +270,7 @@ impl Runner {
         )
         .await?;
 
-        let mut libp2p_relay_server = torii_relay::server::Relay::new_with_peers(
+        let mut libp2p_relay_server = Relay::new_with_peers(
             db,
             provider.clone(),
             self.args.relay.port,
@@ -276,6 +294,7 @@ impl Runner {
             None,
             Some(artifacts_addr),
             Arc::new(readonly_pool.clone()),
+            self.version_spec.clone(),
         ));
 
         let graphql_server = spawn_rebuilding_graphql_server(

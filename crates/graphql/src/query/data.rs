@@ -304,7 +304,7 @@ fn build_conditions(keys: &Option<Vec<String>>, filters: &Option<Vec<Filter>>) -
         if !keys.is_empty() {
             // regex is used if first element is wildcard, otherwise default to `like` which is more
             // performant
-            let use_regex = keys.first().map_or(false, |k| k == "*");
+            let use_regex = keys.first().is_some_and(|k| k == "*");
             let pattern = keys_to_pattern(keys, use_regex);
 
             let condition_type = if use_regex { "REGEXP" } else { "LIKE" };
