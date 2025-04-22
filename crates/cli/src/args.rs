@@ -15,8 +15,6 @@ pub const DEFAULT_RPC_URL: &str = "http://0.0.0.0:5050";
 /// Dojo World Indexer
 #[derive(Parser, Debug, Serialize, Deserialize, Clone, MergeOptions)]
 #[serde(default)]
-#[command(name = "torii", author, about, long_about = None)]
-#[command(next_help_heading = "Torii general options")]
 pub struct ToriiArgs {
     /// The world to index
     #[arg(short, long = "world", env = "DOJO_WORLD_ADDRESS")]
