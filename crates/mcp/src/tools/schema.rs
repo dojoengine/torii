@@ -9,7 +9,8 @@ use crate::types::{JsonRpcError, JsonRpcRequest, JsonRpcResponse, JSONRPC_VERSIO
 pub fn get_tool() -> Tool {
     Tool {
         name: "schema".to_string(),
-        description: "Retrieve the database schema including tables, columns, and their types".to_string(),
+        description: "Retrieve the database schema including tables, columns, and their types"
+            .to_string(),
         input_schema: json!({
             "type": "object",
             "properties": {
