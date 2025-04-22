@@ -5,8 +5,8 @@ pub mod schema;
 
 #[derive(Clone, Debug)]
 pub struct Tool {
-    pub name: &'static str,
-    pub description: &'static str,
+    pub name: String,
+    pub description: String,
     pub input_schema: Value,
 }
 

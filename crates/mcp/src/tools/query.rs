@@ -9,8 +9,8 @@ use crate::types::{JsonRpcError, JsonRpcRequest, JsonRpcResponse, JSONRPC_VERSIO
 
 pub fn get_tool() -> Tool {
     Tool {
-        name: "query",
-        description: "Execute a SQL query on the database",
+        name: "query".to_string(),
+        description: "Execute a SQL query on the database".to_string(),
         input_schema: json!({
             "type": "object",
             "properties": {
