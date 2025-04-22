@@ -31,7 +31,6 @@ use tracing::{debug, error, info, trace, warn};
 use crate::constants::LOG_TARGET;
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
 
-
 bitflags! {
     #[derive(Debug, Clone)]
     pub struct IndexingFlags: u32 {

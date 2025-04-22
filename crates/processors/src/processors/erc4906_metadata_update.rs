@@ -7,8 +7,8 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{self, TaskId, TaskPriority};
+use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc4906_metadata_update";
 #[derive(Default, Debug)]

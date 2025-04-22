@@ -11,8 +11,8 @@ use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
 use tracing::{debug, error};
 
-use crate::EventProcessorConfig;
 use crate::processors::Processors;
+use crate::EventProcessorConfig;
 
 pub const TASK_ID_SEQUENTIAL: TaskId = 0;
 
