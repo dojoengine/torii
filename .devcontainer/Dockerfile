@@ -4,15 +4,15 @@ ARG RUST_VERSION=1.85.0
 FROM ubuntu:24.04
 ARG RUST_VERSION
 
-# Install rust.
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION}
-ENV PATH="/root/.cargo/bin:${PATH}"
-
 # Install additional packages
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends protobuf-compiler libprotobuf-dev libclang-dev libzstd-dev make pkg-config libssl-dev
 
 RUN apt-get install -y gh libgmp3-dev software-properties-common curl git unzip
+
+# Install rust.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y --default-toolchain ${RUST_VERSION}
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # To allow independent workflow of the container, the rust-toolchain is explicitely given.
 RUN echo ${RUST_VERSION} > rust_toolchain_version
@@ -28,7 +28,7 @@ RUN rustup toolchain install $(cat rust_toolchain_version) && \
     rustup component add rustfmt
 
 RUN rustup toolchain install $(cat nightly_rust_toolchain_version) && \
-	rustup component add rustfmt clippy --toolchain $(cat nightly_rust_toolchain_version)
+        rustup component add rustfmt clippy --toolchain $(cat nightly_rust_toolchain_version)
 
 RUN rustup target add x86_64-pc-windows-msvc && \
     rustup target add wasm32-unknown-unknown
@@ -66,6 +66,3 @@ ENV PATH="${PATH}:/root/go/bin"
 
 RUN asdf plugin add scarb
 RUN asdf install scarb 2.9.4
-
-RUN chown -R root:root /usr/local/cargo
-RUN chmod -R 700 /usr/local/cargo
