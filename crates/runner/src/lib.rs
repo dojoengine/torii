@@ -152,7 +152,32 @@ impl Runner {
             .connect_with(readonly_options)
             .await?;
 
-        sqlx::migrate!("../migrations").run(&pool).await?;
+        if let Some(migrations) = self.args.sql.migrations {
+            // Create a temporary directory to combine migrations
+            let temp_migrations = TempDir::new()?;
+
+            // Copy default migrations first
+            let default_migrations_dir =
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../migrations");
+            for entry in std::fs::read_dir(default_migrations_dir)? {
+                let entry = entry?;
+                let target = temp_migrations.path().join(entry.file_name());
+                std::fs::copy(entry.path(), target)?;
+            }
+
+            // Copy custom migrations
+            for entry in std::fs::read_dir(&migrations)? {
+                let entry = entry?;
+                let target = temp_migrations.path().join(entry.file_name());
+                std::fs::copy(entry.path(), target)?;
+            }
+
+            // Run combined migrations
+            let migrator = sqlx::migrate::Migrator::new(temp_migrations.path()).await?;
+            migrator.run(&pool).await?;
+        } else {
+            sqlx::migrate!("../migrations").run(&pool).await?;
+        }
 
         // Get world address
         let world = WorldContractReader::new(world_address, provider.clone());
@@ -168,7 +193,7 @@ impl Runner {
 
         let model_cache = Arc::new(ModelCache::new(readonly_pool.clone()));
 
-        if self.args.sql.all_model_indices && self.args.sql.model_indices.is_some() {
+        if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
             warn!(
                 target: LOG_TARGET,
                 "all_model_indices is true, which will override any specific indices in model_indices"
@@ -182,8 +207,9 @@ impl Runner {
             model_cache.clone(),
             SqlConfig {
                 all_model_indices: self.args.sql.all_model_indices,
-                model_indices: self.args.sql.model_indices.unwrap_or_default(),
+                model_indices: self.args.sql.model_indices.clone(),
                 historical_models: self.args.sql.historical.clone().into_iter().collect(),
+                hooks: self.args.sql.hooks.clone(),
             },
         )
         .await?;

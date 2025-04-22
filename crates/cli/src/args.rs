@@ -184,7 +184,7 @@ mod test {
         assert_eq!(torii_args.sql.cache_size, DEFAULT_DATABASE_CACHE_SIZE);
         assert_eq!(
             torii_args.sql.model_indices,
-            Some(vec![
+            vec![
                 ModelIndices {
                     model_tag: "ns-Position".to_string(),
                     fields: vec!["vec.x".to_string(), "vec.y".to_string()],
@@ -193,7 +193,7 @@ mod test {
                     model_tag: "ns-Moves".to_string(),
                     fields: vec!["player".to_string()],
                 },
-            ])
+            ]
         );
     }
 
@@ -253,7 +253,7 @@ mod test {
 
         assert_eq!(torii_args.sql.page_size, DEFAULT_DATABASE_PAGE_SIZE);
         assert_eq!(torii_args.sql.cache_size, DEFAULT_DATABASE_CACHE_SIZE);
-        assert_eq!(torii_args.sql.model_indices, None);
+        assert_eq!(torii_args.sql.model_indices, vec![]);
         assert_eq!(torii_args.sql.historical, Vec::<String>::new());
 
         assert_eq!(torii_args.server.http_addr, DEFAULT_HTTP_ADDR);
@@ -352,10 +352,10 @@ mod test {
         );
         assert_eq!(
             torii_args.sql.model_indices,
-            Some(vec![ModelIndices {
+            vec![ModelIndices {
                 model_tag: "ns-Position".to_string(),
                 fields: vec!["vec.x".to_string(), "vec.y".to_string()],
-            }])
+            }]
         );
         assert_eq!(torii_args.server.http_addr, IpAddr::V4(Ipv4Addr::LOCALHOST));
         assert_eq!(torii_args.server.http_port, 7777);
