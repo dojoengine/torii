@@ -13,5 +13,5 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [build-dependencies]
-vergen = "9.0.6"
+vergen = { version = "9.0.6", features = ["build", "emit_and_set"] }
 vergen-gitcl = "1.0.8"
