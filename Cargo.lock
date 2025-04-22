@@ -13116,7 +13116,7 @@ dependencies = [
 
 [[package]]
 name = "torii"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -13131,7 +13131,7 @@ dependencies = [
 
 [[package]]
 name = "torii-cli"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -13148,7 +13148,7 @@ dependencies = [
 
 [[package]]
 name = "torii-client"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "async-trait",
  "crypto-bigint",
@@ -13173,7 +13173,7 @@ dependencies = [
 
 [[package]]
 name = "torii-graphql"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -13214,7 +13214,7 @@ dependencies = [
 
 [[package]]
 name = "torii-grpc-client"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "crypto-bigint",
  "dojo-types 1.4.1",
@@ -13239,7 +13239,7 @@ dependencies = [
 
 [[package]]
 name = "torii-grpc-server"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "cainome",
@@ -13285,7 +13285,7 @@ dependencies = [
 
 [[package]]
 name = "torii-indexer"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -13329,7 +13329,7 @@ dependencies = [
 
 [[package]]
 name = "torii-libp2p-client"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -13360,7 +13360,7 @@ dependencies = [
 
 [[package]]
 name = "torii-libp2p-relay"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13389,7 +13389,7 @@ dependencies = [
 
 [[package]]
 name = "torii-libp2p-types"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "serde",
  "starknet 0.12.0",
@@ -13398,7 +13398,7 @@ dependencies = [
 
 [[package]]
 name = "torii-mcp"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -13430,7 +13430,7 @@ dependencies = [
 
 [[package]]
 name = "torii-proto"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "crypto-bigint",
  "dojo-types 1.4.1",
@@ -13452,7 +13452,7 @@ dependencies = [
 
 [[package]]
 name = "torii-runner"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -13501,7 +13501,7 @@ dependencies = [
 
 [[package]]
 name = "torii-server"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13538,7 +13538,7 @@ dependencies = [
 
 [[package]]
 name = "torii-sqlite"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13578,7 +13578,7 @@ dependencies = [
 
 [[package]]
 name = "torii-sqlite-types"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13590,7 +13590,7 @@ dependencies = [
 
 [[package]]
 name = "torii-typed-data"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "cainome",
  "crypto-bigint",
@@ -15246,7 +15246,7 @@ checksum = "9d422e8e38ec76e2f06ee439ccc765e9c6a9638b9e7c9f2e8255e4d41e8bd852"
 
 [[package]]
 name = "xtask-generate-test-db"
-version = "1.2.3"
+version = "1.5.0-alpha.0"
 dependencies = [
  "anyhow",
  "dojo-test-utils",
