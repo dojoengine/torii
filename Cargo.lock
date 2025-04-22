@@ -13328,38 +13328,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "torii-mcp"
-version = "1.5.0"
-dependencies = [
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "torii-sqlite",
-]
-
-[[package]]
-name = "torii-processors"
-version = "1.5.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.21.7",
- "cainome",
- "cainome-cairo-serde",
- "dojo-types 1.4.1",
- "dojo-world 1.4.1",
- "futures-util",
- "lazy_static",
- "serde_json",
- "starknet 0.12.0",
- "starknet-crypto 0.7.4",
- "tokio",
- "torii-sqlite",
- "tracing",
-]
-
-[[package]]
 name = "torii-libp2p-client"
 version = "1.2.3"
 dependencies = [
@@ -13437,6 +13405,27 @@ dependencies = [
  "sqlx",
  "tokio",
  "torii-sqlite",
+]
+
+[[package]]
+name = "torii-processors"
+version = "1.2.3"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "cainome",
+ "cainome-cairo-serde",
+ "dojo-types 1.4.1",
+ "dojo-world 1.4.1",
+ "futures-util",
+ "lazy_static",
+ "serde_json",
+ "starknet 0.12.0",
+ "starknet-crypto 0.7.4",
+ "tokio",
+ "torii-sqlite",
+ "tracing",
 ]
 
 [[package]]
