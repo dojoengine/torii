@@ -13,6 +13,8 @@ pub mod task_manager;
 
 use crate::task_manager::{TaskId, TaskPriority};
 
+pub use processors::Processors;
+
 #[derive(Clone, Debug, Default)]
 pub struct EventProcessorConfig {
     pub namespaces: HashSet<String>,

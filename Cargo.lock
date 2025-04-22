@@ -13488,6 +13488,7 @@ dependencies = [
  "torii-grpc-server",
  "torii-indexer",
  "torii-libp2p-relay",
+ "torii-processors",
  "torii-server",
  "torii-sqlite",
  "tower 0.4.13",
