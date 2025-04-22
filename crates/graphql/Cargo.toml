@@ -49,3 +49,4 @@ toml.workspace = true
 # avoid having to depend on scarb here.
 scarb = { git = "https://github.com/dojoengine/scarb", rev = "8a60513c03e72b8a84f3ac266c61aac40c565aca" }
 sozo-scarbext = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
+torii-processors = { workspace = true }

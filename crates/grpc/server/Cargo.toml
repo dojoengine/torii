@@ -50,6 +50,7 @@ scarb = { git = "https://github.com/dojoengine/scarb", rev = "8a60513c03e72b8a84
 tempfile.workspace = true
 sozo-scarbext = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
 torii-indexer.workspace = true
+torii-processors = { workspace = true }
 
 [build-dependencies]
 tonic-build.workspace = true
