@@ -438,7 +438,7 @@ impl Sql {
         let entity_id = format!("{:#x}", poseidon_hash_many(&keys));
         let model_id = format!(
             "{:#x}",
-            compute_selector_from_names(model_namespace, &model_name)
+            compute_selector_from_names(model_namespace, model_name)
         );
 
         let keys_str = felts_to_sql_string(&keys);

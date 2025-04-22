@@ -133,10 +133,8 @@ pub fn value_mapping_from_row(
     // Retrieve entity ID if present
     let entity_id = if let Ok(entity_id) = row.try_get::<String, &str>(ENTITY_ID_COLUMN) {
         Some(entity_id)
-    } else if let Ok(event_message_id) = row.try_get::<String, &str>(EVENT_MESSAGE_ID_COLUMN) {
-        Some(event_message_id)
     } else {
-        None
+        row.try_get::<String, &str>(EVENT_MESSAGE_ID_COLUMN).ok()
     };
 
     fn build_value_mapping(

@@ -69,7 +69,7 @@ pub(crate) fn match_entity_keys(
                     return false;
                 }
 
-                return keys.iter().enumerate().all(|(idx, key)| {
+                keys.iter().enumerate().all(|(idx, key)| {
                     // this is going to be None if our key pattern overflows the subscriber
                     // key pattern in this case we should skip
                     let sub_key = clause.keys.get(idx);
@@ -84,7 +84,7 @@ pub(crate) fn match_entity_keys(
                         // so we should match all next keys
                         _ => true,
                     }
-                });
+                })
             }
         })
     {
@@ -115,7 +115,7 @@ pub(crate) fn match_keys(keys: &[Felt], clauses: &[EntityKeysClause]) -> bool {
                     return false;
                 }
 
-                return keys.iter().enumerate().all(|(idx, key)| {
+                keys.iter().enumerate().all(|(idx, key)| {
                     // this is going to be None if our key pattern overflows the subscriber
                     // key pattern in this case we should skip
                     let sub_key = clause.keys.get(idx);
@@ -130,7 +130,7 @@ pub(crate) fn match_keys(keys: &[Felt], clauses: &[EntityKeysClause]) -> bool {
                         // so we should match all next keys
                         _ => true,
                     }
-                });
+                })
             }
         })
     {

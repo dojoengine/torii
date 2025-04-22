@@ -44,11 +44,11 @@ jobs:
           strings /lib/x86_64-linux-gnu/libc.so.6 | grep GLIBC_
           ldd --version
 
-      # Currently Katana is downloaded from Dojo, but soon it will be from its own repository.
+      # This puts Katana in the path for integration tests.
       - name: Download Katana for integration tests
         run: |
-          curl -L https://github.com/dojoengine/dojo/releases/download/v1.4.0/dojo_v1.4.0_linux_amd64.tar.gz -o dojo.tar.gz;
-          tar -C /usr/local/bin -xzf dojo.tar.gz
+          curl -L https://github.com/dojoengine/katana/releases/download/v1.5.0-alpha.2/katana_v1.5.0-alpha.2_linux_amd64.tar.gz -o katana.tar.gz;
+          tar -C /usr/local/bin -xzf katana.tar.gz
 
       - name: Run tests
         run: |

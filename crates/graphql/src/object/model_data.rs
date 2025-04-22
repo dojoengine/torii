@@ -193,7 +193,7 @@ pub fn object(type_name: &str, type_mapping: &TypeMapping, path_array: Vec<Strin
             path_array.push(field_name.to_string());
             let table_name = path_array.join("$").replace(&namespace, "");
 
-            return FieldFuture::new(async move {
+            FieldFuture::new(async move {
                 if let Some(value) = ctx.parent_value.as_value() {
                     // Nested types resolution
                     if let TypeData::Nested((_, nested_mapping)) = type_data {
@@ -241,7 +241,7 @@ pub fn object(type_name: &str, type_mapping: &TypeMapping, path_array: Vec<Strin
                 }
 
                 Err("Field resolver only accepts Value or IndexMap".into())
-            });
+            })
         });
 
         object = object.field(field);

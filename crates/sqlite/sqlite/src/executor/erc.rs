@@ -58,7 +58,7 @@ pub struct RegisterErc20TokenQuery {
     pub decimals: u8,
 }
 
-impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
+impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     pub async fn apply_balance_diff(
         &mut self,
         apply_balance_diff: ApplyBalanceDiffQuery,

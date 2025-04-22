@@ -3,6 +3,7 @@ use libp2p::identify::Event as IdentifyEvent;
 use libp2p::ping::Event as PingEvent;
 use libp2p::relay::Event as RelayEvent;
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum BehaviourEvent {
     Identify(IdentifyEvent),

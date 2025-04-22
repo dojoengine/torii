@@ -269,7 +269,7 @@ impl QueryMessage {
     }
 }
 
-impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
+impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     pub async fn new(
         pool: Pool<Sqlite>,
         shutdown_tx: Sender<()>,

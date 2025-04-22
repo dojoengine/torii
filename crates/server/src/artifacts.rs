@@ -132,7 +132,7 @@ fn file_name_from_dir_and_query(
 
     let base_filename = base_image.file_name();
     let base_filename = base_filename.to_str().unwrap();
-    let base_ext = base_filename.split('.').last().unwrap();
+    let base_ext = base_filename.split('.').next_back().unwrap();
 
     let suffix = match (query.width, query.height) {
         // If either dimension is <= 100px, use small version
