@@ -19,7 +19,7 @@ jobs:
   build-and-push:
     # The runner even if 24.04 doesn't have glibc 2.38+ as it should.
     # So using a lower glibc version for better compatibility.
-    runs-on: ubuntu-22.04-4-cores
+    runs-on: ubuntu-latest-4-cores
 
     env:
       DOCKER_TAG: latest
