@@ -13,7 +13,7 @@ RUN apt-get install -y gh libgmp3-dev software-properties-common curl git unzip
 # To allow independent workflow of the container, the rust-toolchain is explicitely given.
 RUN echo ${RUST_VERSION} > rust_toolchain_version
 # Make sure to sync the nightly version with the scripts in ./scripts
-RUN echo "nightly-2024-08-28" > nightly_rust_toolchain_version
+RUN echo "nightly-2025-02-20" > nightly_rust_toolchain_version
 
 # Install cargo-binstall
 RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
