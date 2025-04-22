@@ -13322,6 +13322,7 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "tokio-util",
+ "torii-processors",
  "torii-sqlite",
  "tracing",
 ]
@@ -13404,6 +13405,27 @@ dependencies = [
  "sqlx",
  "tokio",
  "torii-sqlite",
+]
+
+[[package]]
+name = "torii-processors"
+version = "1.2.3"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "cainome",
+ "cainome-cairo-serde",
+ "dojo-types 1.4.1",
+ "dojo-world 1.4.1",
+ "futures-util",
+ "lazy_static",
+ "serde_json",
+ "starknet 0.12.0",
+ "starknet-crypto 0.7.4",
+ "tokio",
+ "torii-sqlite",
+ "tracing",
 ]
 
 [[package]]

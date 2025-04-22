@@ -9,16 +9,16 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::debug;
 
-use super::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{TaskId, TaskPriority};
 
-pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc721_transfer";
+pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc20_legacy_transfer";
 
 #[derive(Default, Debug)]
-pub struct Erc721TransferProcessor;
+pub struct Erc20LegacyTransferProcessor;
 
 #[async_trait]
-impl<P> EventProcessor<P> for Erc721TransferProcessor
+impl<P> EventProcessor<P> for Erc20LegacyTransferProcessor
 where
     P: Provider + Send + Sync + std::fmt::Debug,
 {
@@ -27,10 +27,10 @@ where
     }
 
     fn validate(&self, event: &Event) -> bool {
-        // ref: https://github.com/OpenZeppelin/cairo-contracts/blob/ba00ce76a93dcf25c081ab2698da20690b5a1cfb/packages/token/src/erc721/erc721.cairo#L40-L49
-        // key: [hash(Transfer), from, to, token_id.low, token_id.high]
-        // data: []
-        if event.keys.len() == 5 && event.data.is_empty() {
+        // ref: https://github.com/OpenZeppelin/cairo-contracts/blob/1f9359219a92cdb1576f953db71ee993b8ef5f70/src/openzeppelin/token/erc20/library.cairo#L19-L21
+        // key: [hash(Transfer)]
+        // data: [from, to, value.0, value.1]
+        if event.keys.len() == 1 && event.data.len() == 4 {
             return true;
         }
 
@@ -49,23 +49,15 @@ where
         // Take the max of from/to addresses to get a canonical representation
         // This ensures transfers between the same pair of addresses are grouped together
         // regardless of direction (A->B or B->A)
-        let canonical_pair = std::cmp::max(event.keys[1], event.keys[2]);
+        let canonical_pair = std::cmp::max(event.data[0], event.data[1]);
         canonical_pair.hash(&mut hasher);
-
-        // For ERC721, we can safely parallelize by token ID since each token is unique
-        // and can only be owned by one address at a time. This means:
-        // 1. Transfers of different tokens can happen in parallel
-        // 2. Multiple transfers of the same token must be sequential
-        // 3. The canonical address pair ensures related transfers stay together
-        event.keys[3].hash(&mut hasher);
-        event.keys[4].hash(&mut hasher);
 
         hasher.finish()
     }
 
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        world: &WorldContractReader<P>,
         db: &mut Sql,
         _block_number: u64,
         block_timestamp: u64,
@@ -74,23 +66,23 @@ where
         _config: &EventProcessorConfig,
     ) -> Result<(), Error> {
         let token_address = event.from_address;
-        let from = event.keys[1];
-        let to = event.keys[2];
+        let from = event.data[0];
+        let to = event.data[1];
 
-        let token_id = U256Cainome::cairo_deserialize(&event.keys, 3)?;
-        let token_id = U256::from_words(token_id.low, token_id.high);
+        let value = U256Cainome::cairo_deserialize(&event.data, 2)?;
+        let value = U256::from_words(value.low, value.high);
 
-        db.handle_nft_transfer(
+        db.handle_erc20_transfer(
             token_address,
             from,
             to,
-            token_id,
-            U256::from(1u8),
+            value,
+            world.provider(),
             block_timestamp,
             event_id,
         )
         .await?;
-        debug!(target: LOG_TARGET, from = ?from, to = ?to, token_id = ?token_id, "ERC721 Transfer.");
+        debug!(target: LOG_TARGET,from = ?from, to = ?to, value = ?value, "Legacy ERC20 Transfer.");
 
         Ok(())
     }

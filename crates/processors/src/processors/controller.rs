@@ -12,7 +12,7 @@ use starknet_crypto::Felt;
 use torii_sqlite::Sql;
 use tracing::info;
 
-use super::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{TaskId, TaskPriority};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::controller";

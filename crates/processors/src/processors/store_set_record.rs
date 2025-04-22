@@ -2,30 +2,29 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
-use cainome::cairo_serde::CairoSerde;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::world::WorldContractReader;
-use starknet::core::types::{Event, Felt};
+use starknet::core::types::Event;
 use starknet::providers::Provider;
-use starknet_crypto::poseidon_hash_many;
+use torii_sqlite::utils::felts_to_sql_string;
 use torii_sqlite::Sql;
-use tracing::info;
+use tracing::{debug, info};
 
-use super::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{TaskId, TaskPriority};
 
-pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::event_message";
+pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_set_record";
 
 #[derive(Default, Debug)]
-pub struct EventMessageProcessor;
+pub struct StoreSetRecordProcessor;
 
 #[async_trait]
-impl<P> EventProcessor<P> for EventMessageProcessor
+impl<P> EventProcessor<P> for StoreSetRecordProcessor
 where
     P: Provider + Send + Sync + std::fmt::Debug,
 {
     fn event_key(&self) -> String {
-        "EventEmitted".to_string()
+        "StoreSetRecord".to_string()
     }
 
     fn validate(&self, _event: &Event) -> bool {
@@ -33,19 +32,13 @@ where
     }
 
     fn task_priority(&self) -> TaskPriority {
-        1
+        2
     }
 
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
-        let keys = Vec::<Felt>::cairo_deserialize(&event.data, 0).unwrap_or_else(|e| {
-            panic!("Expected EventEmitted keys to be well formed: {:?}", e);
-        });
-        // selector
         event.keys[1].hash(&mut hasher);
-        // entity id
-        let entity_id = poseidon_hash_many(&keys);
-        entity_id.hash(&mut hasher);
+        event.keys[2].hash(&mut hasher);
         hasher.finish()
     }
 
@@ -57,43 +50,67 @@ where
         block_timestamp: u64,
         event_id: &str,
         event: &Event,
-        _config: &EventProcessorConfig,
+        config: &EventProcessorConfig,
     ) -> Result<(), Error> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
             panic!(
                 "Expected {} event to be well formed.",
-                <EventMessageProcessor as EventProcessor<P>>::event_key(self)
+                <StoreSetRecordProcessor as EventProcessor<P>>::event_key(self)
             )
         }) {
-            WorldEvent::EventEmitted(e) => e,
+            WorldEvent::StoreSetRecord(e) => e,
             _ => {
                 unreachable!()
             }
         };
 
-        // silently ignore if the model is not found
+        // If the model does not exist, silently ignore it.
+        // This can happen if only specific namespaces are indexed.
         let model = match db.model(event.selector).await {
-            Ok(model) => model,
-            Err(_) => return Ok(()),
+            Ok(m) => m,
+            Err(e) if e.to_string().contains("no rows") && !config.namespaces.is_empty() => {
+                debug!(
+                    target: LOG_TARGET,
+                    selector = %event.selector,
+                    "Model does not exist, skipping."
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to retrieve model with selector {:#x}: {}",
+                    event.selector,
+                    e
+                ));
+            }
         };
 
         info!(
             target: LOG_TARGET,
             namespace = %model.namespace,
             name = %model.name,
-            system = %format!("{:#x}", Felt::from(event.system_address)),
-            "Store event message."
+            entity_id = format!("{:#x}", event.entity_id),
+            "Store set record.",
         );
+
+        let keys_str = felts_to_sql_string(&event.keys);
 
         let mut keys_and_unpacked = [event.keys, event.values].concat();
 
-        let mut entity = model.schema.clone();
+        let mut entity = model.schema;
         entity.deserialize(&mut keys_and_unpacked)?;
 
-        db.set_event_message(entity, event_id, block_timestamp)
-            .await?;
+        db.set_entity(
+            entity,
+            event_id,
+            block_timestamp,
+            event.entity_id,
+            event.selector,
+            Some(&keys_str),
+        )
+        .await?;
         Ok(())
     }
 }

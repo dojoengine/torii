@@ -17,141 +17,20 @@ use starknet::core::types::{
     MaybePendingBlockWithReceipts, MaybePendingBlockWithTxHashes, PendingBlockWithReceipts,
     ResultPageRequest, Transaction, TransactionReceipt, TransactionWithReceipt,
 };
-use starknet::core::utils::get_selector_from_name;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
 use tokio::sync::broadcast::Sender;
 use tokio::time::{sleep, Instant};
+use torii_processors::processors::Processors;
+use torii_processors::EventProcessorConfig;
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::{Cursors, Sql};
 use tracing::{debug, error, info, trace, warn};
 
 use crate::constants::LOG_TARGET;
-use crate::processors::controller::ControllerProcessor;
-use crate::processors::erc1155_transfer_batch::Erc1155TransferBatchProcessor;
-use crate::processors::erc1155_transfer_single::Erc1155TransferSingleProcessor;
-use crate::processors::erc20_legacy_transfer::Erc20LegacyTransferProcessor;
-use crate::processors::erc20_transfer::Erc20TransferProcessor;
-use crate::processors::erc4906_batch_metadata_update::Erc4906BatchMetadataUpdateProcessor;
-use crate::processors::erc4906_metadata_update::Erc4906MetadataUpdateProcessor;
-use crate::processors::erc721_legacy_transfer::Erc721LegacyTransferProcessor;
-use crate::processors::erc721_transfer::Erc721TransferProcessor;
-use crate::processors::event_message::EventMessageProcessor;
-use crate::processors::metadata_update::MetadataUpdateProcessor;
-use crate::processors::raw_event::RawEventProcessor;
-use crate::processors::register_event::RegisterEventProcessor;
-use crate::processors::register_model::RegisterModelProcessor;
-use crate::processors::store_del_record::StoreDelRecordProcessor;
-use crate::processors::store_set_record::StoreSetRecordProcessor;
-use crate::processors::store_transaction::StoreTransactionProcessor;
-use crate::processors::store_update_member::StoreUpdateMemberProcessor;
-use crate::processors::store_update_record::StoreUpdateRecordProcessor;
-use crate::processors::upgrade_event::UpgradeEventProcessor;
-use crate::processors::upgrade_model::UpgradeModelProcessor;
-use crate::processors::{
-    BlockProcessor, EventProcessor, EventProcessorConfig, TransactionProcessor,
-};
-use crate::task_manager::{self, ParallelizedEvent, TaskManager};
+use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
 
-type EventProcessorMap<P> = HashMap<Felt, Vec<Box<dyn EventProcessor<P>>>>;
-
-#[allow(missing_debug_implementations)]
-pub struct Processors<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
-    pub block: Vec<Box<dyn BlockProcessor<P>>>,
-    pub transaction: Vec<Box<dyn TransactionProcessor<P>>>,
-    pub catch_all_event: Box<dyn EventProcessor<P>>,
-    pub event_processors: HashMap<ContractType, EventProcessorMap<P>>,
-}
-
-impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Default for Processors<P> {
-    fn default() -> Self {
-        Self {
-            block: vec![],
-            transaction: vec![Box::new(StoreTransactionProcessor)],
-            // We shouldn't have a catch all for now since the world doesn't forward raw events
-            // anymore.
-            catch_all_event: Box::new(RawEventProcessor) as Box<dyn EventProcessor<P>>,
-            event_processors: Self::initialize_event_processors(),
-        }
-    }
-}
-
-impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Processors<P> {
-    pub fn initialize_event_processors() -> HashMap<ContractType, EventProcessorMap<P>> {
-        let mut event_processors_map = HashMap::<ContractType, EventProcessorMap<P>>::new();
-
-        let event_processors = vec![
-            (
-                ContractType::WORLD,
-                vec![
-                    Box::new(RegisterModelProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(RegisterEventProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(UpgradeModelProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(UpgradeEventProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(StoreSetRecordProcessor),
-                    Box::new(StoreDelRecordProcessor),
-                    Box::new(StoreUpdateRecordProcessor),
-                    Box::new(StoreUpdateMemberProcessor),
-                    Box::new(MetadataUpdateProcessor),
-                    Box::new(EventMessageProcessor),
-                ],
-            ),
-            (
-                ContractType::ERC20,
-                vec![
-                    Box::new(Erc20TransferProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc20LegacyTransferProcessor) as Box<dyn EventProcessor<P>>,
-                ],
-            ),
-            (
-                ContractType::ERC721,
-                vec![
-                    Box::new(Erc721TransferProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc721LegacyTransferProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc4906MetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc4906BatchMetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
-                ],
-            ),
-            (
-                ContractType::ERC1155,
-                vec![
-                    Box::new(Erc1155TransferBatchProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc1155TransferSingleProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc4906MetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
-                    Box::new(Erc4906BatchMetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
-                ],
-            ),
-            (
-                ContractType::UDC,
-                vec![Box::new(ControllerProcessor) as Box<dyn EventProcessor<P>>],
-            ),
-        ];
-
-        for (contract_type, processors) in event_processors {
-            for processor in processors {
-                let key = get_selector_from_name(processor.event_key().as_str())
-                    .expect("Event key is ASCII so this should never fail");
-                // event_processors_map.entry(contract_type).or_default().insert(key, processor);
-                event_processors_map
-                    .entry(contract_type)
-                    .or_default()
-                    .entry(key)
-                    .or_default()
-                    .push(processor);
-            }
-        }
-
-        event_processors_map
-    }
-
-    pub fn get_event_processor(
-        &self,
-        contract_type: ContractType,
-    ) -> &HashMap<Felt, Vec<Box<dyn EventProcessor<P>>>> {
-        self.event_processors.get(&contract_type).unwrap()
-    }
-}
 
 bitflags! {
     #[derive(Debug, Clone)]
@@ -938,7 +817,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         let event_key = event.keys[0];
 
-        let processors = self.processors.get_event_processor(contract_type);
+        let processors = self.processors.get_event_processors(contract_type);
         let Some(processors) = processors.get(&event_key) else {
             // if we dont have a processor for this event, we try the catch all processor
             if self.processors.catch_all_event.validate(event) {
@@ -984,7 +863,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             (processor.task_priority(), processor.task_identifier(event));
 
         // if our event can be parallelized, we add it to the task manager
-        if task_identifier != task_manager::TASK_ID_SEQUENTIAL {
+        if task_identifier != torii_processors::task_manager::TASK_ID_SEQUENTIAL {
             self.task_manager.add_parallelized_event(
                 task_priority,
                 task_identifier,

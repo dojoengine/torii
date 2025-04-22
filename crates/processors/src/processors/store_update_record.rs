@@ -1,31 +1,30 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-use anyhow::{Context, Error, Result};
+use anyhow::{Error, Result};
 use async_trait::async_trait;
-use dojo_types::schema::{Struct, Ty};
+use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::Event;
-use starknet::core::utils::get_selector_from_name;
 use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
-use super::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{TaskId, TaskPriority};
 
-pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_update_member";
+pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_update_record";
 
 #[derive(Default, Debug)]
-pub struct StoreUpdateMemberProcessor;
+pub struct StoreUpdateRecordProcessor;
 
 #[async_trait]
-impl<P> EventProcessor<P> for StoreUpdateMemberProcessor
+impl<P> EventProcessor<P> for StoreUpdateRecordProcessor
 where
     P: Provider + Send + Sync + std::fmt::Debug,
 {
     fn event_key(&self) -> String {
-        "StoreUpdateMember".to_string()
+        "StoreUpdateRecord".to_string()
     }
 
     fn validate(&self, _event: &Event) -> bool {
@@ -60,10 +59,10 @@ where
         let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
             panic!(
                 "Expected {} event to be well formed.",
-                <StoreUpdateMemberProcessor as EventProcessor<P>>::event_key(self)
+                <StoreUpdateRecordProcessor as EventProcessor<P>>::event_key(self)
             )
         }) {
-            WorldEvent::StoreUpdateMember(e) => e,
+            WorldEvent::StoreUpdateRecord(e) => e,
             _ => {
                 unreachable!()
             }
@@ -71,16 +70,15 @@ where
 
         let model_selector = event.selector;
         let entity_id = event.entity_id;
-        let member_selector = event.member_selector;
 
         // If the model does not exist, silently ignore it.
         // This can happen if only specific namespaces are indexed.
-        let model = match db.model(model_selector).await {
+        let model = match db.model(event.selector).await {
             Ok(m) => m,
             Err(e) if e.to_string().contains("no rows") && !config.namespaces.is_empty() => {
                 debug!(
                     target: LOG_TARGET,
-                    selector = %model_selector,
+                    selector = %event.selector,
                     "Model does not exist, skipping."
                 );
                 return Ok(());
@@ -94,38 +92,29 @@ where
             }
         };
 
-        let schema = model.schema;
-
-        let mut member = schema
-            .as_struct()
-            .expect("model schema must be a struct")
-            .children
-            .iter()
-            .find(|c| {
-                get_selector_from_name(&c.name).expect("invalid selector for member name")
-                    == member_selector
-            })
-            .context("member not found")?
-            .clone();
-
         info!(
             target: LOG_TARGET,
+            namespace = %model.namespace,
             name = %model.name,
             entity_id = format!("{:#x}", entity_id),
-            member = %member.name,
-            "Store update member.",
+            "Store update record.",
         );
 
-        let mut values = event.values.to_vec();
-        member.ty.deserialize(&mut values)?;
+        let mut entity = model.schema;
+        match entity {
+            Ty::Struct(ref mut struct_) => {
+                // we do not need the keys. the entity Ty has the keys in its schema
+                // so we should get rid of them to avoid trying to deserialize them
+                struct_.children.retain(|field| !field.key);
+            }
+            _ => return Err(anyhow::anyhow!("Expected struct")),
+        }
 
-        let wrapped_ty = Ty::Struct(Struct {
-            name: schema.name(),
-            children: vec![member],
-        });
+        let mut values = event.values.to_vec();
+        entity.deserialize(&mut values)?;
 
         db.set_entity(
-            wrapped_ty,
+            entity,
             event_id,
             block_timestamp,
             entity_id,
