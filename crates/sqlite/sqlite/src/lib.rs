@@ -15,7 +15,7 @@ use sqlx::{Pool, Sqlite};
 use starknet::core::types::{Event, Felt};
 use starknet_crypto::poseidon_hash_many;
 use tokio::sync::mpsc::UnboundedSender;
-use types::ParsedCall;
+use torii_sqlite_types::{HookEvent, ParsedCall};
 use utils::felts_to_sql_string;
 
 use crate::constants::SQL_FELT_DELIMITER;
@@ -23,8 +23,8 @@ use crate::executor::{
     Argument, DeleteEntityQuery, EventMessageQuery, QueryMessage, QueryType, SetHeadQuery,
     UpdateCursorsQuery,
 };
-use crate::types::{Contract, ModelIndices};
 use crate::utils::utc_dt_string_from_timestamp;
+use torii_sqlite_types::{Contract, Hook, ModelIndices};
 
 pub mod cache;
 pub mod constants;
@@ -34,6 +34,7 @@ pub mod executor;
 pub mod model;
 pub mod simple_broker;
 pub mod utils;
+
 use cache::{LocalCache, Model, ModelCache};
 pub use torii_sqlite_types as types;
 
@@ -42,6 +43,7 @@ pub struct SqlConfig {
     pub all_model_indices: bool,
     pub model_indices: Vec<ModelIndices>,
     pub historical_models: HashSet<String>,
+    pub hooks: Vec<Hook>,
 }
 
 #[derive(Debug, Clone)]
@@ -280,11 +282,11 @@ impl Sql {
              packed_size=EXCLUDED.packed_size, unpacked_size=EXCLUDED.unpacked_size, \
              executed_at=EXCLUDED.executed_at RETURNING *";
         let arguments = vec![
-            Argument::String(format!("{:#x}", selector)),
+            Argument::FieldElement(selector),
             Argument::String(namespace.to_string()),
             Argument::String(model.name().to_string()),
-            Argument::String(format!("{class_hash:#x}")),
-            Argument::String(format!("{contract_address:#x}")),
+            Argument::FieldElement(class_hash),
+            Argument::FieldElement(contract_address),
             Argument::String(serde_json::to_string(&layout)?),
             Argument::String(serde_json::to_string(&namespaced_schema)?),
             Argument::Int(packed_size as i64),
@@ -317,6 +319,17 @@ impl Sql {
                 },
             )
             .await;
+
+        for hook in self.config.hooks.iter() {
+            if let HookEvent::ModelRegistered { model_tag } = &hook.event {
+                if namespaced_name == *model_tag {
+                    self.executor.send(QueryMessage::other(
+                        hook.statement.clone(),
+                        vec![Argument::FieldElement(selector)],
+                    ))?;
+                }
+            }
+        }
 
         Ok(())
     }
@@ -389,6 +402,17 @@ impl Sql {
             block_timestamp,
         )?;
 
+        for hook in self.config.hooks.iter() {
+            if let HookEvent::ModelUpdated { model_tag } = &hook.event {
+                if namespaced_name == *model_tag {
+                    self.executor.send(QueryMessage::other(
+                        hook.statement.clone(),
+                        vec![Argument::String(entity_id.clone())],
+                    ))?;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -414,7 +438,7 @@ impl Sql {
         let entity_id = format!("{:#x}", poseidon_hash_many(&keys));
         let model_id = format!(
             "{:#x}",
-            compute_selector_from_names(model_namespace, model_name)
+            compute_selector_from_names(model_namespace, &model_name)
         );
 
         let keys_str = felts_to_sql_string(&keys);
@@ -451,6 +475,17 @@ impl Sql {
             block_timestamp,
         )?;
 
+        for hook in self.config.hooks.iter() {
+            if let HookEvent::ModelUpdated { model_tag } = &hook.event {
+                if namespaced_name == *model_tag {
+                    self.executor.send(QueryMessage::other(
+                        hook.statement.clone(),
+                        vec![Argument::String(entity_id.clone())],
+                    ))?;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -477,6 +512,17 @@ impl Sql {
                 ty: entity.clone(),
             }),
         ))?;
+
+        for hook in self.config.hooks.iter() {
+            if let HookEvent::ModelDeleted { model_tag } = &hook.event {
+                if model_table == *model_tag {
+                    self.executor.send(QueryMessage::other(
+                        hook.statement.clone(),
+                        vec![Argument::String(entity_id.clone())],
+                    ))?;
+                }
+            }
+        }
 
         Ok(())
     }
