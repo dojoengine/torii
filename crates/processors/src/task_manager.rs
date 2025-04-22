@@ -30,6 +30,7 @@ pub struct ParallelizedEvent {
     pub event: Event,
 }
 
+#[allow(missing_debug_implementations)]
 pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     db: Sql,
     world: Arc<WorldContractReader<P>>,
