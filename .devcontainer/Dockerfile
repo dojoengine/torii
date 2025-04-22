@@ -1,8 +1,12 @@
 # See here for image contents: https://hub.docker.com/layers/library/rust/1.81.0-slim/images/sha256-ba4ee661bb466ab49f6ceb8c6d9e9f9784bba7c6e45225187cd3c7fb1fbc12ce
 
 ARG RUST_VERSION=1.85.0
-FROM rust:${RUST_VERSION}-slim
+FROM ubuntu:24.04
 ARG RUST_VERSION
+
+# Install rust.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION}
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install additional packages
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
