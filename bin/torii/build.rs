@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let dev = git_describe.contains(&git_sha) || git_describe.contains("dirty");
 
     let version = if dev {
-        format!("{} dev ({} {})", version, git_branch, git_sha)
+        format!("{} ({} {})", version, git_branch, git_sha)
     } else {
         format!("{} ({})", version, git_sha)
     };
