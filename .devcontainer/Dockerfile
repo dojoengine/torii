@@ -1,5 +1,3 @@
-# See here for image contents: https://hub.docker.com/layers/library/rust/1.81.0-slim/images/sha256-ba4ee661bb466ab49f6ceb8c6d9e9f9784bba7c6e45225187cd3c7fb1fbc12ce
-
 ARG RUST_VERSION=1.85.0
 FROM ubuntu:24.04
 ARG RUST_VERSION
@@ -44,7 +42,7 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ] ; then \
     rm -r hurl-4.1.0-aarch64-unknown-linux-gnu && \
     rm hurl.tar.gz && \
     rustup component add llvm-tools-preview --toolchain $(cat rust_toolchain_version)-aarch64-unknown-linux-gnu; \
-    curl -L https://go.dev/dl/go1.24.2.linux-arm64.tar.gz -o go.tar.gz; \
+    curl -L https://github.com/asdf-vm/asdf/releases/download/v0.16.7/asdf-v0.16.7-linux-arm64.tar.gz -o asdf.tar.gz; \
     elif [ "$TARGETPLATFORM" = "linux/amd64" ] ; then \
     curl -L https://github.com/Orange-OpenSource/hurl/releases/download/4.1.0/hurl-4.1.0-x86_64-unknown-linux-gnu.tar.gz -o hurl.tar.gz && \
     tar -xzf hurl.tar.gz && \
@@ -53,16 +51,13 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ] ; then \
     rm hurl.tar.gz && \
     rustup component add llvm-tools-preview --toolchain $(cat rust_toolchain_version)-x86_64-unknown-linux-gnu && \
     rustup target add x86_64-fortanix-unknown-sgx --toolchain $(cat nightly_rust_toolchain_version); \
-    curl -L https://go.dev/dl/go1.24.2.linux-amd64.tar.gz -o go.tar.gz; \
+    curl -L https://github.com/asdf-vm/asdf/releases/download/v0.16.7/asdf-v0.16.7-linux-amd64.tar.gz -o asdf.tar.gz; \
     fi
 
 # For asdf to be installed for the current platform automatically.
-RUN tar -C /usr/local -xzf go.tar.gz
-ENV PATH="${PATH}:/usr/local/go/bin"
+RUN tar -C /usr/local/bin -xzf asdf.tar.gz
 
-RUN go install github.com/asdf-vm/asdf/cmd/asdf@v0.16.0
 ENV PATH="/root/.asdf/shims:$PATH"
-ENV PATH="${PATH}:/root/go/bin"
 
 RUN asdf plugin add scarb
 RUN asdf install scarb 2.9.4
