@@ -6,11 +6,17 @@ use vergen_gitcl::GitclBuilder;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let build = BuildBuilder::default().build_timestamp(true).build()?;
-    let gitcl =
-        GitclBuilder::default().describe(true, true, None).branch(true).sha(true).build()?;
+    let gitcl = GitclBuilder::default()
+        .describe(true, true, None)
+        .branch(true)
+        .sha(true)
+        .build()?;
 
     // Emit the instructions
-    Emitter::default().add_instructions(&build)?.add_instructions(&gitcl)?.emit_and_set()?;
+    Emitter::default()
+        .add_instructions(&build)?
+        .add_instructions(&gitcl)?
+        .emit_and_set()?;
 
     let version = env!("CARGO_PKG_VERSION");
     let git_branch = env::var("VERGEN_GIT_BRANCH").unwrap_or("unknown".to_string());
