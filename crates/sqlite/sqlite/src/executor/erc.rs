@@ -446,6 +446,8 @@ impl<'c, P: Provider + Sync + Send + 'static> Executor<'c, P> {
             SimpleBroker::publish(unsafe {
                 std::mem::transmute::<Token, OptimisticToken>(token.clone())
             });
+            self.publish_queue
+                .push(BrokerMessage::TokenRegistered(token));
         }
 
         Ok(())
