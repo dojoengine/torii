@@ -52,11 +52,12 @@ use crate::constants::LOG_TARGET;
 #[derive(Debug)]
 pub struct Runner {
     args: ToriiArgs,
+    version_spec: String,
 }
 
 impl Runner {
-    pub fn new(args: ToriiArgs) -> Self {
-        Self { args }
+    pub fn new(args: ToriiArgs, version_spec: String) -> Self {
+        Self { args, version_spec }
     }
 
     pub async fn run(mut self) -> anyhow::Result<()> {
@@ -293,6 +294,7 @@ impl Runner {
             None,
             Some(artifacts_addr),
             Arc::new(readonly_pool.clone()),
+            self.version_spec.clone(),
         ));
 
         let graphql_server = spawn_rebuilding_graphql_server(
