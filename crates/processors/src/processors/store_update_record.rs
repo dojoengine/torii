@@ -10,7 +10,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
-use super::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{TaskId, TaskPriority};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_update_record";
@@ -113,7 +113,15 @@ where
         let mut values = event.values.to_vec();
         entity.deserialize(&mut values)?;
 
-        db.set_entity(entity, event_id, block_timestamp, entity_id, model_selector, None).await?;
+        db.set_entity(
+            entity,
+            event_id,
+            block_timestamp,
+            entity_id,
+            model_selector,
+            None,
+        )
+        .await?;
         Ok(())
     }
 }

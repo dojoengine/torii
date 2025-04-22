@@ -6,13 +6,11 @@ use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
-use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
 use tracing::debug;
 
+use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{TaskId, TaskPriority};
-use crate::EventProcessor;
-use crate::EventProcessorConfig;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc721_legacy_transfer";
 
@@ -24,10 +22,6 @@ impl<P> EventProcessor<P> for Erc721LegacyTransferProcessor
 where
     P: Provider + Send + Sync + std::fmt::Debug,
 {
-    fn contract_type(&self) -> ContractType {
-        ContractType::Erc721
-    }
-
     fn event_key(&self) -> String {
         "Transfer".to_string()
     }

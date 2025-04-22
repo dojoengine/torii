@@ -11,7 +11,7 @@ use starknet_crypto::poseidon_hash_many;
 use torii_sqlite::Sql;
 use tracing::info;
 
-use super::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{TaskId, TaskPriority};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::event_message";
@@ -92,7 +92,8 @@ where
         let mut entity = model.schema.clone();
         entity.deserialize(&mut keys_and_unpacked)?;
 
-        db.set_event_message(entity, event_id, block_timestamp).await?;
+        db.set_event_message(entity, event_id, block_timestamp)
+            .await?;
         Ok(())
     }
 }

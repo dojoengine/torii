@@ -9,14 +9,11 @@ use starknet::core::utils::parse_cairo_short_string;
 use starknet::macros::felt;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
-use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
 use tracing::info;
 
-use crate::EventProcessor;
-use crate::EventProcessorConfig;
+use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{TaskId, TaskPriority};
-use crate::TaskProcessor;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::controller";
 
@@ -51,30 +48,11 @@ lazy_static! {
     ];
 }
 
-impl<P> TaskProcessor<P> for ControllerProcessor
-where
-    P: Provider + Send + Sync + std::fmt::Debug,
-{
-    fn dependencies(&self) -> Vec<TaskId> {
-        vec![]
-    }
-
-    fn identifier(&self, event: &Event) -> TaskId {
-        let mut hasher = DefaultHasher::new();
-        // the contract address is the first felt in data
-        event.data[0].hash(&mut hasher);
-        hasher.finish()
-    }
-}
-
+#[async_trait]
 impl<P> EventProcessor<P> for ControllerProcessor
 where
     P: Provider + Send + Sync + std::fmt::Debug,
 {
-    fn contract_type(&self) -> ContractType {
-        ContractType::UDC
-    }
-
     fn event_key(&self) -> String {
         "ContractDeployed".to_string()
     }
@@ -83,7 +61,18 @@ where
         // ContractDeployed event has no keys and contains username in data
         event.keys.len() == 1 && !event.data.is_empty()
     }
-    
+
+    fn task_priority(&self) -> TaskPriority {
+        3
+    }
+
+    fn task_identifier(&self, event: &Event) -> TaskId {
+        let mut hasher = DefaultHasher::new();
+        // the contract address is the first felt in data
+        event.data[0].hash(&mut hasher);
+        hasher.finish()
+    }
+
     async fn process(
         &self,
         _world: &WorldContractReader<P>,
@@ -128,7 +117,8 @@ where
             "Controller deployed."
         );
 
-        db.add_controller(&username, &format!("{address:#x}"), block_timestamp).await?;
+        db.add_controller(&username, &format!("{address:#x}"), block_timestamp)
+            .await?;
 
         Ok(())
     }

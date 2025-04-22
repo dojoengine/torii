@@ -11,8 +11,8 @@ use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
 use tracing::{debug, error};
 
-use crate::engine::Processors;
-use crate::processors::EventProcessorConfig;
+use crate::EventProcessorConfig;
+use crate::processors::Processors;
 
 pub const TASK_ID_SEQUENTIAL: TaskId = 0;
 
@@ -99,7 +99,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         event_id,
                     } in events
                     {
-                        let contract_processors = processors.get_event_processor(contract_type);
+                        let contract_processors = processors.get_event_processors(contract_type);
                         if let Some(processors) = contract_processors.get(&event.keys[0]) {
                             let processor = processors
                                 .iter()

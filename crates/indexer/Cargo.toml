@@ -41,6 +41,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 torii-sqlite.workspace = true
 lazy_static.workspace = true
+torii-processors.workspace = true
 
 [dev-dependencies]
 dojo-test-utils.workspace = true

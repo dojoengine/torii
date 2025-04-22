@@ -5,13 +5,13 @@ use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, Transaction};
 use starknet::providers::Provider;
-use task_manager::TaskId;
 use torii_sqlite::cache::ContractClassCache;
-use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
 
-mod task_manager;
-mod processors;
+pub mod task_manager;
+pub mod processors;
+
+use crate::task_manager::{TaskId, TaskPriority};
 
 #[derive(Clone, Debug, Default)]
 pub struct EventProcessorConfig {
@@ -25,27 +25,26 @@ impl EventProcessorConfig {
     }
 }
 
-pub trait TaskProcessor<P>: Send + Sync
-where
-    P: Provider + Sync,
-{
-    fn dependencies(&self) -> Vec<TaskId>;
-    fn identifier(&self, event: &Event) -> TaskId;
-}
-
 #[async_trait]
 pub trait EventProcessor<P>: Send + Sync
 where
     P: Provider + Sync,
 {
-    fn contract_type(&self) -> ContractType;
     fn event_key(&self) -> String;
 
     fn event_keys_as_string(&self, event: &Event) -> String {
-        event.keys.iter().map(|i| format!("{:#064x}", i)).collect::<Vec<_>>().join(",")
+        event
+            .keys
+            .iter()
+            .map(|i| format!("{:#064x}", i))
+            .collect::<Vec<_>>()
+            .join(",")
     }
 
     fn validate(&self, event: &Event) -> bool;
+
+    fn task_priority(&self) -> TaskPriority;
+    fn task_identifier(&self, event: &Event) -> TaskId;
 
     #[allow(clippy::too_many_arguments)]
     async fn process(
@@ -87,3 +86,4 @@ pub trait TransactionProcessor<P: Provider + Sync + std::fmt::Debug>: Send + Syn
         contract_class_cache: &ContractClassCache<P>,
     ) -> Result<(), Error>;
 }
+

@@ -15,7 +15,7 @@ use torii_sqlite::utils::fetch_content_from_ipfs;
 use torii_sqlite::Sql;
 use tracing::{error, info};
 
-use super::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{TaskId, TaskPriority};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::metadata_update";
@@ -96,7 +96,8 @@ where
 async fn try_retrieve(mut db: Sql, resource: Felt, uri_str: String) {
     match metadata(uri_str.clone()).await {
         Ok((metadata, icon_img, cover_img)) => {
-            db.update_metadata(&resource, &uri_str, &metadata, &icon_img, &cover_img).unwrap();
+            db.update_metadata(&resource, &uri_str, &metadata, &icon_img, &cover_img)
+                .unwrap();
             info!(
                 target: LOG_TARGET,
                 resource = %format!("{:#x}", resource),

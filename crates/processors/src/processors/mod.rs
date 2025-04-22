@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use controller::ControllerProcessor;
 use erc1155_transfer_batch::Erc1155TransferBatchProcessor;
 use erc1155_transfer_single::Erc1155TransferSingleProcessor;
@@ -7,7 +9,23 @@ use erc4906_batch_metadata_update::Erc4906BatchMetadataUpdateProcessor;
 use erc4906_metadata_update::Erc4906MetadataUpdateProcessor;
 use erc721_legacy_transfer::Erc721LegacyTransferProcessor;
 use erc721_transfer::Erc721TransferProcessor;
+use event_message::EventMessageProcessor;
+use metadata_update::MetadataUpdateProcessor;
+use raw_event::RawEventProcessor;
+use register_event::RegisterEventProcessor;
+use register_model::RegisterModelProcessor;
+use starknet::{core::utils::get_selector_from_name, providers::Provider};
+use starknet::core::types::Felt;
+use store_del_record::StoreDelRecordProcessor;
+use store_set_record::StoreSetRecordProcessor;
+use store_transaction::StoreTransactionProcessor;
+use store_update_member::StoreUpdateMemberProcessor;
+use store_update_record::StoreUpdateRecordProcessor;
 use torii_sqlite::types::ContractType;
+use upgrade_event::UpgradeEventProcessor;
+use upgrade_model::UpgradeModelProcessor;
+
+use crate::{BlockProcessor, EventProcessor, TransactionProcessor};
 
 mod controller;
 mod erc1155_transfer_batch;
@@ -31,8 +49,8 @@ mod store_update_record;
 mod upgrade_event;
 mod upgrade_model;
 
-type EventKey = String;
-type EventProcessorMap<P> = HashMap<EventKey, Box<dyn EventProcessor<P>>>;
+type EventKey = Felt;
+type EventProcessorMap<P> = HashMap<EventKey, Vec<Box<dyn EventProcessor<P>>>>;
 
 #[allow(missing_debug_implementations)]
 pub struct Processors<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
@@ -105,8 +123,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Processors<P> {
 
         for (contract_type, processors) in event_processors {
             for processor in processors {
-                let key = processor.event_key();
-                event_processors_map.entry(contract_type).or_default().insert(key, processor);
+                let key = get_selector_from_name(processor.event_key().as_str())
+                    .expect("Event key is ASCII so this should never fail");
+                event_processors_map.entry(contract_type).or_default().entry(key).or_default().push(processor);
             }
         }
 
@@ -116,7 +135,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Processors<P> {
     pub fn get_event_processors(
         &self,
         contract_type: ContractType,
-    ) -> &HashMap<Felt, Vec<Box<dyn EventProcessor<P>>>> {
+    ) -> &HashMap<EventKey, Vec<Box<dyn EventProcessor<P>>>> {
         self.event_processors.get(&contract_type).unwrap()
     }
 }

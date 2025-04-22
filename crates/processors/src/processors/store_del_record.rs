@@ -9,7 +9,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
-use super::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{TaskId, TaskPriority};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_del_record";
@@ -96,8 +96,14 @@ where
 
         let entity = model.schema;
 
-        db.delete_entity(event.entity_id, event.selector, entity, event_id, block_timestamp)
-            .await?;
+        db.delete_entity(
+            event.entity_id,
+            event.selector,
+            entity,
+            event_id,
+            block_timestamp,
+        )
+        .await?;
 
         Ok(())
     }

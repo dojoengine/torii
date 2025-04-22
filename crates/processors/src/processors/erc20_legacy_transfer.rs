@@ -6,45 +6,22 @@ use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
-use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::EventProcessor;
-use crate::EventProcessorConfig;
+use crate::{EventProcessor, EventProcessorConfig};
 use crate::task_manager::{TaskId, TaskPriority};
-use crate::TaskProcessor;
+
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc20_legacy_transfer";
 
 #[derive(Default, Debug)]
 pub struct Erc20LegacyTransferProcessor;
-
-impl<P> TaskProcessor<P> for Erc20LegacyTransferProcessor
-where
-    P: Provider + Send + Sync + std::fmt::Debug,
-{
-    fn dependencies(&self) -> Vec<TaskId> {
-        vec![]
-    }
-
-    fn identifier(&self, event: &Event) -> TaskId {
-        let mut hasher = DefaultHasher::new();
-        // Hash the contract address
-        event.from_address.hash(&mut hasher);
-        hasher.finish()
-    }
-}
-
 
 #[async_trait]
 impl<P> EventProcessor<P> for Erc20LegacyTransferProcessor
 where
     P: Provider + Send + Sync + std::fmt::Debug,
 {
-    fn contract_type(&self) -> ContractType {
-        ContractType::Erc20
-    }
-
     fn event_key(&self) -> String {
         "Transfer".to_string()
     }
@@ -58,6 +35,24 @@ where
         }
 
         false
+    }
+
+    fn task_priority(&self) -> TaskPriority {
+        1
+    }
+
+    fn task_identifier(&self, event: &Event) -> TaskId {
+        let mut hasher = DefaultHasher::new();
+        // Hash the contract address
+        event.from_address.hash(&mut hasher);
+
+        // Take the max of from/to addresses to get a canonical representation
+        // This ensures transfers between the same pair of addresses are grouped together
+        // regardless of direction (A->B or B->A)
+        let canonical_pair = std::cmp::max(event.data[0], event.data[1]);
+        canonical_pair.hash(&mut hasher);
+
+        hasher.finish()
     }
 
     async fn process(
