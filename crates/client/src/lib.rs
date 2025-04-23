@@ -9,7 +9,7 @@ use starknet::core::types::Felt;
 use tokio::sync::RwLock;
 use torii_grpc_client::{
     EntityUpdateStreaming, EventUpdateStreaming, IndexerUpdateStreaming, TokenBalanceStreaming,
-    TokenUpdateStreaming,
+    TokenUpdateStreaming, WorldClient,
 };
 use torii_proto::proto::world::{
     RetrieveControllersResponse, RetrieveEntitiesResponse, RetrieveEventsResponse,
@@ -19,25 +19,25 @@ use torii_proto::schema::Entity;
 use torii_proto::{
     Controller, EntityKeysClause, Event, EventQuery, Page, Query, Token, TokenBalance,
 };
-use torii_relay::client::EventLoop;
-use torii_relay::types::Message;
+use torii_libp2p_client::{EventLoop, RelayClient};
+use torii_libp2p_types::Message;
 
-use crate::client::error::Error;
+use crate::error::Error;
 
 #[allow(unused)]
 #[derive(Debug)]
 pub struct Client {
     /// The grpc client.
-    inner: RwLock<torii_grpc::client::WorldClient>,
+    inner: RwLock<WorldClient>,
     /// Relay client.
-    relay_client: torii_relay::client::RelayClient,
+    relay_client: RelayClient,
 }
 
 impl Client {
     /// Returns a initialized [Client].
     pub async fn new(torii_url: String, relay_url: String, world: Felt) -> Result<Self, Error> {
-        let grpc_client = torii_grpc::client::WorldClient::new(torii_url, world).await?;
-        let relay_client = torii_relay::client::RelayClient::new(relay_url)?;
+        let grpc_client = WorldClient::new(torii_url, world).await?;
+        let relay_client = RelayClient::new(relay_url)?;
 
         Ok(Self {
             inner: RwLock::new(grpc_client),
