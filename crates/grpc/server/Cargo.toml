@@ -39,6 +39,7 @@ tonic-reflection.workspace = true
 tonic-web.workspace = true
 tonic.workspace = true
 anyhow.workspace = true
+base64.workspace = true
 
 [dev-dependencies]
 cainome.workspace = true

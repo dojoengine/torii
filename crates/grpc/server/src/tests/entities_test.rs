@@ -26,7 +26,7 @@ use torii_indexer::engine::{Engine, EngineConfig};
 use torii_processors::processors::Processors;
 use torii_sqlite::cache::ModelCache;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::{Contract, ContractType};
+use torii_sqlite::types::{Contract, ContractType, Pagination, PaginationDirection};
 use torii_sqlite::Sql;
 
 use torii_proto::proto::types::KeysClause;
@@ -162,16 +162,18 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
                 pattern_matching: 0,
                 models: vec![],
             },
-            Some(1),
-            None,
+            Pagination {
+                cursor: None,
+                limit: Some(1),
+                direction: PaginationDirection::Forward,
+                order_by: vec![],
+            },
             false,
-            None,
             vec!["ns-Moves".to_string(), "ns-Position".to_string()],
-            None,
         )
         .await
         .unwrap()
-        .0;
+        .items;
 
     assert_eq!(entities.len(), 1);
 

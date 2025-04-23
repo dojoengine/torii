@@ -23,7 +23,7 @@ use core::fmt;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "server")]
 use crypto_bigint::Encoding;
 use crypto_bigint::U256;
 use dojo_types::primitive::Primitive;
@@ -37,7 +37,79 @@ use strum_macros::{AsRefStr, EnumIter, FromRepr};
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Page<T> {
     pub items: Vec<T>,
-    pub next_cursor: String,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub enum PaginationDirection {
+    Forward,
+    Backward,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct Pagination {
+    pub cursor: Option<String>,
+    pub limit: u32,
+    pub direction: PaginationDirection,
+    pub order_by: Vec<OrderBy>,
+}
+
+impl From<Pagination> for proto::types::Pagination {
+    fn from(value: Pagination) -> Self {
+        Self {
+            cursor: value.cursor.unwrap_or_default(),
+            limit: value.limit,
+            direction: value.direction as i32,
+            order_by: value.order_by.into_iter().map(|o| o.into()).collect(),
+        }
+    }
+}
+
+impl From<proto::types::Pagination> for Pagination {
+    fn from(value: proto::types::Pagination) -> Self {
+        Self {
+            cursor: if value.cursor.is_empty() {
+                None
+            } else {
+                Some(value.cursor)
+            },
+            limit: value.limit,
+            direction: match value.direction {
+                0 => PaginationDirection::Forward,
+                1 => PaginationDirection::Backward,
+                _ => unreachable!(),
+            },
+            order_by: value.order_by.into_iter().map(|o| o.into()).collect(),
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl From<proto::types::Pagination> for torii_sqlite_types::Pagination {
+    fn from(value: proto::types::Pagination) -> Self {
+        torii_sqlite_types::Pagination {
+            cursor: if value.cursor.is_empty() {
+                None
+            } else {
+                Some(value.cursor)
+            },
+            limit: if value.limit == 0 {
+                None
+            } else {
+                Some(value.limit)
+            },
+            direction: match value.direction {
+                0 => torii_sqlite_types::PaginationDirection::Forward,
+                1 => torii_sqlite_types::PaginationDirection::Backward,
+                _ => unreachable!(),
+            },
+            order_by: value
+                .order_by
+                .into_iter()
+                .map(|order_by| order_by.into())
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
@@ -189,6 +261,35 @@ impl From<OrderBy> for proto::types::OrderBy {
     }
 }
 
+impl From<proto::types::OrderBy> for OrderBy {
+    fn from(value: proto::types::OrderBy) -> Self {
+        Self {
+            model: value.model,
+            member: value.member,
+            direction: match value.direction {
+                0 => OrderDirection::Asc,
+                1 => OrderDirection::Desc,
+                _ => unreachable!(),
+            },
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl From<proto::types::OrderBy> for torii_sqlite_types::OrderBy {
+    fn from(value: proto::types::OrderBy) -> Self {
+        torii_sqlite_types::OrderBy {
+            model: value.model,
+            member: value.member,
+            direction: match value.direction {
+                0 => torii_sqlite_types::OrderDirection::Asc,
+                1 => torii_sqlite_types::OrderDirection::Desc,
+                _ => unreachable!(),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub enum OrderDirection {
     Asc,
@@ -198,18 +299,15 @@ pub enum OrderDirection {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Query {
     pub clause: Option<Clause>,
-    pub limit: u32,
-    pub offset: u32,
+    pub pagination: Pagination,
     /// Whether or not to include the hashed keys (entity id) of the entities.
     /// This is useful for large queries compressed with GZIP to reduce the size of the response.
-    pub dont_include_hashed_keys: bool,
-    pub order_by: Vec<OrderBy>,
+    pub no_hashed_keys: bool,
     /// If the array is not empty, only the given models are retrieved.
     /// All entities that don't have a model in the array are excluded.
-    pub entity_models: Vec<String>,
-    /// The internal updated at timestamp in seconds (unix timestamp) from which entities are
-    /// retrieved (inclusive). Use 0 to retrieve all entities.
-    pub entity_updated_after: u64,
+    pub models: Vec<String>,
+    /// Whether or not we should retrieve historical entities.
+    pub historical: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
@@ -371,12 +469,10 @@ impl From<Query> for proto::types::Query {
     fn from(value: Query) -> Self {
         Self {
             clause: value.clause.map(|c| c.into()),
-            limit: value.limit,
-            offset: value.offset,
-            dont_include_hashed_keys: value.dont_include_hashed_keys,
-            order_by: value.order_by.into_iter().map(|o| o.into()).collect(),
-            entity_models: value.entity_models,
-            entity_updated_after: value.entity_updated_after,
+            no_hashed_keys: value.no_hashed_keys,
+            models: value.models,
+            pagination: Some(value.pagination.into()),
+            historical: value.historical,
         }
     }
 }
@@ -558,7 +654,7 @@ impl From<proto::types::Event> for Event {
 pub struct EventQuery {
     pub keys: KeysClause,
     pub limit: u32,
-    pub offset: u32,
+    pub cursor: Option<String>,
 }
 
 impl From<EventQuery> for proto::types::EventQuery {
@@ -566,7 +662,7 @@ impl From<EventQuery> for proto::types::EventQuery {
         Self {
             keys: Some(value.keys.into()),
             limit: value.limit,
-            offset: value.offset,
+            cursor: value.cursor.unwrap_or_default(),
         }
     }
 }
