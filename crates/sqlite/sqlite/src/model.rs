@@ -127,7 +127,11 @@ pub fn map_row_to_ty(
     // the row that contains non dynamic data for Ty
     row: &SqliteRow,
 ) -> Result<(), Error> {
-    let column_name = if path.is_empty() { name } else { &format!("{}.{}", path, name) };
+    let column_name = if path.is_empty() {
+        name
+    } else {
+        &format!("{}.{}", path, name)
+    };
 
     match ty {
         Ty::Primitive(primitive) => {
@@ -314,13 +318,18 @@ pub async fn fetch_entities(
             }
             Ty::Tuple(t) => {
                 for (i, child) in t.iter().enumerate() {
-                    let new_path =
-                        if path.is_empty() { format!("{}", i) } else { format!("{}.{}", path, i) };
+                    let new_path = if path.is_empty() {
+                        format!("{}", i)
+                    } else {
+                        format!("{}.{}", path, i)
+                    };
                     collect_columns(table_prefix, &new_path, child, selections);
                 }
             }
             Ty::Enum(e) => {
-                selections.push(format!("[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",));
+                selections.push(format!(
+                    "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
+                ));
 
                 for option in &e.options {
                     if let Ty::Tuple(t) = &option.ty {
@@ -333,7 +342,9 @@ pub async fn fetch_entities(
                 }
             }
             Ty::Array(_) | Ty::Primitive(_) | Ty::ByteArray(_) => {
-                selections.push(format!("[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",));
+                selections.push(format!(
+                    "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
+                ));
             }
         }
     }
@@ -343,8 +354,11 @@ pub async fn fetch_entities(
     let fetch_limit = original_limit + 1;
 
     // Build order by clause with proper model joining
-    let order_by_models: HashSet<String> =
-        pagination.order_by.iter().map(|ob| ob.model.clone()).collect();
+    let order_by_models: HashSet<String> = pagination
+        .order_by
+        .iter()
+        .map(|ob| ob.model.clone())
+        .collect();
 
     let order_clause = if pagination.order_by.is_empty() {
         format!("{table_name}.event_id DESC")
@@ -396,14 +410,21 @@ pub async fn fetch_entities(
             format!("{}.id", table_name),
             format!("{}.keys", table_name),
             format!("{}.event_id", table_name),
-            format!("group_concat({}.model_id) as model_ids", model_relation_table),
+            format!(
+                "group_concat({}.model_id) as model_ids",
+                model_relation_table
+            ),
         ];
         let mut joins = Vec::new();
 
         // Add schema joins
         for model in chunk {
             let model_table = model.name();
-            let join_type = if order_by_models.contains(&model_table) { "INNER" } else { "LEFT" };
+            let join_type = if order_by_models.contains(&model_table) {
+                "INNER"
+            } else {
+                "LEFT"
+            };
             joins.push(format!(
                 "{join_type} JOIN [{model_table}] ON {table_name}.id = \
                  [{model_table}].{entity_relation_column}",
@@ -457,7 +478,10 @@ pub async fn fetch_entities(
         }
     }
 
-    Ok(Page { items: all_rows, next_cursor })
+    Ok(Page {
+        items: all_rows,
+        next_cursor,
+    })
 }
 
 // Helper functions
@@ -470,8 +494,11 @@ fn build_cursor_conditions(
     let mut binds = Vec::new();
 
     if let Some(values) = cursor_values {
-        let expected_len =
-            if pagination.order_by.is_empty() { 1 } else { pagination.order_by.len() + 1 };
+        let expected_len = if pagination.order_by.is_empty() {
+            1
+        } else {
+            pagination.order_by.len() + 1
+        };
         if values.len() != expected_len {
             return Err(Error::QueryError(QueryError::InvalidCursor(
                 "Invalid cursor values length".to_string(),
@@ -479,8 +506,11 @@ fn build_cursor_conditions(
         }
 
         if pagination.order_by.is_empty() {
-            let operator =
-                if pagination.direction == PaginationDirection::Forward { "<" } else { ">" };
+            let operator = if pagination.direction == PaginationDirection::Forward {
+                "<"
+            } else {
+                ">"
+            };
             conditions.push(format!("{}.event_id {} ?", table_name, operator));
             binds.push(values[0].clone());
         } else {
@@ -507,8 +537,11 @@ fn build_cursor_conditions(
                 conditions.push(condition);
                 binds.push(val.clone());
             }
-            let operator =
-                if pagination.direction == PaginationDirection::Forward { "<" } else { ">" };
+            let operator = if pagination.direction == PaginationDirection::Forward {
+                "<"
+            } else {
+                ">"
+            };
             conditions.push(format!("{}.event_id {} ?", table_name, operator));
             binds.push(values.last().unwrap().clone());
         }
@@ -533,8 +566,12 @@ fn build_query(
     having_clause: Option<&str>,
     order_clause: &str,
 ) -> String {
-    let mut query =
-        format!("SELECT {} FROM [{}] {}", selections.join(", "), table_name, joins.join(" "));
+    let mut query = format!(
+        "SELECT {} FROM [{}] {}",
+        selections.join(", "),
+        table_name,
+        joins.join(" ")
+    );
     if !where_clause.is_empty() {
         query.push_str(&format!(" WHERE {}", where_clause));
     }

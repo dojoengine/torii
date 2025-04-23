@@ -68,7 +68,11 @@ impl From<Pagination> for proto::types::Pagination {
 impl From<proto::types::Pagination> for Pagination {
     fn from(value: proto::types::Pagination) -> Self {
         Self {
-            cursor: if value.cursor.is_empty() { None } else { Some(value.cursor) },
+            cursor: if value.cursor.is_empty() {
+                None
+            } else {
+                Some(value.cursor)
+            },
             limit: value.limit,
             direction: match value.direction {
                 0 => PaginationDirection::Forward,
@@ -78,20 +82,32 @@ impl From<proto::types::Pagination> for Pagination {
             order_by: value.order_by.into_iter().map(|o| o.into()).collect(),
         }
     }
-}   
+}
 
 #[cfg(feature = "server")]
 impl From<proto::types::Pagination> for torii_sqlite_types::Pagination {
     fn from(value: proto::types::Pagination) -> Self {
         torii_sqlite_types::Pagination {
-            cursor: if value.cursor.is_empty() { None } else { Some(value.cursor) },
-            limit: if value.limit == 0 { None } else { Some(value.limit) },
+            cursor: if value.cursor.is_empty() {
+                None
+            } else {
+                Some(value.cursor)
+            },
+            limit: if value.limit == 0 {
+                None
+            } else {
+                Some(value.limit)
+            },
             direction: match value.direction {
                 0 => torii_sqlite_types::PaginationDirection::Forward,
                 1 => torii_sqlite_types::PaginationDirection::Backward,
                 _ => unreachable!(),
             },
-            order_by: value.order_by.into_iter().map(|order_by| order_by.into()).collect(),
+            order_by: value
+                .order_by
+                .into_iter()
+                .map(|order_by| order_by.into())
+                .collect(),
         }
     }
 }
