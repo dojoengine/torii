@@ -13130,6 +13130,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "torii-adigraphmap"
+version = "1.5.0-alpha.0"
+dependencies = [
+ "futures-util",
+ "petgraph",
+ "thiserror 1.0.63",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "torii-cli"
 version = "1.5.0-alpha.0"
 dependencies = [
@@ -13326,6 +13337,7 @@ dependencies = [
  "tokio-util",
  "torii-processors",
  "torii-sqlite",
+ "torii-task-network",
  "tracing",
 ]
 
@@ -13588,6 +13600,21 @@ dependencies = [
  "serde",
  "sqlx",
  "starknet 0.12.0",
+]
+
+[[package]]
+name = "torii-task-network"
+version = "1.5.0-alpha.0"
+dependencies = [
+ "anyhow",
+ "dojo-world 1.4.1",
+ "futures-util",
+ "starknet 0.12.0",
+ "thiserror 1.0.63",
+ "tokio",
+ "torii-adigraphmap",
+ "torii-sqlite",
+ "tracing",
 ]
 
 [[package]]

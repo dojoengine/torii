@@ -25,6 +25,7 @@ use torii_processors::{EventProcessorConfig, Processors};
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::{Cursors, Sql};
+use torii_task_network::TaskNetwork;
 use tracing::{debug, error, info, trace, warn};
 
 use crate::constants::LOG_TARGET;
@@ -115,6 +116,7 @@ pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     config: EngineConfig,
     shutdown_tx: Sender<()>,
     task_manager: TaskManager<P>,
+    task_network: TaskNetwork<u64, Vec<ParallelizedEvent>>,
     contracts: Arc<HashMap<Felt, ContractType>>,
     contract_class_cache: Arc<ContractClassCache<P>>,
 }
@@ -162,6 +164,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 max_concurrent_tasks,
                 event_processor_config,
             ),
+            task_network: TaskNetwork::new(max_concurrent_tasks),
             contract_class_cache: Arc::new(ContractClassCache::new(provider)),
         }
     }
