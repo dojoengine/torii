@@ -9,11 +9,8 @@ use starknet::core::types::Felt;
 use tokio::sync::RwLock;
 use torii_grpc_client::{
     EntityUpdateStreaming, EventUpdateStreaming, IndexerUpdateStreaming, TokenBalanceStreaming,
-    TokenUpdateStreaming, WorldClient,
+    TokenUpdateStreaming,
 };
-use torii_libp2p_client::EventLoop;
-use torii_libp2p_client::RelayClient;
-use torii_libp2p_types::Message;
 use torii_proto::proto::world::{
     RetrieveControllersResponse, RetrieveEntitiesResponse, RetrieveEventsResponse,
     RetrieveTokenBalancesResponse, RetrieveTokensResponse,
@@ -22,27 +19,27 @@ use torii_proto::schema::Entity;
 use torii_proto::{
     Controller, EntityKeysClause, Event, EventQuery, Page, Query, Token, TokenBalance,
 };
+use torii_relay::client::EventLoop;
+use torii_relay::types::Message;
 
-use crate::error::Error;
+use crate::client::error::Error;
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct Client {
     /// The grpc client.
-    inner: RwLock<WorldClient>,
+    inner: RwLock<torii_grpc::client::WorldClient>,
     /// Relay client.
-    relay_client: RelayClient,
+    relay_client: torii_relay::client::RelayClient,
 }
 
 impl Client {
     /// Returns a initialized [Client].
     pub async fn new(torii_url: String, relay_url: String, world: Felt) -> Result<Self, Error> {
-        let grpc_client = WorldClient::new(torii_url, world).await?;
-        let relay_client = RelayClient::new(relay_url)?;
+        let grpc_client = torii_grpc::client::WorldClient::new(torii_url, world).await?;
+        let relay_client = torii_relay::client::RelayClient::new(relay_url)?;
 
-        Ok(Self {
-            inner: RwLock::new(grpc_client),
-            relay_client,
-        })
+        Ok(Self { inner: RwLock::new(grpc_client), relay_client })
     }
 
     /// Starts the relay client event loop.
@@ -89,22 +86,14 @@ impl Client {
         contract_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
         limit: Option<u32>,
-        offset: Option<u32>,
         cursor: Option<String>,
     ) -> Result<Page<Token>, Error> {
         let mut grpc_client = self.inner.write().await;
-        let RetrieveTokensResponse {
-            tokens,
-            next_cursor,
-        } = grpc_client
-            .retrieve_tokens(contract_addresses, token_ids, limit, offset, cursor)
-            .await?;
+        let RetrieveTokensResponse { tokens, next_cursor } =
+            grpc_client.retrieve_tokens(contract_addresses, token_ids, limit, cursor).await?;
         Ok(Page {
-            items: tokens
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<Vec<Token>, _>>()?,
-            next_cursor,
+            items: tokens.into_iter().map(TryInto::try_into).collect::<Result<Vec<Token>, _>>()?,
+            next_cursor: if next_cursor.is_empty() { None } else { Some(next_cursor) },
         })
     }
 
@@ -115,20 +104,15 @@ impl Client {
         contract_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
         limit: Option<u32>,
-        offset: Option<u32>,
         cursor: Option<String>,
     ) -> Result<Page<TokenBalance>, Error> {
         let mut grpc_client = self.inner.write().await;
-        let RetrieveTokenBalancesResponse {
-            balances,
-            next_cursor,
-        } = grpc_client
+        let RetrieveTokenBalancesResponse { balances, next_cursor } = grpc_client
             .retrieve_token_balances(
                 account_addresses,
                 contract_addresses,
                 token_ids,
                 limit,
-                offset,
                 cursor,
             )
             .await?;
@@ -137,7 +121,7 @@ impl Client {
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<TokenBalance>, _>>()?,
-            next_cursor,
+            next_cursor: if next_cursor.is_empty() { None } else { Some(next_cursor) },
         })
     }
 
@@ -147,43 +131,43 @@ impl Client {
     /// entities, this is less efficient as it requires an additional query for each entity's
     /// model data. Specifying a clause can optimize the query by limiting the retrieval to specific
     /// type of entites matching keys and/or models.
-    pub async fn entities(&self, query: Query, historical: bool) -> Result<Vec<Entity>, Error> {
+    pub async fn entities(&self, query: Query) -> Result<Page<Entity>, Error> {
         let mut grpc_client = self.inner.write().await;
-        let RetrieveEntitiesResponse {
-            entities,
-            total_count: _,
-        } = grpc_client.retrieve_entities(query, historical).await?;
-        Ok(entities
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<Vec<Entity>, _>>()?)
+        let RetrieveEntitiesResponse { entities, next_cursor } =
+            grpc_client.retrieve_entities(query).await?;
+        Ok(Page {
+            items: entities
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<Entity>, _>>()?,
+            next_cursor: if next_cursor.is_empty() { None } else { Some(next_cursor) },
+        })
     }
 
     /// Similary to entities, this function retrieves event messages matching the query parameter.
-    pub async fn event_messages(
-        &self,
-        query: Query,
-        historical: bool,
-    ) -> Result<Vec<Entity>, Error> {
+    pub async fn event_messages(&self, query: Query) -> Result<Page<Entity>, Error> {
         let mut grpc_client = self.inner.write().await;
-        let RetrieveEntitiesResponse {
-            entities,
-            total_count: _,
-        } = grpc_client
-            .retrieve_event_messages(query, historical)
-            .await?;
-        Ok(entities
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<Vec<Entity>, _>>()?)
+        let RetrieveEntitiesResponse { entities, next_cursor } =
+            grpc_client.retrieve_event_messages(query).await?;
+        Ok(Page {
+            items: entities
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<Entity>, _>>()?,
+            next_cursor: if next_cursor.is_empty() { None } else { Some(next_cursor) },
+        })
     }
 
     /// Retrieve raw starknet events matching the keys provided.
     /// If the keys are empty, it will return all events.
-    pub async fn starknet_events(&self, query: EventQuery) -> Result<Vec<Event>, Error> {
+    pub async fn starknet_events(&self, query: EventQuery) -> Result<Page<Event>, Error> {
         let mut grpc_client = self.inner.write().await;
-        let RetrieveEventsResponse { events } = grpc_client.retrieve_events(query).await?;
-        Ok(events.into_iter().map(Event::from).collect::<Vec<Event>>())
+        let RetrieveEventsResponse { events, next_cursor } =
+            grpc_client.retrieve_events(query).await?;
+        Ok(Page {
+            items: events.into_iter().map(Event::from).collect::<Vec<Event>>(),
+            next_cursor: if next_cursor.is_empty() { None } else { Some(next_cursor) },
+        })
     }
 
     /// A direct stream to grpc subscribe entities
@@ -203,9 +187,7 @@ impl Client {
         clauses: Vec<EntityKeysClause>,
     ) -> Result<(), Error> {
         let mut grpc_client = self.inner.write().await;
-        grpc_client
-            .update_entities_subscription(subscription_id, clauses)
-            .await?;
+        grpc_client.update_entities_subscription(subscription_id, clauses).await?;
         Ok(())
     }
 
@@ -226,9 +208,7 @@ impl Client {
         clauses: Vec<EntityKeysClause>,
     ) -> Result<(), Error> {
         let mut grpc_client = self.inner.write().await;
-        grpc_client
-            .update_event_messages_subscription(subscription_id, clauses)
-            .await?;
+        grpc_client.update_event_messages_subscription(subscription_id, clauses).await?;
         Ok(())
     }
 
@@ -249,9 +229,7 @@ impl Client {
         contract_address: Option<Felt>,
     ) -> Result<IndexerUpdateStreaming, Error> {
         let mut grpc_client = self.inner.write().await;
-        let stream = grpc_client
-            .subscribe_indexer(contract_address.unwrap_or_default())
-            .await?;
+        let stream = grpc_client.subscribe_indexer(contract_address.unwrap_or_default()).await?;
         Ok(stream)
     }
 
@@ -299,9 +277,7 @@ impl Client {
         token_ids: Vec<U256>,
     ) -> Result<TokenUpdateStreaming, Error> {
         let mut grpc_client = self.inner.write().await;
-        let stream = grpc_client
-            .subscribe_tokens(contract_addresses, token_ids)
-            .await?;
+        let stream = grpc_client.subscribe_tokens(contract_addresses, token_ids).await?;
         Ok(stream)
     }
 

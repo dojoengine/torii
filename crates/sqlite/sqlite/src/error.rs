@@ -44,8 +44,8 @@ pub enum ParseError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum QueryError {
-    #[error("Unsupported query")]
-    UnsupportedQuery,
+    #[error("Unsupported query: {0}")]
+    UnsupportedQuery(String),
     #[error("Missing param: {0}")]
     MissingParam(String),
     #[error("Unsupported value for primitive: {0}")]
@@ -56,6 +56,6 @@ pub enum QueryError {
     SqliteJoinLimit,
     #[error("Invalid namespaced model: {0}")]
     InvalidNamespacedModel(String),
-    #[error("Invalid timestamp: {0}. Expected valid number of seconds since unix epoch.")]
-    InvalidTimestamp(u64),
+    #[error("Invalid cursor: {0}")]
+    InvalidCursor(String),
 }
