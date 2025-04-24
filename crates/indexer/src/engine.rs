@@ -472,7 +472,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                         // Add continuation request to next_requests instead of recursing
                         if let Some(continuation_token) = events_page.continuation_token {
-                            if last_block_number < to && events_page.events.len() > 0 {
+                            if last_block_number < to && !events_page.events.is_empty() {
                                 if let ProviderRequestData::GetEvents(mut next_request) =
                                     original_request
                                 {
