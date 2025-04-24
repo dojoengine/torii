@@ -352,6 +352,7 @@ pub async fn fetch_entities(
     const MAX_JOINS: usize = 64;
     let original_limit = pagination.limit.unwrap_or(100);
     let fetch_limit = original_limit + 1;
+    let mut has_more_pages = false;
 
     // Build order by clause with proper model joining
     let order_by_models: HashSet<String> = pagination
@@ -460,6 +461,8 @@ pub async fn fetch_entities(
             rows.reverse();
         }
         if has_more {
+            // mark that there are more pages beyond the limit
+            has_more_pages = true;
             rows.truncate(original_limit as usize);
         }
 
@@ -469,12 +472,14 @@ pub async fn fetch_entities(
         }
     }
 
-    // Generate next cursor
-    if all_rows.len() >= original_limit as usize {
+    // Helper functions
+    // Replace generation of next cursor to only when there are more pages
+    if has_more_pages {
         if let Some(last_row) = all_rows.last() {
             let cursor_values = build_cursor_values(&pagination, last_row)?;
-            next_cursor =
-                Some(general_purpose::STANDARD_NO_PAD.encode(cursor_values.join("/").as_bytes()));
+            next_cursor = Some(
+                general_purpose::STANDARD_NO_PAD.encode(cursor_values.join("/").as_bytes()),
+            );
         }
     }
 
