@@ -31,6 +31,8 @@ use torii_proto::proto::world::{
 use torii_proto::schema::{Entity, SchemaError};
 use torii_proto::{EntityKeysClause, Event, EventQuery, IndexerUpdate, Query, Token, TokenBalance};
 
+pub use torii_proto as types;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[cfg(not(target_arch = "wasm32"))]
