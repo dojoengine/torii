@@ -444,7 +444,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                         // Process events for this page, only including events up to our target
                         // block
-                        for event in events_page.events {
+                        for event in events_page.events.clone() {
                             let block_number = event.block_number.unwrap();
                             if block_number > to {
                                 continue;
@@ -472,7 +472,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                         // Add continuation request to next_requests instead of recursing
                         if let Some(continuation_token) = events_page.continuation_token {
-                            if last_block_number < to {
+                            if last_block_number < to && events_page.events.len() > 0 {
                                 if let ProviderRequestData::GetEvents(mut next_request) =
                                     original_request
                                 {
