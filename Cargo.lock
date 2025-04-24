@@ -10787,7 +10787,8 @@ dependencies = [
 [[package]]
 name = "rustls-pki-types"
 version = "1.11.0"
-source = "git+https://github.com/rustls/pki-types?tag=v%2F1.11.0#be3a4c42e421da2745eb5589e5ce96e0eb467642"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "917ce264624a4b4db1c364dcc35bfca9ded014d0a958cd47ad3e960e988ea51c"
 dependencies = [
  "web-time",
 ]

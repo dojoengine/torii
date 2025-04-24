@@ -177,7 +177,3 @@ bitvec = "1.0.1"
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", default-features = false }
-
-[patch.crates-io]
-# required to avoid conflict between libp2p & grpc when compiling a third party client
-rustls-pki-types = { git = "https://github.com/rustls/pki-types", tag = "v/1.11.0" }
