@@ -1,7 +1,7 @@
 use dojo_types::schema::Ty;
 use starknet_crypto::{poseidon_hash_many, Felt};
 
-use torii_proto::{EntityKeysClause, PatternMatching};
+use torii_proto::{Clause, ComparisonOperator, EntityKeysClause, MemberValue, PatternMatching};
 
 pub mod entity;
 pub mod error;
@@ -15,7 +15,7 @@ pub(crate) fn match_entity_keys(
     id: Felt,
     keys: &[Felt],
     updated_model: &Option<Ty>,
-    clauses: &[EntityKeysClause],
+    clause: &Clause,
 ) -> bool {
     // Check if the subscriber is interested in this entity
     // If we have a clause of hashed keys, then check that the id of the entity
@@ -23,12 +23,11 @@ pub(crate) fn match_entity_keys(
 
     // If we have a clause of keys, then check that the key pattern of the entity
     // matches the key pattern of the subscriber.
-    if !clauses.is_empty()
-        && !clauses.iter().any(|clause| match clause {
-            EntityKeysClause::HashedKeys(hashed_keys) => {
-                hashed_keys.is_empty() || hashed_keys.contains(&id)
-            }
-            EntityKeysClause::Keys(clause) => {
+    match clause {
+        Clause::HashedKeys(hashed_keys) => {
+            hashed_keys.is_empty() || hashed_keys.contains(&id)
+        }
+        Clause::Keys(clause) => {
                 // if we have a model clause, then we need to check that the entity
                 // has an updated model and that the model name matches the clause
                 if let Some(updated_model) = &updated_model {
@@ -83,15 +82,42 @@ pub(crate) fn match_entity_keys(
                         // but we're in VariableLen pattern matching
                         // so we should match all next keys
                         _ => true,
-                    }
-                })
-            }
-        })
-    {
-        return false;
-    }
+                }
+            })
+        }
+        Clause::Member(member_clause) => {
+            if let Some(updated_model) = &updated_model {
+                if updated_model.name() != member_clause.model {
+                    return false;
+                }
 
-    true
+                let parts = member_clause.member.split('.').collect::<Vec<&str>>();
+                let mut parent = updated_model.clone();
+                for (idx, part) in parts.iter().enumerate() {
+                    match parent {
+                        Ty::Struct(struct_ty) => {
+                            parent = struct_ty.children.iter().find(|c| c.name == part).map(|c| &c.ty);
+                        }
+                        Ty::Primitive(primitive) => {
+                            return match (member_clause.operator, member_clause.value) {
+                                (ComparisonOperator::Eq, MemberValue::Primitive(clause_primitive)) => primitive == clause_primitive,
+                                (ComparisonOperator::Neq, MemberValue::Primitive(clause_primitive)) => primitive != clause_primitive,
+                                (ComparisonOperator::Gt, MemberValue::Primitive(clause_primitive)) => primitive > clause_primitive,
+                                (ComparisonOperator::Gte, MemberValue::Primitive(clause_primitive)) => primitive >= clause_primitive,
+                                (ComparisonOperator::Lt, MemberValue::Primitive(clause_primitive)) => primitive < clause_primitive,
+                                (ComparisonOperator::Lte, MemberValue::Primitive(clause_primitive)) => primitive <= clause_primitive,
+                                _ => false,
+                            }
+                        }
+                        _ => return false,
+                    }
+                }
+            }
+
+            false
+        }
+        Clause::Composite(_) => false,
+    }
 }
 
 pub(crate) fn match_keys(keys: &[Felt], clauses: &[EntityKeysClause]) -> bool {
