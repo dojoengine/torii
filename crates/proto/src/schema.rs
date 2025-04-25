@@ -2,27 +2,10 @@ use crypto_bigint::{Encoding, U256};
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Enum, EnumOption, Member, Struct, Ty};
 use serde::{Deserialize, Serialize};
-use starknet::core::types::{Felt, FromStrError};
+use starknet::core::types::Felt;
 
+use crate::error::ProtoError;
 use crate::proto;
-
-#[derive(Debug, thiserror::Error)]
-pub enum SchemaError {
-    #[error("Missing expected data: {0}")]
-    MissingExpectedData(String),
-    #[error("Unsupported primitive type for {0}")]
-    UnsupportedType(String),
-    #[error("Invalid byte length: {0}. Expected: {1}")]
-    InvalidByteLength(usize, usize),
-    #[error(transparent)]
-    ParseIntError(#[from] std::num::ParseIntError),
-    #[error(transparent)]
-    FromSlice(#[from] std::array::TryFromSliceError),
-    #[error(transparent)]
-    FromStr(#[from] FromStrError),
-    #[error(transparent)]
-    FromUtf8(#[from] std::string::FromUtf8Error),
-}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Entity {
@@ -31,7 +14,7 @@ pub struct Entity {
 }
 
 impl TryFrom<proto::types::Entity> for Entity {
-    type Error = SchemaError;
+    type Error = ProtoError;
     fn try_from(entity: proto::types::Entity) -> Result<Self, Self::Error> {
         Ok(Self {
             hashed_keys: Felt::from_bytes_be_slice(&entity.hashed_keys),
@@ -64,13 +47,13 @@ impl From<Ty> for proto::types::Ty {
 }
 
 impl TryFrom<proto::types::Member> for Member {
-    type Error = SchemaError;
+    type Error = ProtoError;
     fn try_from(member: proto::types::Member) -> Result<Self, Self::Error> {
         Ok(Member {
             name: member.name,
             ty: member
                 .ty
-                .ok_or(SchemaError::MissingExpectedData("ty".to_string()))?
+                .ok_or(ProtoError::MissingExpectedData("ty".to_string()))?
                 .try_into()?,
             key: member.key,
         })
@@ -88,13 +71,13 @@ impl From<Member> for proto::types::Member {
 }
 
 impl TryFrom<proto::types::EnumOption> for EnumOption {
-    type Error = SchemaError;
+    type Error = ProtoError;
     fn try_from(option: proto::types::EnumOption) -> Result<Self, Self::Error> {
         Ok(EnumOption {
             name: option.name,
             ty: option
                 .ty
-                .ok_or(SchemaError::MissingExpectedData("ty".to_string()))?
+                .ok_or(ProtoError::MissingExpectedData("ty".to_string()))?
                 .try_into()?,
         })
     }
@@ -110,7 +93,7 @@ impl From<EnumOption> for proto::types::EnumOption {
 }
 
 impl TryFrom<proto::types::Enum> for Enum {
-    type Error = SchemaError;
+    type Error = ProtoError;
     fn try_from(r#enum: proto::types::Enum) -> Result<Self, Self::Error> {
         Ok(Enum {
             name: r#enum.name.clone(),
@@ -139,7 +122,7 @@ impl From<Enum> for proto::types::Enum {
 }
 
 impl TryFrom<proto::types::Struct> for Struct {
-    type Error = SchemaError;
+    type Error = ProtoError;
     fn try_from(r#struct: proto::types::Struct) -> Result<Self, Self::Error> {
         Ok(Struct {
             name: r#struct.name,
@@ -166,11 +149,11 @@ impl From<Struct> for proto::types::Struct {
 }
 
 impl TryFrom<proto::types::Primitive> for Primitive {
-    type Error = SchemaError;
+    type Error = ProtoError;
     fn try_from(primitive: proto::types::Primitive) -> Result<Self, Self::Error> {
         let value = primitive
             .primitive_type
-            .ok_or(SchemaError::MissingExpectedData(
+            .ok_or(ProtoError::MissingExpectedData(
                 "primitive_type".to_string(),
             ))?;
 
@@ -185,7 +168,7 @@ impl TryFrom<proto::types::Primitive> for Primitive {
                     bytes
                         .as_slice()
                         .try_into()
-                        .map_err(SchemaError::FromSlice)?,
+                        .map_err(ProtoError::FromSlice)?,
                 )))
             }
             proto::types::primitive::PrimitiveType::U8(int) => Primitive::U8(Some(*int as u8)),
@@ -197,7 +180,7 @@ impl TryFrom<proto::types::Primitive> for Primitive {
                     bytes
                         .as_slice()
                         .try_into()
-                        .map_err(SchemaError::FromSlice)?,
+                        .map_err(ProtoError::FromSlice)?,
                 )))
             }
             proto::types::primitive::PrimitiveType::Felt252(felt) => {
@@ -217,7 +200,7 @@ impl TryFrom<proto::types::Primitive> for Primitive {
                     bytes
                         .as_slice()
                         .try_into()
-                        .map_err(SchemaError::FromSlice)?,
+                        .map_err(ProtoError::FromSlice)?,
                 )))
             }
         };
@@ -288,11 +271,11 @@ impl From<Primitive> for proto::types::Primitive {
 }
 
 impl TryFrom<proto::types::Ty> for Ty {
-    type Error = SchemaError;
+    type Error = ProtoError;
     fn try_from(ty: proto::types::Ty) -> Result<Self, Self::Error> {
         match ty
             .ty_type
-            .ok_or(SchemaError::MissingExpectedData("ty_type".to_string()))?
+            .ok_or(ProtoError::MissingExpectedData("ty_type".to_string()))?
         {
             proto::types::ty::TyType::Primitive(primitive) => {
                 Ok(Ty::Primitive(primitive.try_into()?))

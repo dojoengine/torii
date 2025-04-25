@@ -38,6 +38,7 @@ use tokio::net::TcpListener;
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::codec::CompressionEncoding;
 use tonic::transport::Server;
+use tonic::transport::{Identity, ServerTlsConfig};
 use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
 use torii_sqlite::cache::ModelCache;
@@ -1687,6 +1688,13 @@ const DEFAULT_ALLOW_HEADERS: [&str; 6] = [
     "grpc-accept-encoding",
     "grpc-encoding",
 ];
+
+// Helper function to load TLS identity (optional, you can inline this)
+async fn load_identity(cert_path: &str, key_path: &str) -> Result<Identity, Box<dyn std::error::Error>> {
+    let cert = tokio::fs::read(cert_path).await?;
+    let key = tokio::fs::read(key_path).await?;
+    Ok(Identity::from_pem(cert, key))
+}
 
 pub async fn new(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
