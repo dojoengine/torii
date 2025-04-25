@@ -68,13 +68,6 @@ message Clause {
     }
 }
 
-message EntityKeysClause {
-    oneof clause_type {
-        HashedKeysClause hashed_keys = 1;
-        KeysClause keys = 2;
-    }
-}
-
 message KeysClause {
     repeated bytes keys = 2;
     PatternMatching pattern_matching = 3;

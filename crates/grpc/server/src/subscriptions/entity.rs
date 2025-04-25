@@ -19,16 +19,16 @@ use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::OptimisticEntity;
 use tracing::{error, trace};
 
-use super::match_entity_keys;
+use super::{match_entity};
 use torii_proto::proto::world::SubscribeEntityResponse;
-use torii_proto::EntityKeysClause;
+use torii_proto::Clause;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::entity";
 
 #[derive(Debug)]
 pub struct EntitiesSubscriber {
-    /// Entity ids that the subscriber is interested in
-    pub(crate) clauses: Vec<EntityKeysClause>,
+    /// The clause that the subscriber is interested in
+    pub(crate) clause: Clause,
     /// The channel to send the response back to the subscriber.
     pub(crate) sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
 }
@@ -40,7 +40,7 @@ pub struct EntityManager {
 impl EntityManager {
     pub async fn add_subscriber(
         &self,
-        clauses: Vec<EntityKeysClause>,
+        clause: Clause,
     ) -> Result<Receiver<Result<SubscribeEntityResponse, tonic::Status>>, Error> {
         let subscription_id = rand::thread_rng().gen::<u64>();
         let (sender, receiver) = channel(1);
@@ -58,12 +58,12 @@ impl EntityManager {
         self.subscribers
             .write()
             .await
-            .insert(subscription_id, EntitiesSubscriber { clauses, sender });
+            .insert(subscription_id, EntitiesSubscriber { clause, sender });
 
         Ok(receiver)
     }
 
-    pub async fn update_subscriber(&self, id: u64, clauses: Vec<EntityKeysClause>) {
+    pub async fn update_subscriber(&self, id: u64, clause: Clause) {
         let sender = {
             let subscribers = self.subscribers.read().await;
             if let Some(subscriber) = subscribers.get(&id) {
@@ -76,7 +76,7 @@ impl EntityManager {
         self.subscribers
             .write()
             .await
-            .insert(id, EntitiesSubscriber { clauses, sender });
+            .insert(id, EntitiesSubscriber { clause, sender });
     }
 
     pub(super) async fn remove_subscriber(&self, id: u64) {
@@ -144,7 +144,7 @@ impl Service {
 
             // If we have a clause of keys, then check that the key pattern of the entity
             // matches the key pattern of the subscriber.
-            if !match_entity_keys(hashed, &keys, &entity.updated_model, &sub.clauses) {
+            if !match_entity(hashed, &keys, &entity.updated_model, &sub.clause) {
                 continue;
             }
 

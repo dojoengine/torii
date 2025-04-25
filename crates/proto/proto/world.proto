@@ -185,11 +185,11 @@ message WorldMetadataResponse {
 }
 
 message SubscribeEntitiesRequest {
-    repeated types.EntityKeysClause clauses = 1;
+    types.Clause clause = 1;
 }
 
 message SubscribeEventMessagesRequest {
-    repeated types.EntityKeysClause clauses = 1;
+    types.Clause clause = 1;
 }
 
 message UpdateEntitiesSubscriptionRequest {
@@ -233,7 +233,7 @@ message RetrieveEventsResponse {
 }
 
 message SubscribeEventsRequest {
-    repeated types.EntityKeysClause keys = 1;
+    repeated types.KeysClause keys = 1;
 }
 
 message SubscribeEventsResponse {

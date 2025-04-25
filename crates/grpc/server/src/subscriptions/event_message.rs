@@ -14,22 +14,23 @@ use tokio::sync::mpsc::{
 };
 use tokio::sync::RwLock;
 use torii_proto::proto::types::Entity;
-use torii_proto::EntityKeysClause;
+use torii_proto::Clause;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::OptimisticEventMessage;
 use tracing::{error, trace};
 
-use super::match_entity_keys;
 use torii_proto::proto::world::SubscribeEntityResponse;
+
+use super::match_entity;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::event_message";
 
 #[derive(Debug)]
 pub struct EventMessageSubscriber {
-    /// Entity ids that the subscriber is interested in
-    pub(crate) clauses: Vec<EntityKeysClause>,
+    /// The clause that the subscriber is interested in
+    pub(crate) clause: Clause,
     /// The channel to send the response back to the subscriber.
     pub(crate) sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
 }
@@ -42,7 +43,7 @@ pub struct EventMessageManager {
 impl EventMessageManager {
     pub async fn add_subscriber(
         &self,
-        clauses: Vec<EntityKeysClause>,
+        clause: Clause,
     ) -> Result<Receiver<Result<SubscribeEntityResponse, tonic::Status>>, Error> {
         let subscription_id = rand::thread_rng().gen::<u64>();
         let (sender, receiver) = channel(1);
@@ -60,12 +61,12 @@ impl EventMessageManager {
         self.subscribers
             .write()
             .await
-            .insert(subscription_id, EventMessageSubscriber { clauses, sender });
+            .insert(subscription_id, EventMessageSubscriber { clause, sender });
 
         Ok(receiver)
     }
 
-    pub async fn update_subscriber(&self, id: u64, clauses: Vec<EntityKeysClause>) {
+    pub async fn update_subscriber(&self, id: u64, clause: Clause) {
         let sender = {
             let subscribers = self.subscribers.read().await;
             if let Some(subscriber) = subscribers.get(&id) {
@@ -78,7 +79,7 @@ impl EventMessageManager {
         self.subscribers
             .write()
             .await
-            .insert(id, EventMessageSubscriber { clauses, sender });
+            .insert(id, EventMessageSubscriber { clause, sender });
     }
 
     pub(super) async fn remove_subscriber(&self, id: u64) {
@@ -138,7 +139,7 @@ impl Service {
 
             // If we have a clause of keys, then check that the key pattern of the entity
             // matches the key pattern of the subscriber.
-            if !match_entity_keys(hashed, &keys, &entity.updated_model, &sub.clauses) {
+            if !match_entity(hashed, &keys, &entity.updated_model, &sub.clause) {
                 continue;
             }
 
