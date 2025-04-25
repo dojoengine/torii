@@ -403,9 +403,12 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                                 .unwrap()
                                 .as_secs();
 
-                            let diff = current_time - cursor_timestamp;
-                            if 0 != diff {
-                                num_transactions / (current_time - cursor_timestamp)
+                            let diff = current_time
+                                .checked_sub(cursor_timestamp)
+                                .unwrap_or_default();
+
+                            if diff > 0 {
+                                num_transactions / diff
                             } else {
                                 num_transactions
                             }
