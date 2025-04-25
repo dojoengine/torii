@@ -403,7 +403,15 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                                 .unwrap()
                                 .as_secs();
 
-                            num_transactions / (current_time - cursor_timestamp)
+                            let diff = current_time
+                                .checked_sub(cursor_timestamp)
+                                .unwrap_or_default();
+
+                            if diff > 0 {
+                                num_transactions / diff
+                            } else {
+                                num_transactions
+                            }
                         };
 
                         cursor.last_pending_block_contract_tx =
