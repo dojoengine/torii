@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use dojo_types::naming::get_tag;
 use dojo_types::primitive::SqlType;
-use dojo_types::schema::{Struct, Ty};
+use dojo_types::schema::{SchemaDiff, Struct, Ty};
 use dojo_world::config::WorldMetadata;
 use dojo_world::contracts::abigen::model::Layout;
 use dojo_world::contracts::naming::compute_selector_from_names;
@@ -265,7 +265,7 @@ impl Sql {
         packed_size: u32,
         unpacked_size: u32,
         block_timestamp: u64,
-        upgrade_diff: Option<&Ty>,
+        upgrade_diff: Option<&SchemaDiff>,
     ) -> Result<()> {
         let selector = compute_selector_from_names(namespace, &model.name());
         let namespaced_name = get_tag(namespace, &model.name());
@@ -768,7 +768,7 @@ impl Sql {
         &mut self,
         path: Vec<String>,
         model: &Ty,
-        upgrade_diff: Option<&Ty>,
+        upgrade_diff: Option<&SchemaDiff>,
     ) -> Result<()> {
         let table_id = path[0].clone(); // Use only the root path component
         let mut columns = Vec::new();
@@ -849,7 +849,7 @@ impl Sql {
         alter_table_queries: &mut Vec<String>,
         indices: &mut Vec<String>,
         table_id: &str,
-        upgrade_diff: Option<&Ty>,
+        upgrade_diff: Option<&SchemaDiff>,
         is_key: bool,
     ) -> Result<()> {
         let column_prefix = if path.len() > 1 {

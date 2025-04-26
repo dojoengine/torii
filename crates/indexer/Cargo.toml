@@ -47,7 +47,7 @@ torii-processors.workspace = true
 dojo-test-utils.workspace = true
 dojo-utils.workspace = true
 katana-runner = { git = "https://github.com/dojoengine/katana", rev = "5cb249c0fa59fa6b7c88b32557e7baf8944cdb3d" }
-scarb = { git = "https://github.com/dojoengine/scarb", rev = "8a60513c03e72b8a84f3ac266c61aac40c565aca" }
-sozo-scarbext = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
+scarb = { git = "https://github.com/dojoengine/scarb", rev = "d749b95" }
+sozo-scarbext = { git = "https://github.com/dojoengine/dojo", rev = "ace612a6413c8bd4689382adeb67c3dc88020335" }
 tempfile.workspace = true
 sqlx.workspace = true

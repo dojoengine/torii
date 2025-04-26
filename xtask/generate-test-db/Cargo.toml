@@ -12,8 +12,8 @@ dojo-utils.workspace = true
 dojo-world.workspace = true
 katana-runner = { git = "https://github.com/dojoengine/katana", rev = "5cb249c0fa59fa6b7c88b32557e7baf8944cdb3d" }
 reqwest = { workspace = true, features = [ "json" ] }
-scarb = { git = "https://github.com/dojoengine/scarb", rev = "8a60513c03e72b8a84f3ac266c61aac40c565aca" }
-sozo-ops = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
+scarb = { git = "https://github.com/dojoengine/scarb", rev = "d749b95" }
+sozo-ops = { git = "https://github.com/dojoengine/dojo", rev = "ace612a6413c8bd4689382adeb67c3dc88020335" }
+sozo-scarbext = { git = "https://github.com/dojoengine/dojo", rev = "ace612a6413c8bd4689382adeb67c3dc88020335" }
 starknet.workspace = true
 tokio.workspace = true
-sozo-scarbext = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }

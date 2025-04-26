@@ -2,6 +2,8 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
+use dojo_types::naming::get_tag;
+use dojo_types::schema::{Struct, Ty};
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
 use dojo_world::contracts::world::WorldContractReader;
@@ -53,6 +55,8 @@ where
         event: &Event,
         config: &EventProcessorConfig,
     ) -> Result<(), Error> {
+        dbg!("UpgradeModelProcessor", event);
+
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
@@ -83,8 +87,10 @@ where
         };
 
         let name = model.name;
+        dbg!("Name", &name);
         let namespace = model.namespace;
         let prev_schema = model.schema;
+        dbg!("Prev schema", &prev_schema);
 
         let mut model = ModelRPCReader::new(
             &namespace,
@@ -95,17 +101,25 @@ where
         )
         .await;
         if config.strict_model_reader {
+            dbg!("Setting block for reader", &block_number);
             model.set_block(BlockId::Number(block_number)).await;
         }
         let new_schema = model.schema().await?;
-        let schema_diff = prev_schema.diff(&new_schema);
+
+        let schema_diff = new_schema.diff(&prev_schema);
+        dbg!("Schema diff", &schema_diff);
+        // dbg!("Prev schema", &prev_schema);
+        // dbg!("New schema", &new_schema);
+        // dbg!("Schema diff", &schema_diff);
         // No changes to the schema. This can happen if torii is re-run with a fresh database.
         // As the register model fetches the latest schema from the chain.
         if schema_diff.is_none() {
+            dbg!("No changes to the schema. Skipping.");
             return Ok(());
         }
 
         let schema_diff = schema_diff.unwrap();
+        dbg!("Schema diff", &schema_diff);
         let layout = model.layout().await?;
 
         let unpacked_size: u32 = model.unpacked_size().await?;

@@ -31,12 +31,12 @@ inherits = "release"
 cainome = { version = "0.5.0", features = [ "abigen-rs" ] }
 cainome-cairo-serde = { version = "0.1.0" }
 
-dojo-utils = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
-dojo-types = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
-dojo-core = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
-dojo-world = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
-dojo-test-utils = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
-dojo-metrics = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
+dojo-utils = { git = "https://github.com/dojoengine/dojo", rev = "ace612a6413c8bd4689382adeb67c3dc88020335" }
+dojo-types = { git = "https://github.com/dojoengine/dojo", rev = "ace612a6413c8bd4689382adeb67c3dc88020335" }
+dojo-core = { git = "https://github.com/dojoengine/dojo", rev = "ace612a6413c8bd4689382adeb67c3dc88020335" }
+dojo-world = { git = "https://github.com/dojoengine/dojo", rev = "ace612a6413c8bd4689382adeb67c3dc88020335" }
+dojo-test-utils = { git = "https://github.com/dojoengine/dojo", rev = "ace612a6413c8bd4689382adeb67c3dc88020335" }
+dojo-metrics = { git = "https://github.com/dojoengine/dojo", rev = "ace612a6413c8bd4689382adeb67c3dc88020335" }
 
 topological-sort = "0.2"
 
@@ -101,7 +101,7 @@ indoc = "1.0.7"
 itertools = "0.12.1"
 jsonrpsee = { version = "0.16.2", default-features = false }
 lazy_static = "1.4.0"
-log = "0.4.21"
+log = "0.4.27"
 metrics = "0.23.0"
 num-bigint = "0.4.3"
 num-traits = { version = "0.2", default-features = false }
