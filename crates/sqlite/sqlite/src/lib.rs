@@ -951,10 +951,8 @@ impl Sql {
                 let tuple_schema_diff = schema_diff.and_then(|d| d.as_tuple());
 
                 for (idx, member) in t.iter().enumerate() {
-                    let member_upgrade_diff =
-                        tuple_upgrade_diff.and_then(|diff| diff.get(idx));
-                    let member_schema_diff =
-                        tuple_schema_diff.and_then(|diff| diff.get(idx));
+                    let member_upgrade_diff = tuple_upgrade_diff.and_then(|diff| diff.get(idx));
+                    let member_schema_diff = tuple_schema_diff.and_then(|diff| diff.get(idx));
 
                     let mut new_path = path.to_vec();
                     new_path.push(idx.to_string());
