@@ -265,6 +265,7 @@ impl Sql {
         packed_size: u32,
         unpacked_size: u32,
         block_timestamp: u64,
+        schema_diff: Option<&Ty>,
         upgrade_diff: Option<&Ty>,
     ) -> Result<()> {
         let selector = compute_selector_from_names(namespace, &model.name());
@@ -299,7 +300,12 @@ impl Sql {
             QueryType::RegisterModel,
         ))?;
 
-        self.build_model_query(vec![namespaced_name.clone()], model, upgrade_diff)?;
+        self.build_model_query(
+            vec![namespaced_name.clone()],
+            model,
+            schema_diff,
+            upgrade_diff,
+        )?;
 
         // we set the model in the cache directly
         // because entities might be using it before the query queue is processed
@@ -768,6 +774,7 @@ impl Sql {
         &mut self,
         path: Vec<String>,
         model: &Ty,
+        schema_diff: Option<&Ty>,
         upgrade_diff: Option<&Ty>,
     ) -> Result<()> {
         let table_id = path[0].clone(); // Use only the root path component
@@ -799,6 +806,7 @@ impl Sql {
             &mut alter_table_queries,
             &mut indices,
             &table_id,
+            schema_diff,
             upgrade_diff,
             false,
         )?;
@@ -849,6 +857,7 @@ impl Sql {
         alter_table_queries: &mut Vec<String>,
         indices: &mut Vec<String>,
         table_id: &str,
+        schema_diff: Option<&Ty>,
         upgrade_diff: Option<&Ty>,
         is_key: bool,
     ) -> Result<()> {
@@ -858,112 +867,131 @@ impl Sql {
             String::new()
         };
 
-        let mut add_column = |name: &str, sql_type: &str| {
-            if upgrade_diff.is_some() {
-                alter_table_queries.push(format!(
-                    "ALTER TABLE [{table_id}] ADD COLUMN [{name}] {sql_type}"
-                ));
-            } else {
-                columns.push(format!("[{name}] {sql_type}"));
-            }
-
+        let add_index = |indices: &mut Vec<String>, name: &str| {
             let model_indices = self
                 .config
                 .model_indices
                 .iter()
                 .find(|m| m.model_tag == table_id);
-
+    
             if model_indices.is_some_and(|m| m.fields.contains(&name.to_string()))
                 || (model_indices.is_none() && (self.config.all_model_indices || is_key))
             {
                 indices.push(format!(
-                    "CREATE INDEX IF NOT EXISTS [idx_{table_id}_{name}] ON [{table_id}] \
-                     ([{name}]);"
+                    "CREATE INDEX IF NOT EXISTS [idx_{table_id}_{name}] ON [{table_id}] ([{name}]);"
                 ));
             }
         };
+    
+        let mut add_column = |name: &str, sql_type: &str, indices: &mut Vec<String>| {
+            columns.push(format!("[{name}] {sql_type}"));
+            add_index(indices, name);
+        };
+    
+        let mut alter_column = |name: &str, sql_type: &str, indices: &mut Vec<String>| {
+            alter_table_queries.push(format!(
+                "ALTER TABLE [{table_id}] ADD COLUMN [{name}] {sql_type}"
+            ));
+            add_index(indices, name);
+        };
 
-        let modify_column =
-            |alter_table_queries: &mut Vec<String>, name: &str, sql_type: &str, sql_value: &str| {
-                // SQLite doesn't support ALTER COLUMN directly, so we need to:
-                // 1. Create a temporary table to store the current values
-                // 2. Drop the old column & index
-                // 3. Create new column with new type/constraint
-                // 4. Copy values back & create new index
-                alter_table_queries.push(format!(
-                "CREATE TEMPORARY TABLE [tmp_values_{name}] AS SELECT internal_id, [{name}] FROM \
-                 [{table_id}]"
+        let modify_column = |alter_table_queries: &mut Vec<String>,
+                             name: &str,
+                             sql_type: &str,
+                             sql_value: &str| {
+            alter_table_queries.push(format!(
+            "CREATE TEMPORARY TABLE [tmp_values_{name}] AS SELECT internal_id, [{name}] FROM [{table_id}]"
+        ));
+            alter_table_queries.push(format!("DROP INDEX IF EXISTS [idx_{table_id}_{name}]"));
+            alter_table_queries.push(format!("ALTER TABLE [{table_id}] DROP COLUMN [{name}]"));
+            alter_table_queries.push(format!(
+                "ALTER TABLE [{table_id}] ADD COLUMN [{name}] {sql_type}"
             ));
-                alter_table_queries.push(format!("DROP INDEX IF EXISTS [idx_{table_id}_{name}]"));
-                alter_table_queries.push(format!("ALTER TABLE [{table_id}] DROP COLUMN [{name}]"));
-                alter_table_queries.push(format!(
-                    "ALTER TABLE [{table_id}] ADD COLUMN [{name}] {sql_type}"
-                ));
-                alter_table_queries.push(format!(
+            alter_table_queries.push(format!(
                 "UPDATE [{table_id}] SET [{name}] = (SELECT {sql_value} FROM [tmp_values_{name}] \
-                 WHERE [tmp_values_{name}].internal_id = [{table_id}].internal_id)"
+             WHERE [tmp_values_{name}].internal_id = [{table_id}].internal_id)"
             ));
-                alter_table_queries.push(format!("DROP TABLE [tmp_values_{name}]"));
-                alter_table_queries.push(format!(
+            alter_table_queries.push(format!("DROP TABLE [tmp_values_{name}]"));
+            alter_table_queries.push(format!(
                 "CREATE INDEX IF NOT EXISTS [idx_{table_id}_{name}] ON [{table_id}] ([{name}]);"
             ));
-            };
+        };
 
         match ty {
             Ty::Struct(s) => {
-                let struct_diff = if let Some(upgrade_diff) = upgrade_diff {
-                    upgrade_diff.as_struct()
-                } else {
-                    None
-                };
+                let struct_upgrade_diff = upgrade_diff.and_then(|d| d.as_struct());
+                let struct_schema_diff = schema_diff.and_then(|d| d.as_struct());
 
                 for member in &s.children {
-                    let member_diff = if let Some(diff) = struct_diff {
-                        if let Some(m) = diff.children.iter().find(|m| m.name == member.name) {
-                            Some(&m.ty)
-                        } else {
-                            // If the member is not in the diff, skip it
-                            continue;
-                        }
-                    } else {
-                        None
-                    };
+                    let member_upgrade_diff = struct_upgrade_diff
+                        .and_then(|diff| diff.children.iter().find(|m| m.name == member.name))
+                        .map(|m| &m.ty);
+                    let member_schema_diff = struct_schema_diff
+                        .and_then(|diff| diff.children.iter().find(|m| m.name == member.name))
+                        .map(|m| &m.ty);
 
                     let mut new_path = path.to_vec();
                     new_path.push(member.name.clone());
 
-                    self.add_columns_recursive(
-                        &new_path,
-                        &member.ty,
-                        columns,
-                        alter_table_queries,
-                        indices,
-                        table_id,
-                        member_diff,
-                        member.key,
-                    )?;
+                    // If in upgrade_diff, process as an upgrade
+                    if member_upgrade_diff.is_some() {
+                        self.add_columns_recursive(
+                            &new_path,
+                            &member.ty,
+                            columns,
+                            alter_table_queries,
+                            indices,
+                            table_id,
+                            member_schema_diff,
+                            member_upgrade_diff,
+                            member.key,
+                        )?;
+                    }
+                    // If in schema_diff but not upgrade_diff, process as a new column
+                    else if member_schema_diff.is_some() {
+                        self.add_columns_recursive(
+                            &new_path,
+                            &member.ty,
+                            columns,
+                            alter_table_queries,
+                            indices,
+                            table_id,
+                            member_schema_diff,
+                            None,
+                            member.key,
+                        )?;
+                    }
                 }
             }
-            Ty::Tuple(tuple) => {
-                let elements_to_process =
-                    if let Some(diff) = upgrade_diff.and_then(|d| d.as_tuple()) {
-                        // Only process elements from the diff
-                        diff.iter()
-                            .filter_map(|m| {
-                                tuple
-                                    .iter()
-                                    .position(|member| member == m)
-                                    .map(|idx| (idx, m, Some(m)))
-                            })
-                            .collect()
-                    } else {
-                        // Process all elements
-                        tuple
-                            .iter()
-                            .enumerate()
-                            .map(|(idx, member)| (idx, member, None))
-                            .collect::<Vec<_>>()
-                    };
+            Ty::Tuple(t) => {
+                let tuple_upgrade_diff = upgrade_diff.and_then(|d| d.as_tuple());
+                let tuple_schema_diff = schema_diff.and_then(|d| d.as_tuple());
+
+                let elements_to_process = if let Some(diff) = tuple_upgrade_diff {
+                    // Process elements from upgrade_diff
+                    diff.iter()
+                        .filter_map(|m| {
+                            t.iter()
+                                .position(|member| member == m)
+                                .map(|idx| (idx, m, Some(m)))
+                        })
+                        .collect()
+                } else if let Some(diff) = tuple_schema_diff {
+                    // Process elements from schema_diff
+                    diff.iter()
+                        .filter_map(|m| {
+                            t.iter()
+                                .position(|member| member == m)
+                                .map(|idx| (idx, m, Some(m)))
+                        })
+                        .collect()
+                } else {
+                    // Process all elements
+                    t.iter()
+                        .enumerate()
+                        .map(|(idx, member)| (idx, member, None))
+                        .collect::<Vec<_>>()
+                };
 
                 for (idx, member, member_diff) in elements_to_process {
                     let mut new_path = path.to_vec();
@@ -975,6 +1003,7 @@ impl Sql {
                         alter_table_queries,
                         indices,
                         table_id,
+                        schema_diff,
                         member_diff,
                         is_key,
                     )?;
@@ -987,14 +1016,22 @@ impl Sql {
                     column_prefix
                 };
 
-                add_column(&column_name, "TEXT");
+                if upgrade_diff.is_some() {
+                    modify_column(
+                        alter_table_queries,
+                        &column_name,
+                        "TEXT",
+                        &format!("[{column_name}]"),
+                    );
+                } else if schema_diff.is_some() {
+                    alter_column(&column_name, "TEXT", indices);
+                } else {
+                    add_column(&column_name, "TEXT", indices);
+                }
             }
             Ty::Enum(e) => {
-                let enum_diff = if let Some(upgrade_diff) = upgrade_diff {
-                    upgrade_diff.as_enum()
-                } else {
-                    None
-                };
+                let enum_upgrade_diff = upgrade_diff.and_then(|d| d.as_enum());
+                let enum_schema_diff = schema_diff.and_then(|d| d.as_enum());
 
                 let column_name = if column_prefix.is_empty() {
                     "option".to_string()
@@ -1010,35 +1047,29 @@ impl Sql {
                     .join(", ");
 
                 let sql_type = format!(
-                    "TEXT CONSTRAINT [{column_name}_check] CHECK([{column_name}] IN \
-                     ({all_options}))"
-                );
-                if enum_diff.is_some_and(|diff| diff != e) {
-                    // For upgrades, modify the existing option column to add the new options to the
-                    // CHECK constraint We need to drop the old column and create a new
-                    // one with the new CHECK constraint
+                "TEXT CONSTRAINT [{column_name}_check] CHECK([{column_name}] IN ({all_options}))"
+            );
+
+                if enum_upgrade_diff.is_some() {
                     modify_column(
                         alter_table_queries,
                         &column_name,
                         &sql_type,
                         &format!("[{column_name}]"),
                     );
+                } else if enum_schema_diff.is_some() {
+                    alter_column(&column_name, &sql_type, indices);
                 } else {
-                    // For new tables, create the column directly
-                    add_column(&column_name, &sql_type);
+                    add_column(&column_name, &sql_type, indices);
                 }
 
                 for child in &e.options {
-                    // If we have a diff, only process new variants that aren't in the original enum
-                    let variant_diff = if let Some(diff) = enum_diff {
-                        if let Some(v) = diff.options.iter().find(|v| v.name == child.name) {
-                            Some(&v.ty)
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        None
-                    };
+                    let variant_upgrade_diff = enum_upgrade_diff
+                        .and_then(|diff| diff.options.iter().find(|v| v.name == child.name))
+                        .map(|v| &v.ty);
+                    let variant_schema_diff = enum_schema_diff
+                        .and_then(|diff| diff.options.iter().find(|v| v.name == child.name))
+                        .map(|v| &v.ty);
 
                     if let Ty::Tuple(tuple) = &child.ty {
                         if tuple.is_empty() {
@@ -1049,16 +1080,31 @@ impl Sql {
                     let mut new_path = path.to_vec();
                     new_path.push(child.name.clone());
 
-                    self.add_columns_recursive(
-                        &new_path,
-                        &child.ty,
-                        columns,
-                        alter_table_queries,
-                        indices,
-                        table_id,
-                        variant_diff,
-                        is_key,
-                    )?;
+                    if variant_upgrade_diff.is_some() {
+                        self.add_columns_recursive(
+                            &new_path,
+                            &child.ty,
+                            columns,
+                            alter_table_queries,
+                            indices,
+                            table_id,
+                            variant_schema_diff,
+                            variant_upgrade_diff,
+                            is_key,
+                        )?;
+                    } else if variant_schema_diff.is_some() {
+                        self.add_columns_recursive(
+                            &new_path,
+                            &child.ty,
+                            columns,
+                            alter_table_queries,
+                            indices,
+                            table_id,
+                            variant_schema_diff,
+                            None,
+                            is_key,
+                        )?;
+                    }
                 }
             }
             Ty::ByteArray(_) => {
@@ -1068,7 +1114,18 @@ impl Sql {
                     column_prefix
                 };
 
-                add_column(&column_name, "TEXT");
+                if upgrade_diff.is_some() {
+                    modify_column(
+                        alter_table_queries,
+                        &column_name,
+                        "TEXT",
+                        &format!("[{column_name}]"),
+                    );
+                } else if schema_diff.is_some() {
+                    alter_column(&column_name, "TEXT", indices);
+                } else {
+                    add_column(&column_name, "TEXT", indices);
+                }
             }
             Ty::Primitive(p) => {
                 let column_name = if column_prefix.is_empty() {
@@ -1079,17 +1136,13 @@ impl Sql {
 
                 if let Some(upgrade_diff) = upgrade_diff {
                     if let Some(old_primitive) = upgrade_diff.as_primitive() {
-                        // For upgrades to larger numeric types, convert to hex string padded to 64
-                        // chars
                         let sql_value = if old_primitive.to_sql_type() == SqlType::Integer
                             && p.to_sql_type() == SqlType::Text
                         {
-                            // Convert integer to hex string with '0x' prefix and proper padding
                             format!("printf('%064x', [{column_name}])")
                         } else {
                             format!("[{column_name}]")
                         };
-
                         modify_column(
                             alter_table_queries,
                             &column_name,
@@ -1097,9 +1150,10 @@ impl Sql {
                             &sql_value,
                         );
                     }
+                } else if schema_diff.is_some() {
+                    alter_column(&column_name, p.to_sql_type().as_ref(), indices);
                 } else {
-                    // New column
-                    add_column(&column_name, p.to_sql_type().as_ref());
+                    add_column(&column_name, p.to_sql_type().as_ref(), indices);
                 }
             }
         }

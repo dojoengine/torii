@@ -100,7 +100,7 @@ where
             model.set_block(BlockId::Number(block_number)).await;
         }
         let new_schema = model.schema().await?;
-        let schema_diff = prev_schema.diff(&new_schema);
+        let schema_diff = new_schema.diff(&prev_schema);
         // No changes to the schema. This can happen if torii is re-run with a fresh database.
         // As the register model fetches the latest schema from the chain.
         if schema_diff.is_none() {
@@ -143,6 +143,9 @@ where
             unpacked_size,
             block_timestamp,
             Some(&schema_diff),
+            // This will be Some if we have an "upgrade" diff. Which means 
+            // if some columns have been modified.
+            prev_schema.diff(&new_schema).as_ref(),
         )
         .await?;
 
