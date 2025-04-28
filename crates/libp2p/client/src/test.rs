@@ -104,6 +104,7 @@ async fn test_client_messaging() -> Result<(), Box<dyn Error>> {
         0,
         0,
         None,
+        None
     )
     .await
     .unwrap();

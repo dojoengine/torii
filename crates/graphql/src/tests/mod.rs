@@ -292,6 +292,7 @@ pub async fn model_fixtures(db: &mut Sql) {
         0,
         1710754478_u64,
         None,
+        None,
     )
     .await
     .unwrap();
