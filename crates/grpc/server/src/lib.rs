@@ -38,9 +38,9 @@ use tokio::net::TcpListener;
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::codec::CompressionEncoding;
 use tonic::transport::Server;
-use tonic::transport::{Identity, ServerTlsConfig};
 use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
+use torii_proto::error::ProtoError;
 use torii_sqlite::cache::ModelCache;
 use torii_sqlite::error::{ParseError, QueryError};
 use torii_sqlite::model::{fetch_entities, map_row_to_ty};
@@ -1527,9 +1527,14 @@ impl proto::world::world_server::World for DojoWorld {
         request: Request<SubscribeEntitiesRequest>,
     ) -> ServiceResult<Self::SubscribeEntitiesStream> {
         let SubscribeEntitiesRequest { clause } = request.into_inner();
+        let clause = clause
+            .ok_or_else(|| Status::invalid_argument("Missing clause argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
+
         let rx = self
             .entity_manager
-            .add_subscriber(clause.into())
+            .add_subscriber(clause)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -1546,11 +1551,12 @@ impl proto::world::world_server::World for DojoWorld {
             subscription_id,
             clause,
         } = request.into_inner();
+        let clause = clause
+            .ok_or_else(|| Status::invalid_argument("Missing clause argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
         self.entity_manager
-            .update_subscriber(
-                subscription_id,
-                clause.into(),
-            )
+            .update_subscriber(subscription_id, clause)
             .await;
 
         Ok(Response::new(()))
@@ -1627,9 +1633,13 @@ impl proto::world::world_server::World for DojoWorld {
         request: Request<SubscribeEventMessagesRequest>,
     ) -> ServiceResult<Self::SubscribeEntitiesStream> {
         let SubscribeEventMessagesRequest { clause } = request.into_inner();
+        let clause = clause
+            .ok_or_else(|| Status::invalid_argument("Missing clause argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
         let rx = self
             .event_message_manager
-            .add_subscriber(clause.into())
+            .add_subscriber(clause)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -1646,11 +1656,12 @@ impl proto::world::world_server::World for DojoWorld {
             subscription_id,
             clause,
         } = request.into_inner();
+        let clause = clause
+            .ok_or_else(|| Status::invalid_argument("Missing clause argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
         self.event_message_manager
-            .update_subscriber(
-                subscription_id,
-                clause.into(),
-            )
+            .update_subscriber(subscription_id, clause)
             .await;
 
         Ok(Response::new(()))
@@ -1688,13 +1699,6 @@ const DEFAULT_ALLOW_HEADERS: [&str; 6] = [
     "grpc-accept-encoding",
     "grpc-encoding",
 ];
-
-// Helper function to load TLS identity (optional, you can inline this)
-async fn load_identity(cert_path: &str, key_path: &str) -> Result<Identity, Box<dyn std::error::Error>> {
-    let cert = tokio::fs::read(cert_path).await?;
-    let key = tokio::fs::read(key_path).await?;
-    Ok(Identity::from_pem(cert, key))
-}
 
 pub async fn new(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,

@@ -194,12 +194,12 @@ message SubscribeEventMessagesRequest {
 
 message UpdateEntitiesSubscriptionRequest {
     uint64 subscription_id = 1;
-    repeated types.EntityKeysClause clauses = 2;
+    types.Clause clause = 2;
 }
 
 message UpdateEventMessagesSubscriptionRequest {
     uint64 subscription_id = 1;
-    repeated types.EntityKeysClause clauses = 2;
+    types.Clause clause = 2;
 }
 
 message SubscribeEntityResponse {
