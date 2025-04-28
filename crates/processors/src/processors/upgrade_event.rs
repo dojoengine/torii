@@ -143,7 +143,7 @@ where
             unpacked_size,
             block_timestamp,
             Some(&schema_diff),
-            // This will be Some if we have an "upgrade" diff. Which means 
+            // This will be Some if we have an "upgrade" diff. Which means
             // if some columns have been modified.
             prev_schema.diff(&new_schema).as_ref(),
         )
