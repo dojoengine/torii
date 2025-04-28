@@ -829,7 +829,7 @@ impl Sql {
             .push_str("FOREIGN KEY (internal_event_message_id) REFERENCES event_messages(id));");
 
         // Execute the queries
-        if upgrade_diff.is_some() {
+        if upgrade_diff.is_some() || schema_diff.is_some() {
             for alter_query in alter_table_queries {
                 self.executor
                     .send(QueryMessage::other(alter_query, vec![]))?;
@@ -873,7 +873,7 @@ impl Sql {
                 .model_indices
                 .iter()
                 .find(|m| m.model_tag == table_id);
-    
+
             if model_indices.is_some_and(|m| m.fields.contains(&name.to_string()))
                 || (model_indices.is_none() && (self.config.all_model_indices || is_key))
             {
@@ -882,12 +882,12 @@ impl Sql {
                 ));
             }
         };
-    
+
         let mut add_column = |name: &str, sql_type: &str, indices: &mut Vec<String>| {
             columns.push(format!("[{name}] {sql_type}"));
             add_index(indices, name);
         };
-    
+
         let mut alter_column = |name: &str, sql_type: &str, indices: &mut Vec<String>| {
             alter_table_queries.push(format!(
                 "ALTER TABLE [{table_id}] ADD COLUMN [{name}] {sql_type}"
@@ -933,69 +933,32 @@ impl Sql {
                     let mut new_path = path.to_vec();
                     new_path.push(member.name.clone());
 
-                    // If in upgrade_diff, process as an upgrade
-                    if member_upgrade_diff.is_some() {
-                        self.add_columns_recursive(
-                            &new_path,
-                            &member.ty,
-                            columns,
-                            alter_table_queries,
-                            indices,
-                            table_id,
-                            member_schema_diff,
-                            member_upgrade_diff,
-                            member.key,
-                        )?;
-                    }
-                    // If in schema_diff but not upgrade_diff, process as a new column
-                    else if member_schema_diff.is_some() {
-                        self.add_columns_recursive(
-                            &new_path,
-                            &member.ty,
-                            columns,
-                            alter_table_queries,
-                            indices,
-                            table_id,
-                            member_schema_diff,
-                            None,
-                            member.key,
-                        )?;
-                    }
+                    self.add_columns_recursive(
+                        &new_path,
+                        &member.ty,
+                        columns,
+                        alter_table_queries,
+                        indices,
+                        table_id,
+                        member_schema_diff,
+                        member_upgrade_diff,
+                        member.key,
+                    )?;
                 }
             }
             Ty::Tuple(t) => {
                 let tuple_upgrade_diff = upgrade_diff.and_then(|d| d.as_tuple());
                 let tuple_schema_diff = schema_diff.and_then(|d| d.as_tuple());
 
-                let elements_to_process = if let Some(diff) = tuple_upgrade_diff {
-                    // Process elements from upgrade_diff
-                    diff.iter()
-                        .filter_map(|m| {
-                            t.iter()
-                                .position(|member| member == m)
-                                .map(|idx| (idx, m, Some(m)))
-                        })
-                        .collect()
-                } else if let Some(diff) = tuple_schema_diff {
-                    // Process elements from schema_diff
-                    diff.iter()
-                        .filter_map(|m| {
-                            t.iter()
-                                .position(|member| member == m)
-                                .map(|idx| (idx, m, Some(m)))
-                        })
-                        .collect()
-                } else {
-                    // Process all elements
-                    t.iter()
-                        .enumerate()
-                        .map(|(idx, member)| (idx, member, None))
-                        .collect::<Vec<_>>()
-                };
+                for (idx, member) in t.iter().enumerate() {
+                    let member_upgrade_diff =
+                        tuple_upgrade_diff.and_then(|diff| diff.get(idx)).map(|m| m);
+                    let member_schema_diff =
+                        tuple_schema_diff.and_then(|diff| diff.get(idx)).map(|m| m);
 
-                for (idx, member, member_diff) in elements_to_process {
                     let mut new_path = path.to_vec();
                     new_path.push(idx.to_string());
+
                     self.add_columns_recursive(
                         &new_path,
                         member,
@@ -1003,8 +966,8 @@ impl Sql {
                         alter_table_queries,
                         indices,
                         table_id,
-                        schema_diff,
-                        member_diff,
+                        member_schema_diff,
+                        member_upgrade_diff,
                         is_key,
                     )?;
                 }
@@ -1080,31 +1043,17 @@ impl Sql {
                     let mut new_path = path.to_vec();
                     new_path.push(child.name.clone());
 
-                    if variant_upgrade_diff.is_some() {
-                        self.add_columns_recursive(
-                            &new_path,
-                            &child.ty,
-                            columns,
-                            alter_table_queries,
-                            indices,
-                            table_id,
-                            variant_schema_diff,
-                            variant_upgrade_diff,
-                            is_key,
-                        )?;
-                    } else if variant_schema_diff.is_some() {
-                        self.add_columns_recursive(
-                            &new_path,
-                            &child.ty,
-                            columns,
-                            alter_table_queries,
-                            indices,
-                            table_id,
-                            variant_schema_diff,
-                            None,
-                            is_key,
-                        )?;
-                    }
+                    self.add_columns_recursive(
+                        &new_path,
+                        &child.ty,
+                        columns,
+                        alter_table_queries,
+                        indices,
+                        table_id,
+                        variant_schema_diff,
+                        variant_upgrade_diff,
+                        is_key,
+                    )?;
                 }
             }
             Ty::ByteArray(_) => {
