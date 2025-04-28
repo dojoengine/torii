@@ -2,7 +2,7 @@ use dojo_types::schema::Ty;
 use starknet_crypto::Felt;
 
 use torii_proto::{
-    Clause, ComparisonOperator, KeysClause, LogicalOperator, MemberValue, PatternMatching
+    Clause, ComparisonOperator, KeysClause, LogicalOperator, MemberValue, PatternMatching,
 };
 
 pub mod entity;
@@ -90,7 +90,7 @@ pub(crate) fn match_entity(
             // Traverse the model structure to find the target member
             let mut current_ty = updated_model.clone();
             for (idx, part) in parts.iter().enumerate() {
-                match &current_ty {
+                match current_ty {
                     Ty::Struct(struct_ty) => {
                         // Find the member with matching name
                         if let Some(member) = struct_ty.children.iter().find(|c| c.name == *part) {
@@ -112,18 +112,13 @@ pub(crate) fn match_entity(
                         }
                     }
                     Ty::Enum(enum_ty) => {
-                        // Special handling for enums
                         let is_last_part = idx == parts.len() - 1;
-
                         if is_last_part {
-                            // If it's the last part and we're checking the enum itself,
-                            // compare the selected option's name
+                            // If it's the last part, compare the enum option's name
                             let option = match enum_ty.option() {
                                 Ok(opt) => opt,
                                 Err(_) => return false, // No enum option selected
                             };
-
-                            // Compare enum option name with clause value
                             return match (member_clause.operator.clone(), &member_clause.value) {
                                 (ComparisonOperator::Eq, MemberValue::String(value)) => {
                                     option.name == *value
@@ -146,12 +141,11 @@ pub(crate) fn match_entity(
                                 _ => false, // Other operators don't make sense for enum names
                             };
                         } else {
-                            // If it's not the last part, find the enum option and continue navigating
+                            // Navigate to the selected enum option
                             if let Some(option_idx) =
                                 enum_ty.options.iter().position(|o| o.name == *part)
                             {
                                 if Some(option_idx as u8) == enum_ty.option {
-                                    // If this option is selected, continue with its type
                                     current_ty = enum_ty.options[option_idx].ty.clone();
                                 } else {
                                     return false; // Option not selected
@@ -161,97 +155,106 @@ pub(crate) fn match_entity(
                             }
                         }
                     }
-                    Ty::ByteArray(string) => {
-                        // Handle ByteArray comparisons
-                        if idx == parts.len() - 1 {
-                            return match (member_clause.operator.clone(), &member_clause.value) {
-                                (ComparisonOperator::Eq, MemberValue::String(value)) => {
-                                    string == value
-                                }
-                                (ComparisonOperator::Neq, MemberValue::String(value)) => {
-                                    string != value
-                                }
-                                (ComparisonOperator::Gt, MemberValue::String(value)) => {
-                                    string > value
-                                }
-                                (ComparisonOperator::Gte, MemberValue::String(value)) => {
-                                    string >= value
-                                }
-                                (ComparisonOperator::Lt, MemberValue::String(value)) => {
-                                    string < value
-                                }
-                                (ComparisonOperator::Lte, MemberValue::String(value)) => {
-                                    string <= value
-                                }
-                                (ComparisonOperator::In, MemberValue::List(values)) => {
-                                    values.iter().any(|v| match v {
-                                        MemberValue::String(s) => string == s,
-                                        _ => false,
-                                    })
-                                }
-                                (ComparisonOperator::NotIn, MemberValue::List(values)) => {
-                                    !values.iter().any(|v| match v {
-                                        MemberValue::String(s) => string == s,
-                                        _ => false,
-                                    })
-                                }
-                                _ => false,
-                            };
-                        } else {
-                            return false; // Cannot navigate further into a ByteArray
-                        }
-                    }
-                    Ty::Primitive(primitive) => {
-                        // Handle primitive value comparisons
-                        if idx == parts.len() - 1 {
-                            return match (member_clause.operator.clone(), &member_clause.value) {
-                                (ComparisonOperator::Eq, MemberValue::Primitive(value)) => {
-                                    primitive == value
-                                }
-                                (ComparisonOperator::Neq, MemberValue::Primitive(value)) => {
-                                    primitive != value
-                                }
-                                (ComparisonOperator::Gt, MemberValue::Primitive(value)) => {
-                                    primitive > value
-                                }
-                                (ComparisonOperator::Gte, MemberValue::Primitive(value)) => {
-                                    primitive >= value
-                                }
-                                (ComparisonOperator::Lt, MemberValue::Primitive(value)) => {
-                                    primitive < value
-                                }
-                                (ComparisonOperator::Lte, MemberValue::Primitive(value)) => {
-                                    primitive <= value
-                                }
-                                (ComparisonOperator::In, MemberValue::List(values)) => {
-                                    values.iter().any(|v| match v {
-                                        MemberValue::Primitive(p) => primitive == p,
-                                        _ => false,
-                                    })
-                                }
-                                (ComparisonOperator::NotIn, MemberValue::List(values)) => {
-                                    !values.iter().any(|v| match v {
-                                        MemberValue::Primitive(p) => primitive == p,
-                                        _ => false,
-                                    })
-                                }
-                                _ => false,
-                            };
-                        } else {
-                            return false; // Cannot navigate further into a primitive
-                        }
-                    }
-                    Ty::Array(_) => {
-                        // Array navigation would be more complex and is not handled
-                        // in the original code. Could be added if needed.
+                    Ty::ByteArray(_) | Ty::Primitive(_) | Ty::Array(_) => {
+                        // These types cannot be navigated further
                         return false;
                     }
                 }
             }
 
-            // If we reach here, we've navigated the full path but haven't hit a
-            // comparison case, which shouldn't happen with proper member paths
-            false
+            // After navigating the path, compare the final type with the clause value
+            match current_ty {
+                Ty::Primitive(primitive) => {
+                    match (member_clause.operator.clone(), &member_clause.value) {
+                        (ComparisonOperator::Eq, MemberValue::Primitive(value)) => {
+                            primitive == *value
+                        }
+                        (ComparisonOperator::Neq, MemberValue::Primitive(value)) => {
+                            primitive != *value
+                        }
+                        (ComparisonOperator::Gt, MemberValue::Primitive(value)) => {
+                            primitive > *value
+                        }
+                        (ComparisonOperator::Gte, MemberValue::Primitive(value)) => {
+                            primitive >= *value
+                        }
+                        (ComparisonOperator::Lt, MemberValue::Primitive(value)) => {
+                            primitive < *value
+                        }
+                        (ComparisonOperator::Lte, MemberValue::Primitive(value)) => {
+                            primitive <= *value
+                        }
+                        (ComparisonOperator::In, MemberValue::List(values)) => {
+                            values.iter().any(|v| match v {
+                                MemberValue::Primitive(p) => primitive == *p,
+                                _ => false,
+                            })
+                        }
+                        (ComparisonOperator::NotIn, MemberValue::List(values)) => {
+                            !values.iter().any(|v| match v {
+                                MemberValue::Primitive(p) => primitive == *p,
+                                _ => false,
+                            })
+                        }
+                        _ => false,
+                    }
+                }
+                Ty::ByteArray(string) => {
+                    match (member_clause.operator.clone(), &member_clause.value) {
+                        (ComparisonOperator::Eq, MemberValue::String(value)) => string == *value,
+                        (ComparisonOperator::Neq, MemberValue::String(value)) => string != *value,
+                        (ComparisonOperator::Gt, MemberValue::String(value)) => string > *value,
+                        (ComparisonOperator::Gte, MemberValue::String(value)) => string >= *value,
+                        (ComparisonOperator::Lt, MemberValue::String(value)) => string < *value,
+                        (ComparisonOperator::Lte, MemberValue::String(value)) => string <= *value,
+                        (ComparisonOperator::In, MemberValue::List(values)) => {
+                            values.iter().any(|v| match v {
+                                MemberValue::String(s) => string == *s,
+                                _ => false,
+                            })
+                        }
+                        (ComparisonOperator::NotIn, MemberValue::List(values)) => {
+                            !values.iter().any(|v| match v {
+                                MemberValue::String(s) => string == *s,
+                                _ => false,
+                            })
+                        }
+                        _ => false,
+                    }
+                }
+                Ty::Enum(enum_ty) => {
+                    // Compare the enum option's name
+                    let option = match enum_ty.option() {
+                        Ok(opt) => opt,
+                        Err(_) => return false, // No enum option selected
+                    };
+                    match (member_clause.operator.clone(), &member_clause.value) {
+                        (ComparisonOperator::Eq, MemberValue::String(value)) => {
+                            option.name == *value
+                        }
+                        (ComparisonOperator::Neq, MemberValue::String(value)) => {
+                            option.name != *value
+                        }
+                        (ComparisonOperator::In, MemberValue::List(values)) => {
+                            values.iter().any(|v| match v {
+                                MemberValue::String(s) => option.name == *s,
+                                _ => false,
+                            })
+                        }
+                        (ComparisonOperator::NotIn, MemberValue::List(values)) => {
+                            !values.iter().any(|v| match v {
+                                MemberValue::String(s) => option.name == *s,
+                                _ => false,
+                            })
+                        }
+                        _ => false,
+                    }
+                }
+                Ty::Struct(_) | Ty::Tuple(_) | Ty::Array(_) => {
+                    // These types are not directly comparable to a MemberValue
+                    false
+                }
+            }
         }
         Clause::Composite(composite_clause) => match composite_clause.operator {
             LogicalOperator::And => composite_clause

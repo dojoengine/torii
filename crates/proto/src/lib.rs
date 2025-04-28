@@ -589,7 +589,9 @@ impl TryFrom<proto::types::Clause> for Clause {
                     .collect(),
             )),
             proto::types::clause::ClauseType::Keys(clause) => Ok(Clause::Keys(clause.into())),
-            proto::types::clause::ClauseType::Member(clause) => Ok(Clause::Member(clause.try_into()?)),
+            proto::types::clause::ClauseType::Member(clause) => {
+                Ok(Clause::Member(clause.try_into()?))
+            }
             proto::types::clause::ClauseType::Composite(clause) => {
                 Ok(Clause::Composite(clause.try_into()?))
             }

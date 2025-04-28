@@ -163,26 +163,16 @@ impl TryFrom<proto::types::Primitive> for Primitive {
             proto::types::primitive::PrimitiveType::I16(int) => Primitive::I16(Some(*int as i16)),
             proto::types::primitive::PrimitiveType::I32(int) => Primitive::I32(Some(*int)),
             proto::types::primitive::PrimitiveType::I64(int) => Primitive::I64(Some(*int)),
-            proto::types::primitive::PrimitiveType::I128(bytes) => {
-                Primitive::I128(Some(i128::from_be_bytes(
-                    bytes
-                        .as_slice()
-                        .try_into()
-                        .map_err(ProtoError::FromSlice)?,
-                )))
-            }
+            proto::types::primitive::PrimitiveType::I128(bytes) => Primitive::I128(Some(
+                i128::from_be_bytes(bytes.as_slice().try_into().map_err(ProtoError::FromSlice)?),
+            )),
             proto::types::primitive::PrimitiveType::U8(int) => Primitive::U8(Some(*int as u8)),
             proto::types::primitive::PrimitiveType::U16(int) => Primitive::U16(Some(*int as u16)),
             proto::types::primitive::PrimitiveType::U32(int) => Primitive::U32(Some(*int)),
             proto::types::primitive::PrimitiveType::U64(int) => Primitive::U64(Some(*int)),
-            proto::types::primitive::PrimitiveType::U128(bytes) => {
-                Primitive::U128(Some(u128::from_be_bytes(
-                    bytes
-                        .as_slice()
-                        .try_into()
-                        .map_err(ProtoError::FromSlice)?,
-                )))
-            }
+            proto::types::primitive::PrimitiveType::U128(bytes) => Primitive::U128(Some(
+                u128::from_be_bytes(bytes.as_slice().try_into().map_err(ProtoError::FromSlice)?),
+            )),
             proto::types::primitive::PrimitiveType::Felt252(felt) => {
                 Primitive::Felt252(Some(Felt::from_bytes_be_slice(felt.as_slice())))
             }
@@ -195,14 +185,9 @@ impl TryFrom<proto::types::Primitive> for Primitive {
             proto::types::primitive::PrimitiveType::EthAddress(felt) => {
                 Primitive::EthAddress(Some(Felt::from_bytes_be_slice(felt.as_slice())))
             }
-            proto::types::primitive::PrimitiveType::U256(bytes) => {
-                Primitive::U256(Some(U256::from_be_bytes(
-                    bytes
-                        .as_slice()
-                        .try_into()
-                        .map_err(ProtoError::FromSlice)?,
-                )))
-            }
+            proto::types::primitive::PrimitiveType::U256(bytes) => Primitive::U256(Some(
+                U256::from_be_bytes(bytes.as_slice().try_into().map_err(ProtoError::FromSlice)?),
+            )),
         };
 
         Ok(primitive)
