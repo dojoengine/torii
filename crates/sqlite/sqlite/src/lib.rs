@@ -3,7 +3,7 @@ use std::convert::TryInto;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use dojo_types::naming::get_tag;
 use dojo_types::primitive::SqlType;
 use dojo_types::schema::{Struct, Ty};
@@ -20,8 +20,7 @@ use utils::felts_to_sql_string;
 
 use crate::constants::SQL_FELT_DELIMITER;
 use crate::executor::{
-    Argument, DeleteEntityQuery, EventMessageQuery, QueryMessage, QueryType, SetHeadQuery,
-    UpdateCursorsQuery,
+    Argument, DeleteEntityQuery, EventMessageQuery, QueryMessage, QueryType, UpdateCursorsQuery,
 };
 use crate::utils::utc_dt_string_from_timestamp;
 use torii_sqlite_types::{Contract, Hook, ModelIndices};
@@ -104,66 +103,6 @@ impl Sql {
         db.execute().await?;
 
         Ok(db)
-    }
-
-    pub async fn head(&self, contract: Felt) -> Result<(u64, Option<Felt>, Option<Felt>)> {
-        let indexer_query =
-            sqlx::query_as::<_, (Option<i64>, Option<String>, Option<String>, String)>(
-                "SELECT head, last_pending_block_contract_tx, last_pending_block_tx, \
-                 contract_type FROM contracts WHERE id = ?",
-            )
-            .bind(format!("{:#x}", contract));
-
-        let indexer: (Option<i64>, Option<String>, Option<String>, String) = indexer_query
-            .fetch_one(&self.pool)
-            .await
-            .with_context(|| format!("Failed to fetch head for contract: {:#x}", contract))?;
-        Ok((
-            indexer
-                .0
-                .map(|h| {
-                    h.try_into()
-                        .map_err(|_| anyhow!("Head value {} doesn't fit in u64", h))
-                })
-                .transpose()?
-                .unwrap_or(0),
-            indexer.1.map(|f| Felt::from_str(&f)).transpose()?,
-            indexer.2.map(|f| Felt::from_str(&f)).transpose()?,
-        ))
-    }
-
-    pub async fn set_head(
-        &mut self,
-        head: u64,
-        last_block_timestamp: u64,
-        world_txns_count: u64,
-        contract_address: Felt,
-    ) -> Result<()> {
-        let head_arg = Argument::Int(
-            head.try_into()
-                .map_err(|_| anyhow!("Head value {} doesn't fit in i64", head))?,
-        );
-        let last_block_timestamp_arg =
-            Argument::Int(last_block_timestamp.try_into().map_err(|_| {
-                anyhow!(
-                    "Last block timestamp value {} doesn't fit in i64",
-                    last_block_timestamp
-                )
-            })?);
-        let id = Argument::FieldElement(contract_address);
-
-        self.executor.send(QueryMessage::new(
-            "UPDATE contracts SET head = ?, last_block_timestamp = ? WHERE id = ?".to_string(),
-            vec![head_arg, last_block_timestamp_arg, id],
-            QueryType::SetHead(SetHeadQuery {
-                head,
-                last_block_timestamp,
-                txns_count: world_txns_count,
-                contract_address,
-            }),
-        ))?;
-
-        Ok(())
     }
 
     pub fn set_last_pending_block_contract_tx(

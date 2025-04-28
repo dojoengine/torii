@@ -70,14 +70,6 @@ pub struct ApplyBalanceDiffQuery {
 }
 
 #[derive(Debug, Clone)]
-pub struct SetHeadQuery {
-    pub head: u64,
-    pub last_block_timestamp: u64,
-    pub txns_count: u64,
-    pub contract_address: Felt,
-}
-
-#[derive(Debug, Clone)]
 pub struct UpdateCursorsQuery {
     // contract => (last_txn, txn_count)
     pub cursor_map: HashMap<Felt, (Felt, u64)>,
@@ -117,7 +109,6 @@ pub struct EntityQuery {
 #[derive(Debug, Clone)]
 pub enum QueryType {
     StoreTransaction(StoreTransactionQuery),
-    SetHead(SetHeadQuery),
     UpdateCursors(UpdateCursorsQuery),
     SetEntity(EntityQuery),
     DeleteEntity(DeleteEntityQuery),
@@ -346,33 +337,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         }
 
         match query_message.query_type {
-            QueryType::SetHead(set_head) => {
-                let previous_block_timestamp: u64 = sqlx::query_scalar::<_, i64>(
-                    "SELECT last_block_timestamp FROM contracts WHERE id = ?",
-                )
-                .bind(format!("{:#x}", set_head.contract_address))
-                .fetch_one(&mut **tx)
-                .await?
-                .try_into()
-                .map_err(|_| anyhow::anyhow!("Last block timestamp doesn't fit in u64"))?;
-
-                let tps: u64 = if set_head.last_block_timestamp - previous_block_timestamp != 0 {
-                    set_head.txns_count / (set_head.last_block_timestamp - previous_block_timestamp)
-                } else {
-                    set_head.txns_count
-                };
-
-                query.execute(&mut **tx).await?;
-
-                let row = sqlx::query("UPDATE contracts SET tps = ? WHERE id = ? RETURNING *")
-                    .bind(tps as i64)
-                    .bind(format!("{:#x}", set_head.contract_address))
-                    .fetch_one(&mut **tx)
-                    .await?;
-
-                let contract = ContractCursor::from_row(&row)?;
-                self.publish_queue.push(BrokerMessage::SetHead(contract));
-            }
             QueryType::UpdateCursors(update_cursors) => {
                 // Read all cursors from db
                 let mut cursors: Vec<ContractCursor> = sqlx::query_as("SELECT * FROM contracts")
