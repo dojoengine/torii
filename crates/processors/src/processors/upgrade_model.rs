@@ -130,8 +130,6 @@ where
             "Upgraded model content."
         );
 
-        println!("schema: {:?}", new_schema);
-
         db.register_model(
             &namespace,
             &new_schema,
