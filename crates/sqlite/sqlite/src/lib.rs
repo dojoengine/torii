@@ -1088,7 +1088,7 @@ impl Sql {
                         let sql_value = if old_primitive.to_sql_type() == SqlType::Integer
                             && p.to_sql_type() == SqlType::Text
                         {
-                            format!("printf('%064x', [{column_name}])")
+                            format!("'0x' || printf('%064x', [{column_name}])")
                         } else {
                             format!("[{column_name}]")
                         };
