@@ -20,8 +20,7 @@ use utils::felts_to_sql_string;
 
 use crate::constants::SQL_FELT_DELIMITER;
 use crate::executor::{
-    Argument, DeleteEntityQuery, EventMessageQuery, QueryMessage, QueryType,
-    UpdateCursorsQuery,
+    Argument, DeleteEntityQuery, EventMessageQuery, QueryMessage, QueryType, UpdateCursorsQuery,
 };
 use crate::utils::utc_dt_string_from_timestamp;
 use torii_sqlite_types::{Contract, Hook, ModelIndices};
