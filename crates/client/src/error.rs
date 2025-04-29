@@ -1,7 +1,7 @@
 use dojo_world::contracts::model::ModelError;
 use starknet::core::types::Felt;
 use starknet::core::utils::{CairoShortStringToFeltError, ParseCairoShortStringError};
-use torii_proto::schema::SchemaError;
+use torii_proto::error::ProtoError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -22,7 +22,7 @@ pub enum Error {
     #[error("Unsupported query")]
     UnsupportedQuery,
     #[error(transparent)]
-    Schema(#[from] SchemaError),
+    Proto(#[from] ProtoError),
 }
 
 #[derive(Debug, thiserror::Error)]
