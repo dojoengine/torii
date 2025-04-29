@@ -17,6 +17,7 @@ pub mod proto {
     }
 }
 
+pub mod error;
 pub mod schema;
 
 use core::fmt;
@@ -29,9 +30,9 @@ use crypto_bigint::U256;
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::naming;
-use schema::SchemaError;
+use error::ProtoError;
 use serde::{Deserialize, Serialize};
-use starknet::core::types::{Felt, FromStrError};
+use starknet::core::types::Felt;
 use strum_macros::{AsRefStr, EnumIter, FromRepr};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
@@ -120,7 +121,7 @@ pub struct Controller {
 }
 
 impl TryFrom<proto::types::Controller> for Controller {
-    type Error = SchemaError;
+    type Error = ProtoError;
     fn try_from(value: proto::types::Controller) -> Result<Self, Self::Error> {
         Ok(Self {
             address: Felt::from_bytes_be_slice(&value.address),
@@ -141,7 +142,7 @@ pub struct Token {
 }
 
 impl TryFrom<proto::types::Token> for Token {
-    type Error = SchemaError;
+    type Error = ProtoError;
     fn try_from(value: proto::types::Token) -> Result<Self, Self::Error> {
         Ok(Self {
             token_id: U256::from_be_slice(&value.token_id),
@@ -149,7 +150,7 @@ impl TryFrom<proto::types::Token> for Token {
             name: value.name,
             symbol: value.symbol,
             decimals: value.decimals as u8,
-            metadata: String::from_utf8(value.metadata).map_err(SchemaError::FromUtf8)?,
+            metadata: String::from_utf8(value.metadata).map_err(ProtoError::FromUtf8)?,
         })
     }
 }
@@ -186,7 +187,7 @@ pub struct TokenBalance {
 }
 
 impl TryFrom<proto::types::TokenBalance> for TokenBalance {
-    type Error = SchemaError;
+    type Error = ProtoError;
     fn try_from(value: proto::types::TokenBalance) -> Result<Self, Self::Error> {
         Ok(Self {
             balance: U256::from_be_slice(&value.balance),
@@ -312,15 +313,10 @@ pub struct Query {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub enum Clause {
+    HashedKeys(Vec<Felt>),
     Keys(KeysClause),
     Member(MemberClause),
     Composite(CompositeClause),
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
-pub enum EntityKeysClause {
-    HashedKeys(Vec<Felt>),
-    Keys(KeysClause),
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
@@ -366,6 +362,23 @@ pub enum LogicalOperator {
     Or,
 }
 
+impl From<LogicalOperator> for proto::types::LogicalOperator {
+    fn from(value: LogicalOperator) -> Self {
+        match value {
+            LogicalOperator::And => proto::types::LogicalOperator::And,
+            LogicalOperator::Or => proto::types::LogicalOperator::Or,
+        }
+    }
+}
+
+impl From<proto::types::LogicalOperator> for LogicalOperator {
+    fn from(value: proto::types::LogicalOperator) -> Self {
+        match value {
+            proto::types::LogicalOperator::And => LogicalOperator::And,
+            proto::types::LogicalOperator::Or => LogicalOperator::Or,
+        }
+    }
+}
 #[derive(
     Debug, AsRefStr, Serialize, Deserialize, EnumIter, FromRepr, PartialEq, Hash, Eq, Clone,
 )]
@@ -392,6 +405,21 @@ impl fmt::Display for ComparisonOperator {
             ComparisonOperator::Eq => write!(f, "="),
             ComparisonOperator::In => write!(f, "IN"),
             ComparisonOperator::NotIn => write!(f, "NOT IN"),
+        }
+    }
+}
+
+impl From<ComparisonOperator> for proto::types::ComparisonOperator {
+    fn from(operator: ComparisonOperator) -> Self {
+        match operator {
+            ComparisonOperator::Eq => proto::types::ComparisonOperator::Eq,
+            ComparisonOperator::Neq => proto::types::ComparisonOperator::Neq,
+            ComparisonOperator::Gt => proto::types::ComparisonOperator::Gt,
+            ComparisonOperator::Gte => proto::types::ComparisonOperator::Gte,
+            ComparisonOperator::Lt => proto::types::ComparisonOperator::Lt,
+            ComparisonOperator::Lte => proto::types::ComparisonOperator::Lte,
+            ComparisonOperator::In => proto::types::ComparisonOperator::In,
+            ComparisonOperator::NotIn => proto::types::ComparisonOperator::NotIn,
         }
     }
 }
@@ -427,9 +455,9 @@ pub enum ValueType {
 }
 
 impl TryFrom<proto::types::ModelMetadata> for dojo_types::schema::ModelMetadata {
-    type Error = FromStrError;
+    type Error = ProtoError;
     fn try_from(value: proto::types::ModelMetadata) -> Result<Self, Self::Error> {
-        let schema: Ty = serde_json::from_slice(&value.schema).unwrap();
+        let schema: Ty = serde_json::from_slice(&value.schema).map_err(ProtoError::FromJson)?;
         let layout: Vec<Felt> = value.layout.into_iter().map(Felt::from).collect();
         Ok(Self {
             schema,
@@ -445,7 +473,7 @@ impl TryFrom<proto::types::ModelMetadata> for dojo_types::schema::ModelMetadata 
 }
 
 impl TryFrom<proto::types::WorldMetadata> for dojo_types::WorldMetadata {
-    type Error = FromStrError;
+    type Error = ProtoError;
     fn try_from(value: proto::types::WorldMetadata) -> Result<Self, Self::Error> {
         let models = value
             .models
@@ -456,7 +484,7 @@ impl TryFrom<proto::types::WorldMetadata> for dojo_types::WorldMetadata {
                     component.try_into()?,
                 ))
             })
-            .collect::<Result<HashMap<_, dojo_types::schema::ModelMetadata>, _>>()?;
+            .collect::<Result<HashMap<_, dojo_types::schema::ModelMetadata>, ProtoError>>()?;
 
         Ok(dojo_types::WorldMetadata {
             models,
@@ -525,6 +553,13 @@ impl From<proto::types::KeysClause> for KeysClause {
 impl From<Clause> for proto::types::Clause {
     fn from(value: Clause) -> Self {
         match value {
+            Clause::HashedKeys(hashed_keys) => Self {
+                clause_type: Some(proto::types::clause::ClauseType::HashedKeys(
+                    proto::types::HashedKeysClause {
+                        hashed_keys: hashed_keys.iter().map(|k| k.to_bytes_be().into()).collect(),
+                    },
+                )),
+            },
             Clause::Keys(clause) => Self {
                 clause_type: Some(proto::types::clause::ClauseType::Keys(clause.into())),
             },
@@ -538,39 +573,28 @@ impl From<Clause> for proto::types::Clause {
     }
 }
 
-impl From<EntityKeysClause> for proto::types::EntityKeysClause {
-    fn from(value: EntityKeysClause) -> Self {
+impl TryFrom<proto::types::Clause> for Clause {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::Clause) -> Result<Self, Self::Error> {
+        let value = value
+            .clause_type
+            .ok_or(ProtoError::MissingExpectedData("clause_type".to_string()))?;
+
         match value {
-            EntityKeysClause::HashedKeys(hashed_keys) => Self {
-                clause_type: Some(proto::types::entity_keys_clause::ClauseType::HashedKeys(
-                    proto::types::HashedKeysClause {
-                        hashed_keys: hashed_keys.iter().map(|k| k.to_bytes_be().into()).collect(),
-                    },
-                )),
-            },
-            EntityKeysClause::Keys(keys) => Self {
-                clause_type: Some(proto::types::entity_keys_clause::ClauseType::Keys(
-                    keys.into(),
-                )),
-            },
-        }
-    }
-}
-
-impl From<proto::types::EntityKeysClause> for EntityKeysClause {
-    fn from(value: proto::types::EntityKeysClause) -> Self {
-        match value.clause_type.expect("must have") {
-            proto::types::entity_keys_clause::ClauseType::HashedKeys(clause) => {
-                let keys = clause
+            proto::types::clause::ClauseType::HashedKeys(clause) => Ok(Clause::HashedKeys(
+                clause
                     .hashed_keys
-                    .into_iter()
-                    .map(|k| Felt::from_bytes_be_slice(&k))
-                    .collect::<Vec<_>>();
-
-                Self::HashedKeys(keys)
+                    .iter()
+                    .map(|k| Felt::from_bytes_be_slice(k))
+                    .collect(),
+            )),
+            proto::types::clause::ClauseType::Keys(clause) => Ok(Clause::Keys(clause.into())),
+            proto::types::clause::ClauseType::Member(clause) => {
+                Ok(Clause::Member(clause.try_into()?))
             }
-
-            proto::types::entity_keys_clause::ClauseType::Keys(clause) => Self::Keys(clause.into()),
+            proto::types::clause::ClauseType::Composite(clause) => {
+                Ok(Clause::Composite(clause.try_into()?))
+            }
         }
     }
 }
@@ -588,6 +612,48 @@ impl From<MemberClause> for proto::types::MemberClause {
     }
 }
 
+impl TryFrom<proto::types::MemberClause> for MemberClause {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::MemberClause) -> Result<Self, Self::Error> {
+        let operator = value.operator().into();
+        let model = value.model;
+        let member = value.member;
+        let value = value
+            .value
+            .ok_or(ProtoError::MissingExpectedData("value".to_string()))?
+            .try_into()?;
+
+        Ok(Self {
+            model,
+            member,
+            operator,
+            value,
+        })
+    }
+}
+
+impl TryFrom<proto::types::MemberValue> for MemberValue {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::MemberValue) -> Result<Self, Self::Error> {
+        let value_type = value
+            .value_type
+            .ok_or(ProtoError::MissingExpectedData("value_type".to_string()))?;
+
+        match value_type {
+            proto::types::member_value::ValueType::Primitive(primitive) => {
+                Ok(Self::Primitive(primitive.try_into()?))
+            }
+            proto::types::member_value::ValueType::String(string) => Ok(Self::String(string)),
+            proto::types::member_value::ValueType::List(list) => Ok(Self::List(
+                list.values
+                    .into_iter()
+                    .map(|v| v.try_into())
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
+        }
+    }
+}
+
 impl From<CompositeClause> for proto::types::CompositeClause {
     fn from(value: CompositeClause) -> Self {
         Self {
@@ -598,6 +664,20 @@ impl From<CompositeClause> for proto::types::CompositeClause {
                 .map(|clause| clause.into())
                 .collect(),
         }
+    }
+}
+
+impl TryFrom<proto::types::CompositeClause> for CompositeClause {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::CompositeClause) -> Result<Self, Self::Error> {
+        let operator = value.operator().into();
+        let clauses = value
+            .clauses
+            .into_iter()
+            .map(|clause| clause.try_into())
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Self { operator, clauses })
     }
 }
 

@@ -40,6 +40,7 @@ use tonic::codec::CompressionEncoding;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
+use torii_proto::error::ProtoError;
 use torii_sqlite::cache::ModelCache;
 use torii_sqlite::error::{ParseError, QueryError};
 use torii_sqlite::model::{fetch_entities, map_row_to_ty};
@@ -1525,10 +1526,15 @@ impl proto::world::world_server::World for DojoWorld {
         &self,
         request: Request<SubscribeEntitiesRequest>,
     ) -> ServiceResult<Self::SubscribeEntitiesStream> {
-        let SubscribeEntitiesRequest { clauses } = request.into_inner();
+        let SubscribeEntitiesRequest { clause } = request.into_inner();
+        let clause = clause
+            .map(|c| c.try_into())
+            .transpose()
+            .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
+
         let rx = self
             .entity_manager
-            .add_subscriber(clauses.into_iter().map(|keys| keys.into()).collect())
+            .add_subscriber(clause)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -1543,13 +1549,14 @@ impl proto::world::world_server::World for DojoWorld {
     ) -> ServiceResult<()> {
         let UpdateEntitiesSubscriptionRequest {
             subscription_id,
-            clauses,
+            clause,
         } = request.into_inner();
+        let clause = clause
+            .map(|c| c.try_into())
+            .transpose()
+            .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
         self.entity_manager
-            .update_subscriber(
-                subscription_id,
-                clauses.into_iter().map(|keys| keys.into()).collect(),
-            )
+            .update_subscriber(subscription_id, clause)
             .await;
 
         Ok(Response::new(()))
@@ -1625,10 +1632,14 @@ impl proto::world::world_server::World for DojoWorld {
         &self,
         request: Request<SubscribeEventMessagesRequest>,
     ) -> ServiceResult<Self::SubscribeEntitiesStream> {
-        let SubscribeEventMessagesRequest { clauses } = request.into_inner();
+        let SubscribeEventMessagesRequest { clause } = request.into_inner();
+        let clause = clause
+            .map(|c| c.try_into())
+            .transpose()
+            .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
         let rx = self
             .event_message_manager
-            .add_subscriber(clauses.into_iter().map(|keys| keys.into()).collect())
+            .add_subscriber(clause)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -1643,13 +1654,14 @@ impl proto::world::world_server::World for DojoWorld {
     ) -> ServiceResult<()> {
         let UpdateEventMessagesSubscriptionRequest {
             subscription_id,
-            clauses,
+            clause,
         } = request.into_inner();
+        let clause = clause
+            .map(|c| c.try_into())
+            .transpose()
+            .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
         self.event_message_manager
-            .update_subscriber(
-                subscription_id,
-                clauses.into_iter().map(|keys| keys.into()).collect(),
-            )
+            .update_subscriber(subscription_id, clause)
             .await;
 
         Ok(Response::new(()))

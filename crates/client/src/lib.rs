@@ -19,7 +19,7 @@ use torii_proto::proto::world::{
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Controller, EntityKeysClause, Event, EventQuery, Page, Query, Token, TokenBalance,
+    Clause, Controller, Event, EventQuery, KeysClause, Page, Query, Token, TokenBalance,
 };
 
 use crate::error::Error;
@@ -212,10 +212,10 @@ impl Client {
     /// A direct stream to grpc subscribe entities
     pub async fn on_entity_updated(
         &self,
-        clauses: Vec<EntityKeysClause>,
+        clause: Option<Clause>,
     ) -> Result<EntityUpdateStreaming, Error> {
         let mut grpc_client = self.inner.write().await;
-        let stream = grpc_client.subscribe_entities(clauses).await?;
+        let stream = grpc_client.subscribe_entities(clause).await?;
         Ok(stream)
     }
 
@@ -223,11 +223,11 @@ impl Client {
     pub async fn update_entity_subscription(
         &self,
         subscription_id: u64,
-        clauses: Vec<EntityKeysClause>,
+        clause: Option<Clause>,
     ) -> Result<(), Error> {
         let mut grpc_client = self.inner.write().await;
         grpc_client
-            .update_entities_subscription(subscription_id, clauses)
+            .update_entities_subscription(subscription_id, clause)
             .await?;
         Ok(())
     }
@@ -235,10 +235,10 @@ impl Client {
     /// A direct stream to grpc subscribe event messages
     pub async fn on_event_message_updated(
         &self,
-        clauses: Vec<EntityKeysClause>,
+        clause: Option<Clause>,
     ) -> Result<EntityUpdateStreaming, Error> {
         let mut grpc_client = self.inner.write().await;
-        let stream = grpc_client.subscribe_event_messages(clauses).await?;
+        let stream = grpc_client.subscribe_event_messages(clause).await?;
         Ok(stream)
     }
 
@@ -246,11 +246,11 @@ impl Client {
     pub async fn update_event_message_subscription(
         &self,
         subscription_id: u64,
-        clauses: Vec<EntityKeysClause>,
+        clause: Option<Clause>,
     ) -> Result<(), Error> {
         let mut grpc_client = self.inner.write().await;
         grpc_client
-            .update_event_messages_subscription(subscription_id, clauses)
+            .update_event_messages_subscription(subscription_id, clause)
             .await?;
         Ok(())
     }
@@ -258,7 +258,7 @@ impl Client {
     /// A direct stream to grpc subscribe starknet events
     pub async fn on_starknet_event(
         &self,
-        keys: Vec<EntityKeysClause>,
+        keys: Vec<KeysClause>,
     ) -> Result<EventUpdateStreaming, Error> {
         let mut grpc_client = self.inner.write().await;
         let stream = grpc_client.subscribe_events(keys).await?;

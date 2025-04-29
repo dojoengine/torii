@@ -13,6 +13,7 @@ use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
 use tokio::sync::RwLock;
+use torii_proto::KeysClause;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
@@ -22,14 +23,13 @@ use tracing::{error, trace};
 use super::match_keys;
 use torii_proto::proto::types::Event as ProtoEvent;
 use torii_proto::proto::world::SubscribeEventsResponse;
-use torii_proto::EntityKeysClause;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::event";
 
 #[derive(Debug)]
 pub struct EventSubscriber {
     /// Event keys that the subscriber is interested in
-    keys: Vec<EntityKeysClause>,
+    keys: Vec<KeysClause>,
     /// The channel to send the response back to the subscriber.
     sender: Sender<Result<SubscribeEventsResponse, tonic::Status>>,
 }
@@ -42,7 +42,7 @@ pub struct EventManager {
 impl EventManager {
     pub async fn add_subscriber(
         &self,
-        keys: Vec<EntityKeysClause>,
+        keys: Vec<KeysClause>,
     ) -> Result<Receiver<Result<SubscribeEventsResponse, tonic::Status>>, Error> {
         let id = rand::thread_rng().gen::<usize>();
         let (sender, receiver) = channel(1);

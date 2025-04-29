@@ -16,6 +16,7 @@ use tonic::codec::CompressionEncoding;
 #[cfg(not(target_arch = "wasm32"))]
 use tonic::transport::Endpoint;
 
+use torii_proto::error::ProtoError;
 use torii_proto::proto::world::{
     world_client, RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEntitiesRequest,
     RetrieveEntitiesResponse, RetrieveEventMessagesRequest, RetrieveEventsRequest,
@@ -28,8 +29,10 @@ use torii_proto::proto::world::{
     UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
     UpdateTokenSubscriptionRequest, WorldMetadataRequest,
 };
-use torii_proto::schema::{Entity, SchemaError};
-use torii_proto::{EntityKeysClause, Event, EventQuery, IndexerUpdate, Query, Token, TokenBalance};
+use torii_proto::schema::Entity;
+use torii_proto::{
+    Clause, Event, EventQuery, IndexerUpdate, KeysClause, Query, Token, TokenBalance,
+};
 
 pub use torii_proto as types;
 
@@ -48,7 +51,7 @@ pub enum Error {
     #[error(transparent)]
     Transport(tonic::transport::Error),
     #[error(transparent)]
-    Schema(#[from] SchemaError),
+    Proto(#[from] ProtoError),
 }
 
 #[derive(Debug)]
@@ -98,11 +101,11 @@ impl WorldClient {
             .and_then(|res| {
                 res.into_inner()
                     .metadata
-                    .ok_or(Error::Schema(SchemaError::MissingExpectedData(
+                    .ok_or(Error::Proto(ProtoError::MissingExpectedData(
                         "metadata".to_string(),
                     )))
             })
-            .and_then(|metadata| metadata.try_into().map_err(Error::ParseStr))
+            .and_then(|metadata| metadata.try_into().map_err(Error::Proto))
     }
 
     pub async fn retrieve_controllers(
@@ -304,12 +307,13 @@ impl WorldClient {
     /// Subscribe to entities updates of a World.
     pub async fn subscribe_entities(
         &mut self,
-        clauses: Vec<EntityKeysClause>,
+        clause: Option<Clause>,
     ) -> Result<EntityUpdateStreaming, Error> {
-        let clauses = clauses.into_iter().map(|c| c.into()).collect();
         let stream = self
             .inner
-            .subscribe_entities(SubscribeEntitiesRequest { clauses })
+            .subscribe_entities(SubscribeEntitiesRequest {
+                clause: clause.map(|c| c.into()),
+            })
             .await
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
@@ -337,14 +341,12 @@ impl WorldClient {
     pub async fn update_entities_subscription(
         &mut self,
         subscription_id: u64,
-        clauses: Vec<EntityKeysClause>,
+        clause: Option<Clause>,
     ) -> Result<(), Error> {
-        let clauses = clauses.into_iter().map(|c| c.into()).collect();
-
         self.inner
             .update_entities_subscription(UpdateEntitiesSubscriptionRequest {
                 subscription_id,
-                clauses,
+                clause: clause.map(|c| c.into()),
             })
             .await
             .map_err(Error::Grpc)
@@ -354,12 +356,13 @@ impl WorldClient {
     /// Subscribe to event messages of a World.
     pub async fn subscribe_event_messages(
         &mut self,
-        clauses: Vec<EntityKeysClause>,
+        clause: Option<Clause>,
     ) -> Result<EntityUpdateStreaming, Error> {
-        let clauses = clauses.into_iter().map(|c| c.into()).collect();
         let stream = self
             .inner
-            .subscribe_event_messages(SubscribeEventMessagesRequest { clauses })
+            .subscribe_event_messages(SubscribeEventMessagesRequest {
+                clause: clause.map(|c| c.into()),
+            })
             .await
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
@@ -387,13 +390,12 @@ impl WorldClient {
     pub async fn update_event_messages_subscription(
         &mut self,
         subscription_id: u64,
-        clauses: Vec<EntityKeysClause>,
+        clause: Option<Clause>,
     ) -> Result<(), Error> {
-        let clauses = clauses.into_iter().map(|c| c.into()).collect();
         self.inner
             .update_event_messages_subscription(UpdateEventMessagesSubscriptionRequest {
                 subscription_id,
-                clauses,
+                clause: clause.map(|c| c.into()),
             })
             .await
             .map_err(Error::Grpc)
@@ -403,7 +405,7 @@ impl WorldClient {
     /// Subscribe to the events of a World.
     pub async fn subscribe_events(
         &mut self,
-        keys: Vec<EntityKeysClause>,
+        keys: Vec<KeysClause>,
     ) -> Result<EventUpdateStreaming, Error> {
         let keys = keys.into_iter().map(|c| c.into()).collect();
 
