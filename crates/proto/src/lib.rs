@@ -585,7 +585,7 @@ impl TryFrom<proto::types::Clause> for Clause {
                 clause
                     .hashed_keys
                     .iter()
-                    .map(|k| Felt::from_bytes_be_slice(&k))
+                    .map(|k| Felt::from_bytes_be_slice(k))
                     .collect(),
             )),
             proto::types::clause::ClauseType::Keys(clause) => Ok(Clause::Keys(clause.into())),
