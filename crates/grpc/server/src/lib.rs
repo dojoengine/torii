@@ -1528,8 +1528,8 @@ impl proto::world::world_server::World for DojoWorld {
     ) -> ServiceResult<Self::SubscribeEntitiesStream> {
         let SubscribeEntitiesRequest { clause } = request.into_inner();
         let clause = clause
-            .ok_or_else(|| Status::invalid_argument("Missing clause argument"))?
-            .try_into()
+            .map(|c| c.try_into())
+            .transpose()
             .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
 
         let rx = self
@@ -1552,8 +1552,8 @@ impl proto::world::world_server::World for DojoWorld {
             clause,
         } = request.into_inner();
         let clause = clause
-            .ok_or_else(|| Status::invalid_argument("Missing clause argument"))?
-            .try_into()
+            .map(|c| c.try_into())
+            .transpose()
             .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
         self.entity_manager
             .update_subscriber(subscription_id, clause)
@@ -1634,8 +1634,8 @@ impl proto::world::world_server::World for DojoWorld {
     ) -> ServiceResult<Self::SubscribeEntitiesStream> {
         let SubscribeEventMessagesRequest { clause } = request.into_inner();
         let clause = clause
-            .ok_or_else(|| Status::invalid_argument("Missing clause argument"))?
-            .try_into()
+            .map(|c| c.try_into())
+            .transpose()
             .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
         let rx = self
             .event_message_manager
@@ -1657,8 +1657,8 @@ impl proto::world::world_server::World for DojoWorld {
             clause,
         } = request.into_inner();
         let clause = clause
-            .ok_or_else(|| Status::invalid_argument("Missing clause argument"))?
-            .try_into()
+            .map(|c| c.try_into())
+            .transpose()
             .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
         self.event_message_manager
             .update_subscriber(subscription_id, clause)

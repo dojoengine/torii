@@ -28,7 +28,7 @@ pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::entity"
 #[derive(Debug)]
 pub struct EntitiesSubscriber {
     /// The clause that the subscriber is interested in
-    pub(crate) clause: Clause,
+    pub(crate) clause: Option<Clause>,
     /// The channel to send the response back to the subscriber.
     pub(crate) sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
 }
@@ -40,7 +40,7 @@ pub struct EntityManager {
 impl EntityManager {
     pub async fn add_subscriber(
         &self,
-        clause: Clause,
+        clause: Option<Clause>,
     ) -> Result<Receiver<Result<SubscribeEntityResponse, tonic::Status>>, Error> {
         let subscription_id = rand::thread_rng().gen::<u64>();
         let (sender, receiver) = channel(1);
@@ -63,7 +63,7 @@ impl EntityManager {
         Ok(receiver)
     }
 
-    pub async fn update_subscriber(&self, id: u64, clause: Clause) {
+    pub async fn update_subscriber(&self, id: u64, clause: Option<Clause>) {
         let sender = {
             let subscribers = self.subscribers.read().await;
             if let Some(subscriber) = subscribers.get(&id) {
@@ -144,8 +144,10 @@ impl Service {
 
             // If we have a clause of keys, then check that the key pattern of the entity
             // matches the key pattern of the subscriber.
-            if !match_entity(hashed, &keys, &entity.updated_model, &sub.clause) {
-                continue;
+            if let Some(clause) = &sub.clause {
+                if !match_entity(hashed, &keys, &entity.updated_model, clause) {
+                    continue;
+                }
             }
 
             if entity.deleted {
