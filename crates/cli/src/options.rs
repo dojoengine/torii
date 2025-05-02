@@ -405,10 +405,7 @@ impl Default for SqlOptions {
 #[command(next_help_heading = "Snapshot options")]
 pub struct SnapshotOptions {
     /// Snapshot URL to download
-    #[arg(
-        long = "snapshot.url",
-        help = "The snapshot URL to download."
-    )]
+    #[arg(long = "snapshot.url", help = "The snapshot URL to download.")]
     pub url: Option<String>,
 
     /// Optional version of the remote snapshot torii version

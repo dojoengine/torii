@@ -158,7 +158,9 @@ impl Runner {
                 info!(target: LOG_TARGET, "Snapshot downloaded successfully.");
             } else {
                 error!(target: LOG_TARGET, "A database already exists at the given path. If you want to download a new snapshot, please delete the existing database file or provide a different path.");
-                return Err(anyhow::anyhow!("Database file already exists at the specified path."));
+                return Err(anyhow::anyhow!(
+                    "Database file already exists at the specified path."
+                ));
             }
         }
 
@@ -470,9 +472,9 @@ async fn stream_snapshot_into_file(
     span.pb_set_style(
         &indicatif::ProgressStyle::default_bar()
             .template(
-                "{msg} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})",
+                "{msg} [{elapsed_precise}] \n[{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {percent}%",
             )?
-            .progress_chars("##-"),
+            .progress_chars("█▓░"),
     );
     span.pb_set_length(total_size);
     span.pb_set_message(&format!("Downloading {}", url));

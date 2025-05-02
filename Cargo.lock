@@ -11469,6 +11469,7 @@ dependencies = [
  "indexmap 2.7.1",
  "indicatif",
  "lazy_static",
+ "rand 0.8.5",
  "reqwest",
  "serde",
  "serde_json",

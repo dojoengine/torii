@@ -13,20 +13,20 @@
 use clap::Parser;
 use cli::Cli;
 use torii_runner::Runner;
-use tracing_subscriber::EnvFilter;
+use tracing_indicatif::IndicatifLayer;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Registry;
-use tracing_indicatif::IndicatifLayer;
 
 mod cli;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Set the global tracing subscriber
-    let filter_layer = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,torii=info")); // Adjust default filter if needed
+    let filter_layer =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,torii=info")); // Adjust default filter if needed
 
     let indicatif_layer = IndicatifLayer::new();
 
