@@ -402,6 +402,26 @@ impl Default for SqlOptions {
 
 #[derive(Default, Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
+#[command(next_help_heading = "Snapshot options")]
+pub struct SnapshotOptions {
+    /// S3 object URL to download snapshot
+    #[arg(
+        long = "snapshot.url",
+        help = "The S3 object URL to fetch the snapshot from."
+    )]
+    pub url: String,
+
+    /// Optional version of the remote snapshot torii version
+    #[arg(
+        long = "snapshot.version",
+        help = "Optional version of the torii the snapshot has been made from. This is only used to give a warning if there is a version mismatch between the snapshot and this torii."
+    )]
+    pub version: Option<String>,
+    
+}
+
+#[derive(Default, Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
+#[serde(default)]
 #[command(next_help_heading = "Runner options")]
 pub struct RunnerOptions {
     /// Open World Explorer on the browser.
