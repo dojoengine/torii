@@ -12,6 +12,7 @@
 
 use std::cmp;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,6 +30,8 @@ use starknet::core::types::{BlockId, BlockTag};
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
 use tempfile::{NamedTempFile, TempDir};
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
@@ -42,7 +45,8 @@ use torii_sqlite::executor::Executor;
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::{Contract, ContractType, Model};
 use torii_sqlite::{Sql, SqlConfig};
-use tracing::{error, info, warn};
+use tracing::{error, info, info_span, warn, Instrument, Span};
+use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
 
 mod constants;
@@ -122,6 +126,38 @@ impl Runner {
         } else {
             tempfile.path().to_path_buf()
         };
+
+        // Download snapshot if URL is provided
+        if let Some(snapshot_url) = self.args.snapshot.url {
+            if !database_path.exists() {
+                info!(target: LOG_TARGET, url = %snapshot_url, path = %database_path.display(), "Downloading snapshot...");
+
+                // Check for version mismatch
+                if let Some(snapshot_version) = self.args.snapshot.version {
+                    if snapshot_version != self.version_spec {
+                        warn!(
+                            target: LOG_TARGET,
+                            snapshot_version = %snapshot_version,
+                            current_version = %self.version_spec,
+                            "Snapshot version mismatch. This may cause issues."
+                        );
+                    }
+                }
+
+                let client = reqwest::Client::new();
+                if let Err(e) =
+                    stream_snapshot_into_file(&snapshot_url, &database_path, &client).await
+                {
+                    error!(target: LOG_TARGET, error = %e, "Failed to download snapshot.");
+                    // Decide if we should exit or continue with a fresh DB
+                    // For now, let's exit as the user explicitly requested a snapshot.
+                    return Err(e);
+                }
+                info!(target: LOG_TARGET, "Snapshot downloaded successfully.");
+            } else {
+                warn!(target: LOG_TARGET, "A database already exists at the given path. If you want to download a new snapshot, please delete the existing database file or provide a different path.");
+            }
+        }
 
         let mut options = SqliteConnectOptions::from_str(&database_path.to_string_lossy())?
             .create_if_missing(true)
@@ -407,4 +443,54 @@ async fn verify_contracts_deployed(
         .collect();
 
     Ok(undeployed)
+}
+
+/// Streams a snapshot into a file, displaying progress and handling potential errors.
+///
+/// # Arguments
+/// * `url` - The URL to download from.
+/// * `destination_path` - The path to save the downloaded file.
+/// * `client` - An instance of `reqwest::Client`.
+///
+/// # Returns
+/// * `Ok(())` if the download is successful.
+/// * `Err(anyhow::Error)` if any error occurs during download or file writing.
+async fn stream_snapshot_into_file(
+    url: &str,
+    destination_path: &Path,
+    client: &reqwest::Client,
+) -> anyhow::Result<()> {
+    let response = client.get(url).send().await?.error_for_status()?;
+    let total_size = response.content_length().unwrap_or(0);
+
+    let span = info_span!("download_snapshot", url);
+    span.pb_set_style(
+        &indicatif::ProgressStyle::default_bar()
+            .template(
+                "{msg} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})",
+            )?
+            .progress_chars("##-"),
+    );
+    span.pb_set_length(total_size);
+    span.pb_set_message(&format!("Downloading {}", url));
+
+    let instrumented_future = async {
+        let mut file = File::create(destination_path).await?;
+        let mut downloaded: u64 = 0;
+        let mut stream = response.bytes_stream();
+
+        while let Some(item) = stream.next().await {
+            let chunk = item?;
+            file.write_all(&chunk).await?;
+            let new = cmp::min(downloaded.saturating_add(chunk.len() as u64), total_size);
+            downloaded = new;
+            Span::current().pb_set_position(new);
+        }
+
+        Span::current().pb_set_message("Downloaded snapshot successfully");
+        Ok(())
+    }
+    .instrument(span);
+
+    instrumented_future.await
 }

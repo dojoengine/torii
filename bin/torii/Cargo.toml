@@ -11,6 +11,7 @@ anyhow.workspace = true
 clap.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+tracing-indicatif.workspace = true
 
 [build-dependencies]
 vergen = { version = "9.0.6", features = ["build", "emit_and_set"] }

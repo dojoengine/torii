@@ -404,12 +404,12 @@ impl Default for SqlOptions {
 #[serde(default)]
 #[command(next_help_heading = "Snapshot options")]
 pub struct SnapshotOptions {
-    /// S3 object URL to download snapshot
+    /// Snapshot URL to download
     #[arg(
         long = "snapshot.url",
-        help = "The S3 object URL to fetch the snapshot from."
+        help = "The snapshot URL to download."
     )]
-    pub url: String,
+    pub url: Option<String>,
 
     /// Optional version of the remote snapshot torii version
     #[arg(
@@ -417,7 +417,6 @@ pub struct SnapshotOptions {
         help = "Optional version of the torii the snapshot has been made from. This is only used to give a warning if there is a version mismatch between the snapshot and this torii."
     )]
     pub version: Option<String>,
-    
 }
 
 #[derive(Default, Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
