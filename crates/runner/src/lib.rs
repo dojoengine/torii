@@ -155,7 +155,8 @@ impl Runner {
                 }
                 info!(target: LOG_TARGET, "Snapshot downloaded successfully.");
             } else {
-                warn!(target: LOG_TARGET, "A database already exists at the given path. If you want to download a new snapshot, please delete the existing database file or provide a different path.");
+                error!(target: LOG_TARGET, "A database already exists at the given path. If you want to download a new snapshot, please delete the existing database file or provide a different path.");
+                return Err(anyhow::anyhow!("Database file already exists at the specified path."));
             }
         }
 
