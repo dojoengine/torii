@@ -118,9 +118,9 @@ impl Runner {
         }
 
         let tempfile = NamedTempFile::new()?;
-        let database_path = if let Some(db_dir) = self.args.db_dir {
+        let database_path = if let Some(db_dir) = &self.args.db_dir {
             // Create the directory if it doesn't exist
-            std::fs::create_dir_all(&db_dir)?;
+            std::fs::create_dir_all(db_dir)?;
             // Set the database file path inside the directory
             db_dir.join("torii.db")
         } else {
@@ -129,7 +129,9 @@ impl Runner {
 
         // Download snapshot if URL is provided
         if let Some(snapshot_url) = self.args.snapshot.url {
-            if !database_path.exists() {
+            // We don't wanna download our snapshot into an existing database. So only proceed if we don't have an existing db dir
+            // or if we have a tempfile path.
+            if self.args.db_dir.is_none() || !database_path.exists() {
                 info!(target: LOG_TARGET, url = %snapshot_url, path = %database_path.display(), "Downloading snapshot...");
 
                 // Check for version mismatch
