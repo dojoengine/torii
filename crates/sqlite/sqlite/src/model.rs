@@ -1,4 +1,4 @@
-use base64::prelude::BASE64_STANDARD_NO_PAD;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
@@ -619,12 +619,12 @@ pub fn encode_cursor(value: &str) -> Result<String, Error> {
         )))
     })?;
 
-    Ok(BASE64_STANDARD_NO_PAD.encode(&compressed_bytes))
+    Ok(BASE64_URL_SAFE_NO_PAD.encode(&compressed_bytes))
 }
 
 /// Decodes a Base64 (no padding) string and then decompresses it using Deflate.
 pub fn decode_cursor(encoded_cursor: &str) -> Result<String, Error> {
-    let compressed_cursor_bytes = BASE64_STANDARD_NO_PAD.decode(encoded_cursor).map_err(|e| {
+    let compressed_cursor_bytes = BASE64_URL_SAFE_NO_PAD.decode(encoded_cursor).map_err(|e| {
         Error::QueryError(QueryError::InvalidCursor(format!(
             "Base64 decode error: {}",
             e
