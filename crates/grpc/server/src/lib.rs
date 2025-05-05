@@ -11,8 +11,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use base64::prelude::BASE64_STANDARD_NO_PAD;
-use base64::Engine;
 use crypto_bigint::U256;
 use dojo_types::naming::compute_selector_from_tag;
 use dojo_types::primitive::Primitive;
@@ -44,7 +42,7 @@ use torii_proto::error::ProtoError;
 use torii_sqlite::cache::ModelCache;
 use torii_sqlite::constants::SQL_DEFAULT_LIMIT;
 use torii_sqlite::error::{ParseError, QueryError};
-use torii_sqlite::model::{fetch_entities, map_row_to_ty};
+use torii_sqlite::model::{decode_cursor, encode_cursor, fetch_entities, map_row_to_ty};
 use torii_sqlite::types::{Page, Pagination, PaginationDirection, Token, TokenBalance};
 use torii_sqlite::utils::u256_to_sql_string;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -245,12 +243,7 @@ impl DojoWorld {
 
         // Add cursor condition if present
         if let Some(ref cursor) = pagination.cursor {
-            let decoded_cursor = String::from_utf8(
-                BASE64_STANDARD_NO_PAD
-                    .decode(cursor)
-                    .map_err(|e| QueryError::InvalidCursor(e.to_string()))?,
-            )
-            .map_err(|e| QueryError::InvalidCursor(e.to_string()))?;
+            let decoded_cursor = decode_cursor(cursor)?;
 
             let operator = match pagination.direction {
                 PaginationDirection::Forward => ">=",
@@ -329,7 +322,8 @@ impl DojoWorld {
         let next_cursor = if has_more {
             db_entities
                 .last()
-                .map(|(_, _, _, event_id, _)| BASE64_STANDARD_NO_PAD.encode(event_id))
+                .map(|(_, _, _, event_id, _)| encode_cursor(&event_id))
+                .transpose()?
         } else {
             None
         };
@@ -767,14 +761,7 @@ impl DojoWorld {
         }
 
         if let Some(cursor) = cursor {
-            bind_values.push(
-                String::from_utf8(
-                    BASE64_STANDARD_NO_PAD
-                        .decode(cursor)
-                        .map_err(|e| QueryError::InvalidCursor(e.to_string()))?,
-                )
-                .map_err(|e| QueryError::InvalidCursor(e.to_string()))?,
-            );
+            bind_values.push(decode_cursor(&cursor)?);
             conditions.push("id >= ?".to_string());
         }
 
@@ -792,7 +779,7 @@ impl DojoWorld {
 
         let mut tokens: Vec<Token> = query.fetch_all(&self.pool).await?;
         let next_cursor = if tokens.len() > limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) as usize {
-            BASE64_STANDARD_NO_PAD.encode(tokens.pop().unwrap().id.to_string().as_bytes())
+            encode_cursor(&tokens.pop().unwrap().id)?
         } else {
             String::new()
         };
@@ -838,14 +825,7 @@ impl DojoWorld {
         }
 
         if let Some(cursor) = cursor {
-            bind_values.push(
-                String::from_utf8(
-                    BASE64_STANDARD_NO_PAD
-                        .decode(cursor)
-                        .map_err(|e| QueryError::InvalidCursor(e.to_string()))?,
-                )
-                .map_err(|e| QueryError::InvalidCursor(e.to_string()))?,
-            );
+            bind_values.push(decode_cursor(&cursor)?);
             conditions.push("id >= ?".to_string());
         }
 
@@ -863,7 +843,7 @@ impl DojoWorld {
 
         let mut balances: Vec<TokenBalance> = query.fetch_all(&self.pool).await?;
         let next_cursor = if balances.len() > limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) as usize {
-            BASE64_STANDARD_NO_PAD.encode(balances.pop().unwrap().id.to_string().as_bytes())
+            encode_cursor(&balances.pop().unwrap().id)?
         } else {
             String::new()
         };
@@ -996,14 +976,7 @@ impl DojoWorld {
 
         if !query.cursor.is_empty() {
             conditions.push("id >= ?");
-            bind_values.push(
-                String::from_utf8(
-                    BASE64_STANDARD_NO_PAD
-                        .decode(query.cursor.clone())
-                        .map_err(|e| QueryError::InvalidCursor(e.to_string()))?,
-                )
-                .map_err(|e| QueryError::InvalidCursor(e.to_string()))?,
-            );
+            bind_values.push(decode_cursor(&query.cursor)?);
         }
 
         let mut events_query = r#"
@@ -1027,7 +1000,7 @@ impl DojoWorld {
             row_events.fetch_all(&self.pool).await?;
 
         let next_cursor = if row_events.len() > (limit - 1) as usize {
-            BASE64_STANDARD_NO_PAD.encode(row_events.pop().unwrap().0.to_string().as_bytes())
+            encode_cursor(&row_events.pop().unwrap().0)?
         } else {
             String::new()
         };
