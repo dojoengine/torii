@@ -280,8 +280,6 @@ impl DojoWorld {
             }
         );
 
-        println!("{}", query_str);
-
         let mut query = sqlx::query_as(&query_str);
         for value in bind_values {
             query = query.bind(value);
