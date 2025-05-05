@@ -106,6 +106,8 @@ pub struct Model {
     pub transaction_hash: String,
     pub layout: String,
     pub schema: String,
+    pub packed_size: u32,
+    pub unpacked_size: u32,
     pub executed_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }

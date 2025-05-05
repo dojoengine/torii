@@ -233,7 +233,7 @@ impl Runner {
         .await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
 
-        let model_cache = Arc::new(ModelCache::new(readonly_pool.clone()));
+        let model_cache = Arc::new(ModelCache::new(readonly_pool.clone()).await?);
 
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
             warn!(

@@ -327,7 +327,7 @@ impl DojoWorld {
         let next_cursor = if has_more {
             db_entities
                 .last()
-                .map(|(_, _, _, event_id, _)| encode_cursor(&event_id))
+                .map(|(_, _, _, event_id, _)| encode_cursor(event_id))
                 .transpose()?
         } else {
             None

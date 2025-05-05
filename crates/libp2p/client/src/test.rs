@@ -69,7 +69,7 @@ async fn test_client_messaging() -> Result<(), Box<dyn Error>> {
         executor.run().await.unwrap();
     });
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let mut db = Sql::new(
         pool.clone(),
         sender,

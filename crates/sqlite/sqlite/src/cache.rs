@@ -43,11 +43,44 @@ pub struct ModelCache {
 }
 
 impl ModelCache {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self {
-            pool,
-            model_cache: RwLock::new(HashMap::new()),
+    pub async fn new(pool: SqlitePool) -> Result<Self, Error> {
+        let models_rows: Vec<torii_sqlite_types::Model> = sqlx::query_as(
+            "SELECT id, namespace, name, class_hash, contract_address, packed_size, \
+             unpacked_size, layout, schema FROM models",
+        )
+        .fetch_all(&pool)
+        .await?;
+
+        let mut model_cache = HashMap::new();
+        for model in models_rows {
+            let selector = Felt::from_hex(&model.id).map_err(ParseError::FromStr)?;
+            let class_hash = Felt::from_hex(&model.class_hash).map_err(ParseError::FromStr)?;
+            let contract_address =
+                Felt::from_hex(&model.contract_address).map_err(ParseError::FromStr)?;
+
+            let layout = serde_json::from_str(&model.layout).map_err(ParseError::FromJsonStr)?;
+            let schema = serde_json::from_str(&model.schema).map_err(ParseError::FromJsonStr)?;
+
+            model_cache.insert(
+                selector,
+                Model {
+                    namespace: model.namespace,
+                    name: model.name,
+                    selector,
+                    class_hash,
+                    contract_address,
+                    packed_size: model.packed_size,
+                    unpacked_size: model.unpacked_size,
+                    layout,
+                    schema,
+                },
+            );
         }
+
+        Ok(Self {
+            pool,
+            model_cache: RwLock::new(model_cache),
+        })
     }
 
     pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, Error> {

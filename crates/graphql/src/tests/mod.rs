@@ -391,7 +391,7 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         executor.run().await.unwrap();
     });
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender,
