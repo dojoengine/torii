@@ -42,6 +42,12 @@ fn graphql_filter(schema: Schema) -> impl Filter<Extract = impl Reply, Error = R
                 .replace(
                     "new URL(endpoint, window.location.origin);",
                     "new URL(window.location.href.trimEnd('/') + endpoint)",
+                )
+                // the playground source from async-graphql is broken as a new graphiql version has been released.
+                // we patch the source to use a working version.
+                .replace(
+                    "https://unpkg.com/graphiql/graphiql.min.js",
+                    "https://unpkg.com/graphiql@3/graphiql.min.js",
                 ),
         )
     });
