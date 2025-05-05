@@ -253,7 +253,7 @@ impl DojoWorld {
             bind_values.push(decoded_cursor);
         }
 
-        let where_sql = if !conditions.is_empty() {
+        let where_clause = if !conditions.is_empty() {
             format!("WHERE {}", conditions.join(" AND "))
         } else {
             String::new()
@@ -267,12 +267,16 @@ impl DojoWorld {
              group_concat({model_relation_table}.model_id) as model_ids
             FROM {table}
             JOIN {model_relation_table} ON {table}.id = {model_relation_table}.entity_id
-            {where_sql}
+            {where_clause}
             GROUP BY {table}.event_id
-            HAVING {having_clause}
+            {}
             ORDER BY {table}.event_id {order_direction}
             LIMIT ?
-            "
+            ", if !having_clause.is_empty() {
+                format!("HAVING {}", having_clause)
+            } else {
+                String::new()
+            }
         );
 
         let mut query = sqlx::query_as(&query_str);
