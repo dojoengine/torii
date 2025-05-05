@@ -1,11 +1,11 @@
-use std::collections::HashSet;
-use std::str::FromStr;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::Engine;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
+use std::collections::HashSet;
 use std::io::prelude::*;
+use std::str::FromStr;
 
 use async_trait::async_trait;
 use crypto_bigint::U256;
@@ -606,27 +606,39 @@ fn build_cursor_values(pagination: &Pagination, row: &SqliteRow) -> Result<Vec<S
 /// Compresses a string using Deflate and then encodes it using Base64 (no padding).
 pub fn encode_cursor(value: &str) -> Result<String, Error> {
     let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
-    encoder
-        .write_all(value.as_bytes())
-        .map_err(|e| Error::QueryError(QueryError::InvalidCursor(format!("Cursor compression error: {}", e))))?;
-    let compressed_bytes = encoder
-        .finish()
-        .map_err(|e| Error::QueryError(QueryError::InvalidCursor(format!("Cursor compression finish error: {}", e))))?;
+    encoder.write_all(value.as_bytes()).map_err(|e| {
+        Error::QueryError(QueryError::InvalidCursor(format!(
+            "Cursor compression error: {}",
+            e
+        )))
+    })?;
+    let compressed_bytes = encoder.finish().map_err(|e| {
+        Error::QueryError(QueryError::InvalidCursor(format!(
+            "Cursor compression finish error: {}",
+            e
+        )))
+    })?;
 
     Ok(BASE64_STANDARD_NO_PAD.encode(&compressed_bytes))
 }
 
 /// Decodes a Base64 (no padding) string and then decompresses it using Deflate.
 pub fn decode_cursor(encoded_cursor: &str) -> Result<String, Error> {
-    let compressed_cursor_bytes = BASE64_STANDARD_NO_PAD
-        .decode(encoded_cursor)
-        .map_err(|e| Error::QueryError(QueryError::InvalidCursor(format!("Base64 decode error: {}", e))))?;
+    let compressed_cursor_bytes = BASE64_STANDARD_NO_PAD.decode(encoded_cursor).map_err(|e| {
+        Error::QueryError(QueryError::InvalidCursor(format!(
+            "Base64 decode error: {}",
+            e
+        )))
+    })?;
 
     let mut decoder = DeflateDecoder::new(&compressed_cursor_bytes[..]);
     let mut decompressed_str = String::new();
-    decoder
-        .read_to_string(&mut decompressed_str)
-        .map_err(|e| Error::QueryError(QueryError::InvalidCursor(format!("Decompression error: {}", e))))?;
+    decoder.read_to_string(&mut decompressed_str).map_err(|e| {
+        Error::QueryError(QueryError::InvalidCursor(format!(
+            "Decompression error: {}",
+            e
+        )))
+    })?;
 
     Ok(decompressed_str)
 }
