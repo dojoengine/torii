@@ -103,7 +103,6 @@ pub struct Model {
     pub name: String,
     pub class_hash: String,
     pub contract_address: String,
-    pub transaction_hash: String,
     pub layout: String,
     pub schema: String,
     pub packed_size: u32,
