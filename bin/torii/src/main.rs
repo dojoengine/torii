@@ -26,7 +26,7 @@ mod cli;
 async fn main() -> anyhow::Result<()> {
     // Set the global tracing subscriber
     let filter_layer =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,torii=info")); // Adjust default filter if needed
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("torii=info"));
 
     let indicatif_layer = IndicatifLayer::new();
 

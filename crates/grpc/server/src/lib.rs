@@ -221,6 +221,7 @@ impl DojoWorld {
         table: &str,
         model_relation_table: &str,
         where_clause: &str,
+        having_clause: &str,
         mut bind_values: Vec<String>,
         pagination: Pagination,
     ) -> Result<Page<proto::types::Entity>, Error> {
@@ -236,87 +237,105 @@ impl DojoWorld {
             conditions.push(where_clause.to_string());
         }
 
-        // Add cursor condition if present
-        if let Some(ref cursor) = pagination.cursor {
-            match pagination.direction {
-                PaginationDirection::Forward => {
-                    conditions.push(format!("{table}.event_id >= ?"));
-                }
-                PaginationDirection::Backward => {
-                    conditions.push(format!("{table}.event_id <= ?"));
-                }
-            }
-            bind_values.push(
-                String::from_utf8(
-                    BASE64_STANDARD_NO_PAD
-                        .decode(cursor)
-                        .map_err(|e| QueryError::InvalidCursor(e.to_string()))?,
-                )
-                .map_err(|e| QueryError::InvalidCursor(e.to_string()))?,
-            );
-        }
-
-        let where_clause = if !conditions.is_empty() {
-            format!("WHERE {}", conditions.join(" AND "))
-        } else {
-            String::new()
-        };
-
         let order_direction = match pagination.direction {
             PaginationDirection::Forward => "ASC",
             PaginationDirection::Backward => "DESC",
         };
 
-        let query = format!(
+        // Add cursor condition if present
+        if let Some(ref cursor) = pagination.cursor {
+            let decoded_cursor = String::from_utf8(
+                BASE64_STANDARD_NO_PAD
+                    .decode(cursor)
+                    .map_err(|e| QueryError::InvalidCursor(e.to_string()))?,
+            )
+            .map_err(|e| QueryError::InvalidCursor(e.to_string()))?;
+
+            let operator = match pagination.direction {
+                PaginationDirection::Forward => ">=",
+                PaginationDirection::Backward => "<=",
+            };
+            conditions.push(format!("{table}.event_id {operator} ?"));
+            bind_values.push(decoded_cursor);
+        }
+
+        let where_sql = if !conditions.is_empty() {
+            format!("WHERE {}", conditions.join(" AND "))
+        } else {
+            String::new()
+        };
+
+        let limit = pagination.limit.unwrap_or(100);
+        let query_limit = limit + 1;
+
+        let query_str = format!(
             "SELECT {table}.id, {table}.data, {table}.model_id, {table}.event_id, \
              group_concat({model_relation_table}.model_id) as model_ids
             FROM {table}
             JOIN {model_relation_table} ON {table}.id = {model_relation_table}.entity_id
-            {where_clause}
+            {where_sql}
             GROUP BY {table}.event_id
+            HAVING {having_clause}
             ORDER BY {table}.event_id {order_direction}
             LIMIT ?
             "
         );
 
-        let mut query = sqlx::query_as(&query);
+        let mut query = sqlx::query_as(&query_str);
         for value in bind_values {
             query = query.bind(value);
         }
-        query = query.bind(pagination.limit.unwrap_or(100) + 1);
+        query = query.bind(query_limit);
 
         let db_entities: Vec<(String, String, String, String, String)> =
             query.fetch_all(&self.pool).await?;
 
-        let mut entities = Vec::new();
-        for (id, data, model_id, _, _) in &db_entities[..db_entities.len().saturating_sub(1)] {
-            let hashed_keys = Felt::from_str(id)
-                .map_err(ParseError::FromStr)?
-                .to_bytes_be()
-                .to_vec();
-            let model = self
-                .model_cache
-                .model(&Felt::from_str(model_id).map_err(ParseError::FromStr)?)
-                .await?;
-            let mut schema = model.schema;
-            schema.from_json_value(serde_json::from_str(data).map_err(ParseError::FromJsonStr)?)?;
+        let has_more = db_entities.len() == query_limit as usize;
+        let results_to_take = if has_more {
+            limit as usize
+        } else {
+            db_entities.len()
+        };
 
-            entities.push(proto::types::Entity {
-                hashed_keys,
-                models: vec![schema.as_struct().unwrap().clone().into()],
-            });
-        }
+        let entities = db_entities
+            .iter()
+            .take(results_to_take)
+            .map(|(id, data, model_id, _, _)| async {
+                let hashed_keys = Felt::from_str(id)
+                    .map_err(ParseError::FromStr)?
+                    .to_bytes_be()
+                    .to_vec();
+                let model = self
+                    .model_cache
+                    .model(&Felt::from_str(model_id).map_err(ParseError::FromStr)?)
+                    .await?;
+                let mut schema = model.schema;
+                schema.from_json_value(
+                    serde_json::from_str(data).map_err(ParseError::FromJsonStr)?,
+                )?;
 
-        // Get the next cursor from the last item's event_id if we fetched an extra one
-        let next_cursor = if db_entities.len() > entities.len() {
-            Some(db_entities.last().unwrap().3.clone()) // event_id is at index 3
+                Ok::<_, Error>(proto::types::Entity {
+                    hashed_keys,
+                    models: vec![schema.as_struct().unwrap().clone().into()],
+                })
+            })
+            // Collect the futures into a Vec
+            .collect::<Vec<_>>();
+
+        // Execute all the async mapping operations concurrently
+        let entities: Vec<proto::types::Entity> = futures::future::try_join_all(entities).await?;
+
+        let next_cursor = if has_more {
+            db_entities
+                .last()
+                .map(|(_, _, _, event_id, _)| BASE64_STANDARD_NO_PAD.encode(event_id))
         } else {
             None
         };
 
         Ok(Page {
             items: entities,
-            next_cursor: next_cursor.map(|cursor| BASE64_STANDARD_NO_PAD.encode(cursor)),
+            next_cursor,
         })
     }
 
@@ -377,6 +396,7 @@ impl DojoWorld {
                     table,
                     model_relation_table,
                     &where_clause,
+                    &having_clause,
                     bind_values,
                     pagination,
                 )
@@ -472,6 +492,7 @@ impl DojoWorld {
                     table,
                     model_relation_table,
                     &where_clause,
+                    &having_clause,
                     bind_values,
                     pagination,
                 )
