@@ -291,31 +291,33 @@ impl DojoWorld {
             query.fetch_all(&self.pool).await?;
 
         let has_more = db_entities.len() == query_limit as usize;
-        let results_to_take = if has_more { limit as usize } else { db_entities.len() };
+        let results_to_take = if has_more {
+            limit as usize
+        } else {
+            db_entities.len()
+        };
 
         let entities = db_entities
             .iter()
             .take(results_to_take)
-            .map(|(id, data, model_id, _, _)| {
-                async {
-                    let hashed_keys = Felt::from_str(id)
-                        .map_err(ParseError::FromStr)?
-                        .to_bytes_be()
-                        .to_vec();
-                    let model = self
-                        .model_cache
-                        .model(&Felt::from_str(model_id).map_err(ParseError::FromStr)?)
-                        .await?;
-                    let mut schema = model.schema;
-                    schema.from_json_value(
-                        serde_json::from_str(data).map_err(ParseError::FromJsonStr)?,
-                    )?;
+            .map(|(id, data, model_id, _, _)| async {
+                let hashed_keys = Felt::from_str(id)
+                    .map_err(ParseError::FromStr)?
+                    .to_bytes_be()
+                    .to_vec();
+                let model = self
+                    .model_cache
+                    .model(&Felt::from_str(model_id).map_err(ParseError::FromStr)?)
+                    .await?;
+                let mut schema = model.schema;
+                schema.from_json_value(
+                    serde_json::from_str(data).map_err(ParseError::FromJsonStr)?,
+                )?;
 
-                    Ok::<_, Error>(proto::types::Entity {
-                        hashed_keys,
-                        models: vec![schema.as_struct().unwrap().clone().into()],
-                    })
-                }
+                Ok::<_, Error>(proto::types::Entity {
+                    hashed_keys,
+                    models: vec![schema.as_struct().unwrap().clone().into()],
+                })
             })
             // Collect the futures into a Vec
             .collect::<Vec<_>>();
