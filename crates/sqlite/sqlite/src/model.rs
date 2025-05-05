@@ -15,6 +15,7 @@ use sqlx::{Pool, Row, Sqlite};
 use starknet::core::types::Felt;
 
 use super::error::{self, Error};
+use crate::constants::{SQL_DEFAULT_LIMIT, SQL_MAX_JOINS};
 use crate::error::{ParseError, QueryError};
 use crate::types::{OrderDirection, Page, Pagination, PaginationDirection};
 
@@ -349,8 +350,7 @@ pub async fn fetch_entities(
         }
     }
 
-    const MAX_JOINS: usize = 64;
-    let original_limit = pagination.limit.unwrap_or(100);
+    let original_limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
     let fetch_limit = original_limit + 1;
     let mut has_more_pages = false;
 
@@ -406,7 +406,7 @@ pub async fn fetch_entities(
     let mut all_rows = Vec::new();
     let mut next_cursor = None;
 
-    for chunk in schemas.chunks(MAX_JOINS) {
+    for chunk in schemas.chunks(SQL_MAX_JOINS) {
         let mut selections = vec![
             format!("{}.id", table_name),
             format!("{}.keys", table_name),

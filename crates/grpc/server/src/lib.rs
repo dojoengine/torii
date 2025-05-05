@@ -42,6 +42,7 @@ use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
 use torii_proto::error::ProtoError;
 use torii_sqlite::cache::ModelCache;
+use torii_sqlite::constants::SQL_DEFAULT_LIMIT;
 use torii_sqlite::error::{ParseError, QueryError};
 use torii_sqlite::model::{fetch_entities, map_row_to_ty};
 use torii_sqlite::types::{Page, Pagination, PaginationDirection, Token, TokenBalance};
@@ -265,7 +266,7 @@ impl DojoWorld {
             String::new()
         };
 
-        let limit = pagination.limit.unwrap_or(100);
+        let limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
         let query_limit = limit + 1;
 
         let query_str = format!(
@@ -782,7 +783,7 @@ impl DojoWorld {
         }
 
         query += " ORDER BY id LIMIT ?";
-        bind_values.push((limit.unwrap_or(100) + 1).to_string());
+        bind_values.push((limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) + 1).to_string());
 
         let mut query = sqlx::query_as(&query);
         for value in bind_values {
@@ -790,7 +791,7 @@ impl DojoWorld {
         }
 
         let mut tokens: Vec<Token> = query.fetch_all(&self.pool).await?;
-        let next_cursor = if tokens.len() > limit.unwrap_or(100) as usize {
+        let next_cursor = if tokens.len() > limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) as usize {
             BASE64_STANDARD_NO_PAD.encode(tokens.pop().unwrap().id.to_string().as_bytes())
         } else {
             String::new()
@@ -853,7 +854,7 @@ impl DojoWorld {
         }
 
         query += " ORDER BY id LIMIT ?";
-        bind_values.push((limit.unwrap_or(100) + 1).to_string());
+        bind_values.push((limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) + 1).to_string());
 
         let mut query = sqlx::query_as(&query);
         for value in bind_values {
@@ -861,7 +862,7 @@ impl DojoWorld {
         }
 
         let mut balances: Vec<TokenBalance> = query.fetch_all(&self.pool).await?;
-        let next_cursor = if balances.len() > limit.unwrap_or(100) as usize {
+        let next_cursor = if balances.len() > limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) as usize {
             BASE64_STANDARD_NO_PAD.encode(balances.pop().unwrap().id.to_string().as_bytes())
         } else {
             String::new()
@@ -976,7 +977,7 @@ impl DojoWorld {
         let limit = if query.limit > 0 {
             query.limit + 1
         } else {
-            100 + 1
+            SQL_DEFAULT_LIMIT as u32 + 1
         };
 
         let mut bind_values = Vec::new();
