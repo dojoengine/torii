@@ -272,7 +272,8 @@ impl DojoWorld {
             {}
             ORDER BY {table}.event_id {order_direction}
             LIMIT ?
-            ", if !having_clause.is_empty() {
+            ",
+            if !having_clause.is_empty() {
                 format!("HAVING {}", having_clause)
             } else {
                 String::new()
