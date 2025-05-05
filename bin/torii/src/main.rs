@@ -13,7 +13,12 @@
 use clap::Parser;
 use cli::Cli;
 use torii_runner::Runner;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_indicatif::IndicatifLayer;
+use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::Registry;
 
 mod cli;
 
@@ -21,15 +26,19 @@ mod cli;
 async fn main() -> anyhow::Result<()> {
     // Set the global tracing subscriber
     let filter_layer =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("torii=info"));
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,torii=info")); // Adjust default filter if needed
 
-    let subscriber = fmt::Subscriber::builder()
-        .with_env_filter(filter_layer)
-        .finish();
+    let indicatif_layer = IndicatifLayer::new();
 
-    // Set the global subscriber
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Failed to set the global tracing subscriber");
+    Registry::default()
+        .with(filter_layer)
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+                .with_writer(indicatif_layer.get_stderr_writer()),
+        )
+        .with(indicatif_layer)
+        .init();
 
     let args = Cli::parse().args.with_config_file()?;
     let runner = Runner::new(args, env!("TORII_VERSION_SPEC").to_string());

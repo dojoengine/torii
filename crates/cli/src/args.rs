@@ -57,6 +57,9 @@ pub struct ToriiArgs {
     #[command(flatten)]
     pub sql: SqlOptions,
 
+    #[command(flatten)]
+    pub snapshot: SnapshotOptions,
+
     #[cfg(feature = "server")]
     #[command(flatten)]
     pub metrics: MetricsOptions,
@@ -82,6 +85,7 @@ impl Default for ToriiArgs {
             events: EventsOptions::default(),
             erc: ErcOptions::default(),
             sql: SqlOptions::default(),
+            snapshot: SnapshotOptions::default(),
             runner: RunnerOptions::default(),
             #[cfg(feature = "server")]
             metrics: MetricsOptions::default(),
