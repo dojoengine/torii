@@ -280,6 +280,8 @@ impl DojoWorld {
             }
         );
 
+        println!("{}", query_str);
+
         let mut query = sqlx::query_as(&query_str);
         for value in bind_values {
             query = query.bind(value);
@@ -355,7 +357,7 @@ impl DojoWorld {
                 let ids = hashed_keys
                     .hashed_keys
                     .iter()
-                    .map(|_| "{table}.id = ?")
+                    .map(|_| format!("{table}.id = ?"))
                     .collect::<Vec<_>>();
                 ids.join(" OR ")
             }
