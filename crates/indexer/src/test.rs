@@ -159,7 +159,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender.clone(),
@@ -341,7 +341,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
         r#type: ContractType::ERC20,
     }];
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender.clone(),
@@ -494,7 +494,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
         address: badge_address,
         r#type: ContractType::ERC721,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender.clone(),
@@ -704,7 +704,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
         address: rewards_address,
         r#type: ContractType::ERC1155,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender.clone(),
@@ -903,7 +903,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender.clone(),
@@ -1043,7 +1043,7 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender.clone(),
@@ -1167,7 +1167,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender.clone(),
@@ -1292,7 +1292,7 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
         address: rewards_address,
         r#type: ContractType::ERC1155,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender.clone(),

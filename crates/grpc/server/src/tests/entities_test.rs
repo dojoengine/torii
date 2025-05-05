@@ -111,7 +111,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender,
@@ -149,7 +149,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
 
     db.execute().await.unwrap();
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()));
+    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let grpc = DojoWorld::new(db.pool, world_address, model_cache);
 
     let entities = grpc
