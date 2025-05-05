@@ -101,9 +101,9 @@ where
         }
         let new_schema = model.schema().await?;
         let schema_diff = new_schema.diff(&prev_schema);
-            // No changes to the schema. This can happen if torii is re-run with a fresh database.
-            // As the register model fetches the latest schema from the chain.
-            if schema_diff.is_none() {
+        // No changes to the schema. This can happen if torii is re-run with a fresh database.
+        // As the register model fetches the latest schema from the chain.
+        if schema_diff.is_none() {
             return Ok(());
         }
 

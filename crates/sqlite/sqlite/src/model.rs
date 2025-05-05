@@ -578,7 +578,7 @@ fn build_query(
     );
     if !where_clause.is_empty() {
         query.push_str(&format!(" WHERE {}", where_clause));
-    }   
+    }
 
     query.push_str(&format!(" GROUP BY {}.id", table_name));
 
