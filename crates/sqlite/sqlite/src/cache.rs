@@ -46,7 +46,7 @@ impl ModelCache {
     pub async fn new(pool: SqlitePool) -> Result<Self, Error> {
         let models_rows: Vec<torii_sqlite_types::Model> = sqlx::query_as(
             "SELECT id, namespace, name, class_hash, contract_address, packed_size, \
-             unpacked_size, layout, schema FROM models",
+             unpacked_size, layout, schema, executed_at, created_at FROM models",
         )
         .fetch_all(&pool)
         .await?;
