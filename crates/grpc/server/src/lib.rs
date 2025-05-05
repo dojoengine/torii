@@ -223,6 +223,7 @@ impl DojoWorld {
         where_clause: &str,
         mut bind_values: Vec<String>,
         pagination: Pagination,
+        models: Vec<Felt>,
     ) -> Result<Page<proto::types::Entity>, Error> {
         if !pagination.order_by.is_empty() {
             return Err(QueryError::UnsupportedQuery(
@@ -234,6 +235,10 @@ impl DojoWorld {
         let mut conditions = Vec::new();
         if !where_clause.is_empty() {
             conditions.push(where_clause.to_string());
+        }
+
+        if !models.is_empty() {
+            conditions.push(format!("model_id IN ({})", models.iter().map(|m| format!("'{:#x}'", m)).collect::<Vec<_>>().join(", ")));
         }
 
         // Add cursor condition if present
@@ -379,6 +384,7 @@ impl DojoWorld {
                     &where_clause,
                     bind_values,
                     pagination,
+                    models,
                 )
                 .await;
         }
@@ -474,6 +480,7 @@ impl DojoWorld {
                     &where_clause,
                     bind_values,
                     pagination,
+                    models,
                 )
                 .await;
         }
