@@ -1,9 +1,13 @@
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use base64::Engine;
+use flate2::read::DeflateDecoder;
+use flate2::write::DeflateEncoder;
+use flate2::Compression;
 use std::collections::HashSet;
+use std::io::prelude::*;
 use std::str::FromStr;
 
 use async_trait::async_trait;
-use base64::engine::general_purpose;
-use base64::Engine;
 use crypto_bigint::U256;
 use dojo_types::primitive::{Primitive, PrimitiveError};
 use dojo_types::schema::Ty;
@@ -386,14 +390,11 @@ pub async fn fetch_entities(
         .cursor
         .as_ref()
         .map(|cursor_str| {
-            let decoded = general_purpose::STANDARD_NO_PAD
-                .decode(cursor_str)
-                .map_err(|e| Error::QueryError(QueryError::InvalidCursor(e.to_string())))?;
-            String::from_utf8(decoded)
-                .map_err(|e| Error::QueryError(QueryError::InvalidCursor(e.to_string())))
-                .map(|s| s.split('/').map(|s| s.to_string()).collect())
+            let decompressed_str = decode_cursor(cursor_str)?;
+            Ok(decompressed_str.split('/').map(|s| s.to_string()).collect())
         })
-        .transpose()?;
+        .transpose()
+        .map_err(|e: Error| Error::QueryError(QueryError::InvalidCursor(e.to_string())))?;
 
     // Build cursor conditions
     let (cursor_conditions, cursor_binds) =
@@ -476,9 +477,8 @@ pub async fn fetch_entities(
     // Replace generation of next cursor to only when there are more pages
     if has_more_pages {
         if let Some(last_row) = all_rows.last() {
-            let cursor_values = build_cursor_values(&pagination, last_row)?;
-            next_cursor =
-                Some(general_purpose::STANDARD_NO_PAD.encode(cursor_values.join("/").as_bytes()));
+            let cursor_values_str = build_cursor_values(&pagination, last_row)?.join("/");
+            next_cursor = Some(encode_cursor(&cursor_values_str)?);
         }
     }
 
@@ -601,4 +601,44 @@ fn build_cursor_values(pagination: &Pagination, row: &SqliteRow) -> Result<Vec<S
         values.push(row.try_get("event_id")?);
         Ok(values)
     }
+}
+
+/// Compresses a string using Deflate and then encodes it using Base64 (no padding).
+pub fn encode_cursor(value: &str) -> Result<String, Error> {
+    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(value.as_bytes()).map_err(|e| {
+        Error::QueryError(QueryError::InvalidCursor(format!(
+            "Cursor compression error: {}",
+            e
+        )))
+    })?;
+    let compressed_bytes = encoder.finish().map_err(|e| {
+        Error::QueryError(QueryError::InvalidCursor(format!(
+            "Cursor compression finish error: {}",
+            e
+        )))
+    })?;
+
+    Ok(BASE64_URL_SAFE_NO_PAD.encode(&compressed_bytes))
+}
+
+/// Decodes a Base64 (no padding) string and then decompresses it using Deflate.
+pub fn decode_cursor(encoded_cursor: &str) -> Result<String, Error> {
+    let compressed_cursor_bytes = BASE64_URL_SAFE_NO_PAD.decode(encoded_cursor).map_err(|e| {
+        Error::QueryError(QueryError::InvalidCursor(format!(
+            "Base64 decode error: {}",
+            e
+        )))
+    })?;
+
+    let mut decoder = DeflateDecoder::new(&compressed_cursor_bytes[..]);
+    let mut decompressed_str = String::new();
+    decoder.read_to_string(&mut decompressed_str).map_err(|e| {
+        Error::QueryError(QueryError::InvalidCursor(format!(
+            "Decompression error: {}",
+            e
+        )))
+    })?;
+
+    Ok(decompressed_str)
 }

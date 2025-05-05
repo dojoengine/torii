@@ -11551,6 +11551,7 @@ dependencies = [
  "dojo-types 1.5.0-alpha.2",
  "dojo-utils",
  "dojo-world",
+ "flate2",
  "futures-channel",
  "futures-util",
  "hashlink",
