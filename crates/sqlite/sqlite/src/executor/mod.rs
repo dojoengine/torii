@@ -647,6 +647,15 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied balance diff.");
             }
             QueryType::RegisterNftToken(register_nft_token) => {
+                let token_id = felt_and_u256_to_sql_string(
+                    &register_nft_token.contract_address,
+                    &register_nft_token.token_id,
+                );
+                if self.nft_metadata_tokens.contains(&token_id) {
+                    return Ok(());
+                }
+                self.nft_metadata_tokens.insert(token_id);
+
                 let metadata_semaphore = self.metadata_semaphore.clone();
                 let provider = self.provider.clone();
 
@@ -722,14 +731,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         }
                     }
                 };
-
-                let token_id = felt_and_u256_to_sql_string(
-                    &register_nft_token.contract_address,
-                    &register_nft_token.token_id,
-                );
-                if self.nft_metadata_tokens.contains(&token_id) {
-                    return Ok(());
-                }
 
                 self.nft_metadata_tasks.spawn(async move {
                     let permit = metadata_semaphore.acquire().await.unwrap();
@@ -814,12 +815,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 }
             }
             QueryType::UpdateNftMetadata(update_metadata) => {
-                debug!(target: LOG_TARGET, "Updating NFT metadata.");
-                let instant = Instant::now();
-
-                let metadata_semaphore = self.metadata_semaphore.clone();
-                let provider = self.provider.clone();
-
                 let token_id = felt_and_u256_to_sql_string(
                     &update_metadata.contract_address,
                     &update_metadata.token_id,
@@ -827,6 +822,10 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 if self.nft_metadata_tokens.contains(&token_id) {
                     return Ok(());
                 }
+                self.nft_metadata_tokens.insert(token_id.clone());
+
+                let metadata_semaphore = self.metadata_semaphore.clone();
+                let provider = self.provider.clone();
 
                 self.nft_metadata_tasks.spawn(async move {
                     let permit = metadata_semaphore.acquire().await.unwrap();
@@ -844,7 +843,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         metadata,
                     }))
                 });
-                debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Updated NFT metadata.");
             }
             QueryType::Other => {
                 query.execute(&mut **tx).await?;
@@ -902,9 +900,13 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     async fn handle_nft_metadata(&mut self, result: NftTaskResult) -> Result<()> {
         match result {
             NftTaskResult::RegisterNftToken(register_nft_token) => {
+                self.nft_metadata_tokens
+                    .remove(&register_nft_token.query.id);
                 self.handle_register_nft_metadata(register_nft_token).await
             }
             NftTaskResult::UpdateNftMetadata(update_nft_metadata) => {
+                self.nft_metadata_tokens
+                    .remove(&update_nft_metadata.token_id);
                 self.handle_update_nft_metadata(update_nft_metadata).await
             }
         }
