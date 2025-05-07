@@ -30,7 +30,7 @@ use starknet_crypto::poseidon_hash_many;
 use torii_sqlite::executor::QueryMessage;
 use torii_sqlite::utils::felts_to_sql_string;
 use torii_sqlite::Sql;
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 use webrtc::tokio::Certificate;
 
 mod constants;
@@ -478,7 +478,7 @@ impl<P: Provider + Sync> Relay<P> {
                             self.swarm.add_external_address(observed_addr.clone());
                         }
                         BehaviourEvent::Ping(ping::Event { peer, result, .. }) => {
-                            info!(
+                            trace!(
                                 target: LOG_TARGET,
                                 peer_id = %peer,
                                 result = ?result,
@@ -501,12 +501,12 @@ impl<P: Provider + Sync> Relay<P> {
 
                     // To declutter logs, we only log listen addresses that are localhost
                     if !is_localhost {
-                        return;
+                        continue;
                     }
                     info!(target: LOG_TARGET, address = %address, "Serving libp2p Relay.");
                 }
                 event => {
-                    info!(target: LOG_TARGET, event = ?event, "Unhandled event.");
+                    trace!(target: LOG_TARGET, event = ?event, "Unhandled event.");
                 }
             }
         }
