@@ -292,7 +292,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         }
     }
 
-    pub async fn handle_nft_token_metadata(
+    pub async fn handle_register_nft_metadata(
         &mut self,
         result: RegisterNftTokenMetadata,
     ) -> Result<()> {
