@@ -913,7 +913,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         let mut futures = Vec::new();
         for chunk in requests.chunks(self.config.batch_chunk_size) {
-            futures.push(async move { self.provider.batch_requests(&chunk).await });
+            futures.push(async move { self.provider.batch_requests(chunk).await });
         }
 
         let results_of_chunks: Vec<Vec<ProviderResponseData>> = try_join_all(futures)
