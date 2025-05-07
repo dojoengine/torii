@@ -489,7 +489,21 @@ impl<P: Provider + Sync> Relay<P> {
                     }
                 }
                 SwarmEvent::NewListenAddr { address, .. } => {
-                    info!(target: LOG_TARGET, address = %address, "New listen address.");
+                    let mut is_localhost = false;
+                    for protocol in address.iter() {
+                        if let Protocol::Ip4(ip) = protocol {
+                            if ip == Ipv4Addr::new(127, 0, 0, 1) {
+                                is_localhost = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // To declutter logs, we only log listen addresses that are localhost
+                    if !is_localhost {
+                        return;
+                    }
+                    info!(target: LOG_TARGET, address = %address, "Serving libp2p Relay.");
                 }
                 event => {
                     info!(target: LOG_TARGET, event = ?event, "Unhandled event.");
