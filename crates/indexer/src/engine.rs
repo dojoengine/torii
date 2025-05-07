@@ -928,7 +928,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             .await
             .with_context(|| {
                 format!(
-                    "One or more batch requests failed during chunked execution. You can try reducing the batch chunk size. Total requests: {}. Batch chunk size: {}",
+                    "One or more batch requests failed during chunked execution. This could be due to the provider being overloaded. You can try reducing the batch chunk size. Total requests: {}. Batch chunk size: {}",
                     requests.len(),
                     self.config.batch_chunk_size
                 )
