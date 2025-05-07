@@ -126,6 +126,12 @@ pub enum QueryType {
     Other,
 }
 
+#[derive(Debug, Clone)]
+pub enum NftTaskResult {
+    RegisterNftToken(RegisterNftTokenMetadata),
+    UpdateNftMetadata(UpdateNftMetadata),
+}
+
 #[derive(Debug)]
 pub struct Executor<'c, P: Provider + Sync + Send + 'static> {
     // Queries should use `transaction` instead of `pool`
@@ -137,11 +143,10 @@ pub struct Executor<'c, P: Provider + Sync + Send + 'static> {
     shutdown_rx: Receiver<()>,
     // These tasks are spawned to fetch ERC721 token metadata from the chain
     // to not block the main loop
-    register_tasks: JoinSet<Result<RegisterNftTokenMetadata>>,
     // Tasks for updating NFT metadata
-    metadata_update_tasks: JoinSet<Result<UpdateNftMetadata>>,
+    nft_metadata_tasks: JoinSet<Result<NftTaskResult>>,
     // Track which token IDs are currently being processed for metadata updates
-    metadata_update_tokens: HashSet<String>,
+    nft_metadata_tokens: HashSet<String>,
     // Some queries depends on the metadata being registered, so we defer them
     // until the metadata is fetched
     deferred_query_messages: Vec<QueryMessage>,
@@ -280,9 +285,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 publish_queue,
                 rx,
                 shutdown_rx,
-                register_tasks: JoinSet::new(),
-                metadata_update_tasks: JoinSet::new(),
-                metadata_update_tokens: HashSet::new(),
+                nft_metadata_tasks: JoinSet::new(),
+                nft_metadata_tokens: HashSet::new(),
                 deferred_query_messages: Vec::new(),
                 provider,
                 metadata_semaphore,
@@ -309,13 +313,9 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         }
                     }
                 }
-                Some(result) = self.register_tasks.join_next() => {
+                Some(result) = self.nft_metadata_tasks.join_next() => {
                     let result = result??;
                     self.handle_nft_token_metadata(result).await?;
-                }
-                Some(result) = self.metadata_update_tasks.join_next() => {
-                    let result = result??;
-                    self.handle_update_nft_metadata(result).await?;
                 }
             }
         }
@@ -722,7 +722,15 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     }
                 };
 
-                self.register_tasks.spawn(async move {
+                let token_id = felt_and_u256_to_sql_string(
+                    &register_nft_token.contract_address,
+                    &register_nft_token.token_id,
+                );
+                if self.nft_metadata_tokens.contains(&token_id) {
+                    return Ok(());
+                }
+
+                self.nft_metadata_tasks.spawn(async move {
                     let permit = metadata_semaphore.acquire().await.unwrap();
 
                     let metadata = Self::fetch_token_metadata(
@@ -733,12 +741,12 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     .await?;
 
                     drop(permit);
-                    Ok(RegisterNftTokenMetadata {
+                    Ok(NftTaskResult::RegisterNftToken(RegisterNftTokenMetadata {
                         query: register_nft_token,
                         name,
                         symbol,
                         metadata,
-                    })
+                    }))
                 });
             }
             QueryType::RegisterErc20Token(register_erc20_token) => {
@@ -815,11 +823,11 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     &update_metadata.contract_address,
                     &update_metadata.token_id,
                 );
-                if self.metadata_update_tokens.contains(&token_id) {
+                if self.nft_metadata_tokens.contains(&token_id) {
                     return Ok(());
                 }
 
-                self.metadata_update_tasks.spawn(async move {
+                self.nft_metadata_tasks.spawn(async move {
                     let permit = metadata_semaphore.acquire().await.unwrap();
 
                     let metadata = Self::fetch_token_metadata(
@@ -830,7 +838,10 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     .await?;
 
                     drop(permit);
-                    Ok(UpdateNftMetadata { token_id, metadata })
+                    Ok(NftTaskResult::UpdateNftMetadata(UpdateNftMetadata {
+                        token_id,
+                        metadata,
+                    }))
                 });
                 debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Updated NFT metadata.");
             }
@@ -852,14 +863,9 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
             }
         }
 
-        while let Some(result) = self.register_tasks.join_next().await {
+        while let Some(result) = self.nft_metadata_tasks.join_next().await {
             let result = result??;
             self.handle_nft_token_metadata(result).await?;
-        }
-
-        while let Some(result) = self.metadata_update_tasks.join_next().await {
-            let result = result??;
-            self.handle_update_nft_metadata(result).await?;
         }
 
         let mut deferred_query_messages = mem::take(&mut self.deferred_query_messages);
@@ -890,6 +896,18 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         self.publish_queue.clear();
         self.deferred_query_messages.clear();
         Ok(())
+    }
+
+    async fn handle_nft_token_metadata(&mut self, result: NftTaskResult) -> Result<()> {
+        match result {
+            NftTaskResult::RegisterNftToken(register_nft_token) => {
+                self.handle_register_nft_token_metadata(register_nft_token)
+                    .await
+            }
+            NftTaskResult::UpdateNftMetadata(update_nft_metadata) => {
+                self.handle_update_nft_metadata(update_nft_metadata).await
+            }
+        }
     }
 }
 
