@@ -4,10 +4,11 @@ use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use bitflags::bitflags;
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
+use futures_util::future::try_join_all;
 use hashlink::LinkedHashMap;
 use starknet::core::types::requests::{
     GetBlockWithTxHashesRequest, GetEventsRequest, GetTransactionByHashRequest,
@@ -42,6 +43,7 @@ bitflags! {
 #[derive(Debug)]
 pub struct EngineConfig {
     pub polling_interval: Duration,
+    pub batch_chunk_size: usize,
     pub blocks_chunk_size: u64,
     pub events_chunk_size: u64,
     pub max_concurrent_tasks: usize,
@@ -54,6 +56,7 @@ impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             polling_interval: Duration::from_millis(500),
+            batch_chunk_size: 1024,
             blocks_chunk_size: 10240,
             events_chunk_size: 1024,
             max_concurrent_tasks: 100,
@@ -349,7 +352,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 }
             }
 
-            let transaction_results = self.provider.batch_requests(transaction_requests).await?;
+            let transaction_results = self
+                .chunked_batch_requests(&transaction_requests)
+                .await?;
+
             for (block_number, result) in block_numbers.into_iter().zip(transaction_results) {
                 match result {
                     ProviderResponseData::GetTransactionByHash(transaction) => {
@@ -382,7 +388,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // Execute timestamp requests in batch
         if !timestamp_requests.is_empty() {
-            let timestamp_results = self.provider.batch_requests(timestamp_requests).await?;
+            let timestamp_results = self
+                .chunked_batch_requests(&timestamp_requests)
+                .await?;
+
 
             // Process timestamp results
             for (block_number, result) in block_numbers.iter().zip(timestamp_results) {
@@ -426,7 +435,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 .iter()
                 .map(|(_, req)| req.clone())
                 .collect();
-            let batch_results = self.provider.batch_requests(batch_requests).await?;
+            let batch_results = self
+                .chunked_batch_requests(&batch_requests)
+                .await?;
+
 
             // Process results and prepare next batch of requests if needed
             for ((contract_address, original_request), result) in
@@ -897,6 +909,34 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         Ok(())
+    }
+
+    async fn chunked_batch_requests(
+        &self,
+        requests: &[ProviderRequestData],
+    ) -> Result<Vec<ProviderResponseData>> {
+        if requests.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut futures = Vec::new();
+        for chunk in requests.chunks(self.config.batch_chunk_size) {
+            futures.push(async move { self.provider.batch_requests(&chunk).await });
+        }
+
+        let results_of_chunks: Vec<Vec<ProviderResponseData>> = try_join_all(futures)
+            .await
+            .with_context(|| {
+                format!(
+                    "One or more batch requests failed during chunked execution. You can try reducing the batch chunk size. Total requests: {}. Batch chunk size: {}",
+                    requests.len(),
+                    self.config.batch_chunk_size
+                )
+            })?;
+
+        let flattened_results = results_of_chunks.into_iter().flatten().collect();
+
+        Ok(flattened_results)
     }
 }
 

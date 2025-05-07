@@ -16,6 +16,7 @@ pub const DEFAULT_METRICS_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 pub const DEFAULT_METRICS_PORT: u16 = 9200;
 pub const DEFAULT_EVENTS_CHUNK_SIZE: u64 = 1024;
 pub const DEFAULT_BLOCKS_CHUNK_SIZE: u64 = 10240;
+pub const DEFAULT_BATCH_CHUNK_SIZE: usize = 1024;
 pub const DEFAULT_POLLING_INTERVAL: u64 = 500;
 pub const DEFAULT_MAX_CONCURRENT_TASKS: usize = 100;
 pub const DEFAULT_RELAY_PORT: u16 = 9090;
@@ -189,6 +190,14 @@ pub struct IndexingOptions {
         help = "Whether or not to read models from the block number they were registered in."
     )]
     pub strict_model_reader: bool,
+
+    /// The chunk size to use for batch requests.
+    #[arg(
+        long = "indexing.batch_chunk_size",
+        default_value_t = DEFAULT_BATCH_CHUNK_SIZE,
+        help = "The chunk size to use for batch requests. This is used to split the requests into smaller chunks to avoid overwhelming the provider and potentially running into issues."
+    )]
+    pub batch_chunk_size: usize,
 }
 
 impl Default for IndexingOptions {
@@ -196,6 +205,7 @@ impl Default for IndexingOptions {
         Self {
             events_chunk_size: DEFAULT_EVENTS_CHUNK_SIZE,
             blocks_chunk_size: DEFAULT_BLOCKS_CHUNK_SIZE,
+            batch_chunk_size: DEFAULT_BATCH_CHUNK_SIZE,
             pending: true,
             polling_interval: DEFAULT_POLLING_INTERVAL,
             max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,

@@ -278,6 +278,7 @@ impl Runner {
                 max_concurrent_tasks: self.args.indexing.max_concurrent_tasks,
                 blocks_chunk_size: self.args.indexing.blocks_chunk_size,
                 events_chunk_size: self.args.indexing.events_chunk_size,
+                batch_chunk_size: self.args.indexing.batch_chunk_size,
                 polling_interval: Duration::from_millis(self.args.indexing.polling_interval),
                 flags,
                 event_processor_config: EventProcessorConfig {
