@@ -866,6 +866,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
             let result = result??;
             self.handle_nft_metadata(result).await?;
         }
+        self.nft_metadata_tokens.clear();
 
         let mut deferred_query_messages = mem::take(&mut self.deferred_query_messages);
 
@@ -894,19 +895,16 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         // NOTE: clear doesn't reset the capacity
         self.publish_queue.clear();
         self.deferred_query_messages.clear();
+        self.nft_metadata_tokens.clear();
         Ok(())
     }
 
     async fn handle_nft_metadata(&mut self, result: NftTaskResult) -> Result<()> {
         match result {
             NftTaskResult::RegisterNftToken(register_nft_token) => {
-                self.nft_metadata_tokens
-                    .remove(&register_nft_token.query.id);
                 self.handle_register_nft_metadata(register_nft_token).await
             }
             NftTaskResult::UpdateNftMetadata(update_nft_metadata) => {
-                self.nft_metadata_tokens
-                    .remove(&update_nft_metadata.token_id);
                 self.handle_update_nft_metadata(update_nft_metadata).await
             }
         }
