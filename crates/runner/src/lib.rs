@@ -360,7 +360,6 @@ impl Runner {
         info!(target: LOG_TARGET, url = %explorer_url, "Serving World Explorer.");
         info!(target: LOG_TARGET, path = %artifacts_path, "Serving ERC artifacts at path");
 
-
         if self.args.runner.explorer {
             if let Err(e) = webbrowser::open(&explorer_url) {
                 error!(target: LOG_TARGET, error = %e, "Opening World Explorer in the browser.");
