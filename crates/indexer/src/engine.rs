@@ -352,9 +352,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 }
             }
 
-            let transaction_results = self
-                .chunked_batch_requests(&transaction_requests)
-                .await?;
+            let transaction_results = self.chunked_batch_requests(&transaction_requests).await?;
 
             for (block_number, result) in block_numbers.into_iter().zip(transaction_results) {
                 match result {
@@ -388,10 +386,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // Execute timestamp requests in batch
         if !timestamp_requests.is_empty() {
-            let timestamp_results = self
-                .chunked_batch_requests(&timestamp_requests)
-                .await?;
-
+            let timestamp_results = self.chunked_batch_requests(&timestamp_requests).await?;
 
             // Process timestamp results
             for (block_number, result) in block_numbers.iter().zip(timestamp_results) {
@@ -435,10 +430,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 .iter()
                 .map(|(_, req)| req.clone())
                 .collect();
-            let batch_results = self
-                .chunked_batch_requests(&batch_requests)
-                .await?;
-
+            let batch_results = self.chunked_batch_requests(&batch_requests).await?;
 
             // Process results and prepare next batch of requests if needed
             for ((contract_address, original_request), result) in
