@@ -345,6 +345,8 @@ impl Runner {
         );
 
         let gql_endpoint = format!("{addr}/graphql");
+        let mcp_endpoint = format!("{addr}/mcp");
+
         let encoded: String = form_urlencoded::byte_serialize(
             gql_endpoint.replace("0.0.0.0", "localhost").as_bytes(),
         )
@@ -354,6 +356,8 @@ impl Runner {
         info!(target: LOG_TARGET, endpoint = %gql_endpoint, "Serving Graphql playground.");
         info!(target: LOG_TARGET, url = %explorer_url, "Serving World Explorer.");
         info!(target: LOG_TARGET, path = %artifacts_path, "Serving ERC artifacts at path");
+        info!(target: LOG_TARGET, endpoint = %mcp_endpoint, "Serving MCP endpoint.");
+
 
         if self.args.runner.explorer {
             if let Err(e) = webbrowser::open(&explorer_url) {
