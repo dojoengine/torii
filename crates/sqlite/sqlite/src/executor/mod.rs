@@ -146,6 +146,7 @@ pub struct Executor<'c, P: Provider + Sync + Send + 'static> {
     // Tasks for updating NFT metadata
     nft_metadata_tasks: JoinSet<Result<NftTaskResult>>,
     // Track which token IDs are currently being processed for metadata updates
+    // Including token registration.
     nft_metadata_tokens: HashSet<String>,
     // Some queries depends on the metadata being registered, so we defer them
     // until the metadata is fetched
@@ -315,7 +316,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 }
                 Some(result) = self.nft_metadata_tasks.join_next() => {
                     let result = result??;
-                    self.handle_nft_token_metadata(result).await?;
+                    self.handle_nft_metadata(result).await?;
                 }
             }
         }
@@ -865,7 +866,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
 
         while let Some(result) = self.nft_metadata_tasks.join_next().await {
             let result = result??;
-            self.handle_nft_token_metadata(result).await?;
+            self.handle_nft_metadata(result).await?;
         }
 
         let mut deferred_query_messages = mem::take(&mut self.deferred_query_messages);
@@ -898,11 +899,10 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         Ok(())
     }
 
-    async fn handle_nft_token_metadata(&mut self, result: NftTaskResult) -> Result<()> {
+    async fn handle_nft_metadata(&mut self, result: NftTaskResult) -> Result<()> {
         match result {
             NftTaskResult::RegisterNftToken(register_nft_token) => {
-                self.handle_register_nft_token_metadata(register_nft_token)
-                    .await
+                self.handle_register_nft_metadata(register_nft_token).await
             }
             NftTaskResult::UpdateNftMetadata(update_nft_metadata) => {
                 self.handle_update_nft_metadata(update_nft_metadata).await
