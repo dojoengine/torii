@@ -103,7 +103,11 @@ impl Runner {
         })
         .expect("Error setting Ctrl-C handler");
 
-        let provider: Arc<_> = JsonRpcClient::new(HttpTransport::new(self.args.rpc.clone())).into();
+        let transport = HttpTransport::new(self.args.rpc.clone()).with_header(
+            "User-Agent".to_string(),
+            format!("Torii/{}", self.version_spec),
+        );
+        let provider: Arc<_> = JsonRpcClient::new(transport).into();
 
         // Verify contracts are deployed
         if self.args.runner.check_contracts {
