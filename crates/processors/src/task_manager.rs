@@ -21,7 +21,7 @@ const LOG_TARGET: &str = "torii::indexer::task_manager";
 pub type TaskId = u64;
 pub type TaskPriority = usize;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParallelizedEvent {
     pub contract_type: ContractType,
     pub block_number: u64,
