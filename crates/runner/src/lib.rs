@@ -103,12 +103,8 @@ impl Runner {
         })
         .expect("Error setting Ctrl-C handler");
 
-        // Create a user agent string with version information
-        let user_agent = format!("Torii/{}", self.version_spec);
-
         let transport = HttpTransport::new(self.args.rpc.clone())
-            .with_header("User-Agent".to_string(), user_agent.clone());
-
+            .with_header("User-Agent".to_string(), format!("Torii/{}", self.version_spec));
         let provider: Arc<_> = JsonRpcClient::new(transport).into();
 
         // Verify contracts are deployed
