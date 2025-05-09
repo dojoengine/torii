@@ -1,14 +1,17 @@
 use std::collections::HashSet;
+use std::str::FromStr;
 
 use dojo_types::schema::Ty;
+use futures_util::future::try_join_all;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use starknet_crypto::Felt;
 use torii_proto::schema::Entity;
 
 use crate::cursor::{build_cursor_conditions, build_cursor_values, decode_cursor, encode_cursor};
 use crate::utils::{build_query, combine_where_clauses, map_row_to_entity};
 use crate::{error::Error, Sql};
 use crate::constants::{SQL_DEFAULT_LIMIT, SQL_MAX_JOINS};
-use crate::error::QueryError;
+use crate::error::{ParseError, QueryError};
 use torii_proto::{OrderDirection, Page, Pagination, PaginationDirection};
 
 impl Sql {
@@ -202,6 +205,128 @@ impl Sql {
             .par_iter()
             .map(|row| map_row_to_entity(row, schemas))
             .collect::<Result<Vec<_>, _>>()?;
+        Ok(Page {
+            items: entities,
+            next_cursor,
+        })
+    }
+    
+    async fn fetch_historical_entities(
+        &self,
+        table: &str,
+        model_relation_table: &str,
+        where_clause: &str,
+        having_clause: &str,
+        mut bind_values: Vec<String>,
+        pagination: Pagination,
+    ) -> Result<Page<Entity>, Error> {
+        if !pagination.order_by.is_empty() {
+            return Err(QueryError::UnsupportedQuery(
+                "Order by is not supported for historical entities".to_string(),
+            )
+            .into());
+        }
+
+        let mut conditions = Vec::new();
+        if !where_clause.is_empty() {
+            conditions.push(where_clause.to_string());
+        }
+
+        let order_direction = match pagination.direction {
+            PaginationDirection::Forward => "ASC",
+            PaginationDirection::Backward => "DESC",
+        };
+
+        // Add cursor condition if present
+        if let Some(ref cursor) = pagination.cursor {
+            let decoded_cursor = decode_cursor(cursor)?;
+
+            let operator = match pagination.direction {
+                PaginationDirection::Forward => ">=",
+                PaginationDirection::Backward => "<=",
+            };
+            conditions.push(format!("{table}.event_id {operator} ?"));
+            bind_values.push(decoded_cursor);
+        }
+
+        let where_clause = if !conditions.is_empty() {
+            format!("WHERE {}", conditions.join(" AND "))
+        } else {
+            String::new()
+        };
+
+        let limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
+        let query_limit = limit + 1;
+
+        let query_str = format!(
+            "SELECT {table}.id, {table}.data, {table}.model_id, {table}.event_id, \
+             group_concat({model_relation_table}.model_id) as model_ids
+            FROM {table}
+            JOIN {model_relation_table} ON {table}.id = {model_relation_table}.entity_id
+            {where_clause}
+            GROUP BY {table}.event_id
+            {}
+            ORDER BY {table}.event_id {order_direction}
+            LIMIT ?
+            ",
+            if !having_clause.is_empty() {
+                format!("HAVING {}", having_clause)
+            } else {
+                String::new()
+            }
+        );
+
+        let mut query = sqlx::query_as(&query_str);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+        query = query.bind(query_limit);
+
+        let db_entities: Vec<(String, String, String, String, String)> =
+            query.fetch_all(&self.pool).await?;
+
+        let has_more = db_entities.len() == query_limit as usize;
+        let results_to_take = if has_more {
+            limit as usize
+        } else {
+            db_entities.len()
+        };
+
+        let entities = db_entities
+            .iter()
+            .take(results_to_take)
+            .map(|(id, data, model_id, _, _)| async {
+                let hashed_keys = Felt::from_str(id)
+                    .map_err(ParseError::FromStr)?;
+                let model = self
+                    .model_cache
+                    .model(&Felt::from_str(model_id).map_err(ParseError::FromStr)?)
+                    .await?;
+                let mut schema = model.schema;
+                schema.from_json_value(
+                    serde_json::from_str(data).map_err(ParseError::FromJsonStr)?,
+                )?;
+
+                Ok::<_, Error>(Entity {
+                    hashed_keys,
+                    models: vec![schema.as_struct().unwrap().clone().into()],
+                })
+            })
+            // Collect the futures into a Vec
+            .collect::<Vec<_>>();
+
+        // Execute all the async mapping operations concurrently
+        let entities: Vec<Entity> = try_join_all(entities).await?;
+
+        let next_cursor = if has_more {
+            db_entities
+                .last()
+                .map(|(_, _, _, event_id, _)| encode_cursor(event_id))
+                .transpose()?
+        } else {
+            None
+        };
+
         Ok(Page {
             items: entities,
             next_cursor,
