@@ -198,33 +198,6 @@ impl TryFrom<proto::types::TokenBalance> for TokenBalance {
     }
 }
 
-#[cfg(feature = "server")]
-impl From<torii_sqlite_types::TokenBalance> for proto::types::TokenBalance {
-    fn from(value: torii_sqlite_types::TokenBalance) -> Self {
-        let id = value.token_id.split(':').collect::<Vec<&str>>();
-
-        Self {
-            balance: U256::from_be_hex(value.balance.trim_start_matches("0x"))
-                .to_be_bytes()
-                .to_vec(),
-            account_address: Felt::from_str(&value.account_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            token_id: if id.len() == 2 {
-                U256::from_be_hex(id[1].trim_start_matches("0x"))
-                    .to_be_bytes()
-                    .to_vec()
-            } else {
-                U256::ZERO.to_be_bytes().to_vec()
-            },
-        }
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct IndexerUpdate {

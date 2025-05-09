@@ -11572,6 +11572,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "torii-indexer",
+ "torii-proto",
  "torii-sqlite-types",
  "tracing",
 ]

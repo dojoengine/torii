@@ -34,6 +34,7 @@ pub mod model;
 pub mod simple_broker;
 pub mod utils;
 pub mod entities;
+pub mod tokens;
 mod cursor;
 
 use cache::{LocalCache, Model, ModelCache};

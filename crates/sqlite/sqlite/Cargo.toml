@@ -34,7 +34,10 @@ sqlx.workspace = true
 starknet-crypto.workspace = true
 starknet.workspace = true
 thiserror.workspace = true
-tokio = { version = "1.32.0", features = [ "macros", "sync" ], default-features = true }
+tokio = { version = "1.32.0", features = [
+    "macros",
+    "sync",
+], default-features = true }
 # tokio-stream = "0.1.11"
 ipfs-api-backend-hyper.workspace = true
 tokio-util.workspace = true

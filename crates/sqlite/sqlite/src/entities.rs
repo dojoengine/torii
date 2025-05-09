@@ -12,7 +12,7 @@ use crate::types::{OrderDirection, Page, Pagination, PaginationDirection};
 
 impl Sql {
     #[allow(clippy::too_many_arguments)]
-    pub async fn fetch_entities(
+    pub async fn entities(
         &self,
         schemas: &[Ty],
         table_name: &str,
