@@ -142,54 +142,22 @@ impl DojoWorld {
 
 impl DojoWorld {
     pub async fn world(&self) -> Result<proto::types::WorldMetadata, Error> {
-        let world_address = sqlx::query_scalar(&format!(
-            "SELECT contract_address FROM contracts WHERE id = '{:#x}'",
-            self.world_address
-        ))
-        .fetch_one(&self.pool)
-        .await?;
-
-        #[derive(FromRow)]
-        struct ModelDb {
-            id: String,
-            namespace: String,
-            name: String,
-            class_hash: String,
-            contract_address: String,
-            packed_size: u32,
-            unpacked_size: u32,
-            layout: String,
-        }
-
-        let models: Vec<ModelDb> = sqlx::query_as(
-            "SELECT id, namespace, name, class_hash, contract_address, packed_size, \
-             unpacked_size, layout FROM models",
-        )
-        .fetch_all(&self.pool)
-        .await?;
-
-        let mut models_metadata = Vec::with_capacity(models.len());
-        for model in models {
-            let schema = self
-                .model_cache
-                .model(&Felt::from_str(&model.id).map_err(ParseError::FromStr)?)
-                .await?
-                .schema;
-            models_metadata.push(proto::types::ModelMetadata {
-                namespace: model.namespace,
-                name: model.name,
-                class_hash: model.class_hash,
-                contract_address: model.contract_address,
-                packed_size: model.packed_size,
-                unpacked_size: model.unpacked_size,
-                layout: model.layout.as_bytes().to_vec(),
-                schema: serde_json::to_vec(&schema).unwrap(),
-            });
-        }
+        let models = self.model_cache.models(&[]).await?.iter().map(|m| {
+            proto::types::ModelMetadata {
+                namespace: m.namespace.clone(),
+                name: m.name.clone(),
+                class_hash: format!("{:#x}", m.class_hash),
+                contract_address: format!("{:#x}", m.contract_address),
+                packed_size: m.packed_size,
+                unpacked_size: m.unpacked_size,
+                layout: serde_json::to_vec(&m.layout).unwrap(),
+                schema: serde_json::to_vec(&m.schema).unwrap(),
+            }
+        }).collect::<Vec<_>>();
 
         Ok(proto::types::WorldMetadata {
-            world_address,
-            models: models_metadata,
+            world_address: format!("{:#x}", self.world_address),
+            models,
         })
     }
 
