@@ -24,8 +24,6 @@ use core::fmt;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-#[cfg(feature = "server")]
-use crypto_bigint::Encoding;
 use crypto_bigint::U256;
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::Ty;
@@ -85,34 +83,6 @@ impl From<proto::types::Pagination> for Pagination {
     }
 }
 
-#[cfg(feature = "server")]
-impl From<proto::types::Pagination> for torii_sqlite_types::Pagination {
-    fn from(value: proto::types::Pagination) -> Self {
-        torii_sqlite_types::Pagination {
-            cursor: if value.cursor.is_empty() {
-                None
-            } else {
-                Some(value.cursor)
-            },
-            limit: if value.limit == 0 {
-                None
-            } else {
-                Some(value.limit)
-            },
-            direction: match value.direction {
-                0 => torii_sqlite_types::PaginationDirection::Forward,
-                1 => torii_sqlite_types::PaginationDirection::Backward,
-                _ => unreachable!(),
-            },
-            order_by: value
-                .order_by
-                .into_iter()
-                .map(|order_by| order_by.into())
-                .collect(),
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Controller {
     pub address: Felt,
@@ -152,29 +122,6 @@ impl TryFrom<proto::types::Token> for Token {
             decimals: value.decimals as u8,
             metadata: String::from_utf8(value.metadata).map_err(ProtoError::FromUtf8)?,
         })
-    }
-}
-
-#[cfg(feature = "server")]
-impl From<torii_sqlite_types::Token> for proto::types::Token {
-    fn from(value: torii_sqlite_types::Token) -> Self {
-        Self {
-            token_id: if value.token_id.is_empty() {
-                U256::ZERO.to_be_bytes().to_vec()
-            } else {
-                U256::from_be_hex(value.token_id.trim_start_matches("0x"))
-                    .to_be_bytes()
-                    .to_vec()
-            },
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            name: value.name,
-            symbol: value.symbol,
-            decimals: value.decimals as u32,
-            metadata: value.metadata.as_bytes().to_vec(),
-        }
     }
 }
 
@@ -243,21 +190,6 @@ impl From<proto::types::OrderBy> for OrderBy {
             direction: match value.direction {
                 0 => OrderDirection::Asc,
                 1 => OrderDirection::Desc,
-                _ => unreachable!(),
-            },
-        }
-    }
-}
-
-#[cfg(feature = "server")]
-impl From<proto::types::OrderBy> for torii_sqlite_types::OrderBy {
-    fn from(value: proto::types::OrderBy) -> Self {
-        torii_sqlite_types::OrderBy {
-            model: value.model,
-            member: value.member,
-            direction: match value.direction {
-                0 => torii_sqlite_types::OrderDirection::Asc,
-                1 => torii_sqlite_types::OrderDirection::Desc,
                 _ => unreachable!(),
             },
         }

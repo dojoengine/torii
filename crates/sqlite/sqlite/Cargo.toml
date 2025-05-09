@@ -43,6 +43,7 @@ ipfs-api-backend-hyper.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 flate2.workspace = true
+torii-proto.workspace = true
 
 [dev-dependencies]
 dojo-test-utils.workspace = true

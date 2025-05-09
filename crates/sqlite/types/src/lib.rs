@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
+use crypto_bigint::U256;
 use dojo_types::schema::Ty;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -289,61 +290,38 @@ pub enum HookEvent {
     ModelDeleted { model_tag: String },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Page<T> {
-    pub items: Vec<T>,
-    pub next_cursor: Option<String>,
+impl From<Token> for torii_proto::Token {
+    fn from(value: Token) -> Self {
+        Self {
+            token_id: if value.token_id.is_empty() {
+                U256::ZERO
+            } else {
+                U256::from_be_hex(value.token_id.trim_start_matches("0x"))
+            },
+            contract_address: Felt::from_str(&value.contract_address)
+                .unwrap(),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u8,
+            metadata: value.metadata,
+        }
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum PaginationDirection {
-    Forward,
-    Backward,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Pagination {
-    pub cursor: Option<String>,
-    pub limit: Option<u32>,
-    pub direction: PaginationDirection,
-    pub order_by: Vec<OrderBy>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum OrderDirection {
-    Asc,
-    Desc,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct OrderBy {
-    pub model: String,
-    pub member: String,
-    pub direction: OrderDirection,
-}
-
-impl From<torii_sqlite_types::TokenBalance> for torii_proto::TokenBalance {
-    fn from(value: torii_sqlite_types::TokenBalance) -> Self {
+impl From<TokenBalance> for torii_proto::TokenBalance {
+    fn from(value: TokenBalance) -> Self {
         let id = value.token_id.split(':').collect::<Vec<&str>>();
 
         Self {
-            balance: U256::from_be_hex(value.balance.trim_start_matches("0x"))
-                .to_be_bytes()
-                .to_vec(),
+            balance: U256::from_be_hex(value.balance.trim_start_matches("0x")),
             account_address: Felt::from_str(&value.account_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
+                .unwrap(),
             contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
+                .unwrap(),
             token_id: if id.len() == 2 {
                 U256::from_be_hex(id[1].trim_start_matches("0x"))
-                    .to_be_bytes()
-                    .to_vec()
             } else {
-                U256::ZERO.to_be_bytes().to_vec()
+                U256::ZERO
             },
         }
     }
