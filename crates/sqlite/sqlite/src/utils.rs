@@ -22,6 +22,42 @@ use crate::constants::{
     SQL_FELT_DELIMITER,
 };
 
+pub(crate) fn combine_where_clauses(base: Option<&str>, cursor_conditions: &[String]) -> String {
+    let mut parts = Vec::new();
+    if let Some(base_where) = base {
+        parts.push(base_where.to_string());
+    }
+    parts.extend(cursor_conditions.iter().cloned());
+    parts.join(" AND ")
+}
+
+pub(crate) fn build_query(
+    selections: &[String],
+    table_name: &str,
+    joins: &[String],
+    where_clause: &str,
+    having_clause: Option<&str>,
+    order_clause: &str,
+) -> String {
+    let mut query = format!(
+        "SELECT {} FROM [{}] {}",
+        selections.join(", "),
+        table_name,
+        joins.join(" ")
+    );
+    if !where_clause.is_empty() {
+        query.push_str(&format!(" WHERE {}", where_clause));
+    }
+
+    query.push_str(&format!(" GROUP BY {}.id", table_name));
+
+    if let Some(having) = having_clause {
+        query.push_str(&format!(" HAVING {}", having));
+    }
+    query.push_str(&format!(" ORDER BY {} LIMIT ?", order_clause));
+    query
+}
+
 pub fn must_utc_datetime_from_timestamp(timestamp: u64) -> DateTime<Utc> {
     let naive_dt = DateTime::from_timestamp(timestamp as i64, 0)
         .expect("Failed to convert timestamp to NaiveDateTime");

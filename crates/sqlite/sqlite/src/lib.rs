@@ -33,6 +33,8 @@ pub mod executor;
 pub mod model;
 pub mod simple_broker;
 pub mod utils;
+pub mod entities;
+mod cursor;
 
 use cache::{LocalCache, Model, ModelCache};
 pub use torii_sqlite_types as types;
