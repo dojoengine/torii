@@ -4,19 +4,24 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
+use chrono::{DateTime, Utc};
+use constants::SQL_DEFAULT_LIMIT;
+use cursor::{decode_cursor, encode_cursor};
 use dojo_types::naming::get_tag;
 use dojo_types::primitive::SqlType;
 use dojo_types::schema::{Struct, Ty};
 use dojo_world::config::WorldMetadata;
 use dojo_world::contracts::abigen::model::Layout;
 use dojo_world::contracts::naming::compute_selector_from_names;
+use error::{Error, ParseError};
 use executor::{EntityQuery, StoreTransactionQuery};
 use sqlx::{Pool, Sqlite};
 use starknet::core::types::{Event, Felt};
 use starknet_crypto::poseidon_hash_many;
 use tokio::sync::mpsc::UnboundedSender;
+use torii_proto::{Controller, Page};
 use torii_sqlite_types::{HookEvent, ParsedCall};
-use utils::felts_to_sql_string;
+use utils::{build_keys_pattern, felts_to_sql_string, map_row_to_event};
 
 use crate::constants::SQL_FELT_DELIMITER;
 use crate::executor::{
@@ -1096,5 +1101,114 @@ impl Sql {
         ))?;
 
         Ok(())
+    }
+
+    pub async fn events(
+        &self,
+        query: &torii_proto::EventQuery,
+    ) -> Result<Page<torii_proto::Event>, Error> {
+        let limit = if query.limit > 0 {
+            query.limit + 1
+        } else {
+            SQL_DEFAULT_LIMIT as u32 + 1
+        };
+
+        let mut bind_values = Vec::new();
+        let mut conditions = Vec::new();
+
+        let keys_pattern = if let Some(keys_clause) = &query.keys {
+            build_keys_pattern(keys_clause)?
+        } else {
+            String::new()
+        };
+
+        if !keys_pattern.is_empty() {
+            conditions.push("keys REGEXP ?");
+            bind_values.push(keys_pattern);
+        }
+
+        if let Some(cursor) = &query.cursor {
+            conditions.push("id >= ?");
+            bind_values.push(decode_cursor(&cursor)?);
+        }
+
+        let mut events_query = r#"
+            SELECT id, keys, data, transaction_hash
+            FROM events
+        "#
+        .to_string();
+
+        if !conditions.is_empty() {
+            events_query = format!("{} WHERE {}", events_query, conditions.join(" AND "));
+        }
+
+        events_query = format!("{} ORDER BY id LIMIT ?", events_query);
+        bind_values.push(limit.to_string());
+
+        let mut row_events = sqlx::query_as(&events_query);
+        for value in &bind_values {
+            row_events = row_events.bind(value);
+        }
+        let mut row_events: Vec<(String, String, String, String)> =
+            row_events.fetch_all(&self.pool).await?;
+
+        let next_cursor = if row_events.len() > (limit - 1) as usize {
+            Some(encode_cursor(&row_events.pop().unwrap().0)?)
+        } else {
+            None
+        };
+
+        let events = row_events
+            .iter()
+            .map(|(_, keys, data, transaction_hash)| {
+                map_row_to_event(&(keys, data, transaction_hash))
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        Ok(Page {
+            items: events,
+            next_cursor,
+        })
+    }
+
+    pub async fn controllers(
+        &self,
+        contract_addresses: Vec<Felt>,
+    ) -> Result<Page<Controller>, Error> {
+        let query = if contract_addresses.is_empty() {
+            "SELECT address, username, deployed_at FROM controllers".to_string()
+        } else {
+            format!(
+                "SELECT address, username, deployed_at FROM controllers WHERE address IN ({})",
+                contract_addresses
+                    .iter()
+                    .map(|_| "?".to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+
+        let mut db_query = sqlx::query_as::<_, (String, String, DateTime<Utc>)>(&query);
+        for address in &contract_addresses {
+            db_query = db_query.bind(format!("{:#x}", address));
+        }
+
+        let rows = db_query.fetch_all(&self.pool).await?;
+
+        let controllers = rows
+            .into_iter()
+            .map(
+                |(address, username, deployed_at)| Controller {
+                    address: Felt::from_str(&address).unwrap(),
+                    username,
+                    deployed_at: deployed_at.timestamp() as u64,
+                },
+            )
+            .collect();
+
+        Ok(Page {
+            items: controllers,
+            next_cursor: None,
+        })
     }
 }

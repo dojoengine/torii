@@ -27,6 +27,56 @@ use crate::constants::{
 use crate::error::{Error, ParseError};
 use crate::model::map_row_to_ty;
 
+fn process_event_field(data: &str) -> Result<Vec<Felt>, Error> {
+    Ok(data
+        .trim_end_matches('/')
+        .split('/')
+        .filter(|&d| !d.is_empty())
+        .map(|d| Felt::from_str(d).map_err(ParseError::FromStr))
+        .collect::<Result<Vec<Felt>, _>>()?)
+}
+
+pub(crate) fn map_row_to_event(row: &(&str, &str, &str)) -> Result<torii_proto::Event, Error> {
+    let keys = process_event_field(row.0)?;
+    let data = process_event_field(row.1)?;
+    let transaction_hash = Felt::from_str(row.2).map_err(ParseError::FromStr)?;
+
+    Ok(torii_proto::Event {
+        keys,
+        data,
+        transaction_hash,
+    })
+}
+
+// this builds a sql safe regex pattern to match against for keys
+pub(crate) fn build_keys_pattern(clause: &torii_proto::KeysClause) -> Result<String, Error> {
+    const KEY_PATTERN: &str = "0x[0-9a-fA-F]+";
+
+    let keys = if clause.keys.is_empty() {
+        vec![KEY_PATTERN.to_string()]
+    } else {
+        clause
+            .keys
+            .iter()
+            .map(|key| {
+                if let Some(key) = key {
+                    Ok(format!("{:#x}", key))
+                } else {
+                    Ok(KEY_PATTERN.to_string())
+                }
+            })
+            .collect::<Result<Vec<_>, Error>>()?
+    };
+    let mut keys_pattern = format!("^{}", keys.join("/"));
+
+    if clause.pattern_matching == torii_proto::PatternMatching::VariableLen {
+        keys_pattern += &format!("(/{})*", KEY_PATTERN);
+    }
+    keys_pattern += "/$";
+
+    Ok(keys_pattern)
+}
+
 pub(crate) fn map_row_to_entity(
     row: &SqliteRow,
     schemas: &[Ty],

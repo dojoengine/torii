@@ -1062,62 +1062,6 @@ impl DojoWorld {
     }
 }
 
-fn process_event_field(data: &str) -> Result<Vec<Vec<u8>>, Error> {
-    Ok(data
-        .trim_end_matches('/')
-        .split('/')
-        .filter(|&d| !d.is_empty())
-        .map(|d| {
-            Felt::from_str(d)
-                .map_err(ParseError::FromStr)
-                .map(|f| f.to_bytes_be().to_vec())
-        })
-        .collect::<Result<Vec<_>, _>>()?)
-}
-
-fn map_row_to_event(row: &(&str, &str, &str)) -> Result<proto::types::Event, Error> {
-    let keys = process_event_field(row.0)?;
-    let data = process_event_field(row.1)?;
-    let transaction_hash = Felt::from_str(row.2)
-        .map_err(ParseError::FromStr)?
-        .to_bytes_be()
-        .to_vec();
-
-    Ok(proto::types::Event {
-        keys,
-        data,
-        transaction_hash,
-    })
-}
-
-// this builds a sql safe regex pattern to match against for keys
-fn build_keys_pattern(clause: &proto::types::KeysClause) -> Result<String, Error> {
-    const KEY_PATTERN: &str = "0x[0-9a-fA-F]+";
-
-    let keys = if clause.keys.is_empty() {
-        vec![KEY_PATTERN.to_string()]
-    } else {
-        clause
-            .keys
-            .iter()
-            .map(|bytes| {
-                if bytes.is_empty() {
-                    return Ok(KEY_PATTERN.to_string());
-                }
-                Ok(format!("{:#x}", Felt::from_bytes_be_slice(bytes)))
-            })
-            .collect::<Result<Vec<_>, Error>>()?
-    };
-    let mut keys_pattern = format!("^{}", keys.join("/"));
-
-    if clause.pattern_matching == proto::types::PatternMatching::VariableLen as i32 {
-        keys_pattern += &format!("(/{})*", KEY_PATTERN);
-    }
-    keys_pattern += "/$";
-
-    Ok(keys_pattern)
-}
-
 // builds a composite clause for a query
 fn build_composite_clause(
     table: &str,

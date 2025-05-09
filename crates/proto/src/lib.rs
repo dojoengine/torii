@@ -641,7 +641,7 @@ impl From<proto::types::Event> for Event {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct EventQuery {
-    pub keys: KeysClause,
+    pub keys: Option<KeysClause>,
     pub limit: u32,
     pub cursor: Option<String>,
 }
@@ -649,7 +649,7 @@ pub struct EventQuery {
 impl From<EventQuery> for proto::types::EventQuery {
     fn from(value: EventQuery) -> Self {
         Self {
-            keys: Some(value.keys.into()),
+            keys: value.keys.map(|k| k.into()),
             limit: value.limit,
             cursor: value.cursor.unwrap_or_default(),
         }
