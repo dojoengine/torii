@@ -1090,38 +1090,6 @@ fn map_row_to_event(row: &(&str, &str, &str)) -> Result<proto::types::Event, Err
     })
 }
 
-fn map_row_to_entity(
-    row: &SqliteRow,
-    schemas: &[Ty],
-    dont_include_hashed_keys: bool,
-) -> Result<proto::types::Entity, Error> {
-    let hashed_keys = Felt::from_str(&row.get::<String, _>("id")).map_err(ParseError::FromStr)?;
-    let model_ids = row
-        .get::<String, _>("model_ids")
-        .split(',')
-        .map(|id| Felt::from_str(id).map_err(ParseError::FromStr))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let models = schemas
-        .iter()
-        .filter(|schema| model_ids.contains(&compute_selector_from_tag(&schema.name())))
-        .map(|schema| {
-            let mut ty = schema.clone();
-            map_row_to_ty("", &schema.name(), &mut ty, row)?;
-            Ok(ty.as_struct().unwrap().clone().into())
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
-
-    Ok(proto::types::Entity {
-        hashed_keys: if !dont_include_hashed_keys {
-            hashed_keys.to_bytes_be().to_vec()
-        } else {
-            vec![]
-        },
-        models,
-    })
-}
-
 // this builds a sql safe regex pattern to match against for keys
 fn build_keys_pattern(clause: &proto::types::KeysClause) -> Result<String, Error> {
     const KEY_PATTERN: &str = "0x[0-9a-fA-F]+";

@@ -7,10 +7,13 @@ use anyhow::Result;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{DateTime, Utc};
+use dojo_types::naming::compute_selector_from_tag;
+use dojo_types::schema::Ty;
 use futures_util::TryStreamExt;
 use ipfs_api_backend_hyper::{IpfsApi, IpfsClient, TryFromUri};
 use once_cell::sync::Lazy;
 use reqwest::Client;
+use sqlx::sqlite::SqliteRow;
 use sqlx::{Column, Row, TypeInfo};
 use starknet::core::types::U256;
 use starknet_crypto::Felt;
@@ -21,6 +24,35 @@ use crate::constants::{
     IPFS_CLIENT_PASSWORD, IPFS_CLIENT_URL, IPFS_CLIENT_USERNAME, REQ_MAX_RETRIES,
     SQL_FELT_DELIMITER,
 };
+use crate::error::{Error, ParseError};
+use crate::model::map_row_to_ty;
+
+pub(crate) fn map_row_to_entity(
+    row: &SqliteRow,
+    schemas: &[Ty],
+) -> Result<torii_proto::schema::Entity, Error> {
+    let hashed_keys = Felt::from_str(&row.get::<String, _>("id")).map_err(ParseError::FromStr)?;
+    let model_ids = row
+        .get::<String, _>("model_ids")
+        .split(',')
+        .map(|id| Felt::from_str(id).map_err(ParseError::FromStr))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let models = schemas
+        .iter()
+        .filter(|schema| model_ids.contains(&compute_selector_from_tag(&schema.name())))
+        .map(|schema| {
+            let mut ty = schema.clone();
+            map_row_to_ty("", &schema.name(), &mut ty, row)?;
+            Ok(ty.as_struct().unwrap().clone().into())
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    Ok(torii_proto::schema::Entity {
+        hashed_keys,
+        models,
+    })
+}
 
 pub(crate) fn combine_where_clauses(base: Option<&str>, cursor_conditions: &[String]) -> String {
     let mut parts = Vec::new();

@@ -4,7 +4,7 @@ use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use sqlx::sqlite::SqliteRow;
-use torii_sqlite_types::{OrderDirection, Pagination, PaginationDirection};
+use torii_proto::{OrderDirection, Pagination, PaginationDirection};
 use std::io::prelude::*;
 use sqlx::Row;
 

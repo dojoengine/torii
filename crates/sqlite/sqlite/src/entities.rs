@@ -1,14 +1,15 @@
 use std::collections::HashSet;
 
 use dojo_types::schema::Ty;
-use sqlx::sqlite::SqliteRow;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use torii_proto::schema::Entity;
 
 use crate::cursor::{build_cursor_conditions, build_cursor_values, decode_cursor, encode_cursor};
-use crate::utils::{build_query, combine_where_clauses};
+use crate::utils::{build_query, combine_where_clauses, map_row_to_entity};
 use crate::{error::Error, Sql};
 use crate::constants::{SQL_DEFAULT_LIMIT, SQL_MAX_JOINS};
 use crate::error::QueryError;
-use crate::types::{OrderDirection, Page, Pagination, PaginationDirection};
+use torii_proto::{OrderDirection, Page, Pagination, PaginationDirection};
 
 impl Sql {
     #[allow(clippy::too_many_arguments)]
@@ -22,7 +23,7 @@ impl Sql {
         having_clause: Option<&str>,
         pagination: Pagination,
         bind_values: Vec<String>,
-    ) -> Result<Page<SqliteRow>, Error> {
+    ) -> Result<Page<Entity>, Error> {
         // Helper function to collect columns
         fn collect_columns(table_prefix: &str, path: &str, ty: &Ty, selections: &mut Vec<String>) {
             match ty {
@@ -197,8 +198,12 @@ impl Sql {
             }
         }
 
+        let entities: Vec<Entity> = all_rows
+            .par_iter()
+            .map(|row| map_row_to_entity(row, schemas))
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Page {
-            items: all_rows,
+            items: entities,
             next_cursor,
         })
     }
