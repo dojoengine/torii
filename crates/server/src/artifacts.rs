@@ -4,10 +4,12 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
+use base64::{engine::general_purpose, Engine as _};
 use camino::Utf8PathBuf;
 use data_url::mime::Mime;
 use data_url::DataUrl;
 use image::{DynamicImage, ImageFormat};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::fs;
@@ -20,8 +22,6 @@ use tracing::{debug, error, trace};
 use warp::http::Response;
 use warp::path::Tail;
 use warp::{reject, Filter};
-use base64::{engine::general_purpose, Engine as _};
-use regex::Regex;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImageQuery {
