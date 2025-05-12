@@ -838,6 +838,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     .await
                 {
                     error!(target: LOG_TARGET, error = %e, "Processing catch all event processor.");
+                    return Err(e);
                 }
             } else {
                 let unprocessed_event = UnprocessedEvent {
@@ -894,6 +895,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     .await
                 {
                     error!(target: LOG_TARGET, event_name = processor.event_key(), error = ?e, "Processing event.");
+                    return Err(e);
                 }
             } else {
                 warn!(target: LOG_TARGET, event_name = processor.event_key(), "Event not validated.");
