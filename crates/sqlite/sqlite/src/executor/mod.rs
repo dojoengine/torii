@@ -820,14 +820,12 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     &update_metadata.contract_address,
                     &update_metadata.token_id,
                 );
-                
+
                 // check if the token is already in DB
-                let token = sqlx::query_as::<_, Token>(
-                    "SELECT * FROM tokens WHERE id = ?"
-                )
-                .bind(token_id.clone())
-                .fetch_optional(&mut **tx)
-                .await?;
+                let token = sqlx::query_as::<_, Token>("SELECT * FROM tokens WHERE id = ?")
+                    .bind(token_id.clone())
+                    .fetch_optional(&mut **tx)
+                    .await?;
 
                 // our token doesnt exist yet, so we dont need to update the metadata
                 if token.is_none() {
