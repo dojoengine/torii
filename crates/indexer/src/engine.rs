@@ -289,7 +289,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for (contract_address, _) in self.contracts.iter() {
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
-                to_block: None,
+                to_block: Some(BlockId::Tag(BlockTag::Latest)),
                 address: Some(*contract_address),
                 keys: None,
             };
