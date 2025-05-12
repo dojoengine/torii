@@ -651,10 +651,11 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     &register_nft_token.contract_address,
                     &register_nft_token.token_id,
                 );
+
                 if self.nft_metadata_tokens.contains(&token_id) {
                     return Ok(());
                 }
-                self.nft_metadata_tokens.insert(token_id);
+                self.nft_metadata_tokens.insert(token_id.clone());
 
                 let metadata_semaphore = self.metadata_semaphore.clone();
                 let provider = self.provider.clone();
@@ -819,6 +820,20 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     &update_metadata.contract_address,
                     &update_metadata.token_id,
                 );
+                
+                // check if the token is already in DB
+                let token = sqlx::query_as::<_, Token>(
+                    "SELECT * FROM tokens WHERE id = ?"
+                )
+                .bind(token_id.clone())
+                .fetch_optional(&mut **tx)
+                .await?;
+
+                // our token doesnt exist yet, so we dont need to update the metadata
+                if token.is_none() {
+                    return Ok(());
+                }
+
                 if self.nft_metadata_tokens.contains(&token_id) {
                     return Ok(());
                 }
