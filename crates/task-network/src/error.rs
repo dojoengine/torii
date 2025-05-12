@@ -15,4 +15,7 @@ pub enum TaskNetworkError {
     /// Error from the join all
     #[error("Join error: {0}")]
     JoinError(JoinError),
+    /// Error from the task
+    #[error("Task error: {0}")]
+    TaskError(anyhow::Error),
 }

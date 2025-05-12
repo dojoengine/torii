@@ -117,7 +117,10 @@ where
             }
             
             // Wait for all tasks in this level to complete before proceeding to the next level
-            try_join_all(handles).await.map_err(|e| TaskNetworkError::JoinError(e))?;
+            let results = try_join_all(handles).await.map_err(|e| TaskNetworkError::JoinError(e))?;
+            for result in results {
+                result.map_err(|e| TaskNetworkError::TaskError(e))?;
+            }
         }
         
         // Clear tasks after processing
