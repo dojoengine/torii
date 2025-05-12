@@ -135,6 +135,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                     priority = %priority,
                                     "Processing parallelized event."
                                 );
+                                return Err(e);
                             }
                         }
                     }
