@@ -145,7 +145,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             }
 
             // Wait for all tasks in this priority level to complete before moving to next priority
-            try_join_all(handles).await?;
+            for handle in try_join_all(handles).await? {
+                // Propagate errors
+                handle?;
+            }
         }
 
         Ok(())
