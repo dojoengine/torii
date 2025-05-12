@@ -7,7 +7,9 @@ use anyhow::{Context, Result};
 use camino::Utf8PathBuf;
 use data_url::mime::Mime;
 use data_url::DataUrl;
+use hyper::body::Bytes;
 use image::{DynamicImage, ImageFormat};
+use quick_xml::events::attributes::Attribute;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::fs;
@@ -20,6 +22,9 @@ use tracing::{debug, error, trace};
 use warp::http::Response;
 use warp::path::Tail;
 use warp::{reject, Filter};
+use quick_xml::{events::Event, Reader, Writer};
+use quick_xml::events::BytesStart;
+use base64::{engine::general_purpose, Engine as _};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImageQuery {
@@ -206,6 +211,66 @@ async fn check_image_hash(
     }
 }
 
+async fn patch_svg_images(svg_data: &[u8]) -> anyhow::Result<Vec<u8>> {
+    let mut reader = Reader::from_reader(Cursor::new(svg_data));
+    let mut writer = Writer::new(Cursor::new(Vec::new()));
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) if e.name().as_ref() == b"image" => {
+                let mut elem = BytesStart::new(e.name().into());
+                let mut href_value: Option<(Vec<u8>, String)> = None;
+                for attr in e.attributes().with_checks(false) {
+                    let attr = attr?;
+                    let key = attr.key.as_ref();
+                    if key == b"href" || key == b"xlink:href" {
+                        let value = attr.unescape_value()?.to_string();
+                        if !value.starts_with("data:") {
+                            href_value = Some((key.to_vec(), value));
+                        } else {
+                            elem.push_attribute(Attribute { key: attr.key, value: value.as_str() });
+                        }
+                    } else {
+                        elem.push_attribute(Attribute { key: attr.key, value: attr.value });
+                    }
+                }
+                if let Some((key, href)) = href_value {
+                    // Fetch the image bytes using the appropriate fetcher
+                    let image_bytes = if href.starts_with("http://") || href.starts_with("https://") {
+                        fetch_content_from_http(&href).await?
+                    } else if href.starts_with("ipfs://") {
+                        let cid = href.strip_prefix("ipfs://").unwrap();
+                        fetch_content_from_ipfs(cid).await?
+                    } else if href.starts_with("data:") {
+                        // Already handled above, but just in case
+                        Bytes::new()
+                    } else {
+                        // Unsupported, just skip patching
+                        Bytes::new()
+                    };
+                    if !image_bytes.is_empty() {
+                        let mime = mime_guess::from_path(&href).first_or_octet_stream();
+                        let b64 = general_purpose::STANDARD.encode(&image_bytes);
+                        let data_uri = format!("data:{};base64,{}", mime, b64);
+                        elem.push_attribute((key, data_uri.as_str()));
+                    } else {
+                        // fallback to original href if fetch failed or unsupported
+                        elem.push_attribute((key, href.as_str()));
+                    }
+                }
+                writer.write_event(Event::Start(elem))?;
+            }
+            Ok(Event::Eof) => break,
+            Ok(e) => writer.write_event(e)?,
+            Err(e) => return Err(anyhow::anyhow!("Error parsing SVG: {}", e)),
+        }
+        buf.clear();
+    }
+    let result = writer.into_inner().into_inner();
+    Ok(result)
+}
+
 async fn fetch_and_process_image(
     artifacts_path: &Utf8PathBuf,
     token_id: &str,
@@ -372,17 +437,17 @@ async fn fetch_and_process_image(
             Ok(format!("{}/{}", relative_path, base_image_name))
         }
         ErcImageType::Svg(svg_data) => {
+            // Patch SVG to embed images
+            let patched_svg = patch_svg_images(&svg_data).await?;
             let file_name = format!("{}.svg", base_image_name);
             let file_path = dir_path.join(&file_name);
-
-            // Save the SVG file
+            // Save the patched SVG file
             let mut file = File::create(&file_path)
                 .await
                 .with_context(|| format!("Failed to create file: {:?}", file_path))?;
-            file.write_all(&svg_data)
+            file.write_all(&patched_svg)
                 .await
                 .with_context(|| format!("Failed to write SVG to file: {:?}", file_path))?;
-
             Ok(format!("{}/{}", relative_path, file_name))
         }
     }

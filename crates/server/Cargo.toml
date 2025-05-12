@@ -38,3 +38,4 @@ hyper-tungstenite = "0.11.1"
 futures-util.workspace = true
 tokio-stream = "0.1.17"
 uuid = "1.15.1"
+quick-xml = "0.37.5"
