@@ -11518,6 +11518,7 @@ dependencies = [
  "indexmap 2.7.1",
  "lazy_static",
  "mime_guess",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

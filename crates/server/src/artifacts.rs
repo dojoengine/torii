@@ -4,10 +4,12 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
+use base64::{engine::general_purpose, Engine as _};
 use camino::Utf8PathBuf;
 use data_url::mime::Mime;
 use data_url::DataUrl;
 use image::{DynamicImage, ImageFormat};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Sqlite};
 use tokio::fs;
@@ -206,6 +208,48 @@ async fn check_image_hash(
     }
 }
 
+async fn patch_svg_images_regex(svg_data: &[u8]) -> anyhow::Result<Vec<u8>> {
+    let svg_str = std::str::from_utf8(svg_data)?;
+    // Regex for href and xlink:href in <image ...> tags
+    let re = Regex::new(r#"(href|xlink:href)\s*=\s*["']([^"']+)["']"#).unwrap();
+
+    let mut patched_svg = String::with_capacity(svg_str.len());
+    let mut last_end = 0;
+
+    for cap in re.captures_iter(svg_str) {
+        let m = cap.get(0).unwrap();
+        let attr_name = &cap[1];
+        let href = &cap[2];
+
+        patched_svg.push_str(&svg_str[last_end..m.start()]);
+
+        // Only patch if not already a data URI
+        if href.starts_with("data:") {
+            patched_svg.push_str(m.as_str());
+        } else {
+            // Fetch the image bytes using your fetchers
+            let image_bytes = if href.starts_with("http://") || href.starts_with("https://") {
+                fetch_content_from_http(href).await?
+            } else if href.starts_with("ipfs://") {
+                let cid = href.strip_prefix("ipfs://").unwrap();
+                fetch_content_from_ipfs(cid).await?
+            } else {
+                // fallback: leave as is
+                patched_svg.push_str(m.as_str());
+                last_end = m.end();
+                continue;
+            };
+            let mime = mime_guess::from_path(href).first_or_octet_stream();
+            let b64 = general_purpose::STANDARD.encode(&image_bytes);
+            let data_uri = format!("{}=\"data:{};base64,{}\"", attr_name, mime, b64);
+            patched_svg.push_str(&data_uri);
+        }
+        last_end = m.end();
+    }
+    patched_svg.push_str(&svg_str[last_end..]);
+    Ok(patched_svg.into_bytes())
+}
+
 async fn fetch_and_process_image(
     artifacts_path: &Utf8PathBuf,
     token_id: &str,
@@ -372,17 +416,17 @@ async fn fetch_and_process_image(
             Ok(format!("{}/{}", relative_path, base_image_name))
         }
         ErcImageType::Svg(svg_data) => {
+            // Patch SVG to embed images
+            let patched_svg = patch_svg_images_regex(&svg_data).await?;
             let file_name = format!("{}.svg", base_image_name);
             let file_path = dir_path.join(&file_name);
-
-            // Save the SVG file
+            // Save the patched SVG file
             let mut file = File::create(&file_path)
                 .await
                 .with_context(|| format!("Failed to create file: {:?}", file_path))?;
-            file.write_all(&svg_data)
+            file.write_all(&patched_svg)
                 .await
                 .with_context(|| format!("Failed to write SVG to file: {:?}", file_path))?;
-
             Ok(format!("{}/{}", relative_path, file_name))
         }
     }
