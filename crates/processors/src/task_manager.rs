@@ -92,14 +92,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             task_data.events.push(parallelized_event);
         } else {
             let task_data = TaskData {
-                events: vec![parallelized_event],
+                events: vec![parallelized_event.clone()],
             };
             
-            if let Err(e) = self.task_network.add_task_with_dependencies(task_identifier, task_data, dependencies) {
+            if let Err(e) = self.task_network.add_task_with_dependencies(task_identifier, task_data, dependencies.clone()) {
                 error!(
                     target: LOG_TARGET,
                     error = %e,
                     task_id = %task_identifier,
+                    dependencies = ?dependencies,
+                    parallelized_event = ?parallelized_event,
                     "Failed to add task with dependencies to network."
                 );
             }

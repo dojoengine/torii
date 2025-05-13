@@ -110,6 +110,7 @@ where
                                 target: LOG_TARGET,
                                 error = %e,
                                 task_id = ?task_id,
+                                level = level_idx,
                                 "Error processing task."
                             );
                             Err(e)

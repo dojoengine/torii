@@ -2,6 +2,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use anyhow::{Error, Ok, Result};
 use async_trait::async_trait;
+use dojo_types::naming::compute_selector_from_names;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
 use dojo_world::contracts::world::WorldContractReader;
@@ -34,8 +35,22 @@ where
     }
 
     fn task_identifier(&self, event: &Event) -> TaskId {
+        // Torii version is coupled to the world version, so we can expect the event to be well
+        // formed.
+        let selector = match WorldEvent::try_from(event).unwrap_or_else(|_| {
+            panic!(
+                "Expected {} event to be well formed.",
+                <RegisterModelProcessor as EventProcessor<P>>::event_key(self)
+            )
+        }) {
+            WorldEvent::ModelRegistered(e) => compute_selector_from_names(&e.namespace.to_string().unwrap(), &e.name.to_string().unwrap()),
+            _ => {
+                unreachable!()
+            }
+        };
+
         let mut hasher = DefaultHasher::new();
-        event.keys[1].hash(&mut hasher); // Use the model selector to create a unique ID
+        selector.hash(&mut hasher);
         hasher.finish()
     }
 
