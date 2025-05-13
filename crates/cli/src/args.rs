@@ -43,33 +43,42 @@ pub struct ToriiArgs {
     pub dump_config: Option<PathBuf>,
 
     #[command(flatten)]
+    #[merge]
     pub runner: RunnerOptions,
 
     #[command(flatten)]
+    #[merge]
     pub indexing: IndexingOptions,
 
     #[command(flatten)]
+    #[merge]
     pub events: EventsOptions,
 
     #[command(flatten)]
+    #[merge]
     pub erc: ErcOptions,
 
     #[command(flatten)]
+    #[merge]
     pub sql: SqlOptions,
 
     #[command(flatten)]
+    #[merge]
     pub snapshot: SnapshotOptions,
 
     #[cfg(feature = "server")]
     #[command(flatten)]
+    #[merge]
     pub metrics: MetricsOptions,
 
     #[cfg(feature = "server")]
     #[command(flatten)]
+    #[merge]
     pub server: ServerOptions,
 
     #[cfg(feature = "server")]
     #[command(flatten)]
+    #[merge]
     pub relay: RelayOptions,
 }
 
