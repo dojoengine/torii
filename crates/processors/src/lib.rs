@@ -47,6 +47,10 @@ where
 
     fn task_priority(&self) -> TaskPriority;
     fn task_identifier(&self, event: &Event) -> TaskId;
+    
+    fn task_dependencies(&self, _event: &Event) -> Vec<TaskId> {
+        vec![] // Default implementation returns no dependencies
+    }
 
     #[allow(clippy::too_many_arguments)]
     async fn process(

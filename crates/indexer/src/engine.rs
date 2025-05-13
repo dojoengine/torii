@@ -867,9 +867,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // if our event can be parallelized, we add it to the task manager
         if task_identifier != torii_processors::task_manager::TASK_ID_SEQUENTIAL {
-            self.task_manager.add_parallelized_event(
+            let dependencies = processor.task_dependencies(event);
+            
+            self.task_manager.add_parallelized_event_with_dependencies(
                 task_priority,
                 task_identifier,
+                dependencies,
                 ParallelizedEvent {
                     contract_type,
                     event_id: event_id.to_string(),
