@@ -125,12 +125,7 @@ where
     }
 
     pub fn get_mut(&mut self, task_id: &K) -> Option<&mut T> {
-        for (_, level_tasks) in self.tasks.topo_sort_by_level() {
-            if let Some((_, task)) = level_tasks.iter_mut().find(|(id, _)| id == task_id) {
-                return Some(task);
-            }
-        }
-        None
+        self.tasks.get_mut(task_id)
     }
 }
 
