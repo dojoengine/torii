@@ -190,6 +190,11 @@ where
         self.graph.clear();
         self.node_indices.clear();
     }
+
+    /// Check if the graph contains a key
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.node_indices.contains_key(key)
+    }
 }
 
 impl<K, V> Default for AcyclicDigraphMap<K, V>

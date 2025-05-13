@@ -45,7 +45,7 @@ where
         self.tasks.add_node(task_id.clone(), task).map_err(TaskNetworkError::GraphError)?;
         
         for dep in dependencies {
-            if self.tasks.contains(&dep) {
+            if self.tasks.contains_key(&dep) {
                 self.add_dependency(dep, task_id.clone())?;
             } else {
                 debug!(
