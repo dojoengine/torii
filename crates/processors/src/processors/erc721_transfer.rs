@@ -62,6 +62,10 @@ where
 
         hasher.finish()
     }
+    
+    fn task_dependencies(&self, _event: &Event) -> Vec<TaskId> {
+        vec![] // ERC721 transfers don't depend on other tasks
+    }
 
     async fn process(
         &self,

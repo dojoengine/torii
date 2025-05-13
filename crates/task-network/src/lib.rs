@@ -37,18 +37,18 @@ where
     }
 
     pub fn add_task(&mut self, task_id: K, task: T) -> Result<()> {
-        self.tasks.add_node(task_id, task).map_err(|e| TaskNetworkError::GraphError(e))?;
+        self.tasks.add_node(task_id, task).map_err(TaskNetworkError::GraphError)?;
         Ok(())
     }
 
     pub fn add_task_with_dependencies(&mut self, task_id: K, task: T, dependencies: Vec<K>) -> Result<()> {
         self.tasks.add_node_with_dependencies(task_id, task, dependencies)
-            .map_err(|e| TaskNetworkError::GraphError(e))?;
+            .map_err(TaskNetworkError::GraphError)?;
         Ok(())
     }
 
     pub fn add_dependency(&mut self, from: K, to: K) -> Result<()> {
-        self.tasks.add_dependency(&from, &to).map_err(|e| TaskNetworkError::GraphError(e))
+        self.tasks.add_dependency(&from, &to).map_err(TaskNetworkError::GraphError)
     }
 
     pub async fn process_tasks<F, Fut, O>(&mut self, task_handler: F) -> Result<()>
@@ -81,7 +81,7 @@ where
                 let task_id = task_id.clone();
                 
                 handles.push(tokio::spawn(async move {
-                    let _permit = semaphore.acquire().await.map_err(|e| TaskNetworkError::SemaphoreError(e))?;
+                    let _permit = semaphore.acquire().await.map_err(TaskNetworkError::SemaphoreError)?;
                     
                     debug!(
                         target: LOG_TARGET,
@@ -105,9 +105,9 @@ where
                 }));
             }
             
-            let results = try_join_all(handles).await.map_err(|e| TaskNetworkError::JoinError(e))?;
+            let results = try_join_all(handles).await.map_err(TaskNetworkError::JoinError)?;
             for result in results {
-                result.map_err(|e| TaskNetworkError::TaskError(e))?;
+                result.map_err(TaskNetworkError::TaskError)?;
             }
         }
         
