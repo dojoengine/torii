@@ -31,12 +31,12 @@ inherits = "release"
 cainome = { version = "0.5.0", features = [ "abigen-rs" ] }
 cainome-cairo-serde = { version = "0.1.0" }
 
-dojo-utils = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
-dojo-types = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
-dojo-core = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
-dojo-world = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
-dojo-test-utils = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
-dojo-metrics = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
+dojo-utils = { git = "https://github.com/dojoengine/dojo", rev = "a6d5402" }
+dojo-types = { git = "https://github.com/dojoengine/dojo", rev = "a6d5402" }
+dojo-core = { git = "https://github.com/dojoengine/dojo", rev = "a6d5402" }
+dojo-world = { git = "https://github.com/dojoengine/dojo", rev = "a6d5402" }
+dojo-test-utils = { git = "https://github.com/dojoengine/dojo", rev = "a6d5402" }
+dojo-metrics = { git = "https://github.com/dojoengine/dojo", rev = "a6d5402" }
 
 topological-sort = "0.2"
 
@@ -147,9 +147,9 @@ walkdir = "2.5.0"
 ipfs-api-backend-hyper = { git = "https://github.com/ferristseng/rust-ipfs-api", rev = "af2c17f7b19ef5b9898f458d97a90055c3605633", features = [ "with-hyper-rustls", "with-send-sync" ] }
 mime_guess = "2.0"
 
-sozo-scarbext = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
+sozo-scarbext = { git = "https://github.com/dojoengine/dojo", rev = "a6d5402" }
 scarb = { git = "https://github.com/dojoengine/scarb", rev = "d749b9545f5c50b078870a322a12efe7a17914b6" }
-sozo-ops = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
+sozo-ops = { git = "https://github.com/dojoengine/dojo", rev = "a6d5402" }
 katana-runner = { git = "https://github.com/dojoengine/katana", rev = "5cb249c0fa59fa6b7c88b32557e7baf8944cdb3d" }
 
 
