@@ -862,15 +862,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             .find(|p| p.validate(event))
             .expect("Must find atleast one processor for the event");
 
-        let (task_priority, task_identifier) =
-            (processor.task_priority(), processor.task_identifier(event));
+        let task_identifier = processor.task_identifier(event);
 
         // if our event can be parallelized, we add it to the task manager
         if task_identifier != torii_processors::task_manager::TASK_ID_SEQUENTIAL {
             let dependencies = processor.task_dependencies(event);
             
             self.task_manager.add_parallelized_event_with_dependencies(
-                task_priority,
                 task_identifier,
                 dependencies,
                 ParallelizedEvent {

@@ -37,10 +37,6 @@ where
         false
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        1
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
         // Hash the contract address
@@ -63,10 +59,6 @@ where
         hasher.finish()
     }
     
-    fn task_dependencies(&self, _event: &Event) -> Vec<TaskId> {
-        vec![] // ERC721 transfers don't depend on other tasks
-    }
-
     async fn process(
         &self,
         _world: &WorldContractReader<P>,

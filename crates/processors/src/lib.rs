@@ -11,7 +11,7 @@ use torii_sqlite::Sql;
 pub mod processors;
 pub mod task_manager;
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 
 pub use processors::Processors;
 
@@ -45,7 +45,6 @@ where
 
     fn validate(&self, event: &Event) -> bool;
 
-    fn task_priority(&self) -> TaskPriority;
     fn task_identifier(&self, event: &Event) -> TaskId;
     
     fn task_dependencies(&self, _event: &Event) -> Vec<TaskId> {

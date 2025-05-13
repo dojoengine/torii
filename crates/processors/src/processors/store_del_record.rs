@@ -30,10 +30,6 @@ where
         true
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        2
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
         event.keys[1].hash(&mut hasher);

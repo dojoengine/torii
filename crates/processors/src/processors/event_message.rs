@@ -32,10 +32,6 @@ where
         true
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        1
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
         let keys = Vec::<Felt>::cairo_deserialize(&event.data, 0).unwrap_or_else(|e| {
@@ -47,6 +43,13 @@ where
         let entity_id = poseidon_hash_many(&keys);
         entity_id.hash(&mut hasher);
         hasher.finish()
+    }
+
+    fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
+        let mut hasher = DefaultHasher::new();
+        // selector
+        event.keys[1].hash(&mut hasher);
+        vec![hasher.finish()]
     }
 
     async fn process(

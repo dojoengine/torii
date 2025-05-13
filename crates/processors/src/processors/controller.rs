@@ -62,10 +62,6 @@ where
         event.keys.len() == 1 && !event.data.is_empty()
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        3
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
         // the contract address is the first felt in data

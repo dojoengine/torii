@@ -24,10 +24,6 @@ where
         true
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        1
-    }
-
     fn task_identifier(&self, _event: &Event) -> TaskId {
         // TODO. for now raw events are not parallelized
         task_manager::TASK_ID_SEQUENTIAL

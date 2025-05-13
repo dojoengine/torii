@@ -31,10 +31,6 @@ where
         event.keys.len() == 4 && !event.data.is_empty()
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        1
-    }
-
     fn task_identifier(&self, _event: &Event) -> TaskId {
         task_manager::TASK_ID_SEQUENTIAL
     }

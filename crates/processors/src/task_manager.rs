@@ -31,7 +31,6 @@ pub struct ParallelizedEvent {
 #[derive(Debug, Clone)]
 struct TaskData {
     events: Vec<ParallelizedEvent>,
-    priority: TaskPriority,
 }
 
 #[allow(missing_debug_implementations)]
@@ -62,7 +61,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
 
     pub fn add_parallelized_event(
         &mut self,
-        priority: TaskPriority,
         task_identifier: TaskId,
         parallelized_event: ParallelizedEvent,
     ) {
@@ -71,7 +69,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         } else {
             let task_data = TaskData {
                 events: vec![parallelized_event],
-                priority,
             };
             
             if let Err(e) = self.task_network.add_task(task_identifier, task_data) {
@@ -87,7 +84,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
     
     pub fn add_parallelized_event_with_dependencies(
         &mut self,
-        priority: TaskPriority,
         task_identifier: TaskId,
         dependencies: Vec<TaskId>,
         parallelized_event: ParallelizedEvent,
@@ -97,7 +93,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         } else {
             let task_data = TaskData {
                 events: vec![parallelized_event],
-                priority,
             };
             
             if let Err(e) = self.task_network.add_task_with_dependencies(task_identifier, task_data, dependencies) {
@@ -126,7 +121,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             let world = world.clone();
             let processors = processors.clone();
             let event_processor_config = event_processor_config.clone();
-            let priority = task_data.priority;
             
             async move {
                 let mut local_db = db.clone();
@@ -151,7 +145,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                             target: LOG_TARGET,
                             event_name = processor.event_key(),
                             task_id = %task_id,
-                            priority = %priority,
                             "Processing parallelized event."
                         );
 
@@ -172,7 +165,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 event_name = processor.event_key(),
                                 error = %e,
                                 task_id = %task_id,
-                                priority = %priority,
                                 "Processing parallelized event."
                             );
                             return Err(e);
