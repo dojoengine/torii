@@ -60,6 +60,7 @@ torii-processors = { path = "crates/processors" }
 torii-grpc-client = { path = "crates/grpc/client" }
 torii-grpc-server = { path = "crates/grpc/server" }
 torii-adigraphmap = { path = "crates/adigraphmap" }
+torii-task-network = { path = "crates/task-network" }
 
 # macros
 merge-options = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.0" }
