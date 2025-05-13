@@ -5,7 +5,7 @@ use starknet::core::types::Event;
 use starknet::providers::Provider;
 use torii_sqlite::Sql;
 
-use crate::task_manager::{self, TaskId, TaskPriority};
+use crate::task_manager::{self, TaskId};
 use crate::{EventProcessor, EventProcessorConfig};
 
 #[derive(Default, Debug)]
