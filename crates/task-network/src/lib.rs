@@ -42,8 +42,21 @@ where
     }
 
     pub fn add_task_with_dependencies(&mut self, task_id: K, task: T, dependencies: Vec<K>) -> Result<()> {
-        self.tasks.add_node_with_dependencies(task_id, task, dependencies)
-            .map_err(TaskNetworkError::GraphError)?;
+        self.tasks.add_node(task_id.clone(), task).map_err(TaskNetworkError::GraphError)?;
+        
+        for dep in dependencies {
+            if self.tasks.contains(&dep) {
+                self.add_dependency(dep, task_id.clone())?;
+            } else {
+                debug!(
+                    target: LOG_TARGET,
+                    task_id = ?task_id,
+                    dependency = ?dep,
+                    "Ignoring non-existent dependency."
+                );
+            }
+        }
+        
         Ok(())
     }
 
@@ -164,6 +177,36 @@ mod tests {
         
         let final_results = results.lock().await;
         assert_eq!(final_results.len(), 2);
+    }
+    
+    #[tokio::test]
+    async fn test_non_existent_dependencies() {
+        let mut manager = TaskNetwork::<u64, String>::new(4);
+        
+        manager.add_task_with_dependencies(1, "Task 1".to_string(), vec![99, 100]).unwrap();
+        
+        manager.add_task_with_dependencies(2, "Task 2".to_string(), vec![1, 100]).unwrap();
+        
+        manager.add_task_with_dependencies(3, "Task 3".to_string(), vec![2]).unwrap();
+        
+        let executed = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        
+        let executed_clone = executed.clone();
+        manager.process_tasks(move |id, _task| {
+            let executed = executed_clone.clone();
+            async move {
+                let mut locked = executed.lock().await;
+                locked.push(id);
+                Ok::<_, anyhow::Error>(())
+            }
+        }).await.unwrap();
+        
+        let result = executed.lock().await;
+        assert_eq!(result.len(), 3);
+        
+        assert_eq!(result[0], 1);
+        assert_eq!(result[1], 2);
+        assert_eq!(result[2], 3);
     }
     
     #[tokio::test]
