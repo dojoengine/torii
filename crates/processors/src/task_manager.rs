@@ -70,7 +70,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             let task_data = TaskData {
                 events: vec![parallelized_event],
             };
-            
+
             if let Err(e) = self.task_network.add_task(task_identifier, task_data) {
                 error!(
                     target: LOG_TARGET,
@@ -81,7 +81,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             }
         }
     }
-    
+
     pub fn add_parallelized_event_with_dependencies(
         &mut self,
         task_identifier: TaskId,
@@ -94,8 +94,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             let task_data = TaskData {
                 events: vec![parallelized_event.clone()],
             };
-            
-            if let Err(e) = self.task_network.add_task_with_dependencies(task_identifier, task_data, dependencies.clone()) {
+
+            if let Err(e) = self.task_network.add_task_with_dependencies(
+                task_identifier,
+                task_data,
+                dependencies.clone(),
+            ) {
                 error!(
                     target: LOG_TARGET,
                     error = %e,
@@ -118,64 +122,67 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         let processors = self.processors.clone();
         let event_processor_config = self.event_processor_config.clone();
 
-        self.task_network.process_tasks(move |task_id, task_data| {
-            let db = db.clone();
-            let world = world.clone();
-            let processors = processors.clone();
-            let event_processor_config = event_processor_config.clone();
-            
-            async move {
-                let mut local_db = db.clone();
-                
-                // Process all events for this task sequentially
-                for ParallelizedEvent {
-                    contract_type,
-                    event,
-                    block_number,
-                    block_timestamp,
-                    event_id,
-                } in task_data.events
-                {
-                    let contract_processors = processors.get_event_processors(contract_type);
-                    if let Some(processors) = contract_processors.get(&event.keys[0]) {
-                        let processor = processors
-                            .iter()
-                            .find(|p| p.validate(&event))
-                            .expect("Must find at least one processor for the event");
+        self.task_network
+            .process_tasks(move |task_id, task_data| {
+                let db = db.clone();
+                let world = world.clone();
+                let processors = processors.clone();
+                let event_processor_config = event_processor_config.clone();
 
-                        debug!(
-                            target: LOG_TARGET,
-                            event_name = processor.event_key(),
-                            task_id = %task_id,
-                            "Processing parallelized event."
-                        );
+                async move {
+                    let mut local_db = db.clone();
 
-                        if let Err(e) = processor
-                            .process(
-                                &world,
-                                &mut local_db,
-                                block_number,
-                                block_timestamp,
-                                &event_id,
-                                &event,
-                                &event_processor_config,
-                            )
-                            .await
-                        {
-                            error!(
+                    // Process all events for this task sequentially
+                    for ParallelizedEvent {
+                        contract_type,
+                        event,
+                        block_number,
+                        block_timestamp,
+                        event_id,
+                    } in task_data.events
+                    {
+                        let contract_processors = processors.get_event_processors(contract_type);
+                        if let Some(processors) = contract_processors.get(&event.keys[0]) {
+                            let processor = processors
+                                .iter()
+                                .find(|p| p.validate(&event))
+                                .expect("Must find at least one processor for the event");
+
+                            debug!(
                                 target: LOG_TARGET,
                                 event_name = processor.event_key(),
-                                error = %e,
                                 task_id = %task_id,
                                 "Processing parallelized event."
                             );
-                            return Err(e);
+
+                            if let Err(e) = processor
+                                .process(
+                                    &world,
+                                    &mut local_db,
+                                    block_number,
+                                    block_timestamp,
+                                    &event_id,
+                                    &event,
+                                    &event_processor_config,
+                                )
+                                .await
+                            {
+                                error!(
+                                    target: LOG_TARGET,
+                                    event_name = processor.event_key(),
+                                    error = %e,
+                                    task_id = %task_id,
+                                    "Processing parallelized event."
+                                );
+                                return Err(e);
+                            }
                         }
                     }
-                }
 
-                Ok::<_, anyhow::Error>(())
-            }
-        }).await.map_err(|e| anyhow::anyhow!("Task network error: {}", e))
+                    Ok::<_, anyhow::Error>(())
+                }
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Task network error: {}", e))
     }
 }

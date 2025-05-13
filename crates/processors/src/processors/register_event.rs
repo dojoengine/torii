@@ -41,12 +41,15 @@ where
                 <RegisterEventProcessor as EventProcessor<P>>::event_key(self)
             )
         }) {
-            WorldEvent::EventRegistered(e) => compute_selector_from_names(&e.namespace.to_string().unwrap(), &e.name.to_string().unwrap()),
+            WorldEvent::EventRegistered(e) => compute_selector_from_names(
+                &e.namespace.to_string().unwrap(),
+                &e.name.to_string().unwrap(),
+            ),
             _ => {
                 unreachable!()
             }
         };
-        
+
         let mut hasher = DefaultHasher::new();
         selector.hash(&mut hasher);
         hasher.finish()

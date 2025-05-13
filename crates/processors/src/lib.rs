@@ -46,7 +46,7 @@ where
     fn validate(&self, event: &Event) -> bool;
 
     fn task_identifier(&self, event: &Event) -> TaskId;
-    
+
     fn task_dependencies(&self, _event: &Event) -> Vec<TaskId> {
         vec![] // Default implementation returns no dependencies
     }

@@ -43,7 +43,10 @@ where
                 <RegisterModelProcessor as EventProcessor<P>>::event_key(self)
             )
         }) {
-            WorldEvent::ModelRegistered(e) => compute_selector_from_names(&e.namespace.to_string().unwrap(), &e.name.to_string().unwrap()),
+            WorldEvent::ModelRegistered(e) => compute_selector_from_names(
+                &e.namespace.to_string().unwrap(),
+                &e.name.to_string().unwrap(),
+            ),
             _ => {
                 unreachable!()
             }

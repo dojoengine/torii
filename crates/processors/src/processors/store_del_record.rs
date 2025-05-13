@@ -36,7 +36,7 @@ where
         event.keys[2].hash(&mut hasher);
         hasher.finish()
     }
-    
+
     fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
         let mut hasher = DefaultHasher::new();
         event.keys[1].hash(&mut hasher); // Use the model selector to create a unique ID

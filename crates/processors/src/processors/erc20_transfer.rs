@@ -50,7 +50,7 @@ where
 
         hasher.finish()
     }
-    
+
     async fn process(
         &self,
         world: &WorldContractReader<P>,
