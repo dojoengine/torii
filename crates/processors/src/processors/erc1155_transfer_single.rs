@@ -1,3 +1,5 @@
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use anyhow::Error;
 use async_trait::async_trait;
 use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
@@ -7,7 +9,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::task_manager::{self, TaskId};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc1155_transfer_single";
@@ -30,8 +32,10 @@ where
         event.keys.len() == 4 && event.data.len() == 4
     }
 
-    fn task_identifier(&self, _event: &Event) -> TaskId {
-        task_manager::TASK_ID_SEQUENTIAL
+    fn task_identifier(&self, event: &Event) -> TaskId {
+        let mut hasher = DefaultHasher::new();
+        event.from_address.hash(&mut hasher);
+        hasher.finish()
     }
 
     async fn process(
