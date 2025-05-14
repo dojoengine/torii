@@ -52,21 +52,6 @@ pub struct EngineConfig {
     pub world_block: u64,
 }
 
-impl Default for EngineConfig {
-    fn default() -> Self {
-        Self {
-            polling_interval: Duration::from_millis(500),
-            batch_chunk_size: 1024,
-            blocks_chunk_size: 10240,
-            events_chunk_size: 1024,
-            max_concurrent_tasks: 100,
-            flags: IndexingFlags::empty(),
-            event_processor_config: EventProcessorConfig::default(),
-            world_block: 0,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum FetchDataResult {
     Range(FetchRangeResult),
@@ -120,6 +105,21 @@ pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     task_manager: TaskManager<P>,
     contracts: Arc<HashMap<Felt, ContractType>>,
     contract_class_cache: Arc<ContractClassCache<P>>,
+}
+
+impl Default for EngineConfig {
+    fn default() -> Self {
+        Self {
+            polling_interval: Duration::from_millis(500),
+            batch_chunk_size: 1024,
+            blocks_chunk_size: 10240,
+            events_chunk_size: 1024,
+            max_concurrent_tasks: 100,
+            flags: IndexingFlags::empty(),
+            event_processor_config: EventProcessorConfig::default(),
+            world_block: 0,
+        }
+    }
 }
 
 struct UnprocessedEvent {

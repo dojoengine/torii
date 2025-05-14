@@ -45,13 +45,19 @@ where
         _block_timestamp: u64,
         _event_id: &str,
         event: &Event,
-        _config: &EventProcessorConfig,
+        config: &EventProcessorConfig,
     ) -> Result<(), Error> {
         let token_address = event.from_address;
         let token_id = U256Cainome::cairo_deserialize(&event.keys, 1)?;
         let token_id = U256::from_words(token_id.low, token_id.high);
 
-        let metadata = fetch_token_metadata(token_address, token_id, world.provider()).await?;
+        let metadata = fetch_token_metadata(
+            token_address,
+            token_id,
+            world.provider(),
+            &config.nft_metadata_semaphore,
+        )
+        .await?;
         db.update_nft_metadata(token_address, token_id, metadata)
             .await?;
 

@@ -71,7 +71,7 @@ where
         block_timestamp: u64,
         event_id: &str,
         event: &Event,
-        _config: &EventProcessorConfig,
+        config: &EventProcessorConfig,
     ) -> Result<(), Error> {
         let token_address = event.from_address;
         let from = event.data[0];
@@ -89,6 +89,7 @@ where
             U256::from(1u8),
             block_timestamp,
             event_id,
+            &config.nft_metadata_semaphore,
         )
         .await?;
         debug!(target: LOG_TARGET, from = ?from, to = ?to, token_id = ?token_id, "ERC721 Transfer.");

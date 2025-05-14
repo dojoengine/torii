@@ -1,10 +1,12 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, Transaction};
 use starknet::providers::Provider;
+use tokio::sync::Semaphore;
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::Sql;
 
@@ -15,12 +17,23 @@ use crate::task_manager::{TaskId, TaskPriority};
 
 pub use processors::Processors;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct EventProcessorConfig {
     pub namespaces: HashSet<String>,
     pub strict_model_reader: bool,
+    // Semaphore to limit the number of concurrent NFT metadata fetches
+    pub nft_metadata_semaphore: Arc<Semaphore>,
 }
 
+impl Default for EventProcessorConfig {
+    fn default() -> Self {
+        Self {
+            namespaces: HashSet::new(),
+            strict_model_reader: false,
+            nft_metadata_semaphore: Arc::new(Semaphore::new(10)),
+        }
+    }
+}
 impl EventProcessorConfig {
     pub fn should_index(&self, namespace: &str) -> bool {
         self.namespaces.is_empty() || self.namespaces.contains(namespace)

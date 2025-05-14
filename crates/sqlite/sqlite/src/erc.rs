@@ -11,6 +11,7 @@ use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
 use starknet::core::utils::{get_selector_from_name, parse_cairo_short_string};
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
+use tokio::sync::Semaphore;
 use tracing::{debug, warn};
 
 use super::utils::{u256_to_sql_string, I256};
@@ -98,6 +99,7 @@ impl Sql {
         amount: U256,
         block_timestamp: u64,
         event_id: &str,
+        nft_metadata_semaphore: &Semaphore,
     ) -> Result<()> {
         // contract_address:id
         let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
@@ -107,7 +109,9 @@ impl Sql {
         // are applied before the cache diff is applied
         let token_exists: bool = !self.local_cache.try_register_token_id(id.clone()).await;
         if !token_exists {
-            let metadata = fetch_token_metadata(contract_address, token_id, provider).await?;
+            let metadata =
+                fetch_token_metadata(contract_address, token_id, provider, nft_metadata_semaphore)
+                    .await?;
             self.register_nft_token_metadata(&id, contract_address, token_id, metadata)
                 .await?;
         }
@@ -406,6 +410,7 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
     contract_address: Felt,
     token_id: U256,
     provider: &P,
+    nft_metadata_semaphore: &Semaphore,
 ) -> Result<String> {
     let token_uri = fetch_token_uri(provider, contract_address, token_id).await?;
 
@@ -413,7 +418,9 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
         return Ok("".to_string());
     }
 
+    let permit = nft_metadata_semaphore.acquire().await?;
     let metadata = fetch_metadata(&token_uri).await;
+    drop(permit);
     match metadata {
         Ok(metadata) => serde_json::to_string(&metadata).context("Failed to serialize metadata"),
         Err(_) => {
