@@ -26,7 +26,7 @@ use torii_processors::{EventProcessorConfig, Processors};
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::{Cursors, Sql};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace};
 
 use crate::constants::LOG_TARGET;
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
