@@ -52,7 +52,8 @@ where
         let token_id = U256::from_words(token_id.low, token_id.high);
 
         let metadata = fetch_token_metadata(token_address, token_id, world.provider()).await?;
-        db.update_nft_metadata(token_address, token_id, metadata).await?;
+        db.update_nft_metadata(token_address, token_id, metadata)
+            .await?;
 
         debug!(
             target: LOG_TARGET,

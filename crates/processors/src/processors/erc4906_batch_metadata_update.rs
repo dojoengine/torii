@@ -59,7 +59,8 @@ where
         let mut token_id = from_token_id;
         while token_id <= to_token_id {
             let metadata = fetch_token_metadata(token_address, token_id, world.provider()).await?;
-            db.update_nft_metadata(token_address, token_id, metadata).await?;
+            db.update_nft_metadata(token_address, token_id, metadata)
+                .await?;
             token_id += U256::from(1u8);
         }
 
