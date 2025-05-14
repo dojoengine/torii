@@ -15,6 +15,7 @@ use tracing::{debug, error};
 
 const LOG_TARGET: &str = "torii::task_network";
 
+#[derive(Debug)]
 pub struct TaskNetwork<K, T>
 where
     K: Eq + Hash + Clone + std::fmt::Debug + Send + Sync + 'static,
