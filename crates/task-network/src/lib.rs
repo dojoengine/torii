@@ -22,7 +22,7 @@ where
     T: Clone + Send + Sync + 'static,
 {
     tasks: AcyclicDigraphMap<K, T>,
-    max_concurrent_tasks: usize,
+    semaphore: Arc<Semaphore>,
 }
 
 impl<K, T> TaskNetwork<K, T>
@@ -33,7 +33,7 @@ where
     pub fn new(max_concurrent_tasks: usize) -> Self {
         Self {
             tasks: AcyclicDigraphMap::new(),
-            max_concurrent_tasks,
+            semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
         }
     }
 
@@ -87,7 +87,7 @@ where
         }
 
         let task_levels = self.tasks.topo_sort_by_level();
-        let semaphore = Arc::new(Semaphore::new(self.max_concurrent_tasks));
+        let semaphore = self.semaphore.clone();
 
         for (level_idx, level_tasks) in task_levels.iter().enumerate() {
             debug!(
@@ -157,16 +157,6 @@ where
 
     pub fn get_mut(&mut self, task_id: &K) -> Option<&mut T> {
         self.tasks.get_mut(task_id)
-    }
-}
-
-impl<K, T> Default for TaskNetwork<K, T>
-where
-    K: Eq + Hash + Clone + std::fmt::Debug + Send + Sync,
-    T: Clone + Send + Sync,
-{
-    fn default() -> Self {
-        Self::new(std::thread::available_parallelism().map_or(4, |p| p.get()))
     }
 }
 
