@@ -4,6 +4,7 @@ use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
+use torii_sqlite::erc::fetch_token_metadata;
 use torii_sqlite::Sql;
 use tracing::debug;
 
@@ -38,7 +39,7 @@ where
 
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        world: &WorldContractReader<P>,
         db: &mut Sql,
         _block_number: u64,
         _block_timestamp: u64,
@@ -50,7 +51,8 @@ where
         let token_id = U256Cainome::cairo_deserialize(&event.keys, 1)?;
         let token_id = U256::from_words(token_id.low, token_id.high);
 
-        db.update_nft_metadata(token_address, token_id).await?;
+        let metadata = fetch_token_metadata(token_address, token_id, world.provider()).await?;
+        db.update_nft_metadata(token_address, token_id, metadata).await?;
 
         debug!(
             target: LOG_TARGET,

@@ -59,7 +59,6 @@ where
         .unwrap();
     engine.process_range(data).await.unwrap();
 
-    db.flush().await.unwrap();
     db.apply_cache_diff().await.unwrap();
     db.execute().await.unwrap();
 
@@ -143,14 +142,10 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
     sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
-    let (mut executor, sender) = Executor::new(
-        pool.clone(),
-        shutdown_tx.clone(),
-        Arc::clone(&provider),
-        100,
-    )
-    .await
-    .unwrap();
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });
@@ -324,14 +319,10 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
     sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
-    let (mut executor, sender) = Executor::new(
-        pool.clone(),
-        shutdown_tx.clone(),
-        Arc::clone(&provider),
-        100,
-    )
-    .await
-    .unwrap();
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });
@@ -478,14 +469,10 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
     sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
-    let (mut executor, sender) = Executor::new(
-        pool.clone(),
-        shutdown_tx.clone(),
-        Arc::clone(&provider),
-        100,
-    )
-    .await
-    .unwrap();
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });
@@ -688,14 +675,10 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
     sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
-    let (mut executor, sender) = Executor::new(
-        pool.clone(),
-        shutdown_tx.clone(),
-        Arc::clone(&provider),
-        100,
-    )
-    .await
-    .unwrap();
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });
@@ -887,14 +870,10 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
     sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
-    let (mut executor, sender) = Executor::new(
-        pool.clone(),
-        shutdown_tx.clone(),
-        Arc::clone(&provider),
-        100,
-    )
-    .await
-    .unwrap();
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });
@@ -1027,14 +1006,10 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
 
     let (shutdown_tx, _) = broadcast::channel(1);
 
-    let (mut executor, sender) = Executor::new(
-        pool.clone(),
-        shutdown_tx.clone(),
-        Arc::clone(&provider),
-        100,
-    )
-    .await
-    .unwrap();
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });
@@ -1151,14 +1126,10 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
     sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
-    let (mut executor, sender) = Executor::new(
-        pool.clone(),
-        shutdown_tx.clone(),
-        Arc::clone(&provider),
-        100,
-    )
-    .await
-    .unwrap();
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });
@@ -1276,14 +1247,10 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
     sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
-    let (mut executor, sender) = Executor::new(
-        pool.clone(),
-        shutdown_tx.clone(),
-        Arc::clone(&provider),
-        100,
-    )
-    .await
-    .unwrap();
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });

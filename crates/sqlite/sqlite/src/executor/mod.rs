@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result};
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
-use erc::{RegisterNftTokenMetadata, UpdateNftMetadata, UpdateNftMetadataQuery};
+use erc::UpdateNftMetadataQuery;
 use sqlx::{FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
@@ -15,8 +15,7 @@ use starknet::core::utils::{get_selector_from_name, parse_cairo_short_string};
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::{oneshot, Semaphore};
-use tokio::task::JoinSet;
+use tokio::sync::oneshot;
 use tokio::time::Instant;
 use torii_sqlite_types::OptimisticToken;
 use tracing::{debug, error, info, warn};
@@ -607,11 +606,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied balance diff.");
             }
             QueryType::RegisterNftToken(register_nft_token) => {
-                let token_id = felt_and_u256_to_sql_string(
-                    &register_nft_token.contract_address,
-                    &register_nft_token.token_id,
-                );
-
                 // Check if we already have the metadata for this contract
                 let res = sqlx::query_as::<_, (String, String)>(&format!(
                     "SELECT name, symbol FROM {TOKENS_TABLE} WHERE contract_address = ? LIMIT 1"

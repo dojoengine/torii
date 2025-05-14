@@ -203,10 +203,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     // Its only `None` when `FetchDataResult::None` in which case
                                     // we don't need to flush or apply cache diff
                                     if let Some(block_id) = block_id {
-                                        self.db.flush().await?;
                                         self.db.apply_cache_diff().await?;
                                         self.db.execute().await?;
-                                        debug!(target: LOG_TARGET, block_number = ?block_id, "Flushed and applied cache diff.");
+                                        debug!(target: LOG_TARGET, block_number = ?block_id, "Applied cache diff and executed.");
                                     }
                                 },
                                 Err(e) => {
