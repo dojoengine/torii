@@ -15,10 +15,19 @@ use crate::task_manager::{TaskId, TaskPriority};
 
 pub use processors::Processors;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct EventProcessorConfig {
     pub namespaces: HashSet<String>,
     pub strict_model_reader: bool,
+}
+
+impl Default for EventProcessorConfig {
+    fn default() -> Self {
+        Self {
+            namespaces: HashSet::new(),
+            strict_model_reader: false,
+        }
+    }
 }
 
 impl EventProcessorConfig {
