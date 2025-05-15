@@ -46,17 +46,10 @@ where
         // Hash the contract address
         event.from_address.hash(&mut hasher);
 
-        // Take the max of from/to addresses to get a canonical representation
-        // This ensures transfers between the same pair of addresses are grouped together
-        // regardless of direction (A->B or B->A)
-        let canonical_pair = std::cmp::max(event.keys[1], event.keys[2]);
-        canonical_pair.hash(&mut hasher);
-
         // For ERC721, we can safely parallelize by token ID since each token is unique
         // and can only be owned by one address at a time. This means:
         // 1. Transfers of different tokens can happen in parallel
         // 2. Multiple transfers of the same token must be sequential
-        // 3. The canonical address pair ensures related transfers stay together
         event.keys[3].hash(&mut hasher);
         event.keys[4].hash(&mut hasher);
 
