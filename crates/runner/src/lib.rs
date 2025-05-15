@@ -228,13 +228,8 @@ impl Runner {
         // Get world address
         let world = WorldContractReader::new(world_address, provider.clone());
 
-        let (mut executor, sender) = Executor::new(
-            pool.clone(),
-            shutdown_tx.clone(),
-            provider.clone(),
-            self.args.erc.max_metadata_tasks,
-        )
-        .await?;
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
 
         let model_cache = Arc::new(ModelCache::new(readonly_pool.clone()).await?);
@@ -256,6 +251,7 @@ impl Runner {
                 model_indices: self.args.sql.model_indices.clone(),
                 historical_models: self.args.sql.historical.clone().into_iter().collect(),
                 hooks: self.args.sql.hooks.clone(),
+                max_metadata_tasks: self.args.erc.max_metadata_tasks,
             },
         )
         .await?;

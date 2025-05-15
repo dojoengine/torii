@@ -99,14 +99,10 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
 
     let (shutdown_tx, _) = broadcast::channel(1);
 
-    let (mut executor, sender) = Executor::new(
-        pool.clone(),
-        shutdown_tx.clone(),
-        Arc::clone(&provider),
-        100,
-    )
-    .await
-    .unwrap();
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
     tokio::spawn(async move {
         executor.run().await.unwrap();
     });

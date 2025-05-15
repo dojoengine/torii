@@ -42,17 +42,10 @@ where
         // Hash the contract address
         event.from_address.hash(&mut hasher);
 
-        // Take the max of from/to addresses to get a canonical representation
-        // This ensures transfers between the same pair of addresses are grouped together
-        // regardless of direction (A->B or B->A)
-        let canonical_pair = std::cmp::max(event.data[0], event.data[1]);
-        canonical_pair.hash(&mut hasher);
-
         // For ERC721, we can safely parallelize by token ID since each token is unique
         // and can only be owned by one address at a time. This means:
         // 1. Transfers of different tokens can happen in parallel
         // 2. Multiple transfers of the same token must be sequential
-        // 3. The canonical address pair ensures related transfers stay together
         event.data[2].hash(&mut hasher);
         event.data[3].hash(&mut hasher);
 
@@ -61,7 +54,7 @@ where
 
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        world: &WorldContractReader<P>,
         db: &mut Sql,
         _block_number: u64,
         block_timestamp: u64,
@@ -77,6 +70,7 @@ where
         let token_id = U256::from_words(token_id.low, token_id.high);
 
         db.handle_nft_transfer(
+            world.provider(),
             token_address,
             from,
             to,

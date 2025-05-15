@@ -40,7 +40,7 @@ where
 
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        world: &WorldContractReader<P>,
         db: &mut Sql,
         _block_number: u64,
         _block_timestamp: u64,
@@ -57,7 +57,8 @@ where
 
         let mut token_id = from_token_id;
         while token_id <= to_token_id {
-            db.update_nft_metadata(token_address, token_id).await?;
+            db.update_nft_metadata(world.provider(), token_address, token_id)
+                .await?;
             token_id += U256::from(1u8);
         }
 

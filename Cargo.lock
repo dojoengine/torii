@@ -6617,8 +6617,8 @@ dependencies = [
 
 [[package]]
 name = "merge-options"
-version = "1.4.0"
-source = "git+https://github.com/dojoengine/dojo?tag=v1.4.0#22ef7101e84429f4f06fa634f927dd6ad2c48752"
+version = "1.5.0"
+source = "git+https://github.com/dojoengine/dojo?rev=82fe9bd#82fe9bde8bb840db507dc11e26b3085a54dbd0d9"
 dependencies = [
  "proc-macro2",
  "quote",

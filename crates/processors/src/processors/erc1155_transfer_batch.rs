@@ -41,7 +41,7 @@ where
 
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        world: &WorldContractReader<P>,
         db: &mut Sql,
         _block_number: u64,
         block_timestamp: u64,
@@ -87,6 +87,7 @@ where
             let amount = U256::from_words(amount.low, amount.high);
 
             db.handle_nft_transfer(
+                world.provider(),
                 token_address,
                 from,
                 to,
