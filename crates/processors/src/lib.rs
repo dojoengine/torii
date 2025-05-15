@@ -1,12 +1,10 @@
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, Transaction};
 use starknet::providers::Provider;
-use tokio::sync::Semaphore;
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::Sql;
 
