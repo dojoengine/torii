@@ -46,8 +46,9 @@ where
         // and can only be owned by one address at a time. This means:
         // 1. Transfers of different tokens can happen in parallel
         // 2. Multiple transfers of the same token must be sequential
-        event.data[2].hash(&mut hasher);
-        event.data[3].hash(&mut hasher);
+        let token_id = U256Cainome::cairo_deserialize(&event.data, 2).unwrap();
+        let token_id = U256::from_words(token_id.low, token_id.high);
+        token_id.hash(&mut hasher);
 
         hasher.finish()
     }

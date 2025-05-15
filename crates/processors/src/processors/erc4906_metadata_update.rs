@@ -36,6 +36,16 @@ where
         hasher.finish()
     }
 
+    fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
+        let token_id = U256Cainome::cairo_deserialize(&event.keys, 1).unwrap();
+        let token_id = U256::from_words(token_id.low, token_id.high);
+        
+        let mut hasher = DefaultHasher::new();
+        event.from_address.hash(&mut hasher);
+        token_id.hash(&mut hasher);
+        vec![hasher.finish()]
+    }
+
     async fn process(
         &self,
         world: &WorldContractReader<P>,
