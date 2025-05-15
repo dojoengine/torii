@@ -26,6 +26,7 @@ pub struct RegisterNftTokenQuery {
 
 #[derive(Debug, Clone)]
 pub struct UpdateNftMetadataQuery {
+    pub id: String,
     pub contract_address: Felt,
     pub token_id: U256,
     pub metadata: String,

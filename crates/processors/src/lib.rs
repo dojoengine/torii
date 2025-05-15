@@ -21,8 +21,6 @@ pub use processors::Processors;
 pub struct EventProcessorConfig {
     pub namespaces: HashSet<String>,
     pub strict_model_reader: bool,
-    // Semaphore to limit the number of concurrent NFT metadata fetches
-    pub nft_metadata_semaphore: Arc<Semaphore>,
 }
 
 impl Default for EventProcessorConfig {
@@ -30,10 +28,10 @@ impl Default for EventProcessorConfig {
         Self {
             namespaces: HashSet::new(),
             strict_model_reader: false,
-            nft_metadata_semaphore: Arc::new(Semaphore::new(10)),
         }
     }
 }
+
 impl EventProcessorConfig {
     pub fn should_index(&self, namespace: &str) -> bool {
         self.namespaces.is_empty() || self.namespaces.contains(namespace)

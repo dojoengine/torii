@@ -99,7 +99,6 @@ impl Sql {
         amount: U256,
         block_timestamp: u64,
         event_id: &str,
-        nft_metadata_semaphore: &Semaphore,
     ) -> Result<()> {
         // contract_address:id
         let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
@@ -109,9 +108,13 @@ impl Sql {
         // are applied before the cache diff is applied
         let token_exists: bool = !self.local_cache.try_register_token_id(id.clone()).await;
         if !token_exists {
-            let metadata =
-                fetch_token_metadata(contract_address, token_id, provider, nft_metadata_semaphore)
-                    .await?;
+            let metadata = fetch_token_metadata(
+                contract_address,
+                token_id,
+                provider,
+                &self.nft_metadata_semaphore,
+            )
+            .await?;
             self.register_nft_token_metadata(&id, contract_address, token_id, metadata)
                 .await?;
         }
@@ -157,16 +160,30 @@ impl Sql {
         Ok(())
     }
 
-    pub async fn update_nft_metadata(
+    pub async fn update_nft_metadata<P: Provider + Sync>(
         &mut self,
+        provider: &P,
         contract_address: Felt,
         token_id: U256,
-        metadata: String,
     ) -> Result<()> {
+        let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
+        if !self.local_cache.contains_token_id(&id).await {
+            return Ok(());
+        }
+
+        let metadata = fetch_token_metadata(
+            contract_address,
+            token_id,
+            provider,
+            &self.nft_metadata_semaphore,
+        )
+        .await?;
+
         self.executor.send(QueryMessage::new(
             "".to_string(),
             vec![],
             QueryType::UpdateNftMetadata(UpdateNftMetadataQuery {
+                id,
                 contract_address,
                 token_id,
                 metadata,

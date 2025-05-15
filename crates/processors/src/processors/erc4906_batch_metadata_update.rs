@@ -1,14 +1,15 @@
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use anyhow::Error;
 use async_trait::async_trait;
 use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
-use torii_sqlite::erc::fetch_token_metadata;
 use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::task_manager::{self, TaskId, TaskPriority};
+use crate::task_manager::{TaskId, TaskPriority};
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc4906_metadata_update_batch";
@@ -35,8 +36,10 @@ where
         2
     }
 
-    fn task_identifier(&self, _event: &Event) -> TaskId {
-        task_manager::TASK_ID_SEQUENTIAL
+    fn task_identifier(&self, event: &Event) -> TaskId {
+        let mut hasher = DefaultHasher::new();
+        event.from_address.hash(&mut hasher);
+        hasher.finish()
     }
 
     async fn process(
@@ -47,7 +50,7 @@ where
         _block_timestamp: u64,
         _event_id: &str,
         event: &Event,
-        config: &EventProcessorConfig,
+        _config: &EventProcessorConfig,
     ) -> Result<(), Error> {
         let token_address = event.from_address;
         let from_token_id = U256Cainome::cairo_deserialize(&event.keys, 1)?;
@@ -58,14 +61,7 @@ where
 
         let mut token_id = from_token_id;
         while token_id <= to_token_id {
-            let metadata = fetch_token_metadata(
-                token_address,
-                token_id,
-                world.provider(),
-                &config.nft_metadata_semaphore,
-            )
-            .await?;
-            db.update_nft_metadata(token_address, token_id, metadata)
+            db.update_nft_metadata(world.provider(), token_address, token_id)
                 .await?;
             token_id += U256::from(1u8);
         }

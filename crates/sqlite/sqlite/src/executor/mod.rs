@@ -27,9 +27,7 @@ use crate::types::{
     EventMessage as EventMessageUpdated, Model as ModelRegistered, OptimisticEntity,
     OptimisticEventMessage, ParsedCall, Token, TokenBalance, Transaction,
 };
-use crate::utils::{
-    felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, u256_to_sql_string, I256,
-};
+use crate::utils::{felt_to_sql_string, felts_to_sql_string, u256_to_sql_string, I256};
 
 pub mod erc;
 pub use erc::{RegisterErc20TokenQuery, RegisterNftTokenQuery};
@@ -748,28 +746,12 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 }
             }
             QueryType::UpdateNftMetadata(update_metadata) => {
-                let token_id = felt_and_u256_to_sql_string(
-                    &update_metadata.contract_address,
-                    &update_metadata.token_id,
-                );
-
-                // check if the token is already in DB
-                let token = sqlx::query_as::<_, Token>("SELECT * FROM tokens WHERE id = ?")
-                    .bind(token_id.clone())
-                    .fetch_optional(&mut **tx)
-                    .await?;
-
-                // our token doesnt exist yet, so we dont need to update the metadata
-                if token.is_none() {
-                    return Ok(());
-                }
-
                 // Update metadata in database
                 let token = sqlx::query_as::<_, Token>(
                     "UPDATE tokens SET metadata = ? WHERE id = ? RETURNING *",
                 )
                 .bind(&update_metadata.metadata)
-                .bind(&token_id)
+                .bind(&update_metadata.id)
                 .fetch_one(&mut **tx)
                 .await?;
 

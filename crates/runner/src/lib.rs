@@ -32,8 +32,8 @@ use starknet::providers::{JsonRpcClient, Provider};
 use tempfile::{NamedTempFile, TempDir};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::{broadcast, Semaphore};
 use tokio_stream::StreamExt;
 use torii_cli::ToriiArgs;
 use torii_indexer::engine::{Engine, EngineConfig, IndexingFlags};
@@ -251,6 +251,7 @@ impl Runner {
                 model_indices: self.args.sql.model_indices.clone(),
                 historical_models: self.args.sql.historical.clone().into_iter().collect(),
                 hooks: self.args.sql.hooks.clone(),
+                max_metadata_tasks: self.args.erc.max_metadata_tasks,
             },
         )
         .await?;
@@ -283,9 +284,6 @@ impl Runner {
                 event_processor_config: EventProcessorConfig {
                     strict_model_reader: self.args.indexing.strict_model_reader,
                     namespaces: self.args.indexing.namespaces.into_iter().collect(),
-                    nft_metadata_semaphore: Arc::new(Semaphore::new(
-                        self.args.erc.max_metadata_tasks,
-                    )),
                 },
                 world_block: self.args.indexing.world_block,
             },

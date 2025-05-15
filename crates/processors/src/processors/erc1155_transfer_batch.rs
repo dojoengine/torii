@@ -47,7 +47,7 @@ where
         block_timestamp: u64,
         event_id: &str,
         event: &Event,
-        config: &EventProcessorConfig,
+        _config: &EventProcessorConfig,
     ) -> Result<(), Error> {
         let token_address = event.from_address;
         let from = event.keys[2];
@@ -95,7 +95,6 @@ where
                 amount,
                 block_timestamp,
                 event_id,
-                &config.nft_metadata_semaphore,
             )
             .await?;
 
