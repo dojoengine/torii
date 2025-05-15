@@ -38,13 +38,25 @@ pub mod utils;
 use cache::{LocalCache, Model, ModelCache};
 pub use torii_sqlite_types as types;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SqlConfig {
     pub all_model_indices: bool,
     pub model_indices: Vec<ModelIndices>,
     pub historical_models: HashSet<String>,
     pub hooks: Vec<Hook>,
     pub max_metadata_tasks: usize,
+}
+
+impl Default for SqlConfig {
+    fn default() -> Self {
+        Self {
+            all_model_indices: false,
+            model_indices: vec![],
+            historical_models: HashSet::new(),
+            hooks: vec![],
+            max_metadata_tasks: 10,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
