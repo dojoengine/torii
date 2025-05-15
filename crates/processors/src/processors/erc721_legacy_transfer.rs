@@ -9,7 +9,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc721_legacy_transfer";
@@ -37,10 +37,6 @@ where
         false
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        1
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
         // Hash the contract address
@@ -50,8 +46,9 @@ where
         // and can only be owned by one address at a time. This means:
         // 1. Transfers of different tokens can happen in parallel
         // 2. Multiple transfers of the same token must be sequential
-        event.data[2].hash(&mut hasher);
-        event.data[3].hash(&mut hasher);
+        let token_id = U256Cainome::cairo_deserialize(&event.data, 2).unwrap();
+        let token_id = U256::from_words(token_id.low, token_id.high);
+        token_id.hash(&mut hasher);
 
         hasher.finish()
     }

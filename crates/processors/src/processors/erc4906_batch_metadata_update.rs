@@ -9,7 +9,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc4906_metadata_update_batch";
@@ -32,14 +32,30 @@ where
         event.keys.len() == 5 && event.data.is_empty()
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        2
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
         event.from_address.hash(&mut hasher);
         hasher.finish()
+    }
+
+    // we should depend on all of our range of token ids
+    fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
+        let mut dependencies = Vec::new();
+        let from_token_id = U256Cainome::cairo_deserialize(&event.keys, 1).unwrap();
+        let mut from_token_id = U256::from_words(from_token_id.low, from_token_id.high);
+
+        let to_token_id = U256Cainome::cairo_deserialize(&event.keys, 3).unwrap();
+        let to_token_id = U256::from_words(to_token_id.low, to_token_id.high);
+
+        while from_token_id <= to_token_id {
+            let mut hasher = DefaultHasher::new();
+            event.from_address.hash(&mut hasher);
+            from_token_id.hash(&mut hasher);
+            dependencies.push(hasher.finish());
+            from_token_id += U256::from(1u8);
+        }
+
+        dependencies
     }
 
     async fn process(

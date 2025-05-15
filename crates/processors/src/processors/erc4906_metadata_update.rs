@@ -9,7 +9,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc4906_metadata_update";
@@ -30,16 +30,19 @@ where
         event.keys.len() == 3 && event.data.is_empty()
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        2
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
         event.from_address.hash(&mut hasher);
-        event.keys[1].hash(&mut hasher);
-        event.keys[2].hash(&mut hasher);
+        let token_id = U256Cainome::cairo_deserialize(&event.keys, 1).unwrap();
+        let token_id = U256::from_words(token_id.low, token_id.high);
+        token_id.hash(&mut hasher);
         hasher.finish()
+    }
+
+    fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
+        let mut hasher = DefaultHasher::new();
+        event.from_address.hash(&mut hasher);
+        vec![hasher.finish()]
     }
 
     async fn process(

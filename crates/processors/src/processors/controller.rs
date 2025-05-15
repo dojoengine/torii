@@ -12,7 +12,7 @@ use starknet_crypto::Felt;
 use torii_sqlite::Sql;
 use tracing::info;
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::controller";
@@ -60,10 +60,6 @@ where
     fn validate(&self, event: &Event) -> bool {
         // ContractDeployed event has no keys and contains username in data
         event.keys.len() == 1 && !event.data.is_empty()
-    }
-
-    fn task_priority(&self) -> TaskPriority {
-        3
     }
 
     fn task_identifier(&self, event: &Event) -> TaskId {

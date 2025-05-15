@@ -1,27 +1,23 @@
-use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use anyhow::Result;
 use dojo_world::contracts::WorldContractReader;
-use futures_util::future::try_join_all;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
-use tokio::sync::Semaphore;
 use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
+use torii_task_network::TaskNetwork;
 use tracing::{debug, error};
 
 use crate::processors::Processors;
 use crate::EventProcessorConfig;
-
-pub const TASK_ID_SEQUENTIAL: TaskId = 0;
 
 const LOG_TARGET: &str = "torii::indexer::task_manager";
 
 pub type TaskId = u64;
 pub type TaskPriority = usize;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParallelizedEvent {
     pub contract_type: ContractType,
     pub block_number: u64,
@@ -30,13 +26,17 @@ pub struct ParallelizedEvent {
     pub event: Event,
 }
 
+#[derive(Debug, Clone)]
+struct TaskData {
+    events: Vec<ParallelizedEvent>,
+}
+
 #[allow(missing_debug_implementations)]
 pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     db: Sql,
     world: Arc<WorldContractReader<P>>,
-    tasks: BTreeMap<TaskPriority, HashMap<TaskId, Vec<ParallelizedEvent>>>,
+    task_network: TaskNetwork<TaskId, TaskData>,
     processors: Arc<Processors<P>>,
-    max_concurrent_tasks: usize,
     event_processor_config: EventProcessorConfig,
 }
 
@@ -51,44 +51,83 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         Self {
             db,
             world,
-            tasks: BTreeMap::new(),
+            task_network: TaskNetwork::new(max_concurrent_tasks),
             processors,
-            max_concurrent_tasks,
             event_processor_config,
         }
     }
 
     pub fn add_parallelized_event(
         &mut self,
-        priority: TaskPriority,
         task_identifier: TaskId,
         parallelized_event: ParallelizedEvent,
     ) {
-        self.tasks
-            .entry(priority)
-            .or_default()
-            .entry(task_identifier)
-            .or_default()
-            .push(parallelized_event);
+        if let Some(task_data) = self.task_network.get_mut(&task_identifier) {
+            task_data.events.push(parallelized_event);
+        } else {
+            let task_data = TaskData {
+                events: vec![parallelized_event],
+            };
+
+            if let Err(e) = self.task_network.add_task(task_identifier, task_data) {
+                error!(
+                    target: LOG_TARGET,
+                    error = %e,
+                    task_id = %task_identifier,
+                    "Failed to add task to network."
+                );
+            }
+        }
+    }
+
+    pub fn add_parallelized_event_with_dependencies(
+        &mut self,
+        task_identifier: TaskId,
+        dependencies: Vec<TaskId>,
+        parallelized_event: ParallelizedEvent,
+    ) {
+        if let Some(task_data) = self.task_network.get_mut(&task_identifier) {
+            task_data.events.push(parallelized_event);
+        } else {
+            let task_data = TaskData {
+                events: vec![parallelized_event.clone()],
+            };
+
+            if let Err(e) = self.task_network.add_task_with_dependencies(
+                task_identifier,
+                task_data,
+                dependencies.clone(),
+            ) {
+                error!(
+                    target: LOG_TARGET,
+                    error = %e,
+                    task_id = %task_identifier,
+                    dependencies = ?dependencies,
+                    parallelized_event = ?parallelized_event,
+                    "Failed to add task with dependencies to network."
+                );
+            }
+        }
     }
 
     pub async fn process_tasks(&mut self) -> Result<()> {
-        let semaphore = Arc::new(Semaphore::new(self.max_concurrent_tasks));
+        if self.task_network.is_empty() {
+            return Ok(());
+        }
 
-        // Process each priority level sequentially
-        for (priority, task_group) in std::mem::take(&mut self.tasks) {
-            let mut handles = Vec::new();
+        let db = self.db.clone();
+        let world = self.world.clone();
+        let processors = self.processors.clone();
+        let event_processor_config = self.event_processor_config.clone();
 
-            // Process all tasks within this priority level concurrently
-            for (task_id, events) in task_group {
-                let db = self.db.clone();
-                let world = self.world.clone();
-                let semaphore = semaphore.clone();
-                let processors = self.processors.clone();
-                let event_processor_config = self.event_processor_config.clone();
+        self.task_network
+            .process_tasks(move |task_id, task_data| {
+                let db = db.clone();
+                let world = world.clone();
+                let processors = processors.clone();
+                let event_processor_config = event_processor_config.clone();
 
-                handles.push(tokio::spawn(async move {
-                    let _permit = semaphore.acquire().await?;
+                async move {
                     let mut local_db = db.clone();
 
                     // Process all events for this task sequentially
@@ -98,7 +137,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         block_number,
                         block_timestamp,
                         event_id,
-                    } in events
+                    } in task_data.events
                     {
                         let contract_processors = processors.get_event_processors(contract_type);
                         if let Some(processors) = contract_processors.get(&event.keys[0]) {
@@ -111,7 +150,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 target: LOG_TARGET,
                                 event_name = processor.event_key(),
                                 task_id = %task_id,
-                                priority = %priority,
                                 "Processing parallelized event."
                             );
 
@@ -132,7 +170,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                     event_name = processor.event_key(),
                                     error = %e,
                                     task_id = %task_id,
-                                    priority = %priority,
                                     "Processing parallelized event."
                                 );
                                 return Err(e);
@@ -141,16 +178,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                     }
 
                     Ok::<_, anyhow::Error>(())
-                }));
-            }
-
-            // Wait for all tasks in this priority level to complete before moving to next priority
-            for handle in try_join_all(handles).await? {
-                // Propagate errors
-                handle?;
-            }
-        }
-
-        Ok(())
+                }
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Task network error: {}", e))
     }
 }

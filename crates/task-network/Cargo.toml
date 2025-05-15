@@ -1,0 +1,14 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "torii-task-network"
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+futures-util.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+torii-adigraphmap.workspace = true
+tracing.workspace = true

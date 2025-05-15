@@ -10,7 +10,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::upgrade_model";
@@ -33,13 +33,9 @@ where
         true
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        1
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
-        event.keys.iter().for_each(|k| k.hash(&mut hasher));
+        event.keys[1].hash(&mut hasher); // Use the model selector to create a unique ID
         hasher.finish()
     }
 

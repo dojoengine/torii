@@ -8,6 +8,7 @@ members = [
 	"crates/server",
  	"crates/sqlite/types",
 	"xtask/generate-test-db",
+	"crates/task-network",
 ]
 
 [workspace.package]
@@ -59,6 +60,7 @@ torii-processors = { path = "crates/processors" }
 torii-grpc-client = { path = "crates/grpc/client" }
 torii-grpc-server = { path = "crates/grpc/server" }
 torii-adigraphmap = { path = "crates/adigraphmap" }
+torii-task-network = { path = "crates/task-network" }
 
 # macros
 merge-options = { git = "https://github.com/dojoengine/dojo", rev = "82fe9bd" }

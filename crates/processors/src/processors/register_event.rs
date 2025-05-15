@@ -2,6 +2,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use anyhow::{Error, Ok, Result};
 use async_trait::async_trait;
+use dojo_types::naming::compute_selector_from_names;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
 use dojo_world::contracts::world::WorldContractReader;
@@ -10,7 +11,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::register_event";
@@ -33,13 +34,24 @@ where
         true
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        0
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
+        let selector = match WorldEvent::try_from(event).unwrap_or_else(|_| {
+            panic!(
+                "Expected {} event to be well formed.",
+                <RegisterEventProcessor as EventProcessor<P>>::event_key(self)
+            )
+        }) {
+            WorldEvent::EventRegistered(e) => compute_selector_from_names(
+                &e.namespace.to_string().unwrap(),
+                &e.name.to_string().unwrap(),
+            ),
+            _ => {
+                unreachable!()
+            }
+        };
+
         let mut hasher = DefaultHasher::new();
-        event.keys.iter().for_each(|k| k.hash(&mut hasher));
+        selector.hash(&mut hasher);
         hasher.finish()
     }
 

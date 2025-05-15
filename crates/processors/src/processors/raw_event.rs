@@ -5,7 +5,7 @@ use starknet::core::types::Event;
 use starknet::providers::Provider;
 use torii_sqlite::Sql;
 
-use crate::task_manager::{self, TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 #[derive(Default, Debug)]
@@ -24,13 +24,8 @@ where
         true
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        1
-    }
-
     fn task_identifier(&self, _event: &Event) -> TaskId {
-        // TODO. for now raw events are not parallelized
-        task_manager::TASK_ID_SEQUENTIAL
+        0
     }
 
     async fn process(

@@ -9,7 +9,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc1155_transfer_batch";
@@ -31,10 +31,6 @@ where
         // data: [ids_len, ids[0].low, ids[0].high, ..., values_len, values[0].low, values[0].high,
         // ...]
         event.keys.len() == 4 && !event.data.is_empty()
-    }
-
-    fn task_priority(&self) -> TaskPriority {
-        1
     }
 
     fn task_identifier(&self, event: &Event) -> TaskId {

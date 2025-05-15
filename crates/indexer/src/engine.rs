@@ -26,7 +26,7 @@ use torii_processors::{EventProcessorConfig, Processors};
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::{Cursors, Sql};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace};
 
 use crate::constants::LOG_TARGET;
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
@@ -861,45 +861,20 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             .find(|p| p.validate(event))
             .expect("Must find atleast one processor for the event");
 
-        let (task_priority, task_identifier) =
-            (processor.task_priority(), processor.task_identifier(event));
+        let task_identifier = processor.task_identifier(event);
+        let dependencies = processor.task_dependencies(event);
 
-        // if our event can be parallelized, we add it to the task manager
-        if task_identifier != torii_processors::task_manager::TASK_ID_SEQUENTIAL {
-            self.task_manager.add_parallelized_event(
-                task_priority,
-                task_identifier,
-                ParallelizedEvent {
-                    contract_type,
-                    event_id: event_id.to_string(),
-                    event: event.clone(),
-                    block_number,
-                    block_timestamp,
-                },
-            );
-        } else {
-            // Process non-parallelized events immediately
-            // if we dont have a task identifier, we process the event immediately
-            if processor.validate(event) {
-                if let Err(e) = processor
-                    .process(
-                        &self.world,
-                        &mut self.db,
-                        block_number,
-                        block_timestamp,
-                        event_id,
-                        event,
-                        &self.config.event_processor_config,
-                    )
-                    .await
-                {
-                    error!(target: LOG_TARGET, event_name = processor.event_key(), error = ?e, "Processing event.");
-                    return Err(e);
-                }
-            } else {
-                warn!(target: LOG_TARGET, event_name = processor.event_key(), "Event not validated.");
-            }
-        }
+        self.task_manager.add_parallelized_event_with_dependencies(
+            task_identifier,
+            dependencies,
+            ParallelizedEvent {
+                contract_type,
+                event_id: event_id.to_string(),
+                event: event.clone(),
+                block_number,
+                block_timestamp,
+            },
+        );
 
         Ok(())
     }
