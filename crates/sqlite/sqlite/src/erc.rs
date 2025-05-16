@@ -6,7 +6,6 @@ use anyhow::{Context, Result};
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use data_url::mime::Mime;
 use data_url::DataUrl;
-use reqwest::Client;
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
 use starknet::core::utils::{get_selector_from_name, parse_cairo_short_string};
@@ -23,8 +22,8 @@ use crate::executor::{
 };
 use crate::types::ContractType;
 use crate::utils::{
-    felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, fetch_content_from_ipfs,
-    sanitize_json_string, utc_dt_string_from_timestamp,
+    felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, fetch_content_from_http,
+    fetch_content_from_ipfs, sanitize_json_string, utc_dt_string_from_timestamp,
 };
 
 impl Sql {
@@ -461,20 +460,13 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value> {
         uri if uri.starts_with("http") || uri.starts_with("https") => {
             // Fetch metadata from HTTP/HTTPS URL
             debug!(token_uri = %token_uri, "Fetching metadata from http/https URL");
-            let client = Client::new();
-            let response = client
-                .get(token_uri)
-                .send()
+            let response = fetch_content_from_http(token_uri)
                 .await
                 .context("Failed to fetch metadata from URL")?;
 
-            let bytes = response
-                .bytes()
-                .await
-                .context("Failed to read response bytes")?;
-            let json: serde_json::Value = serde_json::from_slice(&bytes).context(format!(
+            let json: serde_json::Value = serde_json::from_slice(&response).context(format!(
                 "Failed to parse metadata JSON from response: {:?}",
-                bytes
+                response
             ))?;
 
             Ok(json)
