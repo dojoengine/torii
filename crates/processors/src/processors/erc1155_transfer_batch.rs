@@ -87,7 +87,7 @@ where
                 break;
             }
 
-            let mut db = db.clone(); 
+            let mut db = db.clone();
             let world = world.clone();
             let token_address_clone = token_address;
             let from_clone = from;
@@ -97,23 +97,21 @@ where
             let data_clone = event.data.clone();
             let current_idx_clone = current_idx + (idx * 2);
 
-
             tasks.push(tokio::spawn(async move {
                 let amount = U256Cainome::cairo_deserialize(&data_clone, current_idx_clone)?;
                 let amount = U256::from_words(amount.low, amount.high);
 
-                db
-                    .handle_nft_transfer(
-                        world.provider(),
-                        token_address_clone,
-                        from_clone,
-                        to_clone,
-                        token_id_clone,
-                        amount,
-                        block_timestamp,
-                        &event_id_clone,
-                    )
-                    .await?;
+                db.handle_nft_transfer(
+                    world.provider(),
+                    token_address_clone,
+                    from_clone,
+                    to_clone,
+                    token_id_clone,
+                    amount,
+                    block_timestamp,
+                    &event_id_clone,
+                )
+                .await?;
 
                 debug!(
                     target: LOG_TARGET,
