@@ -826,7 +826,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     .processors
                     .catch_all_event
                     .process(
-                        &self.world,
+                        self.world.clone(),
                         &mut self.db,
                         block_number,
                         block_timestamp,
