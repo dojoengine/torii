@@ -1,0 +1,13 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "torii-adigraphmap"
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+futures-util.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
