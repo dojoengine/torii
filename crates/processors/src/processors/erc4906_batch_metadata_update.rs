@@ -5,6 +5,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
 use dojo_world::contracts::world::WorldContractReader;
+use futures_util::future::try_join_all;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use torii_sqlite::Sql;
@@ -76,11 +77,27 @@ where
         let to_token_id = U256Cainome::cairo_deserialize(&event.keys, 3)?;
         let to_token_id = U256::from_words(to_token_id.low, to_token_id.high);
 
+        let mut tasks = Vec::new();
         let mut token_id = from_token_id;
+
         while token_id <= to_token_id {
-            db.update_nft_metadata(world.provider(), token_address, token_id)
-                .await?;
+            let mut db_clone = db.clone();
+            let world_clone = world.clone();
+            let token_address_clone = token_address;
+            let current_token_id = token_id;
+
+            tasks.push(tokio::spawn(async move {
+                db_clone
+                    .update_nft_metadata(world_clone.provider(), token_address_clone, current_token_id)
+                    .await?;
+                Result::<_, Error>::Ok(())
+            }));
+
             token_id += U256::from(1u8);
+        }
+
+        for result in try_join_all(tasks).await?.into_iter() {
+            result?;
         }
 
         debug!(
