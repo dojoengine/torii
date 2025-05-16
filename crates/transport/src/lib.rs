@@ -1,13 +1,17 @@
 use async_trait::async_trait;
-use log::trace;
+use tracing::trace;
 use reqwest::{Client, Url};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::time;
 
-use crate::{
-    jsonrpc::{transports::JsonRpcTransport, JsonRpcMethod, JsonRpcResponse},
+use starknet::providers::{
+    jsonrpc::{JsonRpcTransport, JsonRpcMethod, JsonRpcResponse},
     ProviderRequestData,
 };
+
+pub mod error;
+
+pub use error::HttpTransportError;
 
 /// A [`JsonRpcTransport`] implementation that uses HTTP connections.
 #[derive(Debug, Clone)]

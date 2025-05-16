@@ -1,5 +1,3 @@
-use thiserror::Error;
-
 /// Errors using [`HttpTransport`].
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]

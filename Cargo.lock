@@ -11501,6 +11501,7 @@ dependencies = [
  "torii-processors",
  "torii-server",
  "torii-sqlite",
+ "torii-transport",
  "tower",
  "tower-http",
  "tracing",
@@ -11610,6 +11611,20 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "torii-adigraphmap",
+ "tracing",
+]
+
+[[package]]
+name = "torii-transport"
+version = "1.5.4-preview.0"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "starknet 0.12.0",
+ "tokio",
  "tracing",
 ]
 
