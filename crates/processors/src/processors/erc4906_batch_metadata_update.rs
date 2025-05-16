@@ -88,7 +88,11 @@ where
 
             tasks.push(tokio::spawn(async move {
                 db_clone
-                    .update_nft_metadata(world_clone.provider(), token_address_clone, current_token_id)
+                    .update_nft_metadata(
+                        world_clone.provider(),
+                        token_address_clone,
+                        current_token_id,
+                    )
                     .await?;
                 Result::<_, Error>::Ok(())
             }));
