@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
@@ -14,7 +16,7 @@ pub struct RawEventProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for RawEventProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug,
+    P: Provider + Send + Sync + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "".to_string()
@@ -30,7 +32,7 @@ where
 
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        _world: Arc<WorldContractReader<P>>,
         _db: &mut Sql,
         _block_number: u64,
         _block_timestamp: u64,

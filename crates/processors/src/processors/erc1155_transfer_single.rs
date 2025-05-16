@@ -1,4 +1,5 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Arc;
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -20,7 +21,7 @@ pub struct Erc1155TransferSingleProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for Erc1155TransferSingleProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug,
+    P: Provider + Send + Sync + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "TransferSingle".to_string()
@@ -40,7 +41,7 @@ where
 
     async fn process(
         &self,
-        world: &WorldContractReader<P>,
+        world: Arc<WorldContractReader<P>>,
         db: &mut Sql,
         _block_number: u64,
         block_timestamp: u64,

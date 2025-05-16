@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
@@ -30,7 +31,7 @@ impl EventProcessorConfig {
 #[async_trait]
 pub trait EventProcessor<P>: Send + Sync
 where
-    P: Provider + Sync,
+    P: Provider + Sync + Send,
 {
     fn event_key(&self) -> String;
 
@@ -54,7 +55,7 @@ where
     #[allow(clippy::too_many_arguments)]
     async fn process(
         &self,
-        world: &WorldContractReader<P>,
+        world: Arc<WorldContractReader<P>>,
         db: &mut Sql,
         block_number: u64,
         block_timestamp: u64,

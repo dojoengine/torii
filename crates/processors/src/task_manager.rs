@@ -155,7 +155,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
 
                             if let Err(e) = processor
                                 .process(
-                                    &world,
+                                    world.clone(),
                                     &mut local_db,
                                     block_number,
                                     block_timestamp,

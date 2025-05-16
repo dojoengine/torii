@@ -1,4 +1,5 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Arc;
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
@@ -26,7 +27,7 @@ pub struct MetadataUpdateProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for MetadataUpdateProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug,
+    P: Provider + Send + Sync + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "MetadataUpdate".to_string()
@@ -44,7 +45,7 @@ where
 
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        _world: Arc<WorldContractReader<P>>,
         db: &mut Sql,
         _block_number: u64,
         block_timestamp: u64,

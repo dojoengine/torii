@@ -1,4 +1,5 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Arc;
 
 use anyhow::{Error, Ok, Result};
 use async_trait::async_trait;
@@ -22,7 +23,7 @@ pub struct RegisterEventProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for RegisterEventProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug,
+    P: Provider + Send + Sync + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "EventRegistered".to_string()
@@ -57,7 +58,7 @@ where
 
     async fn process(
         &self,
-        world: &WorldContractReader<P>,
+        world: Arc<WorldContractReader<P>>,
         db: &mut Sql,
         block_number: u64,
         block_timestamp: u64,
@@ -96,7 +97,7 @@ where
             &name,
             event.address.0,
             event.class_hash.0,
-            world,
+            &world,
         )
         .await;
         if config.strict_model_reader {
