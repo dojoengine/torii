@@ -580,6 +580,7 @@ impl Sql {
             QueryType::StoreTransaction(StoreTransactionQuery {
                 contract_addresses: contract_addresses.clone(),
                 calls: calls.to_vec(),
+                unique_models: unique_models.clone(),
             }),
         ))?;
 

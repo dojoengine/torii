@@ -93,6 +93,7 @@ pub struct EventMessageQuery {
 pub struct StoreTransactionQuery {
     pub contract_addresses: HashSet<Felt>,
     pub calls: Vec<ParsedCall>,
+    pub unique_models: HashSet<Felt>,
 }
 
 #[derive(Debug, Clone)]
@@ -384,6 +385,17 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     )
                     .bind(&transaction.transaction_hash)
                     .bind(felt_to_sql_string(contract_address))
+                    .execute(&mut **tx)
+                    .await?;
+                }
+
+                for unique_model in &store_transaction.unique_models {
+                    sqlx::query(
+                        "INSERT OR IGNORE INTO transaction_models (transaction_hash, \
+                         model_id) VALUES (?, ?)",
+                    )
+                    .bind(&transaction.transaction_hash)
+                    .bind(felt_to_sql_string(unique_model))
                     .execute(&mut **tx)
                     .await?;
                 }

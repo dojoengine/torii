@@ -277,6 +277,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug> TransactionProcessor<P>
         contract_addresses: &HashSet<Felt>,
         transaction: &Transaction,
         contract_class_cache: &ContractClassCache<P>,
+        unique_models: &HashSet<Felt>,
     ) -> Result<()> {
         let Some(tx_info) = Self::extract_transaction_info(transaction) else {
             return Ok(());
@@ -315,6 +316,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug> TransactionProcessor<P>
             tx_info.transaction_type,
             block_timestamp,
             &calls,
+            unique_models,
         )?;
 
         Ok(())
