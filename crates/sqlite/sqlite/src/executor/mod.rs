@@ -732,7 +732,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
             QueryType::Execute => {
                 debug!(target: LOG_TARGET, "Executing query.");
                 let instant = Instant::now();
-                let res = self.execute(true).await;
+                let res = self.execute().await;
                 debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Executed query.");
 
                 if let Some(sender) = query_message.tx {
@@ -782,14 +782,12 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         Ok(())
     }
 
-    async fn execute(&mut self, new_transaction: bool) -> Result<()> {
-        if new_transaction {
-            let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
-            transaction.commit().await?;
+    async fn execute(&mut self) -> Result<()> {
+        let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
+        transaction.commit().await?;
 
-            for message in self.publish_queue.drain(..) {
-                send_broker_message(message);
-            }
+        for message in self.publish_queue.drain(..) {
+            send_broker_message(message);
         }
 
         Ok(())
