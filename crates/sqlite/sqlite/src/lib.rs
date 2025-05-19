@@ -558,6 +558,7 @@ impl Sql {
         transaction_type: &str,
         block_timestamp: u64,
         calls: &[ParsedCall],
+        unique_models: &HashSet<Felt>,
     ) -> Result<()> {
         // Store the transaction in the transactions table
         self.executor.send(QueryMessage::new(
@@ -580,6 +581,7 @@ impl Sql {
             QueryType::StoreTransaction(StoreTransactionQuery {
                 contract_addresses: contract_addresses.clone(),
                 calls: calls.to_vec(),
+                unique_models: unique_models.clone(),
             }),
         ))?;
 

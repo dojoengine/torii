@@ -18,6 +18,7 @@ use starknet::core::types::{
     MaybePendingBlockWithReceipts, MaybePendingBlockWithTxHashes, PendingBlockWithReceipts,
     ResultPageRequest, Transaction, TransactionReceipt, TransactionWithReceipt,
 };
+use starknet::macros::selector;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
 use tokio::sync::broadcast::Sender;
@@ -639,6 +640,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         cursor_map: &mut HashMap<Felt, (Felt, u64)>,
     ) -> Result<()> {
         let mut unique_contracts = HashSet::new();
+        let mut unique_models = HashSet::new();
         // Contract -> Cursor
         for (event_idx, event) in events.iter().enumerate() {
             // NOTE: erc* processors expect the event_id to be in this format to get
@@ -659,6 +661,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             };
 
             unique_contracts.insert(event.from_address);
+            let event_key = event.keys[0];
+            if contract_type == ContractType::WORLD
+                && (event_key == selector!("StoreSetRecord")
+                    || event_key == selector!("StoreUpdateRecord")
+                    || event_key == selector!("StoreDelRecord")
+                    || event_key == selector!("StoreUpdateMember")
+                    || event_key == selector!("EventEmitted"))
+            {
+                unique_models.insert(event.keys[1]);
+            }
 
             self.process_event(
                 block_number,
@@ -685,6 +697,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 transaction_hash,
                 &unique_contracts,
                 transaction,
+                &unique_models,
             )
             .await?;
         }
@@ -709,6 +722,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         };
 
         let mut unique_contracts = HashSet::new();
+        let mut unique_models = HashSet::new();
         if let Some(events) = events {
             for (event_idx, event) in events.iter().enumerate() {
                 // Skip events that are not from a contract we are indexing
@@ -717,7 +731,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 };
 
                 unique_contracts.insert(event.from_address);
-
+                let event_key = event.keys[0];
+                if contract_type == ContractType::WORLD
+                    && (event_key == selector!("StoreSetRecord")
+                        || event_key == selector!("StoreUpdateRecord")
+                        || event_key == selector!("StoreDelRecord")
+                        || event_key == selector!("StoreUpdateMember")
+                        || event_key == selector!("EventEmitted"))
+                {
+                    unique_models.insert(event.keys[1]);
+                }
                 // NOTE: erc* processors expect the event_id to be in this format to get
                 // transaction_hash:
                 let event_id: String = format!(
@@ -746,6 +769,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     *transaction_hash,
                     &unique_contracts,
                     &transaction_with_receipt.transaction,
+                    &unique_models,
                 )
                 .await?;
             }
@@ -783,6 +807,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         transaction_hash: Felt,
         contract_addresses: &HashSet<Felt>,
         transaction: &Transaction,
+        unique_models: &HashSet<Felt>,
     ) -> Result<()> {
         for processor in &self.processors.transaction {
             processor
@@ -795,6 +820,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     contract_addresses,
                     transaction,
                     self.contract_class_cache.as_ref(),
+                    unique_models,
                 )
                 .await?
         }

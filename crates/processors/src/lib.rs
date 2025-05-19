@@ -90,5 +90,6 @@ pub trait TransactionProcessor<P: Provider + Sync + std::fmt::Debug>: Send + Syn
         contract_addresses: &HashSet<Felt>,
         transaction: &Transaction,
         contract_class_cache: &ContractClassCache<P>,
+        unique_models: &HashSet<Felt>,
     ) -> Result<(), Error>;
 }

@@ -68,17 +68,13 @@ impl Sql {
             if from_address != Felt::ZERO {
                 // from_address/contract_address/
                 let from_balance_id = felts_to_sql_string(&[from_address, contract_address]);
-                let from_balance = erc_cache
-                    .entry(from_balance_id)
-                    .or_default();
+                let from_balance = erc_cache.entry(from_balance_id).or_default();
                 *from_balance -= I256::from(amount);
             }
 
             if to_address != Felt::ZERO {
                 let to_balance_id = felts_to_sql_string(&[to_address, contract_address]);
-                let to_balance = erc_cache
-                    .entry(to_balance_id)
-                    .or_default();
+                let to_balance = erc_cache.entry(to_balance_id).or_default();
                 *to_balance += I256::from(amount);
             }
         }
@@ -136,9 +132,7 @@ impl Sql {
                     felt_to_sql_string(&from_address),
                     &id
                 );
-                let from_balance = erc_cache
-                    .entry(from_balance_id)
-                    .or_default();
+                let from_balance = erc_cache.entry(from_balance_id).or_default();
                 *from_balance -= I256::from(amount);
             }
 
@@ -148,9 +142,7 @@ impl Sql {
                     felt_to_sql_string(&to_address),
                     &id
                 );
-                let to_balance = erc_cache
-                    .entry(to_balance_id)
-                    .or_default();
+                let to_balance = erc_cache.entry(to_balance_id).or_default();
                 *to_balance += I256::from(amount);
             }
         }
