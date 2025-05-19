@@ -13,7 +13,7 @@ use super::{ApplyBalanceDiffQuery, BrokerMessage, Executor};
 use crate::constants::{SQL_FELT_DELIMITER, TOKEN_BALANCE_TABLE};
 use crate::executor::LOG_TARGET;
 use crate::simple_broker::SimpleBroker;
-use crate::types::{ContractType, OptimisticTokenBalance, TokenBalance};
+use crate::types::{OptimisticTokenBalance, TokenBalance};
 use crate::utils::{sql_string_to_u256, u256_to_sql_string, I256};
 
 #[derive(Debug, Clone)]
@@ -48,14 +48,11 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         provider: Arc<P>,
     ) -> Result<()> {
         let erc_cache = apply_balance_diff.erc_cache;
-        for ((contract_type, id_str), balance) in erc_cache.iter() {
+        for (id_str, balance) in erc_cache.iter() {
             let id = id_str.split(SQL_FELT_DELIMITER).collect::<Vec<&str>>();
-            match contract_type {
-                ContractType::WORLD => unreachable!(),
-                ContractType::UDC => unreachable!(),
-                ContractType::ERC721 => {
+            match id.len() {
+                2 => {
                     // account_address/contract_address:id => ERC721
-                    assert!(id.len() == 2);
                     let account_address = id[0];
                     let token_id = id[1];
                     let mid = token_id.split(":").collect::<Vec<&str>>();
@@ -71,9 +68,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     )
                     .await?;
                 }
-                ContractType::ERC20 => {
+                3 => {
                     // account_address/contract_address/ => ERC20
-                    assert!(id.len() == 3);
                     let account_address = id[0];
                     let contract_address = id[1];
                     let token_id = id[1];
@@ -88,24 +84,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     )
                     .await?;
                 }
-                ContractType::ERC1155 => {
-                    // account_address/contract_address:id => ERC1155
-                    assert!(id.len() == 2);
-                    let account_address = id[0];
-                    let token_id = id[1];
-                    let mid = token_id.split(":").collect::<Vec<&str>>();
-                    let contract_address = mid[0];
-
-                    self.apply_balance_diff_helper(
-                        id_str,
-                        account_address,
-                        contract_address,
-                        token_id,
-                        balance,
-                        Arc::clone(&provider),
-                    )
-                    .await?;
-                }
+                _ => unreachable!(),
             }
         }
 
