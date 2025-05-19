@@ -662,11 +662,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
             unique_contracts.insert(event.from_address);
             let event_key = event.keys[0];
-            if contract_type == ContractType::WORLD && (event_key == selector!("StoreSetRecord")
-                || event_key == selector!("StoreUpdateRecord")
-                || event_key == selector!("StoreDelRecord")
-                || event_key == selector!("StoreUpdateMember")
-                || event_key == selector!("EventEmitted"))
+            if contract_type == ContractType::WORLD
+                && (event_key == selector!("StoreSetRecord")
+                    || event_key == selector!("StoreUpdateRecord")
+                    || event_key == selector!("StoreDelRecord")
+                    || event_key == selector!("StoreUpdateMember")
+                    || event_key == selector!("EventEmitted"))
             {
                 unique_models.insert(event.keys[1]);
             }
@@ -731,11 +732,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                 unique_contracts.insert(event.from_address);
                 let event_key = event.keys[0];
-                if contract_type == ContractType::WORLD && (event_key == selector!("StoreSetRecord")
-                    || event_key == selector!("StoreUpdateRecord")
-                    || event_key == selector!("StoreDelRecord")
-                    || event_key == selector!("StoreUpdateMember")
-                    || event_key == selector!("EventEmitted"))
+                if contract_type == ContractType::WORLD
+                    && (event_key == selector!("StoreSetRecord")
+                        || event_key == selector!("StoreUpdateRecord")
+                        || event_key == selector!("StoreDelRecord")
+                        || event_key == selector!("StoreUpdateMember")
+                        || event_key == selector!("EventEmitted"))
                 {
                     unique_models.insert(event.keys[1]);
                 }
