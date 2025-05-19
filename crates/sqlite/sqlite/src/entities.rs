@@ -332,4 +332,283 @@ impl Sql {
             next_cursor,
         })
     }
+
+    /// Unified entrypoint for entity queries, covering all clause types and pagination.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn query_entities(
+        &self,
+        table: &str,
+        model_relation_table: &str,
+        entity_relation_column: &str,
+        query: &torii_proto::proto::types::Query,
+        model_cache: &crate::cache::ModelCache,
+    ) -> Result<Page<Entity>, Error> {
+        use torii_proto::proto::types::clause::ClauseType;
+        use torii_proto::proto::types::LogicalOperator;
+        use torii_proto::proto::types::member_value::ValueType;
+        use torii_proto::ComparisonOperator;
+        use dojo_types::primitive::Primitive;
+        use dojo_types::naming::{compute_selector_from_tag, compute_selector_from_names};
+        use std::str::FromStr;
+
+        let pagination = query.pagination.clone().ok_or(QueryError::MissingParam("pagination".into()))?;
+        let pagination: Pagination = pagination.into();
+        let no_hashed_keys = query.no_hashed_keys;
+        let models = query.models.clone();
+
+        // Helper for model selectors
+        let model_selectors = models.iter().map(|m| compute_selector_from_tag(m)).collect::<Vec<_>>();
+        let schemas = model_cache.models(&model_selectors).await?.iter().map(|m| m.schema.clone()).collect::<Vec<_>>();
+        let having_clause = model_selectors.iter().map(|model| format!("INSTR(model_ids, '{:#x}') > 0", model)).collect::<Vec<_>>().join(" OR ");
+
+        let page = match &query.clause {
+            None => {
+                // All entities
+                if table.ends_with("_historical") {
+                    self.fetch_historical_entities(
+                        table,
+                        model_relation_table,
+                        "",
+                        &having_clause,
+                        vec![],
+                        pagination,
+                    ).await
+                } else {
+                    self.entities(
+                        &schemas,
+                        table,
+                        model_relation_table,
+                        entity_relation_column,
+                        None,
+                        if !having_clause.is_empty() { Some(&having_clause) } else { None },
+                        pagination,
+                        vec![],
+                    ).await
+                }
+            }
+            Some(clause) => {
+                let clause_type = clause.clause_type.as_ref().ok_or(QueryError::MissingParam("clause_type".into()))?;
+                match clause_type {
+                    ClauseType::HashedKeys(hashed_keys) => {
+                        let where_clause = if !hashed_keys.hashed_keys.is_empty() {
+                            let ids = hashed_keys.hashed_keys.iter().map(|_| format!("{table}.id = ?")).collect::<Vec<_>>();
+                            ids.join(" OR ")
+                        } else {
+                            String::new()
+                        };
+                        let bind_values = hashed_keys.hashed_keys.iter().map(|key| format!("{:#x}", Felt::from_bytes_be_slice(key))).collect::<Vec<_>>();
+                        if table.ends_with("_historical") {
+                            self.fetch_historical_entities(
+                                table,
+                                model_relation_table,
+                                &where_clause,
+                                &having_clause,
+                                bind_values,
+                                pagination,
+                            ).await
+                        } else {
+                            self.entities(
+                                &schemas,
+                                table,
+                                model_relation_table,
+                                entity_relation_column,
+                                if !where_clause.is_empty() { Some(&where_clause) } else { None },
+                                if !having_clause.is_empty() { Some(&having_clause) } else { None },
+                                pagination,
+                                bind_values,
+                            ).await
+                        }
+                    }
+                    ClauseType::Keys(keys) => {
+                        let keys_pattern = crate::utils::build_keys_pattern(keys)?;
+                        let model_selectors: Vec<String> = keys.models.iter().map(|model| format!("{:#x}", compute_selector_from_tag(model))).collect();
+                        let mut bind_values = vec![keys_pattern];
+                        let where_clause = if model_selectors.is_empty() {
+                            format!("{table}.keys REGEXP ?")
+                        } else {
+                            let model_selectors_len = model_selectors.len();
+                            bind_values.extend(model_selectors.clone());
+                            bind_values.extend(model_selectors);
+                            format!(
+                                "({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \\n                 {model_relation_table}.model_id NOT IN ({})",
+                                vec!["?"; model_selectors_len].join(", "),
+                                vec!["?"; model_selectors_len].join(", "),
+                            )
+                        };
+                        if table.ends_with("_historical") {
+                            self.fetch_historical_entities(
+                                table,
+                                model_relation_table,
+                                &where_clause,
+                                &having_clause,
+                                bind_values,
+                                pagination,
+                            ).await
+                        } else {
+                            self.entities(
+                                &schemas,
+                                table,
+                                model_relation_table,
+                                entity_relation_column,
+                                Some(&where_clause),
+                                if !having_clause.is_empty() { Some(&having_clause) } else { None },
+                                pagination,
+                                bind_values,
+                            ).await
+                        }
+                    }
+                    ClauseType::Member(member) => {
+                        let comparison_operator = ComparisonOperator::from_repr(member.operator as usize).expect("invalid comparison operator");
+                        fn prepare_comparison(value: &torii_proto::proto::types::MemberValue, bind_values: &mut Vec<String>) -> Result<String, Error> {
+                            match &value.value_type {
+                                Some(ValueType::String(value)) => {
+                                    bind_values.push(value.to_string());
+                                    Ok("?".to_string())
+                                }
+                                Some(ValueType::Primitive(value)) => {
+                                    let primitive: Primitive = (value.clone()).try_into()?;
+                                    bind_values.push(primitive.to_sql_value());
+                                    Ok("?".to_string())
+                                }
+                                Some(ValueType::List(values)) => Ok(format!(
+                                    "({})",
+                                    values.values.iter().map(|v| prepare_comparison(v, bind_values)).collect::<Result<Vec<String>, Error>>()?.join(", ")
+                                )),
+                                None => Err(QueryError::MissingParam("value_type".into()).into()),
+                            }
+                        }
+                        let (namespace, model) = member.model.split_once('-').ok_or(QueryError::InvalidNamespacedModel(member.model.clone()))?;
+                        let models_query = format!(
+                            r#"
+                            SELECT group_concat({model_relation_table}.model_id) as model_ids
+                            FROM {table}
+                            JOIN {model_relation_table} ON {table}.id = {model_relation_table}.entity_id
+                            GROUP BY {table}.id
+                            HAVING INSTR(model_ids, '{:#x}') > 0
+                            LIMIT 1
+                        "#, compute_selector_from_names(namespace, model));
+                        let models_str: Option<String> = sqlx::query_scalar(&models_query).fetch_optional(&self.pool).await?;
+                        if models_str.is_none() {
+                            return Ok(Page { items: Vec::new(), next_cursor: None });
+                        }
+                        let models_str = models_str.unwrap();
+                        let model_ids = models_str.split(',').filter_map(|id| {
+                            let model_id = Felt::from_str(id).unwrap();
+                            if model_selectors.is_empty() || model_selectors.contains(&model_id) {
+                                Some(model_id)
+                            } else {
+                                None
+                            }
+                        }).collect::<Vec<_>>();
+                        let schemas = model_cache.models(&model_ids).await?.into_iter().map(|m| m.schema).collect::<Vec<_>>();
+                        let mut bind_values = Vec::new();
+                        let value = prepare_comparison(member.value.as_ref().ok_or(QueryError::MissingParam("value".into()))?, &mut bind_values)?;
+                        let where_clause = format!("[{}].[{}] {comparison_operator} {value}", member.model, member.member);
+                        self.entities(
+                            &schemas,
+                            table,
+                            model_relation_table,
+                            entity_relation_column,
+                            Some(&where_clause),
+                            None,
+                            pagination,
+                            bind_values,
+                        ).await
+                    }
+                    ClauseType::Composite(composite) => {
+                        // Use the same build_composite_clause as in the server
+                        fn build_composite_clause(
+                            table: &str,
+                            model_relation_table: &str,
+                            composite: &torii_proto::proto::types::CompositeClause,
+                        ) -> Result<(String, Vec<String>), Error> {
+                            let is_or = composite.operator == LogicalOperator::Or as i32;
+                            let mut where_clauses = Vec::new();
+                            let mut bind_values = Vec::new();
+                            for clause in &composite.clauses {
+                                match clause.clause_type.as_ref().unwrap() {
+                                    ClauseType::HashedKeys(hashed_keys) => {
+                                        let ids = hashed_keys.hashed_keys.iter().map(|id| {
+                                            bind_values.push(Felt::from_bytes_be_slice(id).to_string());
+                                            "?".to_string()
+                                        }).collect::<Vec<_>>().join(", ");
+                                        where_clauses.push(format!("({table}.id IN ({}))", ids));
+                                    }
+                                    ClauseType::Keys(keys) => {
+                                        let keys_pattern = crate::utils::build_keys_pattern(keys)?;
+                                        bind_values.push(keys_pattern);
+                                        let model_selectors: Vec<String> = keys.models.iter().map(|model| format!("{:#x}", compute_selector_from_tag(model))).collect();
+                                        if model_selectors.is_empty() {
+                                            where_clauses.push(format!("({table}.keys REGEXP ?)"));
+                                        } else {
+                                            let placeholders = vec!["?"; model_selectors.len()].join(", ");
+                                            where_clauses.push(format!(
+                                                "({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \\n                 {model_relation_table}.model_id NOT IN ({})",
+                                                placeholders, placeholders
+                                            ));
+                                            bind_values.extend(model_selectors.clone());
+                                            bind_values.extend(model_selectors);
+                                        }
+                                    }
+                                    ClauseType::Member(member) => {
+                                        let comparison_operator = ComparisonOperator::from_repr(member.operator as usize).expect("invalid comparison operator");
+                                        let value = member.value.clone().ok_or(QueryError::MissingParam("value".into()))?;
+                                        fn prepare_comparison(value: &torii_proto::proto::types::MemberValue, bind_values: &mut Vec<String>) -> Result<String, Error> {
+                                            match &value.value_type {
+                                                Some(ValueType::String(value)) => {
+                                                    bind_values.push(value.to_string());
+                                                    Ok("?".to_string())
+                                                }
+                                                Some(ValueType::Primitive(value)) => {
+                                                    let primitive: Primitive = (value.clone()).try_into()?;
+                                                    bind_values.push(primitive.to_sql_value());
+                                                    Ok("?".to_string())
+                                                }
+                                                Some(ValueType::List(values)) => Ok(format!(
+                                                    "({})",
+                                                    values.values.iter().map(|v| prepare_comparison(v, bind_values)).collect::<Result<Vec<String>, Error>>()?.join(", ")
+                                                )),
+                                                None => Err(QueryError::MissingParam("value_type".into()).into()),
+                                            }
+                                        }
+                                        let value = prepare_comparison(&value, &mut bind_values)?;
+                                        let model = member.model.clone();
+                                        where_clauses.push(format!("([{model}].[{}] {comparison_operator} {value})", member.member));
+                                    }
+                                    ClauseType::Composite(nested) => {
+                                        let (nested_where, nested_values) = build_composite_clause(table, model_relation_table, nested)?;
+                                        if !nested_where.is_empty() {
+                                            where_clauses.push(nested_where);
+                                        }
+                                        bind_values.extend(nested_values);
+                                    }
+                                }
+                            }
+                            let where_clause = if !where_clauses.is_empty() {
+                                where_clauses.join(if is_or { " OR " } else { " AND " })
+                            } else {
+                                String::new()
+                            };
+                            Ok((where_clause, bind_values))
+                        }
+                        let (where_clause, bind_values) = build_composite_clause(table, model_relation_table, &composite)?;
+                        self.entities(
+                            &schemas,
+                            table,
+                            model_relation_table,
+                            entity_relation_column,
+                            if where_clause.is_empty() { None } else { Some(&where_clause) },
+                            if having_clause.is_empty() { None } else { Some(&having_clause) },
+                            pagination,
+                            bind_values,
+                        ).await
+                    }
+                }
+            }
+        }?;
+        Ok(Page {
+            items: page.items,
+            next_cursor: page.next_cursor,
+        })
+    }
 }
