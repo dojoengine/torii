@@ -1,7 +1,9 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Arc;
 
 use anyhow::{Error, Ok, Result};
 use async_trait::async_trait;
+use dojo_types::naming::compute_selector_from_names;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
 use dojo_world::contracts::world::WorldContractReader;
@@ -10,7 +12,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::register_model";
@@ -21,7 +23,7 @@ pub struct RegisterModelProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for RegisterModelProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug,
+    P: Provider + Send + Sync + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "ModelRegistered".to_string()
@@ -33,19 +35,32 @@ where
         true
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        0
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
+        // Torii version is coupled to the world version, so we can expect the event to be well
+        // formed.
+        let selector = match WorldEvent::try_from(event).unwrap_or_else(|_| {
+            panic!(
+                "Expected {} event to be well formed.",
+                <RegisterModelProcessor as EventProcessor<P>>::event_key(self)
+            )
+        }) {
+            WorldEvent::ModelRegistered(e) => compute_selector_from_names(
+                &e.namespace.to_string().unwrap(),
+                &e.name.to_string().unwrap(),
+            ),
+            _ => {
+                unreachable!()
+            }
+        };
+
         let mut hasher = DefaultHasher::new();
-        event.keys.iter().for_each(|k| k.hash(&mut hasher));
+        selector.hash(&mut hasher);
         hasher.finish()
     }
 
     async fn process(
         &self,
-        world: &WorldContractReader<P>,
+        world: Arc<WorldContractReader<P>>,
         db: &mut Sql,
         block_number: u64,
         block_timestamp: u64,
@@ -82,7 +97,7 @@ where
             &name,
             event.address.0,
             event.class_hash.0,
-            world,
+            &world,
         )
         .await;
         if config.strict_model_reader {

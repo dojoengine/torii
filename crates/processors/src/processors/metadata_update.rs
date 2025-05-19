@@ -1,4 +1,5 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Arc;
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
@@ -15,7 +16,7 @@ use torii_sqlite::utils::fetch_content_from_ipfs;
 use torii_sqlite::Sql;
 use tracing::{error, info};
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::metadata_update";
@@ -26,7 +27,7 @@ pub struct MetadataUpdateProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for MetadataUpdateProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug,
+    P: Provider + Send + Sync + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "MetadataUpdate".to_string()
@@ -34,10 +35,6 @@ where
 
     fn validate(&self, _event: &Event) -> bool {
         true
-    }
-
-    fn task_priority(&self) -> TaskPriority {
-        3
     }
 
     fn task_identifier(&self, event: &Event) -> TaskId {
@@ -48,7 +45,7 @@ where
 
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        _world: Arc<WorldContractReader<P>>,
         db: &mut Sql,
         _block_number: u64,
         block_timestamp: u64,

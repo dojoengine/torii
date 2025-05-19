@@ -20,6 +20,7 @@ use starknet::core::types::{Event, Felt};
 use starknet_crypto::poseidon_hash_many;
 use tokio::sync::mpsc::UnboundedSender;
 use torii_proto::{Controller, Page};
+use tokio::sync::Semaphore;
 use torii_sqlite_types::{HookEvent, ParsedCall};
 use utils::{build_keys_pattern, felts_to_sql_string, map_row_to_event};
 
@@ -45,18 +46,32 @@ mod cursor;
 use cache::{LocalCache, Model, ModelCache};
 pub use torii_sqlite_types as types;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SqlConfig {
     pub all_model_indices: bool,
     pub model_indices: Vec<ModelIndices>,
     pub historical_models: HashSet<String>,
     pub hooks: Vec<Hook>,
+    pub max_metadata_tasks: usize,
+}
+
+impl Default for SqlConfig {
+    fn default() -> Self {
+        Self {
+            all_model_indices: false,
+            model_indices: vec![],
+            historical_models: HashSet::new(),
+            hooks: vec![],
+            max_metadata_tasks: 10,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Sql {
     pub pool: Pool<Sqlite>,
     pub executor: UnboundedSender<QueryMessage>,
+    nft_metadata_semaphore: Arc<Semaphore>,
     model_cache: Arc<ModelCache>,
     local_cache: Arc<LocalCache>,
     config: SqlConfig,
@@ -100,12 +115,14 @@ impl Sql {
         }
 
         let local_cache = LocalCache::new(pool.clone()).await;
+        let nft_metadata_semaphore = Arc::new(Semaphore::new(config.max_metadata_tasks));
         let db = Self {
             pool: pool.clone(),
             executor,
             model_cache,
             local_cache: Arc::new(local_cache),
             config,
+            nft_metadata_semaphore,
         };
 
         db.execute().await?;
@@ -1058,12 +1075,6 @@ impl Sql {
     pub async fn execute(&self) -> Result<()> {
         let (execute, recv) = QueryMessage::execute_recv();
         self.executor.send(execute)?;
-        recv.await?
-    }
-
-    pub async fn flush(&self) -> Result<()> {
-        let (flush, recv) = QueryMessage::flush_recv();
-        self.executor.send(flush)?;
         recv.await?
     }
 

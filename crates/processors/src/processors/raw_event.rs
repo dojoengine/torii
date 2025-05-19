@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
@@ -5,7 +7,7 @@ use starknet::core::types::Event;
 use starknet::providers::Provider;
 use torii_sqlite::Sql;
 
-use crate::task_manager::{self, TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 #[derive(Default, Debug)]
@@ -14,7 +16,7 @@ pub struct RawEventProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for RawEventProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug,
+    P: Provider + Send + Sync + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "".to_string()
@@ -24,18 +26,13 @@ where
         true
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        1
-    }
-
     fn task_identifier(&self, _event: &Event) -> TaskId {
-        // TODO. for now raw events are not parallelized
-        task_manager::TASK_ID_SEQUENTIAL
+        0
     }
 
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        _world: Arc<WorldContractReader<P>>,
         _db: &mut Sql,
         _block_number: u64,
         _block_timestamp: u64,

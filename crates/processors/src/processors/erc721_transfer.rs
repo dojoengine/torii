@@ -1,4 +1,5 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Arc;
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -9,7 +10,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc721_transfer";
@@ -20,7 +21,7 @@ pub struct Erc721TransferProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for Erc721TransferProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug,
+    P: Provider + Send + Sync + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "Transfer".to_string()
@@ -37,35 +38,25 @@ where
         false
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        1
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
         // Hash the contract address
         event.from_address.hash(&mut hasher);
 
-        // Take the max of from/to addresses to get a canonical representation
-        // This ensures transfers between the same pair of addresses are grouped together
-        // regardless of direction (A->B or B->A)
-        let canonical_pair = std::cmp::max(event.keys[1], event.keys[2]);
-        canonical_pair.hash(&mut hasher);
-
         // For ERC721, we can safely parallelize by token ID since each token is unique
         // and can only be owned by one address at a time. This means:
         // 1. Transfers of different tokens can happen in parallel
         // 2. Multiple transfers of the same token must be sequential
-        // 3. The canonical address pair ensures related transfers stay together
-        event.keys[3].hash(&mut hasher);
-        event.keys[4].hash(&mut hasher);
+        let token_id = U256Cainome::cairo_deserialize(&event.keys, 3).unwrap();
+        let token_id = U256::from_words(token_id.low, token_id.high);
+        token_id.hash(&mut hasher);
 
         hasher.finish()
     }
 
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        world: Arc<WorldContractReader<P>>,
         db: &mut Sql,
         _block_number: u64,
         block_timestamp: u64,
@@ -81,6 +72,7 @@ where
         let token_id = U256::from_words(token_id.low, token_id.high);
 
         db.handle_nft_transfer(
+            world.provider(),
             token_address,
             from,
             to,

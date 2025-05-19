@@ -1,4 +1,5 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Arc;
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
@@ -11,7 +12,7 @@ use starknet_crypto::poseidon_hash_many;
 use torii_sqlite::Sql;
 use tracing::info;
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::event_message";
@@ -22,7 +23,7 @@ pub struct EventMessageProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for EventMessageProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug,
+    P: Provider + Send + Sync + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "EventEmitted".to_string()
@@ -30,10 +31,6 @@ where
 
     fn validate(&self, _event: &Event) -> bool {
         true
-    }
-
-    fn task_priority(&self) -> TaskPriority {
-        1
     }
 
     fn task_identifier(&self, event: &Event) -> TaskId {
@@ -49,9 +46,16 @@ where
         hasher.finish()
     }
 
+    fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
+        let mut hasher = DefaultHasher::new();
+        // selector
+        event.keys[1].hash(&mut hasher);
+        vec![hasher.finish()]
+    }
+
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        _world: Arc<WorldContractReader<P>>,
         db: &mut Sql,
         _block_number: u64,
         block_timestamp: u64,

@@ -26,7 +26,7 @@ use torii_processors::{EventProcessorConfig, Processors};
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::{Cursors, Sql};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace};
 
 use crate::constants::LOG_TARGET;
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
@@ -50,21 +50,6 @@ pub struct EngineConfig {
     pub flags: IndexingFlags,
     pub event_processor_config: EventProcessorConfig,
     pub world_block: u64,
-}
-
-impl Default for EngineConfig {
-    fn default() -> Self {
-        Self {
-            polling_interval: Duration::from_millis(500),
-            batch_chunk_size: 1024,
-            blocks_chunk_size: 10240,
-            events_chunk_size: 1024,
-            max_concurrent_tasks: 100,
-            flags: IndexingFlags::empty(),
-            event_processor_config: EventProcessorConfig::default(),
-            world_block: 0,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -120,6 +105,21 @@ pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     task_manager: TaskManager<P>,
     contracts: Arc<HashMap<Felt, ContractType>>,
     contract_class_cache: Arc<ContractClassCache<P>>,
+}
+
+impl Default for EngineConfig {
+    fn default() -> Self {
+        Self {
+            polling_interval: Duration::from_millis(500),
+            batch_chunk_size: 1024,
+            blocks_chunk_size: 10240,
+            events_chunk_size: 1024,
+            max_concurrent_tasks: 100,
+            flags: IndexingFlags::empty(),
+            event_processor_config: EventProcessorConfig::default(),
+            world_block: 0,
+        }
+    }
 }
 
 struct UnprocessedEvent {
@@ -203,10 +203,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     // Its only `None` when `FetchDataResult::None` in which case
                                     // we don't need to flush or apply cache diff
                                     if let Some(block_id) = block_id {
-                                        self.db.flush().await?;
                                         self.db.apply_cache_diff().await?;
                                         self.db.execute().await?;
-                                        debug!(target: LOG_TARGET, block_number = ?block_id, "Flushed and applied cache diff.");
+                                        debug!(target: LOG_TARGET, block_number = ?block_id, "Applied cache diff and executed.");
                                     }
                                 },
                                 Err(e) => {
@@ -289,7 +288,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for (contract_address, _) in self.contracts.iter() {
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
-                to_block: None,
+                to_block: Some(BlockId::Tag(BlockTag::Latest)),
                 address: Some(*contract_address),
                 keys: None,
             };
@@ -827,7 +826,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     .processors
                     .catch_all_event
                     .process(
-                        &self.world,
+                        self.world.clone(),
                         &mut self.db,
                         block_number,
                         block_timestamp,
@@ -838,6 +837,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     .await
                 {
                     error!(target: LOG_TARGET, error = %e, "Processing catch all event processor.");
+                    return Err(e);
                 }
             } else {
                 let unprocessed_event = UnprocessedEvent {
@@ -861,44 +861,20 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             .find(|p| p.validate(event))
             .expect("Must find atleast one processor for the event");
 
-        let (task_priority, task_identifier) =
-            (processor.task_priority(), processor.task_identifier(event));
+        let task_identifier = processor.task_identifier(event);
+        let dependencies = processor.task_dependencies(event);
 
-        // if our event can be parallelized, we add it to the task manager
-        if task_identifier != torii_processors::task_manager::TASK_ID_SEQUENTIAL {
-            self.task_manager.add_parallelized_event(
-                task_priority,
-                task_identifier,
-                ParallelizedEvent {
-                    contract_type,
-                    event_id: event_id.to_string(),
-                    event: event.clone(),
-                    block_number,
-                    block_timestamp,
-                },
-            );
-        } else {
-            // Process non-parallelized events immediately
-            // if we dont have a task identifier, we process the event immediately
-            if processor.validate(event) {
-                if let Err(e) = processor
-                    .process(
-                        &self.world,
-                        &mut self.db,
-                        block_number,
-                        block_timestamp,
-                        event_id,
-                        event,
-                        &self.config.event_processor_config,
-                    )
-                    .await
-                {
-                    error!(target: LOG_TARGET, event_name = processor.event_key(), error = ?e, "Processing event.");
-                }
-            } else {
-                warn!(target: LOG_TARGET, event_name = processor.event_key(), "Event not validated.");
-            }
-        }
+        self.task_manager.add_parallelized_event_with_dependencies(
+            task_identifier,
+            dependencies,
+            ParallelizedEvent {
+                contract_type,
+                event_id: event_id.to_string(),
+                event: event.clone(),
+                block_number,
+                block_timestamp,
+            },
+        );
 
         Ok(())
     }

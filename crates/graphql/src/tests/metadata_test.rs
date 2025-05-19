@@ -59,14 +59,10 @@ mod tests {
         let (shutdown_tx, _) = broadcast::channel(1);
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) = Executor::new(
-            pool.clone(),
-            shutdown_tx.clone(),
-            Arc::clone(&provider),
-            100,
-        )
-        .await
-        .unwrap();
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -146,14 +142,10 @@ mod tests {
         let (shutdown_tx, _) = broadcast::channel(1);
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) = Executor::new(
-            pool.clone(),
-            shutdown_tx.clone(),
-            Arc::clone(&provider),
-            100,
-        )
-        .await
-        .unwrap();
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });

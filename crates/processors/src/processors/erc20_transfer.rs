@@ -1,4 +1,5 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Arc;
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -9,7 +10,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc20_transfer";
@@ -20,7 +21,7 @@ pub struct Erc20TransferProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for Erc20TransferProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug,
+    P: Provider + Send + Sync + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "Transfer".to_string()
@@ -35,10 +36,6 @@ where
         }
 
         false
-    }
-
-    fn task_priority(&self) -> TaskPriority {
-        1
     }
 
     fn task_identifier(&self, event: &Event) -> TaskId {
@@ -57,7 +54,7 @@ where
 
     async fn process(
         &self,
-        world: &WorldContractReader<P>,
+        world: Arc<WorldContractReader<P>>,
         db: &mut Sql,
         _block_number: u64,
         block_timestamp: u64,

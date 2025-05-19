@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
@@ -11,7 +12,7 @@ use torii_sqlite::Sql;
 pub mod processors;
 pub mod task_manager;
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 
 pub use processors::Processors;
 
@@ -30,7 +31,7 @@ impl EventProcessorConfig {
 #[async_trait]
 pub trait EventProcessor<P>: Send + Sync
 where
-    P: Provider + Sync,
+    P: Provider + Sync + Send,
 {
     fn event_key(&self) -> String;
 
@@ -45,13 +46,16 @@ where
 
     fn validate(&self, event: &Event) -> bool;
 
-    fn task_priority(&self) -> TaskPriority;
     fn task_identifier(&self, event: &Event) -> TaskId;
+
+    fn task_dependencies(&self, _event: &Event) -> Vec<TaskId> {
+        vec![] // Default implementation returns no dependencies
+    }
 
     #[allow(clippy::too_many_arguments)]
     async fn process(
         &self,
-        world: &WorldContractReader<P>,
+        world: Arc<WorldContractReader<P>>,
         db: &mut Sql,
         block_number: u64,
         block_timestamp: u64,

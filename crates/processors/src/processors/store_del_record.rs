@@ -1,4 +1,5 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Arc;
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
@@ -9,7 +10,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
-use crate::task_manager::{TaskId, TaskPriority};
+use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_del_record";
@@ -20,7 +21,7 @@ pub struct StoreDelRecordProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for StoreDelRecordProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug,
+    P: Provider + Send + Sync + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "StoreDelRecord".to_string()
@@ -30,10 +31,6 @@ where
         true
     }
 
-    fn task_priority(&self) -> TaskPriority {
-        2
-    }
-
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
         event.keys[1].hash(&mut hasher);
@@ -41,9 +38,15 @@ where
         hasher.finish()
     }
 
+    fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
+        let mut hasher = DefaultHasher::new();
+        event.keys[1].hash(&mut hasher); // Use the model selector to create a unique ID
+        vec![hasher.finish()] // Return the dependency on the register_model task
+    }
+
     async fn process(
         &self,
-        _world: &WorldContractReader<P>,
+        _world: Arc<WorldContractReader<P>>,
         db: &mut Sql,
         _block_number: u64,
         block_timestamp: u64,

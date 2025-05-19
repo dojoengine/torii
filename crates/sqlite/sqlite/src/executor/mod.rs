@@ -4,10 +4,10 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
-use erc::{RegisterNftTokenMetadata, UpdateNftMetadata, UpdateNftMetadataQuery};
+use erc::UpdateNftMetadataQuery;
 use sqlx::{FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
@@ -15,19 +15,19 @@ use starknet::core::utils::{get_selector_from_name, parse_cairo_short_string};
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::{oneshot, Semaphore};
-use tokio::task::JoinSet;
+use tokio::sync::oneshot;
 use tokio::time::Instant;
+use torii_sqlite_types::OptimisticToken;
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
 use crate::simple_broker::SimpleBroker;
 use crate::types::{
-    ContractCursor, ContractType, Entity as EntityUpdated, Event as EventEmitted,
+    ContractCursor, Entity as EntityUpdated, Event as EventEmitted,
     EventMessage as EventMessageUpdated, Model as ModelRegistered, OptimisticEntity,
     OptimisticEventMessage, ParsedCall, Token, TokenBalance, Transaction,
 };
-use crate::utils::{felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, I256};
+use crate::utils::{felt_to_sql_string, felts_to_sql_string, u256_to_sql_string, I256};
 
 pub mod erc;
 pub use erc::{RegisterErc20TokenQuery, RegisterNftTokenQuery};
@@ -66,7 +66,7 @@ pub struct DeleteEntityQuery {
 
 #[derive(Debug, Clone)]
 pub struct ApplyBalanceDiffQuery {
-    pub erc_cache: HashMap<(ContractType, String), I256>,
+    pub erc_cache: HashMap<String, I256>,
 }
 
 #[derive(Debug, Clone)]
@@ -116,20 +116,12 @@ pub enum QueryType {
     ApplyBalanceDiff(ApplyBalanceDiffQuery),
     RegisterNftToken(RegisterNftTokenQuery),
     RegisterErc20Token(RegisterErc20TokenQuery),
-    TokenTransfer,
     RegisterModel,
     StoreEvent,
     UpdateNftMetadata(UpdateNftMetadataQuery),
-    Flush,
     Execute,
     Rollback,
     Other,
-}
-
-#[derive(Debug, Clone)]
-pub enum NftTaskResult {
-    RegisterNftToken(RegisterNftTokenMetadata),
-    UpdateNftMetadata(UpdateNftMetadata),
 }
 
 #[derive(Debug)]
@@ -141,20 +133,8 @@ pub struct Executor<'c, P: Provider + Sync + Send + 'static> {
     publish_queue: Vec<BrokerMessage>,
     rx: UnboundedReceiver<QueryMessage>,
     shutdown_rx: Receiver<()>,
-    // These tasks are spawned to fetch ERC721 token metadata from the chain
-    // to not block the main loop
-    // Tasks for updating NFT metadata
-    nft_metadata_tasks: JoinSet<Result<NftTaskResult>>,
-    // Track which token IDs are currently being processed for metadata updates
-    // Including token registration.
-    nft_metadata_tokens: HashSet<String>,
-    // Some queries depends on the metadata being registered, so we defer them
-    // until the metadata is fetched
-    deferred_query_messages: Vec<QueryMessage>,
-    // It is used to make RPC calls to fetch token_uri data for erc721 contracts
+    // It is used to make RPC calls to fetch erc contracts
     provider: Arc<P>,
-    // Used to limit number of tasks that run in parallel to fetch metadata
-    metadata_semaphore: Arc<Semaphore>,
 }
 
 #[derive(Debug)]
@@ -239,19 +219,6 @@ impl QueryMessage {
         )
     }
 
-    pub fn flush_recv() -> (Self, oneshot::Receiver<Result<()>>) {
-        let (tx, rx) = oneshot::channel();
-        (
-            Self {
-                statement: "".to_string(),
-                arguments: vec![],
-                query_type: QueryType::Flush,
-                tx: Some(tx),
-            },
-            rx,
-        )
-    }
-
     pub fn rollback_recv() -> (Self, oneshot::Receiver<Result<()>>) {
         let (tx, rx) = oneshot::channel();
         (
@@ -271,13 +238,11 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         pool: Pool<Sqlite>,
         shutdown_tx: Sender<()>,
         provider: Arc<P>,
-        max_metadata_tasks: usize,
     ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
         let (tx, rx) = unbounded_channel();
         let transaction = pool.begin().await?;
         let publish_queue = Vec::new();
         let shutdown_rx = shutdown_tx.subscribe();
-        let metadata_semaphore = Arc::new(Semaphore::new(max_metadata_tasks));
 
         Ok((
             Executor {
@@ -286,11 +251,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 publish_queue,
                 rx,
                 shutdown_rx,
-                nft_metadata_tasks: JoinSet::new(),
-                nft_metadata_tokens: HashSet::new(),
-                deferred_query_messages: Vec::new(),
                 provider,
-                metadata_semaphore,
             },
             tx,
         ))
@@ -313,10 +274,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                             debug!(target: LOG_TARGET, query = ?statement, "Failed to execute query.");
                         }
                     }
-                }
-                Some(result) = self.nft_metadata_tasks.join_next() => {
-                    let result = result??;
-                    self.handle_nft_metadata(result).await?;
                 }
             }
         }
@@ -647,18 +604,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied balance diff.");
             }
             QueryType::RegisterNftToken(register_nft_token) => {
-                let token_id = felt_and_u256_to_sql_string(
-                    &register_nft_token.contract_address,
-                    &register_nft_token.token_id,
-                );
-                if self.nft_metadata_tokens.contains(&token_id) {
-                    return Ok(());
-                }
-                self.nft_metadata_tokens.insert(token_id);
-
-                let metadata_semaphore = self.metadata_semaphore.clone();
-                let provider = self.provider.clone();
-
                 // Check if we already have the metadata for this contract
                 let res = sqlx::query_as::<_, (String, String)>(&format!(
                     "SELECT name, symbol FROM {TOKENS_TABLE} WHERE contract_address = ? LIMIT 1"
@@ -700,7 +645,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                             }),
                         ];
 
-                        let results = provider.batch_requests(requests).await;
+                        let results = self.provider.batch_requests(requests).await;
                         match results {
                             Ok(results) => {
                                 // Parse name
@@ -732,24 +677,28 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     }
                 };
 
-                self.nft_metadata_tasks.spawn(async move {
-                    let permit = metadata_semaphore.acquire().await.unwrap();
+                let query = sqlx::query_as::<_, Token>(
+                    "INSERT INTO tokens (id, contract_address, token_id, name, symbol, decimals, \
+                     metadata) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
+                )
+                .bind(&register_nft_token.id)
+                .bind(felt_to_sql_string(&register_nft_token.contract_address))
+                .bind(u256_to_sql_string(&register_nft_token.token_id))
+                .bind(&name)
+                .bind(&symbol)
+                .bind(0)
+                .bind(&register_nft_token.metadata);
 
-                    let metadata = Self::fetch_token_metadata(
-                        register_nft_token.contract_address,
-                        register_nft_token.token_id,
-                        provider,
-                    )
-                    .await?;
+                let token = query.fetch_one(&mut **tx).await.with_context(|| {
+                    format!("Failed to execute721Token query: {:?}", register_nft_token)
+                })?;
 
-                    drop(permit);
-                    Ok(NftTaskResult::RegisterNftToken(RegisterNftTokenMetadata {
-                        query: register_nft_token,
-                        name,
-                        symbol,
-                        metadata,
-                    }))
+                info!(target: LOG_TARGET, name = %name, symbol = %symbol, contract_address = %token.contract_address, token_id = %register_nft_token.token_id, "NFT token registered.");
+                SimpleBroker::publish(unsafe {
+                    std::mem::transmute::<Token, OptimisticToken>(token.clone())
                 });
+                self.publish_queue
+                    .push(BrokerMessage::TokenRegistered(token));
             }
             QueryType::RegisterErc20Token(register_erc20_token) => {
                 let query = sqlx::query_as::<_, Token>(
@@ -768,20 +717,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 self.publish_queue
                     .push(BrokerMessage::TokenRegistered(token));
             }
-            QueryType::Flush => {
-                debug!(target: LOG_TARGET, "Flushing query.");
-                let instant = Instant::now();
-                let res = self.execute(false).await;
-                debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Flushed query.");
-
-                if let Some(sender) = query_message.tx {
-                    sender
-                        .send(res)
-                        .map_err(|_| anyhow::anyhow!("Failed to send execute result"))?;
-                } else {
-                    res?;
-                }
-            }
             QueryType::Execute => {
                 debug!(target: LOG_TARGET, "Executing query.");
                 let instant = Instant::now();
@@ -795,10 +730,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 } else {
                     res?;
                 }
-            }
-            QueryType::TokenTransfer => {
-                // defer executing these queries since they depend on TokenRegister queries
-                self.deferred_query_messages.push(query_message);
             }
             QueryType::Rollback => {
                 debug!(target: LOG_TARGET, "Rolling back the transaction.");
@@ -815,34 +746,21 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 }
             }
             QueryType::UpdateNftMetadata(update_metadata) => {
-                let token_id = felt_and_u256_to_sql_string(
-                    &update_metadata.contract_address,
-                    &update_metadata.token_id,
-                );
-                if self.nft_metadata_tokens.contains(&token_id) {
-                    return Ok(());
-                }
-                self.nft_metadata_tokens.insert(token_id.clone());
+                // Update metadata in database
+                let token = sqlx::query_as::<_, Token>(
+                    "UPDATE tokens SET metadata = ? WHERE id = ? RETURNING *",
+                )
+                .bind(&update_metadata.metadata)
+                .bind(&update_metadata.id)
+                .fetch_one(&mut **tx)
+                .await?;
 
-                let metadata_semaphore = self.metadata_semaphore.clone();
-                let provider = self.provider.clone();
-
-                self.nft_metadata_tasks.spawn(async move {
-                    let permit = metadata_semaphore.acquire().await.unwrap();
-
-                    let metadata = Self::fetch_token_metadata(
-                        update_metadata.contract_address,
-                        update_metadata.token_id,
-                        provider,
-                    )
-                    .await?;
-
-                    drop(permit);
-                    Ok(NftTaskResult::UpdateNftMetadata(UpdateNftMetadata {
-                        token_id,
-                        metadata,
-                    }))
+                info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = %update_metadata.token_id, "NFT token metadata updated.");
+                SimpleBroker::publish(unsafe {
+                    std::mem::transmute::<Token, OptimisticToken>(token.clone())
                 });
+                self.publish_queue
+                    .push(BrokerMessage::TokenRegistered(token));
             }
             QueryType::Other => {
                 query.execute(&mut **tx).await?;
@@ -862,29 +780,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
             }
         }
 
-        while let Some(result) = self.nft_metadata_tasks.join_next().await {
-            let result = result??;
-            self.handle_nft_metadata(result).await?;
-        }
-        self.nft_metadata_tokens.clear();
-
-        let mut deferred_query_messages = mem::take(&mut self.deferred_query_messages);
-
-        for query_message in deferred_query_messages.drain(..) {
-            let mut query = sqlx::query(&query_message.statement);
-            for arg in &query_message.arguments {
-                query = match arg {
-                    Argument::Null => query.bind(None::<String>),
-                    Argument::Int(integer) => query.bind(integer),
-                    Argument::Bool(bool) => query.bind(bool),
-                    Argument::String(string) => query.bind(string),
-                    Argument::FieldElement(felt) => query.bind(format!("{:#x}", felt)),
-                };
-            }
-
-            query.execute(&mut *self.transaction).await?;
-        }
-
         Ok(())
     }
 
@@ -894,20 +789,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
 
         // NOTE: clear doesn't reset the capacity
         self.publish_queue.clear();
-        self.deferred_query_messages.clear();
-        self.nft_metadata_tokens.clear();
         Ok(())
-    }
-
-    async fn handle_nft_metadata(&mut self, result: NftTaskResult) -> Result<()> {
-        match result {
-            NftTaskResult::RegisterNftToken(register_nft_token) => {
-                self.handle_register_nft_metadata(register_nft_token).await
-            }
-            NftTaskResult::UpdateNftMetadata(update_nft_metadata) => {
-                self.handle_update_nft_metadata(update_nft_metadata).await
-            }
-        }
     }
 }
 

@@ -1,13 +1,14 @@
 [package]
 edition.workspace = true
 license.workspace = true
-name = "torii-adigraphmap"
+name = "torii-task-network"
 repository.workspace = true
 version.workspace = true
 
 [dependencies]
-petgraph = "0.6"
-thiserror.workspace = true
-tracing.workspace = true
+anyhow.workspace = true
 futures-util.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
+torii-adigraphmap.workspace = true
+tracing.workspace = true

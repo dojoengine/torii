@@ -34,10 +34,9 @@ mod tests {
         // used to fetch token_uri data for erc721 tokens so pass dummy for the test
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100)
-                .await
-                .unwrap();
+        let (mut executor, sender) = Executor::new(pool.clone(), shutdown_tx.clone(), provider)
+            .await
+            .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -210,10 +209,9 @@ mod tests {
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
 
-        let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100)
-                .await
-                .unwrap();
+        let (mut executor, sender) = Executor::new(pool.clone(), shutdown_tx.clone(), provider)
+            .await
+            .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -364,10 +362,9 @@ mod tests {
 
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100)
-                .await
-                .unwrap();
+        let (mut executor, sender) = Executor::new(pool.clone(), shutdown_tx.clone(), provider)
+            .await
+            .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -457,10 +454,9 @@ mod tests {
 
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100)
-                .await
-                .unwrap();
+        let (mut executor, sender) = Executor::new(pool.clone(), shutdown_tx.clone(), provider)
+            .await
+            .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -551,10 +547,9 @@ mod tests {
 
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider, 100)
-                .await
-                .unwrap();
+        let (mut executor, sender) = Executor::new(pool.clone(), shutdown_tx.clone(), provider)
+            .await
+            .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });

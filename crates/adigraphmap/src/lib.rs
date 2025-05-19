@@ -30,7 +30,10 @@ where
 {
     /// Create a new empty DigraphMap
     pub fn new() -> Self {
-        Self { graph: DiGraph::new(), node_indices: HashMap::new() }
+        Self {
+            graph: DiGraph::new(),
+            node_indices: HashMap::new(),
+        }
     }
 
     /// Add a node with dependencies to the graph
@@ -108,8 +111,11 @@ where
         // Collect nodes in topological order
         for idx in indices {
             let node_value = self.graph[idx].clone();
-            if let Some(key) =
-                self.node_indices.iter().find(|&(_, &v)| v == idx).map(|(k, _)| k.clone())
+            if let Some(key) = self
+                .node_indices
+                .iter()
+                .find(|&(_, &v)| v == idx)
+                .map(|(k, _)| k.clone())
             {
                 result.push((key, node_value));
             }
@@ -128,7 +134,10 @@ where
 
         // Initialize incoming edge counts
         for node in self.graph.node_indices() {
-            let incoming = self.graph.neighbors_directed(node, petgraph::Incoming).count();
+            let incoming = self
+                .graph
+                .neighbors_directed(node, petgraph::Incoming)
+                .count();
             incoming_edges.insert(node, incoming);
         }
 
@@ -147,8 +156,11 @@ where
             for node in current_level_nodes {
                 if remaining_nodes.remove(&node) {
                     // Find the key and value for this node
-                    if let Some(key) =
-                        self.node_indices.iter().find(|&(_, &v)| v == node).map(|(k, _)| k.clone())
+                    if let Some(key) = self
+                        .node_indices
+                        .iter()
+                        .find(|&(_, &v)| v == node)
+                        .map(|(k, _)| k.clone())
                     {
                         let value = self.graph[node].clone();
                         level_nodes.push((key, value));
@@ -190,6 +202,11 @@ where
         self.graph.clear();
         self.node_indices.clear();
     }
+
+    /// Check if the graph contains a key
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.node_indices.contains_key(key)
+    }
 }
 
 impl<K, V> Default for AcyclicDigraphMap<K, V>
@@ -223,7 +240,9 @@ mod tests {
         graph.add_node("a".to_string(), 1).unwrap();
         graph.add_node("b".to_string(), 2).unwrap();
 
-        assert!(graph.add_dependency(&"a".to_string(), &"b".to_string()).is_ok());
+        assert!(graph
+            .add_dependency(&"a".to_string(), &"b".to_string())
+            .is_ok());
 
         // The order should be a, b
         let result = graph.topo_sort();
@@ -235,8 +254,12 @@ mod tests {
     #[test]
     fn test_add_node_with_dependencies() {
         let mut graph: AcyclicDigraphMap<String, i32> = AcyclicDigraphMap::new();
-        graph.add_node_with_dependencies("b".to_string(), 2, vec![]).unwrap();
-        graph.add_node_with_dependencies("a".to_string(), 1, vec!["b".to_string()]).unwrap();
+        graph
+            .add_node_with_dependencies("b".to_string(), 2, vec![])
+            .unwrap();
+        graph
+            .add_node_with_dependencies("a".to_string(), 1, vec!["b".to_string()])
+            .unwrap();
 
         let result = graph.topo_sort();
         assert_eq!(result.len(), 2);
@@ -250,8 +273,12 @@ mod tests {
         graph.add_node("a".to_string(), 1).unwrap();
         graph.add_node("b".to_string(), 2).unwrap();
 
-        assert!(graph.add_dependency(&"a".to_string(), &"b".to_string()).is_ok());
-        assert!(graph.add_dependency(&"b".to_string(), &"a".to_string()).is_err());
+        assert!(graph
+            .add_dependency(&"a".to_string(), &"b".to_string())
+            .is_ok());
+        assert!(graph
+            .add_dependency(&"b".to_string(), &"a".to_string())
+            .is_err());
     }
 
     #[test]
@@ -271,10 +298,18 @@ mod tests {
         graph.add_node("c".to_string(), 3).unwrap();
         graph.add_node("d".to_string(), 4).unwrap();
 
-        graph.add_dependency(&"a".to_string(), &"b".to_string()).unwrap();
-        graph.add_dependency(&"a".to_string(), &"c".to_string()).unwrap();
-        graph.add_dependency(&"b".to_string(), &"d".to_string()).unwrap();
-        graph.add_dependency(&"c".to_string(), &"d".to_string()).unwrap();
+        graph
+            .add_dependency(&"a".to_string(), &"b".to_string())
+            .unwrap();
+        graph
+            .add_dependency(&"a".to_string(), &"c".to_string())
+            .unwrap();
+        graph
+            .add_dependency(&"b".to_string(), &"d".to_string())
+            .unwrap();
+        graph
+            .add_dependency(&"c".to_string(), &"d".to_string())
+            .unwrap();
 
         let levels = graph.topo_sort_by_level();
 
