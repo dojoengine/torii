@@ -20,6 +20,7 @@ pub use processors::Processors;
 pub struct EventProcessorConfig {
     pub namespaces: HashSet<String>,
     pub strict_model_reader: bool,
+    pub world_block: u64,
 }
 
 impl EventProcessorConfig {

@@ -289,6 +289,7 @@ impl Runner {
                 event_processor_config: EventProcessorConfig {
                     strict_model_reader: self.args.indexing.strict_model_reader,
                     namespaces: self.args.indexing.namespaces.into_iter().collect(),
+                    world_block: self.args.indexing.world_block,
                 },
                 world_block: self.args.indexing.world_block,
             },

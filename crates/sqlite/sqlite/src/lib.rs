@@ -16,7 +16,7 @@ use starknet::core::types::{Event, Felt};
 use starknet_crypto::poseidon_hash_many;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Semaphore;
-use torii_sqlite_types::{HookEvent, ParsedCall};
+use torii_sqlite_types::{ContractType, HookEvent, ParsedCall};
 use utils::felts_to_sql_string;
 
 use crate::constants::SQL_FELT_DELIMITER;
@@ -1103,6 +1103,31 @@ impl Sql {
         self.executor.send(QueryMessage::other(
             insert_controller.to_string(),
             arguments,
+        ))?;
+
+        Ok(())
+    }
+
+    pub async fn register_external_contract(
+        &self,
+        contract_address: String,
+        contract_type: &str,
+        starting_block: i64,
+    ) -> Result<()> {
+        let insert_contract = "
+            INSERT INTO contracts (contract_address, contract_type, head)
+            VALUES (?, ?, ?)";
+
+        let arguments = vec![
+            Argument::String(contract_address),
+            Argument::String(contract_type.to_string()),
+            Argument::Int(starting_block),
+        ];
+
+        self.executor.send(QueryMessage::new(
+            insert_contract.to_string(),
+            arguments,
+            QueryType::RegisterExternalContract,
         ))?;
 
         Ok(())
