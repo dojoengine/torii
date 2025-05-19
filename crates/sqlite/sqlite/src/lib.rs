@@ -1165,4 +1165,31 @@ impl Sql {
 
         Ok(())
     }
+
+    pub async fn register_external_contract(
+        &self,
+        contract_address: String,
+        contract_type: &str,
+        starting_block: i64,
+    ) -> Result<(), Error> {
+        let insert_contract = "
+            INSERT INTO contracts (contract_address, contract_type, head)
+            VALUES (?, ?, ?)";
+
+        let arguments = vec![
+            Argument::String(contract_address),
+            Argument::String(contract_type.to_string()),
+            Argument::Int(starting_block),
+        ];
+
+        self.executor
+            .send(QueryMessage::new(
+                insert_contract.to_string(),
+                arguments,
+                QueryType::RegisterExternalContract,
+            ))
+            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+
+        Ok(())
+    }
 }

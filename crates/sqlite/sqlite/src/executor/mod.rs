@@ -125,6 +125,9 @@ pub enum QueryType {
     UpdateNftMetadata(UpdateNftMetadataQuery),
     Execute,
     Rollback,
+    // maybe having a specific querytype for this is a bit overkilled
+    // we also could use `Other` type
+    RegisterExternalContract,
     Other,
 }
 
@@ -793,6 +796,9 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 });
                 self.publish_queue
                     .push(BrokerMessage::TokenRegistered(token));
+            }
+            QueryType::RegisterExternalContract => {
+                query.execute(&mut **tx).await?;
             }
             QueryType::Other => {
                 query.execute(&mut **tx).await?;

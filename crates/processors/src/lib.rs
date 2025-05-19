@@ -23,6 +23,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct EventProcessorConfig {
     pub namespaces: HashSet<String>,
     pub strict_model_reader: bool,
+    pub world_block: u64,
 }
 
 impl EventProcessorConfig {

@@ -2,13 +2,13 @@
 resolver = "2"
 
 members = [
-	"bin/torii",
-	"crates/cli",
-	"crates/client",
-	"crates/server",
- 	"crates/sqlite/types",
-	"xtask/generate-test-db",
-	"crates/task-network",
+  "bin/torii",
+  "crates/cli",
+  "crates/client",
+  "crates/server",
+  "crates/sqlite/types",
+  "xtask/generate-test-db",
+  "crates/task-network",
 ]
 
 [workspace.package]
@@ -29,15 +29,16 @@ debug = true
 inherits = "release"
 
 [workspace.dependencies]
-cainome = { version = "0.5.0", features = [ "abigen-rs" ] }
+cainome = { version = "0.5.0", features = ["abigen-rs"] }
 cainome-cairo-serde = { version = "0.1.0" }
 
-dojo-utils = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
-dojo-types = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
-dojo-core = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
-dojo-world = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
-dojo-test-utils = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
-dojo-metrics = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
+dojo-utils = { git = "https://github.com/dojoengine/dojo", branch = "dev-1.6.0" }
+
+dojo-types = { git = "https://github.com/dojoengine/dojo", branch = "dev-1.6.0" }
+dojo-core = { git = "https://github.com/dojoengine/dojo", branch = "dev-1.6.0" }
+dojo-world = { git = "https://github.com/dojoengine/dojo", branch = "dev-1.6.0" }
+dojo-test-utils = { git = "https://github.com/dojoengine/dojo", branch = "dev-1.6.0" }
+dojo-metrics = { git = "https://github.com/dojoengine/dojo", branch = "dev-1.6.0" }
 
 topological-sort = "0.2"
 
@@ -66,7 +67,7 @@ torii-task-network = { path = "crates/task-network" }
 merge-options = { git = "https://github.com/dojoengine/dojo", rev = "82fe9bd" }
 
 anyhow = "1.0.89"
-arbitrary = { version = "1.3.2", features = [ "derive" ] }
+arbitrary = { version = "1.3.2", features = ["derive"] }
 assert_fs = "1.1"
 assert_matches = "1.5.0"
 async-trait = "0.1.82"
@@ -74,9 +75,9 @@ auto_impl = "1.2.0"
 base64 = "0.21.2"
 bigdecimal = "0.4.1"
 bytes = "1.6"
-camino = { version = "1.1.2", features = [ "serde1" ] }
-chrono = { version = "0.4.24", features = [ "serde" ] }
-clap = { version = "4.5.16", features = [ "derive", "env" ] }
+camino = { version = "1.1.2", features = ["serde1"] }
+chrono = { version = "0.4.24", features = ["serde"] }
+clap = { version = "4.5.16", features = ["derive", "env"] }
 clap-verbosity-flag = "2.0.1"
 clap_complete = "4.3"
 colored = "2.0.0"
@@ -86,10 +87,10 @@ console = "0.15.7"
 # https://github.com/cartridge-gg/controller/pull/1454
 account_sdk = { git = "https://github.com/cartridge-gg/controller", rev = "dbbe0353d64de743739d425f8aab91ca3ac0e16f" }
 convert_case = "0.6.0"
-crypto-bigint = { version = "0.5.3", features = [ "serde" ] }
+crypto-bigint = { version = "0.5.3", features = ["serde"] }
 data-url = "0.3"
 derive_more = "0.99.17"
-flate2 = "1.0.35"
+flate2 = "1.1.1"
 fluent-uri = "0.3"
 futures = "0.3.30"
 futures-util = "0.3.30"
@@ -109,49 +110,66 @@ num-bigint = "0.4.3"
 num-traits = { version = "0.2", default-features = false }
 once_cell = "1.0"
 parking_lot = "0.12.1"
-postcard = { version = "1.0.10", features = [ "use-std" ], default-features = false }
+postcard = { version = "1.0.10", features = [
+  "use-std",
+], default-features = false }
 pretty_assertions = "1.2.1"
 rand = "0.8.5"
 rayon = "1.8.0"
 regex = "1.10.3"
-reqwest = { version = "0.11.27", features = [ "json", "rustls-tls", "stream" ], default-features = false }
+reqwest = { version = "0.11.27", features = [
+  "json",
+  "rustls-tls",
+  "stream",
+], default-features = false }
 rpassword = "7.2.0"
 rstest = "0.18.2"
 rstest_reuse = "0.6.0"
 semver = "1.0.5"
-serde = { version = "1.0", features = [ "derive" ] }
-serde_json = { version = "1.0", features = [ "arbitrary_precision" ] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_with = "3.11.0"
 similar-asserts = "1.5.0"
-smol_str = { version = "0.2.0", features = [ "serde" ] }
+smol_str = { version = "0.2.0", features = ["serde"] }
 spinoff = "0.8.0"
-sqlx = { version = "0.8.2", features = [ "chrono", "macros", "regexp", "runtime-async-std", "runtime-tokio", "sqlite", "uuid" ] }
+sqlx = { version = "0.8.2", features = [
+  "chrono",
+  "macros",
+  "regexp",
+  "runtime-async-std",
+  "runtime-tokio",
+  "sqlite",
+  "uuid",
+] }
 strum = "0.25"
 strum_macros = "0.25"
 tempfile = "3.9.0"
 test-log = "0.2.11"
 thiserror = "1.0.32"
-tokio = { version = "1.39.2", features = [ "full" ] }
+tokio = { version = "1.39.2", features = ["full"] }
 tokio-util = "0.7.12"
 toml = "0.8"
 tower = "0.4.13"
 tower-http = "0.4.4"
-tracing = { version = "0.1.38", features = [ "log" ], default-features = false }
+tracing = { version = "0.1.38", features = ["log"], default-features = false }
 tracing-log = "0.1.3"
-tracing-subscriber = { version = "0.3.16", features = [ "env-filter", "json" ] }
+tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json"] }
 # indicatif
 tracing-indicatif = "0.3.9"
 indicatif = "0.17.9"
 
-url = { version = "2.4.0", features = [ "serde" ] }
+url = { version = "2.4.0", features = ["serde"] }
 walkdir = "2.5.0"
 # TODO: see if we still need the git version
-ipfs-api-backend-hyper = { git = "https://github.com/ferristseng/rust-ipfs-api", rev = "af2c17f7b19ef5b9898f458d97a90055c3605633", features = [ "with-hyper-rustls", "with-send-sync" ] }
+ipfs-api-backend-hyper = { git = "https://github.com/ferristseng/rust-ipfs-api", rev = "af2c17f7b19ef5b9898f458d97a90055c3605633", features = [
+  "with-hyper-rustls",
+  "with-send-sync",
+] }
 mime_guess = "2.0"
 
-sozo-scarbext = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
-scarb = { git = "https://github.com/dojoengine/scarb", rev = "d749b9545f5c50b078870a322a12efe7a17914b6" }
-sozo-ops = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
+scarb = { git = "https://github.com/software-mansion/scarb", rev = "4fdeb7810", default-features = false }
+sozo-ops = { git = "https://github.com/dojoengine/dojo", branch = "dev-1.6.0" }
+scarb-interop = { git = "https://github.com/dojoengine/dojo", branch = "dev-1.6.0" }
 katana-runner = { git = "https://github.com/dojoengine/katana", rev = "5cb249c0fa59fa6b7c88b32557e7baf8944cdb3d" }
 
 
@@ -161,7 +179,12 @@ warp = "0.3"
 
 # gRPC
 prost = "0.12"
-tonic = { version = "0.11", features = [ "gzip", "tls", "tls-roots", "tls-webpki-roots" ] }
+tonic = { version = "0.11", features = [
+  "gzip",
+  "tls",
+  "tls-roots",
+  "tls-webpki-roots",
+] }
 tonic-build = "0.11"
 tonic-reflection = "0.11"
 tonic-web = "0.11"
@@ -169,11 +192,17 @@ tonic-web = "0.11"
 # WASM-compatible gRPC deps
 tonic-web-wasm-client = "0.6.0"
 wasm-prost = { version = "0.13", package = "prost" }
-wasm-tonic = { version = "0.12", default-features = false, features = [ "codegen", "gzip", "prost" ], package = "tonic" }
-wasm-tonic-build = { version = "0.12", default-features = false, features = [ "prost" ], package = "tonic-build" }
+wasm-tonic = { version = "0.12", default-features = false, features = [
+  "codegen",
+  "gzip",
+  "prost",
+], package = "tonic" }
+wasm-tonic-build = { version = "0.12", default-features = false, features = [
+  "prost",
+], package = "tonic-build" }
 
 criterion = "0.5.1"
-pprof = { version = "0.13.0", features = [ "criterion", "flamegraph" ] }
+pprof = { version = "0.13.0", features = ["criterion", "flamegraph"] }
 
 # Slot integration. Dojo don't need to manually include `account_sdk` as dependency as `slot` already re-exports it.
 slot = { git = "https://github.com/cartridge-gg/slot", rev = "1298a30" }
@@ -181,7 +210,7 @@ slot = { git = "https://github.com/cartridge-gg/slot", rev = "1298a30" }
 starknet-core = "0.12.3"
 starknet = "0.12.0"
 starknet-crypto = "0.7.1"
-starknet-types-core = { version = "0.1.7", features = [ "arbitrary", "hash" ] }
+starknet-types-core = { version = "0.1.7", features = ["arbitrary", "hash"] }
 
 bitvec = "1.0.1"
 
