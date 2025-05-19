@@ -17,15 +17,14 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
-use torii_sqlite_types::OptimisticToken;
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
 use crate::simple_broker::SimpleBroker;
 use crate::types::{
     ContractCursor, Entity as EntityUpdated, Event as EventEmitted,
-    EventMessage as EventMessageUpdated, Model as ModelRegistered, OptimisticEntity,
-    OptimisticEventMessage, ParsedCall, Token, TokenBalance, Transaction,
+    EventMessage as EventMessageUpdated, Model as ModelRegistered,
+    ParsedCall, Token, Transaction,
 };
 use crate::utils::{felt_to_sql_string, felts_to_sql_string, u256_to_sql_string, I256};
 
@@ -41,18 +40,6 @@ pub enum Argument {
     Bool(bool),
     String(String),
     FieldElement(Felt),
-}
-
-#[derive(Debug, Clone)]
-pub enum BrokerMessage {
-    SetHead(ContractCursor),
-    ModelRegistered(ModelRegistered),
-    EntityUpdated(EntityUpdated),
-    EventMessageUpdated(EventMessageUpdated),
-    EventEmitted(EventEmitted),
-    TokenRegistered(Token),
-    TokenBalanceUpdated(TokenBalance),
-    Transaction(Transaction),
 }
 
 #[derive(Debug, Clone)]
@@ -131,7 +118,6 @@ pub struct Executor<'c, P: Provider + Sync + Send + 'static> {
     // This `pool` is only used to create a new `transaction`
     pool: Pool<Sqlite>,
     transaction: SqlxTransaction<'c, Sqlite>,
-    publish_queue: Vec<BrokerMessage>,
     rx: UnboundedReceiver<QueryMessage>,
     shutdown_rx: Receiver<()>,
     // It is used to make RPC calls to fetch erc contracts
@@ -242,14 +228,12 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
         let (tx, rx) = unbounded_channel();
         let transaction = pool.begin().await?;
-        let publish_queue = Vec::new();
         let shutdown_rx = shutdown_tx.subscribe();
 
         Ok((
             Executor {
                 pool,
                 transaction,
-                publish_queue,
                 rx,
                 shutdown_rx,
                 provider,
@@ -370,8 +354,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     .await?;
 
                     // Send appropriate ContractUpdated publish message
-                    self.publish_queue
-                        .push(BrokerMessage::SetHead(cursor.clone()));
+                    SimpleBroker::publish(cursor.clone());
                 }
             }
             QueryType::StoreTransaction(store_transaction) => {
@@ -420,8 +403,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 transaction.contract_addresses = store_transaction.contract_addresses;
                 transaction.calls = store_transaction.calls;
 
-                self.publish_queue
-                    .push(BrokerMessage::Transaction(transaction));
+                SimpleBroker::publish(transaction);
             }
             QueryType::SetEntity(entity) => {
                 let row = query.fetch_one(&mut **tx).await?;
@@ -487,13 +469,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 .execute(&mut **tx)
                 .await?;
 
-                let optimistic_entity = unsafe {
-                    std::mem::transmute::<EntityUpdated, OptimisticEntity>(entity_updated.clone())
-                };
-                SimpleBroker::publish(optimistic_entity);
-
-                let broker_message = BrokerMessage::EntityUpdated(entity_updated);
-                self.publish_queue.push(broker_message);
+                SimpleBroker::publish(entity_updated);
             }
             QueryType::DeleteEntity(entity) => {
                 let delete_model = query.execute(&mut **tx).await?;
@@ -538,17 +514,12 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     entity_updated.deleted = true;
                 }
 
-                SimpleBroker::publish(unsafe {
-                    std::mem::transmute::<EntityUpdated, OptimisticEntity>(entity_updated.clone())
-                });
-                self.publish_queue
-                    .push(BrokerMessage::EntityUpdated(entity_updated));
+                SimpleBroker::publish(entity_updated);
             }
             QueryType::RegisterModel => {
                 let row = query.fetch_one(&mut **tx).await?;
                 let model_registered = ModelRegistered::from_row(&row)?;
-                self.publish_queue
-                    .push(BrokerMessage::ModelRegistered(model_registered));
+                SimpleBroker::publish(model_registered);
             }
             QueryType::EventMessage(em_query) => {
                 // Must be executed first since other tables have foreign keys on event_messages.id.
@@ -595,18 +566,12 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 let mut event_message = EventMessageUpdated::from_row(&event_messages_row)?;
                 event_message.updated_model = Some(em_query.ty);
 
-                SimpleBroker::publish(unsafe {
-                    std::mem::transmute::<EventMessageUpdated, OptimisticEventMessage>(
-                        event_message.clone(),
-                    )
-                });
-                self.publish_queue
-                    .push(BrokerMessage::EventMessageUpdated(event_message));
+                SimpleBroker::publish(event_message);
             }
             QueryType::StoreEvent => {
                 let row = query.fetch_one(&mut **tx).await?;
                 let event = EventEmitted::from_row(&row)?;
-                self.publish_queue.push(BrokerMessage::EventEmitted(event));
+                SimpleBroker::publish(event);
             }
             QueryType::ApplyBalanceDiff(apply_balance_diff) => {
                 debug!(target: LOG_TARGET, "Applying balance diff.");
@@ -706,11 +671,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 })?;
 
                 info!(target: LOG_TARGET, name = %name, symbol = %symbol, contract_address = %token.contract_address, token_id = %register_nft_token.token_id, "NFT token registered.");
-                SimpleBroker::publish(unsafe {
-                    std::mem::transmute::<Token, OptimisticToken>(token.clone())
-                });
-                self.publish_queue
-                    .push(BrokerMessage::TokenRegistered(token));
+                SimpleBroker::publish(token);
             }
             QueryType::RegisterErc20Token(register_erc20_token) => {
                 let query = sqlx::query_as::<_, Token>(
@@ -725,9 +686,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
 
                 let token = query.fetch_one(&mut **tx).await?;
                 info!(target: LOG_TARGET, name = %register_erc20_token.name, symbol = %register_erc20_token.symbol, contract_address = %token.contract_address, "Registered ERC20 token.");
-
-                self.publish_queue
-                    .push(BrokerMessage::TokenRegistered(token));
+                SimpleBroker::publish(token);
             }
             QueryType::Execute => {
                 debug!(target: LOG_TARGET, "Executing query.");
@@ -768,11 +727,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 .await?;
 
                 info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = %update_metadata.token_id, "NFT token metadata updated.");
-                SimpleBroker::publish(unsafe {
-                    std::mem::transmute::<Token, OptimisticToken>(token.clone())
-                });
-                self.publish_queue
-                    .push(BrokerMessage::TokenRegistered(token));
+                SimpleBroker::publish(token);
             }
             QueryType::Other => {
                 query.execute(&mut **tx).await?;
@@ -786,10 +741,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
         transaction.commit().await?;
 
-        for message in self.publish_queue.drain(..) {
-            send_broker_message(message);
-        }
-
         Ok(())
     }
 
@@ -797,21 +748,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
         transaction.rollback().await?;
 
-        // NOTE: clear doesn't reset the capacity
-        self.publish_queue.clear();
         Ok(())
-    }
-}
-
-fn send_broker_message(message: BrokerMessage) {
-    match message {
-        BrokerMessage::SetHead(update) => SimpleBroker::publish(update),
-        BrokerMessage::ModelRegistered(model) => SimpleBroker::publish(model),
-        BrokerMessage::EntityUpdated(entity) => SimpleBroker::publish(entity),
-        BrokerMessage::EventMessageUpdated(event) => SimpleBroker::publish(event),
-        BrokerMessage::EventEmitted(event) => SimpleBroker::publish(event),
-        BrokerMessage::TokenRegistered(token) => SimpleBroker::publish(token),
-        BrokerMessage::TokenBalanceUpdated(token_balance) => SimpleBroker::publish(token_balance),
-        BrokerMessage::Transaction(transaction) => SimpleBroker::publish(transaction),
     }
 }
