@@ -23,7 +23,7 @@ use tracing::{debug, error, info, warn};
 use crate::constants::TOKENS_TABLE;
 use crate::simple_broker::SimpleBroker;
 use crate::types::{
-    ContractCursor, ContractType, Entity as EntityUpdated, Event as EventEmitted,
+    ContractCursor, Entity as EntityUpdated, Event as EventEmitted,
     EventMessage as EventMessageUpdated, Model as ModelRegistered, OptimisticEntity,
     OptimisticEventMessage, ParsedCall, Token, TokenBalance, Transaction,
 };
@@ -66,7 +66,7 @@ pub struct DeleteEntityQuery {
 
 #[derive(Debug, Clone)]
 pub struct ApplyBalanceDiffQuery {
-    pub erc_cache: HashMap<(ContractType, String), I256>,
+    pub erc_cache: HashMap<String, I256>,
 }
 
 #[derive(Debug, Clone)]

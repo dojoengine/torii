@@ -20,7 +20,6 @@ use crate::executor::erc::{RegisterNftTokenQuery, UpdateNftMetadataQuery};
 use crate::executor::{
     ApplyBalanceDiffQuery, Argument, QueryMessage, QueryType, RegisterErc20TokenQuery,
 };
-use crate::types::ContractType;
 use crate::utils::{
     felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, fetch_content_from_http,
     fetch_content_from_ipfs, sanitize_json_string, utc_dt_string_from_timestamp,
@@ -70,7 +69,7 @@ impl Sql {
                 // from_address/contract_address/
                 let from_balance_id = felts_to_sql_string(&[from_address, contract_address]);
                 let from_balance = erc_cache
-                    .entry((ContractType::ERC20, from_balance_id))
+                    .entry(from_balance_id)
                     .or_default();
                 *from_balance -= I256::from(amount);
             }
@@ -78,7 +77,7 @@ impl Sql {
             if to_address != Felt::ZERO {
                 let to_balance_id = felts_to_sql_string(&[to_address, contract_address]);
                 let to_balance = erc_cache
-                    .entry((ContractType::ERC20, to_balance_id))
+                    .entry(to_balance_id)
                     .or_default();
                 *to_balance += I256::from(amount);
             }
@@ -138,7 +137,7 @@ impl Sql {
                     &id
                 );
                 let from_balance = erc_cache
-                    .entry((ContractType::ERC721, from_balance_id))
+                    .entry(from_balance_id)
                     .or_default();
                 *from_balance -= I256::from(amount);
             }
@@ -150,7 +149,7 @@ impl Sql {
                     &id
                 );
                 let to_balance = erc_cache
-                    .entry((ContractType::ERC721, to_balance_id))
+                    .entry(to_balance_id)
                     .or_default();
                 *to_balance += I256::from(amount);
             }

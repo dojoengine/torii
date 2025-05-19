@@ -15,7 +15,6 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::constants::TOKEN_BALANCE_TABLE;
 use crate::error::{Error, ParseError};
-use crate::types::ContractType;
 use crate::utils::I256;
 
 #[derive(Debug, Clone)]
@@ -161,7 +160,7 @@ impl ModelCache {
 
 #[derive(Debug)]
 pub struct LocalCache {
-    pub erc_cache: RwLock<HashMap<(ContractType, String), I256>>,
+    pub erc_cache: RwLock<HashMap<String, I256>>,
     // we are using a mutex here because this needs to be atomic.
     // since we paralellize token transfers and thus token reigstrations
     pub token_id_registry: Mutex<HashSet<String>>,
