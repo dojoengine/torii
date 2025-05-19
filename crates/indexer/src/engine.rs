@@ -640,6 +640,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         cursor_map: &mut HashMap<Felt, (Felt, u64)>,
     ) -> Result<()> {
         let mut unique_contracts = HashSet::new();
+        let mut unique_models = HashSet::new();
         // Contract -> Cursor
         for (event_idx, event) in events.iter().enumerate() {
             // NOTE: erc* processors expect the event_id to be in this format to get
@@ -660,6 +661,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             };
 
             unique_contracts.insert(event.from_address);
+            let event_key = event.keys[0];
+            if contract_type == ContractType::WORLD && (event_key == selector!("StoreSetRecord")
+                || event_key == selector!("StoreUpdateRecord")
+                || event_key == selector!("StoreDelRecord")
+                || event_key == selector!("StoreUpdateMember")
+                || event_key == selector!("EventEmitted"))
+            {
+                unique_models.insert(event.keys[1]);
+            }
 
             self.process_event(
                 block_number,
@@ -686,6 +696,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 transaction_hash,
                 &unique_contracts,
                 transaction,
+                &unique_models,
             )
             .await?;
         }

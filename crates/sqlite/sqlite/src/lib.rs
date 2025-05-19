@@ -558,6 +558,7 @@ impl Sql {
         transaction_type: &str,
         block_timestamp: u64,
         calls: &[ParsedCall],
+        unique_models: &HashSet<Felt>,
     ) -> Result<()> {
         // Store the transaction in the transactions table
         self.executor.send(QueryMessage::new(
