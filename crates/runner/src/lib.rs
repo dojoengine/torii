@@ -184,6 +184,11 @@ impl Runner {
         options = options.optimize_on_close(true, None);
         options = options.pragma("cache_size", self.args.sql.cache_size.to_string());
         options = options.pragma("page_size", self.args.sql.page_size.to_string());
+        options = options.pragma(
+            "wal_autocheckpoint",
+            self.args.sql.wal_autocheckpoint.to_string(),
+        );
+        options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
 
         let pool = SqlitePoolOptions::new()
             .min_connections(1)
