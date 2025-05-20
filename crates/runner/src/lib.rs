@@ -186,7 +186,7 @@ impl Runner {
         options = options.pragma("page_size", self.args.sql.page_size.to_string());
         options = options.pragma(
             "wal_autocheckpoint",
-            self.args.sql.autocheckpoint_interval.to_string(),
+            self.args.sql.wal_autocheckpoint.to_string(),
         );
         options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
 
