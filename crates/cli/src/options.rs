@@ -24,6 +24,7 @@ pub const DEFAULT_RELAY_WEBRTC_PORT: u16 = 9091;
 pub const DEFAULT_RELAY_WEBSOCKET_PORT: u16 = 9092;
 
 pub const DEFAULT_ERC_MAX_METADATA_TASKS: usize = 10;
+pub const DEFAULT_DATABASE_AUTO_CHECKPOINT_INTERVAL: u64 = 1000;
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
@@ -394,6 +395,14 @@ pub struct SqlOptions {
         help = "A directory containing custom migrations to run."
     )]
     pub migrations: Option<PathBuf>,
+
+    /// The pages interval to autocheckpoint.
+    #[arg(
+        long = "sql.autocheckpoint_interval",
+        default_value_t = DEFAULT_DATABASE_AUTO_CHECKPOINT_INTERVAL,
+        help = "The pages interval to autocheckpoint."
+    )]
+    pub autocheckpoint_interval: u64,
 }
 
 impl Default for SqlOptions {
@@ -404,6 +413,7 @@ impl Default for SqlOptions {
             historical: vec![],
             page_size: DEFAULT_DATABASE_PAGE_SIZE,
             cache_size: DEFAULT_DATABASE_CACHE_SIZE,
+            autocheckpoint_interval: DEFAULT_DATABASE_AUTO_CHECKPOINT_INTERVAL,
             hooks: vec![],
             migrations: None,
         }
