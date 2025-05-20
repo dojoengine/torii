@@ -25,6 +25,7 @@ pub const DEFAULT_RELAY_WEBSOCKET_PORT: u16 = 9092;
 
 pub const DEFAULT_ERC_MAX_METADATA_TASKS: usize = 10;
 pub const DEFAULT_DATABASE_AUTO_CHECKPOINT_INTERVAL: u64 = 1000;
+pub const DEFAULT_DATABASE_BUSY_TIMEOUT: u64 = 5000;
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
@@ -403,6 +404,15 @@ pub struct SqlOptions {
         help = "The pages interval to autocheckpoint."
     )]
     pub autocheckpoint_interval: u64,
+
+    /// The timeout before the database is considered busy.
+    #[arg(
+        long = "sql.busy_timeout",
+        default_value_t = DEFAULT_DATABASE_BUSY_TIMEOUT,
+        help = "The timeout before the database is considered busy. Helpful in situations where \
+                the database is locked for a long time."
+    )]
+    pub busy_timeout: u64,
 }
 
 impl Default for SqlOptions {
@@ -414,6 +424,7 @@ impl Default for SqlOptions {
             page_size: DEFAULT_DATABASE_PAGE_SIZE,
             cache_size: DEFAULT_DATABASE_CACHE_SIZE,
             autocheckpoint_interval: DEFAULT_DATABASE_AUTO_CHECKPOINT_INTERVAL,
+            busy_timeout: DEFAULT_DATABASE_BUSY_TIMEOUT,
             hooks: vec![],
             migrations: None,
         }

@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
 use erc::UpdateNftMetadataQuery;
-use sqlx::{FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
+use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
 use starknet::core::utils::{get_selector_from_name, parse_cairo_short_string};
@@ -785,6 +785,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     async fn execute(&mut self) -> Result<()> {
         let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
         transaction.commit().await?;
+        self.pool.execute("PRAGMA wal_checkpoint(TRUNCATE);").await?;
 
         for message in self.publish_queue.drain(..) {
             send_broker_message(message);
@@ -796,6 +797,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     async fn rollback(&mut self) -> Result<()> {
         let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
         transaction.rollback().await?;
+        self.pool.execute("PRAGMA wal_checkpoint(TRUNCATE);").await?;
 
         // NOTE: clear doesn't reset the capacity
         self.publish_queue.clear();
