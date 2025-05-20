@@ -785,7 +785,9 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     async fn execute(&mut self) -> Result<()> {
         let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
         transaction.commit().await?;
-        self.pool.execute("PRAGMA wal_checkpoint(TRUNCATE);").await?;
+        self.pool
+            .execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            .await?;
 
         for message in self.publish_queue.drain(..) {
             send_broker_message(message);
@@ -797,7 +799,9 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     async fn rollback(&mut self) -> Result<()> {
         let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
         transaction.rollback().await?;
-        self.pool.execute("PRAGMA wal_checkpoint(TRUNCATE);").await?;
+        self.pool
+            .execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            .await?;
 
         // NOTE: clear doesn't reset the capacity
         self.publish_queue.clear();
