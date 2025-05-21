@@ -319,21 +319,13 @@ impl WorldClient {
             .map(|res| res.into_inner())?;
 
         Ok(EntityUpdateStreaming(stream.map_ok(Box::new(|res| {
-            res.entity.map_or(
-                (
-                    res.subscription_id,
-                    Entity {
-                        hashed_keys: Felt::ZERO,
-                        models: vec![],
-                    },
-                ),
-                |entity| {
+            res.entity
+                .map_or((res.subscription_id, Entity::default()), |entity| {
                     (
                         res.subscription_id,
                         entity.try_into().expect("must able to serialize"),
                     )
-                },
-            )
+                })
         }))))
     }
 
@@ -368,21 +360,13 @@ impl WorldClient {
             .map(|res| res.into_inner())?;
 
         Ok(EntityUpdateStreaming(stream.map_ok(Box::new(|res| {
-            res.entity.map_or(
-                (
-                    res.subscription_id,
-                    Entity {
-                        hashed_keys: Felt::ZERO,
-                        models: vec![],
-                    },
-                ),
-                |entity| {
+            res.entity
+                .map_or((res.subscription_id, Entity::default()), |entity| {
                     (
                         res.subscription_id,
                         entity.try_into().expect("must able to serialize"),
                     )
-                },
-            )
+                })
         }))))
     }
 

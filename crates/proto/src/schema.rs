@@ -8,7 +8,7 @@ use starknet::core::types::Felt;
 use crate::error::ProtoError;
 use crate::proto;
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Entity {
     pub hashed_keys: Felt,
     pub models: Vec<Struct>,
