@@ -34,6 +34,14 @@ message Entity {
     bytes hashed_keys = 1;
     // Models of the entity
     repeated Struct models = 2;
+    // The event id of the entity
+    string event_id = 3;
+    // The timestamp when the entity was executed
+    uint64 executed_at_timestamp = 4;
+    // The timestamp when the entity was created
+    uint64 created_at_timestamp = 5;
+    // The timestamp when the entity was updated
+    uint64 updated_at_timestamp = 6;
 }
 
 message Event {
