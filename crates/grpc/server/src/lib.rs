@@ -43,7 +43,9 @@ use torii_sqlite::cache::ModelCache;
 use torii_sqlite::constants::SQL_DEFAULT_LIMIT;
 use torii_sqlite::error::{ParseError, QueryError};
 use torii_sqlite::model::{decode_cursor, encode_cursor, fetch_entities, map_row_to_ty};
-use torii_sqlite::types::{Page, Pagination, PaginationDirection, Token, TokenBalance};
+use torii_sqlite::types::{
+    HistoricalEntity, Page, Pagination, PaginationDirection, Token, TokenBalance,
+};
 use torii_sqlite::utils::u256_to_sql_string;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
@@ -264,6 +266,7 @@ impl DojoWorld {
 
         let query_str = format!(
             "SELECT {table}.id, {table}.data, {table}.model_id, {table}.event_id, \
+             {table}.executed_at, {table}.created_at, {table}.updated_at, \
              group_concat({model_relation_table}.model_id) as model_ids
             FROM {table}
             JOIN {model_relation_table} ON {table}.id = {model_relation_table}.entity_id
@@ -286,8 +289,7 @@ impl DojoWorld {
         }
         query = query.bind(query_limit);
 
-        let db_entities: Vec<(String, String, String, String, String)> =
-            query.fetch_all(&self.pool).await?;
+        let db_entities: Vec<HistoricalEntity> = query.fetch_all(&self.pool).await?;
 
         let has_more = db_entities.len() == query_limit as usize;
         let results_to_take = if has_more {
@@ -299,23 +301,28 @@ impl DojoWorld {
         let entities = db_entities
             .iter()
             .take(results_to_take)
-            .map(|(id, data, model_id, _, _)| async {
-                let hashed_keys = Felt::from_str(id)
+            .map(|entity| async {
+                let hashed_keys = Felt::from_str(&entity.id)
                     .map_err(ParseError::FromStr)?
                     .to_bytes_be()
                     .to_vec();
                 let model = self
                     .model_cache
-                    .model(&Felt::from_str(model_id).map_err(ParseError::FromStr)?)
+                    .model(&Felt::from_str(&entity.model_id).map_err(ParseError::FromStr)?)
                     .await?;
                 let mut schema = model.schema;
                 schema.from_json_value(
-                    serde_json::from_str(data).map_err(ParseError::FromJsonStr)?,
+                    serde_json::from_str(&entity.data).map_err(ParseError::FromJsonStr)?,
                 )?;
 
                 Ok::<_, Error>(proto::types::Entity {
                     hashed_keys,
                     models: vec![schema.as_struct().unwrap().clone().into()],
+                    event_id: entity.event_id.to_string(),
+                    executed_at_timestamp: entity.executed_at.timestamp() as u64,
+                    created_at_timestamp: entity.created_at.timestamp() as u64,
+                    updated_at_timestamp: entity.updated_at.timestamp() as u64,
+                    is_deleted: false,
                 })
             })
             // Collect the futures into a Vec
@@ -327,7 +334,7 @@ impl DojoWorld {
         let next_cursor = if has_more {
             db_entities
                 .last()
-                .map(|(_, _, _, event_id, _)| encode_cursor(event_id))
+                .map(|entity| encode_cursor(&entity.event_id))
                 .transpose()?
         } else {
             None
@@ -1101,6 +1108,10 @@ fn map_row_to_entity(
         .split(',')
         .map(|id| Felt::from_str(id).map_err(ParseError::FromStr))
         .collect::<Result<Vec<_>, _>>()?;
+    let event_id = row.get::<String, _>("event_id");
+    let executed_at = row.get::<DateTime<Utc>, _>("executed_at");
+    let created_at = row.get::<DateTime<Utc>, _>("created_at");
+    let updated_at = row.get::<DateTime<Utc>, _>("updated_at");
 
     let models = schemas
         .iter()
@@ -1119,6 +1130,11 @@ fn map_row_to_entity(
             vec![]
         },
         models,
+        event_id: event_id.to_string(),
+        executed_at_timestamp: executed_at.timestamp() as u64,
+        created_at_timestamp: created_at.timestamp() as u64,
+        updated_at_timestamp: updated_at.timestamp() as u64,
+        is_deleted: false,
     })
 }
 

@@ -11439,6 +11439,7 @@ dependencies = [
 name = "torii-proto"
 version = "1.5.4"
 dependencies = [
+ "chrono",
  "crypto-bigint",
  "dojo-types 1.5.0-alpha.2",
  "dojo-world",
