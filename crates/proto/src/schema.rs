@@ -1,9 +1,9 @@
+use chrono::{DateTime, Utc};
 use crypto_bigint::{Encoding, U256};
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Enum, EnumOption, Member, Struct, Ty};
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
-use chrono::{DateTime, Utc};
 
 use crate::error::ProtoError;
 use crate::proto;

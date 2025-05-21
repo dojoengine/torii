@@ -43,7 +43,9 @@ use torii_sqlite::cache::ModelCache;
 use torii_sqlite::constants::SQL_DEFAULT_LIMIT;
 use torii_sqlite::error::{ParseError, QueryError};
 use torii_sqlite::model::{decode_cursor, encode_cursor, fetch_entities, map_row_to_ty};
-use torii_sqlite::types::{HistoricalEntity, Page, Pagination, PaginationDirection, Token, TokenBalance};
+use torii_sqlite::types::{
+    HistoricalEntity, Page, Pagination, PaginationDirection, Token, TokenBalance,
+};
 use torii_sqlite::utils::u256_to_sql_string;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
