@@ -16,6 +16,7 @@ pub struct Entity {
     pub executed_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub is_deleted: bool,
 }
 
 impl TryFrom<proto::types::Entity> for Entity {
@@ -32,6 +33,7 @@ impl TryFrom<proto::types::Entity> for Entity {
             executed_at: DateTime::from_timestamp(entity.executed_at_timestamp as i64, 0).unwrap(),
             created_at: DateTime::from_timestamp(entity.created_at_timestamp as i64, 0).unwrap(),
             updated_at: DateTime::from_timestamp(entity.updated_at_timestamp as i64, 0).unwrap(),
+            is_deleted: entity.is_deleted,
         })
     }
 }
