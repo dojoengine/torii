@@ -3,6 +3,7 @@ use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Enum, EnumOption, Member, Struct, Ty};
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
+use chrono::{DateTime, Utc};
 
 use crate::error::ProtoError;
 use crate::proto;
@@ -11,6 +12,10 @@ use crate::proto;
 pub struct Entity {
     pub hashed_keys: Felt,
     pub models: Vec<Struct>,
+    pub event_id: String,
+    pub executed_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 impl TryFrom<proto::types::Entity> for Entity {
@@ -23,6 +28,10 @@ impl TryFrom<proto::types::Entity> for Entity {
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<_>, _>>()?,
+            event_id: entity.event_id,
+            executed_at: DateTime::from_timestamp(entity.executed_at_timestamp as i64, 0).unwrap(),
+            created_at: DateTime::from_timestamp(entity.created_at_timestamp as i64, 0).unwrap(),
+            updated_at: DateTime::from_timestamp(entity.updated_at_timestamp as i64, 0).unwrap(),
         })
     }
 }
