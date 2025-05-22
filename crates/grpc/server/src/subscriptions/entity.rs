@@ -19,7 +19,7 @@ use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::OptimisticEntity;
 use tracing::{error, trace};
 
-use super::match_entity;
+use super::{match_entity, SUBSCRIPTION_CHANNEL_SIZE};
 use torii_proto::proto::world::SubscribeEntityResponse;
 use torii_proto::Clause;
 
@@ -43,7 +43,7 @@ impl EntityManager {
         clause: Option<Clause>,
     ) -> Result<Receiver<Result<SubscribeEntityResponse, tonic::Status>>, Error> {
         let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(1);
+        let (sender, receiver) = channel(SUBSCRIPTION_CHANNEL_SIZE);
 
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from
