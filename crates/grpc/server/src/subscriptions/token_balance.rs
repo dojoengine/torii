@@ -21,6 +21,8 @@ use tracing::{error, trace};
 use torii_proto::proto::types::TokenBalance;
 use torii_proto::proto::world::SubscribeTokenBalancesResponse;
 
+use super::SUBSCRIPTION_CHANNEL_SIZE;
+
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::balance";
 
 #[derive(Debug)]
@@ -51,7 +53,7 @@ impl TokenBalanceManager {
         token_ids: Vec<U256>,
     ) -> Result<Receiver<Result<SubscribeTokenBalancesResponse, tonic::Status>>, Error> {
         let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(1);
+        let (sender, receiver) = channel(SUBSCRIPTION_CHANNEL_SIZE);
 
         // Send initial empty response
         let _ = sender

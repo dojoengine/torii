@@ -20,6 +20,8 @@ use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeIndexerResponse;
 
+use super::SUBSCRIPTION_CHANNEL_SIZE;
+
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::indexer";
 
 #[derive(Debug)]
@@ -42,7 +44,7 @@ impl IndexerManager {
         contract_address: Felt,
     ) -> Result<Receiver<Result<SubscribeIndexerResponse, tonic::Status>>, Error> {
         let id = rand::thread_rng().gen::<usize>();
-        let (sender, receiver) = channel(1);
+        let (sender, receiver) = channel(SUBSCRIPTION_CHANNEL_SIZE);
 
         let mut statement = "SELECT * FROM contracts".to_string();
 
