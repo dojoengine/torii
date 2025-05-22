@@ -16,7 +16,7 @@ pub struct Entity {
 impl TryFrom<proto::types::Entity> for Entity {
     type Error = ProtoError;
     fn try_from(entity: proto::types::Entity) -> Result<Self, Self::Error> {
-        Ok(Self {dsds
+        Ok(Self {
             hashed_keys: Felt::from_bytes_be_slice(&entity.hashed_keys),
             models: entity
                 .models
