@@ -301,7 +301,7 @@ impl Sql {
         let id = format!("{}:{}", event_id, token_id);
         let insert_query = format!(
             "INSERT INTO {TOKEN_TRANSFER_TABLE} (id, contract_address, from_address, to_address, \
-             amount, token_id, event_id, executed_at) ON CONFLICT DO NOTHING VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+             amount, token_id, event_id, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING"
         );
 
         self.executor.send(QueryMessage::new(
