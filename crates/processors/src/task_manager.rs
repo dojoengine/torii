@@ -183,4 +183,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             .await
             .map_err(|e| anyhow::anyhow!("Task network error: {}", e))
     }
+
+    pub fn clear_tasks(&mut self) {
+        self.task_network.clear();
+    }
 }

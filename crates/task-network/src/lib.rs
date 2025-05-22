@@ -158,6 +158,10 @@ where
     pub fn get_mut(&mut self, task_id: &K) -> Option<&mut T> {
         self.tasks.get_mut(task_id)
     }
+
+    pub fn clear(&mut self) {
+        self.tasks.clear();
+    }
 }
 
 #[cfg(test)]
