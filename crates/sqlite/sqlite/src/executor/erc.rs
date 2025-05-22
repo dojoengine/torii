@@ -153,7 +153,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         // write the new balance to the database
         let token_balance: TokenBalance = sqlx::query_as(&format!(
             "INSERT INTO {TOKEN_BALANCE_TABLE} (id, contract_address, account_address, \
-             token_id, balance) ON CONFLICT DO UPDATE SET balance = EXCLUDED.balance RETURNING *",
+             token_id, balance) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET balance = EXCLUDED.balance RETURNING *",
         ))
         .bind(id)
         .bind(contract_address)
