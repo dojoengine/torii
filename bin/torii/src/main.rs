@@ -34,13 +34,10 @@ async fn main() -> anyhow::Result<()> {
         .with(
             tracing_subscriber::fmt::layer()
                 .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
-                .with_writer(indicatif_layer.get_stderr_writer())
+                .with_writer(indicatif_layer.get_stderr_writer()),
         )
         .with(indicatif_layer)
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_writer(std::io::stdout)
-        )
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stdout))
         .with(filter_layer)
         .init();
 
