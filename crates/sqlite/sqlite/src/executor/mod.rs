@@ -381,7 +381,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 for contract_address in &store_transaction.contract_addresses {
                     sqlx::query(
                         "INSERT INTO transaction_contract (transaction_hash, \
-                         contract_address) ON CONFLICT DO NOTHING VALUES (?, ?)",
+                         contract_address) VALUES (?, ?) ON CONFLICT DO NOTHING",
                     )
                     .bind(&transaction.transaction_hash)
                     .bind(felt_to_sql_string(contract_address))
@@ -392,7 +392,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 for unique_model in &store_transaction.unique_models {
                     sqlx::query(
                         "INSERT INTO transaction_models (transaction_hash, \
-                         model_id) ON CONFLICT DO NOTHING VALUES (?, ?)",
+                         model_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
                     )
                     .bind(&transaction.transaction_hash)
                     .bind(felt_to_sql_string(unique_model))
@@ -405,7 +405,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     sqlx::query(
                         "INSERT INTO transaction_calls (transaction_hash, \
                          contract_address, entrypoint, calldata, call_type, caller_address) \
-                         ON CONFLICT DO NOTHING VALUES (?, ?, ?, ?, ?, ?)",
+                         VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                     )
                     .bind(&transaction.transaction_hash)
                     .bind(felt_to_sql_string(&call.contract_address))
