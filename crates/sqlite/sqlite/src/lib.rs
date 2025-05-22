@@ -562,8 +562,8 @@ impl Sql {
     ) -> Result<()> {
         // Store the transaction in the transactions table
         self.executor.send(QueryMessage::new(
-            "INSERT OR IGNORE INTO transactions (id, transaction_hash, sender_address, calldata, \
-             max_fee, signature, nonce, transaction_type, executed_at, block_number) VALUES (?, \
+            "INSERT INTO transactions (id, transaction_hash, sender_address, calldata, \
+             max_fee, signature, nonce, transaction_type, executed_at, block_number) ON CONFLICT DO NOTHING VALUES (?, \
              ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *"
                 .to_string(),
             vec![
@@ -602,7 +602,7 @@ impl Sql {
         let executed_at = Argument::String(utc_dt_string_from_timestamp(block_timestamp));
 
         self.executor.send(QueryMessage::new(
-            "INSERT OR IGNORE INTO events (id, keys, data, transaction_hash, executed_at) VALUES \
+            "INSERT INTO events (id, keys, data, transaction_hash, executed_at) ON CONFLICT DO NOTHING VALUES \
              (?, ?, ?, ?, ?) RETURNING *"
                 .to_string(),
             vec![id, keys, data, hash, executed_at],
