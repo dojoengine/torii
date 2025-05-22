@@ -412,9 +412,6 @@ pub async fn fetch_entities(
             format!("{}.id", table_name),
             format!("{}.keys", table_name),
             format!("{}.event_id", table_name),
-            format!("{}.executed_at", table_name),
-            format!("{}.created_at", table_name),
-            format!("{}.updated_at", table_name),
             format!(
                 "group_concat({}.model_id) as model_ids",
                 model_relation_table

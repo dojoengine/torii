@@ -157,11 +157,6 @@ impl Service {
                 entity: Some(Entity {
                     hashed_keys: hashed.to_bytes_be().to_vec(),
                     models: vec![model.into()],
-                    event_id: entity.event_id.clone(),
-                    executed_at_timestamp: entity.executed_at.timestamp() as u64,
-                    created_at_timestamp: entity.created_at.timestamp() as u64,
-                    updated_at_timestamp: entity.updated_at.timestamp() as u64,
-                    is_deleted: false,
                 }),
                 subscription_id: *idx,
             };

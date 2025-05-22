@@ -97,19 +97,6 @@ pub struct OptimisticEventMessage {
 
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct HistoricalEntity {
-    pub id: String,
-    pub keys: String,
-    pub event_id: String,
-    pub data: String,
-    pub model_id: String,
-    pub executed_at: DateTime<Utc>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(FromRow, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct Model {
     pub id: String,
     pub namespace: String,
