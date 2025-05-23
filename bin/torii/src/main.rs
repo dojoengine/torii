@@ -14,7 +14,6 @@ use clap::Parser;
 use cli::Cli;
 use torii_runner::Runner;
 use tracing_indicatif::IndicatifLayer;
-use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
@@ -31,14 +30,9 @@ async fn main() -> anyhow::Result<()> {
     let indicatif_layer = IndicatifLayer::new();
 
     Registry::default()
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
-                .with_writer(indicatif_layer.get_stderr_writer()),
-        )
-        .with(indicatif_layer)
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stdout))
+        .with(tracing_subscriber::fmt::layer())
         .with(filter_layer)
+        .with(indicatif_layer)
         .init();
 
     let args = Cli::parse().args.with_config_file()?;
