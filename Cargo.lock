@@ -11454,7 +11454,6 @@ dependencies = [
  "tonic 0.12.3",
  "tonic-build 0.11.0",
  "tonic-build 0.12.3",
- "torii-sqlite-types",
 ]
 
 [[package]]
@@ -11571,6 +11570,7 @@ dependencies = [
  "ipfs-api-backend-hyper",
  "katana-runner",
  "once_cell",
+ "rayon",
  "reqwest",
  "scarb",
  "serde",
@@ -11585,6 +11585,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "torii-indexer",
+ "torii-proto",
  "torii-sqlite-types",
  "tracing",
 ]
@@ -11595,10 +11596,12 @@ version = "1.5.5-preview.1"
 dependencies = [
  "anyhow",
  "chrono",
+ "crypto-bigint",
  "dojo-types 1.5.0-alpha.2",
  "serde",
  "sqlx",
  "starknet 0.12.0",
+ "torii-proto",
 ]
 
 [[package]]
