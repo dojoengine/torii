@@ -44,7 +44,8 @@ impl Sql {
         // this cache is used while applying the cache diff
         // so we need to make sure that all RegisterErc*Token queries
         // are applied before the cache diff is applied
-        self.try_register_erc20_token_metadata(contract_address, &token_id, provider).await?;
+        self.try_register_erc20_token_metadata(contract_address, &token_id, provider)
+            .await?;
 
         self.store_erc_transfer_event(
             contract_address,
