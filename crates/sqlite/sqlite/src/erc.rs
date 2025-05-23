@@ -44,14 +44,8 @@ impl Sql {
         // this cache is used while applying the cache diff
         // so we need to make sure that all RegisterErc*Token queries
         // are applied before the cache diff is applied
-        let token_exists: bool = !self
-            .local_cache
-            .try_register_token_id(token_id.to_string())
-            .await;
-        if !token_exists {
-            self.register_erc20_token_metadata(contract_address, &token_id, provider)
-                .await?;
-        }
+        self.try_register_erc20_token_metadata(contract_address, &token_id, provider)
+            .await?;
 
         self.store_erc_transfer_event(
             contract_address,
@@ -100,18 +94,8 @@ impl Sql {
         // this cache is used while applying the cache diff
         // so we need to make sure that all RegisterErc*Token queries
         // are applied before the cache diff is applied
-        let token_exists: bool = !self.local_cache.try_register_token_id(id.clone()).await;
-        if !token_exists {
-            let metadata = fetch_token_metadata(
-                contract_address,
-                token_id,
-                provider,
-                &self.nft_metadata_semaphore,
-            )
+        self.try_register_nft_token_metadata(&id, contract_address, token_id, provider)
             .await?;
-            self.register_nft_token_metadata(&id, contract_address, token_id, metadata)
-                .await?;
-        }
 
         self.store_erc_transfer_event(
             contract_address,
@@ -183,13 +167,17 @@ impl Sql {
         Ok(())
     }
 
-    async fn register_erc20_token_metadata<P: Provider + Sync>(
+    async fn try_register_erc20_token_metadata<P: Provider + Sync>(
         &mut self,
         contract_address: Felt,
         token_id: &str,
         provider: &P,
     ) -> Result<()> {
-        // Prepare batch requests for name, symbol, and decimals
+        let mut registry = self.local_cache.token_id_registry.lock().await;
+        if registry.contains(token_id) {
+            return Ok(());
+        }
+
         let block_id = BlockId::Tag(BlockTag::Pending);
         let requests = vec![
             ProviderRequestData::Call(CallRequest {
@@ -264,16 +252,31 @@ impl Sql {
             }),
         ))?;
 
+        registry.insert(token_id.to_string());
+
         Ok(())
     }
 
-    async fn register_nft_token_metadata(
+    async fn try_register_nft_token_metadata<P: Provider + Sync>(
         &mut self,
         id: &str,
         contract_address: Felt,
         actual_token_id: U256,
-        metadata: String,
+        provider: &P,
     ) -> Result<()> {
+        let mut registry = self.local_cache.token_id_registry.lock().await;
+        if registry.contains(id) {
+            return Ok(());
+        }
+
+        let metadata = fetch_token_metadata(
+            contract_address,
+            actual_token_id,
+            provider,
+            &self.nft_metadata_semaphore,
+        )
+        .await?;
+
         self.executor.send(QueryMessage::new(
             "".to_string(),
             vec![],
@@ -284,6 +287,9 @@ impl Sql {
                 metadata,
             }),
         ))?;
+
+        registry.insert(id.to_string());
+
         Ok(())
     }
 
