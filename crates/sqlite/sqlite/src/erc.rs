@@ -173,8 +173,7 @@ impl Sql {
         provider: &P,
     ) -> Result<()> {
         let mut registry = self.local_cache.token_id_registry.lock().await;
-        let token_exists: bool = !registry.contains(token_id);
-        if token_exists {
+        if registry.contains(token_id) {
             return Ok(());
         }
 
