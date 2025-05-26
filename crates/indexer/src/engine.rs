@@ -559,13 +559,20 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let mut cursor_map = HashMap::new();
         for t in data.pending_block.transactions {
             let transaction_hash = t.transaction.transaction_hash();
+
+            // Skip all transactions until we reach the last processed transaction
             if let Some(tx) = last_pending_block_tx_cursor {
                 if transaction_hash != &tx {
                     continue;
                 }
-
                 last_pending_block_tx_cursor = None;
-                continue;
+            }
+
+            // Skip the last processed transaction itself (since it was already processed)
+            if let Some(last_tx) = data.last_pending_block_tx {
+                if transaction_hash == &last_tx {
+                    continue;
+                }
             }
 
             if let Err(e) = self
