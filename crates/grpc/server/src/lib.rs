@@ -454,15 +454,15 @@ impl DojoWorld {
 
         let mut bind_values = vec![keys_pattern];
         let where_clause = if model_selectors.is_empty() {
-            format!("{table}.keys REGEXP ?")
+            format!("({table}.keys REGEXP ?)")
         } else {
             let model_selectors_len = model_selectors.len();
             bind_values.extend(model_selectors.clone());
             bind_values.extend(model_selectors);
 
             format!(
-                "({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
-                 {model_relation_table}.model_id NOT IN ({})",
+                "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
+                 {model_relation_table}.model_id NOT IN ({}))",
                 vec!["?"; model_selectors_len].join(", "),
                 vec!["?"; model_selectors_len].join(", "),
             )
@@ -1189,8 +1189,8 @@ fn build_composite_clause(
                     // Add bind value placeholders for each model selector
                     let placeholders = vec!["?"; model_selectors.len()].join(", ");
                     where_clauses.push(format!(
-                        "({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
-                         {model_relation_table}.model_id NOT IN ({})",
+                        "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
+                         {model_relation_table}.model_id NOT IN ({}))",
                         placeholders, placeholders
                     ));
                     // Add each model selector twice (once for IN and once for NOT IN)
