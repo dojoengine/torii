@@ -349,6 +349,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         cursor.tps = new_tps.try_into().expect("does't fit in i64");
                     } else {
                         cursor.tps = 0;
+                        cursor.last_pending_block_contract_tx = None;
                     }
                     cursor.last_block_timestamp =
                         new_timestamp.try_into().expect("doesn't fit in i64");
