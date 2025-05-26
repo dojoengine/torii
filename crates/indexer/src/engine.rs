@@ -16,7 +16,8 @@ use starknet::core::types::requests::{
 use starknet::core::types::{
     BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
     MaybePendingBlockWithReceipts, MaybePendingBlockWithTxHashes, PendingBlockWithReceipts,
-    ResultPageRequest, Transaction, TransactionReceipt, TransactionWithReceipt,
+    ResultPageRequest, Transaction, TransactionExecutionStatus, TransactionReceipt,
+    TransactionWithReceipt,
 };
 use starknet::macros::selector;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
@@ -573,6 +574,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 if transaction_hash == &last_tx {
                     continue;
                 }
+            }
+
+            // Skip transaction if it is reverted
+            if t.receipt.execution_result().status() == TransactionExecutionStatus::Reverted {
+                continue;
             }
 
             if let Err(e) = self
