@@ -150,40 +150,46 @@ impl Service {
                 }
             }
 
-            if entity.deleted {
-                let resp = SubscribeEntityResponse {
+            let resp = if entity.deleted {
+                SubscribeEntityResponse {
                     entity: Some(torii_proto::proto::types::Entity {
                         hashed_keys: hashed.to_bytes_be().to_vec(),
                         models: vec![],
                     }),
                     subscription_id: *idx,
-                };
-
-                if sub.sender.send(Ok(resp)).await.is_err() {
-                    closed_stream.push(*idx);
                 }
-
-                continue;
-            }
-
-            // This should NEVER be None
-            let model = entity
-                .updated_model
-                .as_ref()
-                .unwrap()
-                .as_struct()
-                .unwrap()
-                .clone();
-            let resp = SubscribeEntityResponse {
-                entity: Some(torii_proto::proto::types::Entity {
-                    hashed_keys: hashed.to_bytes_be().to_vec(),
-                    models: vec![model.into()],
-                }),
-                subscription_id: *idx,
+            } else {
+                // This should NEVER be None
+                let model = entity
+                    .updated_model
+                    .as_ref()
+                    .unwrap()
+                    .as_struct()
+                    .unwrap()
+                    .clone();
+                SubscribeEntityResponse {
+                    entity: Some(torii_proto::proto::types::Entity {
+                        hashed_keys: hashed.to_bytes_be().to_vec(),
+                        models: vec![model.into()],
+                    }),
+                    subscription_id: *idx,
+                }
             };
 
-            if sub.sender.send(Ok(resp)).await.is_err() {
-                closed_stream.push(*idx);
+            // Use try_send to avoid blocking on slow subscribers
+            match sub.sender.try_send(Ok(resp)) {
+                Ok(_) => {
+                    // Message sent successfully
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    // Channel is full, subscriber is too slow - disconnect them
+                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
+                    closed_stream.push(*idx);
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    // Channel is closed, subscriber has disconnected
+                    closed_stream.push(*idx);
+                }
             }
         }
 
