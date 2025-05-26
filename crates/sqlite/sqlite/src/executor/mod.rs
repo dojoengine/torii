@@ -268,11 +268,12 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 Some(msg) = self.rx.recv() => {
                     let query_type = msg.query_type.clone();
                     let statement = msg.statement.clone();
+                    let arguments = msg.arguments.clone();
                     match self.handle_query_message(msg).await {
                         Ok(()) => {},
                         Err(e) => {
                             error!(target: LOG_TARGET, r#type = ?query_type, error = %e, "Failed to execute query.");
-                            debug!(target: LOG_TARGET, query = ?statement, "Failed to execute query.");
+                            debug!(target: LOG_TARGET, query = ?statement, arguments = ?arguments, "Failed to execute query.");
                         }
                     }
                 }
