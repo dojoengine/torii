@@ -1189,8 +1189,8 @@ fn build_composite_clause(
                     // Add bind value placeholders for each model selector
                     let placeholders = vec!["?"; model_selectors.len()].join(", ");
                     where_clauses.push(format!(
-                        "({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
-                         {model_relation_table}.model_id NOT IN ({})",
+                        "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
+                         {model_relation_table}.model_id NOT IN ({}))",
                         placeholders, placeholders
                     ));
                     // Add each model selector twice (once for IN and once for NOT IN)
