@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use dojo_types::schema::Ty;
@@ -13,7 +13,7 @@ use starknet::providers::{Provider, ProviderError};
 use starknet_crypto::Felt;
 use tokio::sync::{Mutex, RwLock};
 
-use crate::constants::TOKEN_BALANCE_TABLE;
+use crate::constants::TOKENS_TABLE;
 use crate::error::{Error, ParseError};
 use crate::utils::I256;
 
@@ -159,49 +159,70 @@ impl ModelCache {
 }
 
 #[derive(Debug)]
+pub enum TokenState {
+    Registered,
+    Registering(Arc<Mutex<()>>),
+    NotRegistered,
+}
+
+#[derive(Debug)]
 pub struct LocalCache {
     pub erc_cache: RwLock<HashMap<String, I256>>,
-    // we are using a mutex here because this needs to be atomic.
-    // since we paralellize token transfers and thus token reigstrations
-    pub token_id_registry: Mutex<HashSet<String>>,
+    // the registry is a map of token_id to a mutex that is used to track if the token is registered
+    // we need a mutex for the token state to prevent race conditions in case of multiple token regs
+    pub token_id_registry: RwLock<HashMap<String, TokenState>>,
 }
 
 impl LocalCache {
     pub async fn new(pool: Pool<Sqlite>) -> Self {
         // read existing token_id's from balances table and cache them
-        let token_id_registry: Vec<(String,)> =
-            sqlx::query_as(&format!("SELECT token_id FROM {TOKEN_BALANCE_TABLE}"))
+        let token_id_registry: Vec<String> =
+            sqlx::query_scalar(&format!("SELECT id FROM {TOKENS_TABLE}"))
                 .fetch_all(&pool)
                 .await
                 .expect("Should be able to read token_id's from blances table");
 
-        let token_id_registry = token_id_registry
-            .into_iter()
-            .map(|token_id| token_id.0)
-            .collect();
-
         Self {
             erc_cache: RwLock::new(HashMap::new()),
-            token_id_registry: Mutex::new(token_id_registry),
+            token_id_registry: RwLock::new(
+                token_id_registry
+                    .iter()
+                    .map(|token_id| (token_id.clone(), TokenState::Registered))
+                    .collect(),
+            ),
         }
     }
 
     pub async fn contains_token_id(&self, token_id: &str) -> bool {
-        self.token_id_registry.lock().await.contains(token_id)
+        let registry = self.token_id_registry.read().await;
+        registry.contains_key(token_id)
     }
 
-    pub async fn register_token_id(&self, token_id: String) {
-        self.token_id_registry.lock().await.insert(token_id);
-    }
-
-    pub async fn try_register_token_id(&self, token_id: String) -> bool {
-        let mut registry = self.token_id_registry.lock().await;
-        if registry.contains(&token_id) {
-            return false;
+    pub async fn get_token_registration_lock(&self, token_id: &str) -> Option<Arc<Mutex<()>>> {
+        let registry = self.token_id_registry.read().await;
+        match registry.get(token_id) {
+            Some(TokenState::Registering(mutex)) => {
+                Some(mutex.clone())
+            }
+            Some(TokenState::Registered) => None,
+            Some(TokenState::NotRegistered) | None => {
+                // Mark as registering and return the lock
+                let mutex = Arc::new(Mutex::new(()));
+                let mut registry = self.token_id_registry.write().await;
+                registry.insert(token_id.to_string(), TokenState::Registering(mutex.clone()));
+                Some(mutex.clone())
+            }
         }
+    }
 
-        registry.insert(token_id);
-        true
+    pub async fn mark_token_registered(&self, token_id: &str) {
+        let mut registry = self.token_id_registry.write().await;
+        registry.insert(token_id.to_string(), TokenState::Registered);
+    }
+
+    pub async fn is_token_registered(&self, token_id: &str) -> bool {
+        let registry = self.token_id_registry.read().await;
+        matches!(registry.get(token_id), Some(TokenState::Registered))
     }
 }
 
