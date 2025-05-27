@@ -193,20 +193,14 @@ impl LocalCache {
         }
     }
 
-    pub async fn contains_token_id(&self, token_id: &str) -> bool {
-        let registry = self.token_id_registry.read().await;
-        registry.contains_key(token_id)
-    }
-
     pub async fn get_token_registration_lock(&self, token_id: &str) -> Option<Arc<Mutex<()>>> {
-        let registry = self.token_id_registry.read().await;
+        let mut registry = self.token_id_registry.write().await;
         match registry.get(token_id) {
             Some(TokenState::Registering(mutex)) => Some(mutex.clone()),
             Some(TokenState::Registered) => None,
             Some(TokenState::NotRegistered) | None => {
                 // Mark as registering and return the lock
                 let mutex = Arc::new(Mutex::new(()));
-                let mut registry = self.token_id_registry.write().await;
                 registry.insert(token_id.to_string(), TokenState::Registering(mutex.clone()));
                 Some(mutex.clone())
             }
