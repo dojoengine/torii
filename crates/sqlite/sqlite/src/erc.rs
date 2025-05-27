@@ -10,7 +10,6 @@ use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
 use starknet::core::utils::{get_selector_from_name, parse_cairo_short_string};
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
-use tokio::sync::Semaphore;
 use tracing::{debug, warn};
 
 use super::utils::{u256_to_sql_string, I256};
@@ -145,13 +144,8 @@ impl Sql {
             return Ok(());
         }
 
-        let metadata = fetch_token_metadata(
-            contract_address,
-            token_id,
-            provider,
-            &self.nft_metadata_semaphore,
-        )
-        .await?;
+        let _permit = self.nft_metadata_semaphore.acquire().await?;
+        let metadata = fetch_token_metadata(contract_address, token_id, provider).await?;
 
         self.executor.send(QueryMessage::new(
             "".to_string(),
@@ -265,21 +259,14 @@ impl Sql {
         actual_token_id: U256,
         provider: &P,
     ) -> Result<()> {
-        println!("try_register_nft_token_metadata: {}", id);
         let _lock = match self.local_cache.get_token_registration_lock(id).await {
             Some(lock) => lock,
             None => return Ok(()), // Already registered by another thread
         };
-        println!("try_register_nft_token_metadata: got lock");
         let _guard = _lock.lock().await;
 
-        let metadata = fetch_token_metadata(
-            contract_address,
-            actual_token_id,
-            provider,
-            &self.nft_metadata_semaphore,
-        )
-        .await?;
+        let _permit = self.nft_metadata_semaphore.acquire().await?;
+        let metadata = fetch_token_metadata(contract_address, actual_token_id, provider).await?;
 
         self.executor.send(QueryMessage::new(
             "".to_string(),
@@ -427,7 +414,6 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
     contract_address: Felt,
     token_id: U256,
     provider: &P,
-    nft_metadata_semaphore: &Semaphore,
 ) -> Result<String> {
     let token_uri = fetch_token_uri(provider, contract_address, token_id).await?;
 
@@ -435,9 +421,7 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
         return Ok("".to_string());
     }
 
-    let permit = nft_metadata_semaphore.acquire().await?;
     let metadata = fetch_metadata(&token_uri).await;
-    drop(permit);
     match metadata {
         Ok(metadata) => serde_json::to_string(&metadata).context("Failed to serialize metadata"),
         Err(_) => {
