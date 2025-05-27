@@ -137,7 +137,8 @@ message TokenCollection {
     string name = 3;
     string symbol = 4;
     uint32 decimals = 5;
-    bytes metadata = 6;
+    uint32 count = 6;
+    bytes metadata = 7;
 }
 
 message TokenBalance {

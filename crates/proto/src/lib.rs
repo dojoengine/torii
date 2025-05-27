@@ -197,6 +197,7 @@ pub struct TokenCollection {
     pub name: String,
     pub symbol: String,
     pub decimals: u8,
+    pub count: u32,
     pub metadata: String,
 }
 
@@ -208,6 +209,7 @@ impl TryFrom<proto::types::TokenCollection> for TokenCollection {
             name: value.name,
             symbol: value.symbol,
             decimals: value.decimals as u8,
+            count: value.count,
             metadata: String::from_utf8(value.metadata).map_err(ProtoError::FromUtf8)?,
         })
     }
@@ -224,6 +226,7 @@ impl From<torii_sqlite_types::TokenCollection> for proto::types::TokenCollection
             name: value.name,
             symbol: value.symbol,
             decimals: value.decimals as u32,
+            count: value.count,
             metadata: value.metadata.as_bytes().to_vec(),
         }
     }

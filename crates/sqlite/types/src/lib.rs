@@ -153,6 +153,7 @@ pub struct TokenCollection {
     pub name: String,
     pub symbol: String,
     pub decimals: u8,
+    pub count: u32,
     pub metadata: String,
 }
 

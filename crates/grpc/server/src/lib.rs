@@ -875,10 +875,18 @@ impl DojoWorld {
         cursor: Option<String>,
     ) -> Result<RetrieveTokenCollectionsResponse, Error> {
         let mut query =
-            "SELECT t.contract_address as contract_address, t.name as name, t.symbol as symbol, t.decimals as decimals, t.metadata as metadata FROM tokens t JOIN token_balances tb ON tb.token_id = CONCAT(t.contract_address, ':', t.token_id)".to_owned();
+            "SELECT t.contract_address as contract_address, t.name as name, t.symbol as symbol, t.decimals as decimals, t.metadata as metadata, count(t.contract_address) as count FROM tokens t".to_owned();
 
         let mut bind_values = Vec::new();
         let mut conditions = Vec::new();
+
+        if !account_addresses.is_empty() {
+            query += "  JOIN token_balances tb ON tb.token_id = CONCAT(t.contract_address, ':', t.token_id)";
+
+            let placeholders = vec!["?"; account_addresses.len()].join(", ");
+            conditions.push(format!("tb.account_address IN ({})", placeholders));
+            bind_values.extend(account_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
 
         if !contract_addresses.is_empty() {
             let placeholders = vec!["?"; contract_addresses.len()].join(", ");
@@ -889,11 +897,6 @@ impl DojoWorld {
             let placeholders = vec!["?"; token_ids.len()].join(", ");
             conditions.push(format!("t.token_id IN ({})", placeholders));
             bind_values.extend(token_ids.iter().map(|id| u256_to_sql_string(&(*id).into())));
-        }
-        if !account_addresses.is_empty() {
-            let placeholders = vec!["?"; account_addresses.len()].join(", ");
-            conditions.push(format!("tb.account_address IN ({})", placeholders));
-            bind_values.extend(account_addresses.iter().map(|addr| format!("{:#x}", addr)));
         }
 
         if let Some(cursor) = cursor {
