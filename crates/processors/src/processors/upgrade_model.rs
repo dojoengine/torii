@@ -137,9 +137,12 @@ where
             unpacked_size,
             block_timestamp,
             Some(&schema_diff),
-            // This will be Some if we have an "upgrade" diff. Which means
-            // if some columns have been modified.
-            prev_schema.diff(&new_schema).as_ref(),
+            // Ensures the diff is always Some, which should be the case if we have an "upgrade"
+            // diff. Which means if some columns have been modified.
+            // Since a column may not exist in the previous schema, the diff from prev_schema to
+            // new_schema will be None. To ensure we always have a diff, we use the schema_diff if
+            // the diff from prev_schema to new_schema is None.
+            prev_schema.diff(&new_schema).as_ref().or(Some(&schema_diff)),
         )
         .await?;
 
