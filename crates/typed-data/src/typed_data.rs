@@ -515,11 +515,13 @@ pub fn parse_value_to_ty(value: &PrimitiveType, ty: &mut Ty) -> Result<(), Error
                     .first()
                     .ok_or_else(|| Error::InvalidEnum("Enum variant not found".to_string()))?;
 
-                enum_.options.iter_mut().for_each(|option| {
+                enum_.options.iter_mut().map(|option| {
                     if option.name == *option_name {
-                        parse_value_to_ty(value, &mut option.ty).unwrap();
+                        parse_value_to_ty(value, &mut option.ty)
+                    } else {
+                        Ok(())
                     }
-                });
+                }).collect::<Result<Vec<_>, Error>>().map_err(|e| Error::InvalidEnum(format!("Failed to parse enum option: {}", e)))?;
 
                 enum_
                     .set_option(option_name)
@@ -639,19 +641,19 @@ pub fn parse_value_to_ty(value: &PrimitiveType, ty: &mut Ty) -> Result<(), Error
                     *v = Some(from_str!(string, u128)?);
                 }
                 Primitive::Felt252(v) => {
-                    *v = Some(Felt::from_str(string).unwrap());
+                    *v = Some(Felt::from_str(string).map_err(|e| Error::ParseError(format!("Failed to parse felt: {}", e)))?);
                 }
                 Primitive::ClassHash(v) => {
-                    *v = Some(Felt::from_str(string).unwrap());
+                    *v = Some(Felt::from_str(string).map_err(|e| Error::ParseError(format!("Failed to parse class hash: {}", e)))?);
                 }
                 Primitive::ContractAddress(v) => {
-                    *v = Some(Felt::from_str(string).unwrap());
+                    *v = Some(Felt::from_str(string).map_err(|e| Error::ParseError(format!("Failed to parse contract address: {}", e)))?);
                 }
                 Primitive::EthAddress(v) => {
-                    *v = Some(Felt::from_str(string).unwrap());
+                    *v = Some(Felt::from_str(string).map_err(|e| Error::ParseError(format!("Failed to parse eth address: {}", e)))?);
                 }
                 Primitive::Bool(v) => {
-                    *v = Some(bool::from_str(string).unwrap());
+                    *v = Some(bool::from_str(string).map_err(|e| Error::ParseError(format!("Failed to parse bool: {}", e)))?);
                 }
                 _ => {
                     return Err(Error::InvalidType("Invalid primitive type".to_string()));
