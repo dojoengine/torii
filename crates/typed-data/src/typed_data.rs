@@ -568,28 +568,38 @@ pub fn parse_value_to_ty(value: &PrimitiveType, ty: &mut Ty) -> Result<(), Error
         PrimitiveType::Number(number) => match ty {
             Ty::Primitive(primitive) => match *primitive {
                 Primitive::I8(ref mut i8) => {
-                    *i8 = Some(number.as_i64().unwrap() as i8);
+                    *i8 = Some(number
+                        .as_i64()
+                        .ok_or_else(|| Error::ParseError("Number out of range".to_string()))?
+                        as i8);
                 }
                 Primitive::I16(ref mut i16) => {
-                    *i16 = Some(number.as_i64().unwrap() as i16);
+                    *i16 = Some(number
+                        .as_i64()
+                        .ok_or_else(|| Error::ParseError("Number out of range".to_string()))?
+                        as i16);
                 }
                 Primitive::I32(ref mut i32) => {
-                    *i32 = Some(number.as_i64().unwrap() as i32);
+                    *i32 = Some(number
+                        .as_i64()
+                        .ok_or_else(|| Error::ParseError("Number out of range".to_string()))?
+                        as i32);
                 }
                 Primitive::I64(ref mut i64) => {
-                    *i64 = Some(number.as_i64().unwrap());
+                    *i64 = Some(number.as_i64()
+                        .ok_or_else(|| Error::ParseError("Number out of range".to_string()))?);
                 }
                 Primitive::U8(ref mut u8) => {
-                    *u8 = Some(number.as_u64().unwrap() as u8);
+                    *u8 = Some(number.as_u64().ok_or_else(|| Error::ParseError("Number out of range".to_string()))? as u8);
                 }
                 Primitive::U16(ref mut u16) => {
-                    *u16 = Some(number.as_u64().unwrap() as u16);
+                    *u16 = Some(number.as_u64().ok_or_else(|| Error::ParseError("Number out of range".to_string()))? as u16);
                 }
                 Primitive::U32(ref mut u32) => {
-                    *u32 = Some(number.as_u64().unwrap() as u32);
+                    *u32 = Some(number.as_u64().ok_or_else(|| Error::ParseError("Number out of range".to_string()))? as u32);
                 }
                 Primitive::U64(ref mut u64) => {
-                    *u64 = Some(number.as_u64().unwrap());
+                    *u64 = Some(number.as_u64().ok_or_else(|| Error::ParseError("Number out of range".to_string()))?);
                 }
                 _ => {
                     return Err(Error::InvalidType(format!(
@@ -732,8 +742,8 @@ pub fn map_ty_to_primitive(ty: &Ty) -> Result<PrimitiveType, Error> {
             Primitive::U256(u256) => {
                 let mut object = IndexMap::new();
                 let bytes = u256.map_or([0u8; 32], |u256| u256.to_be_bytes());
-                let high = u128::from_be_bytes(bytes[..16].try_into().unwrap());
-                let low = u128::from_be_bytes(bytes[16..].try_into().unwrap());
+                let high = u128::from_be_bytes(bytes[..16].try_into().map_err(|e| Error::ParseError(format!("Failed to parse u256 high bytes: {}", e)))?);
+                let low = u128::from_be_bytes(bytes[16..].try_into().map_err(|e| Error::ParseError(format!("Failed to parse u256 low bytes: {}", e)))?);
                 object.insert("high".to_string(), PrimitiveType::String(high.to_string()));
                 object.insert("low".to_string(), PrimitiveType::String(low.to_string()));
                 Ok(PrimitiveType::Object(object))
