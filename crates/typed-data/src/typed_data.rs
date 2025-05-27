@@ -515,13 +515,20 @@ pub fn parse_value_to_ty(value: &PrimitiveType, ty: &mut Ty) -> Result<(), Error
                     .first()
                     .ok_or_else(|| Error::InvalidEnum("Enum variant not found".to_string()))?;
 
-                enum_.options.iter_mut().map(|option| {
-                    if option.name == *option_name {
-                        parse_value_to_ty(value, &mut option.ty)
-                    } else {
-                        Ok(())
-                    }
-                }).collect::<Result<Vec<_>, Error>>().map_err(|e| Error::InvalidEnum(format!("Failed to parse enum option: {}", e)))?;
+                enum_
+                    .options
+                    .iter_mut()
+                    .map(|option| {
+                        if option.name == *option_name {
+                            parse_value_to_ty(value, &mut option.ty)
+                        } else {
+                            Ok(())
+                        }
+                    })
+                    .collect::<Result<Vec<_>, Error>>()
+                    .map_err(|e| {
+                        Error::InvalidEnum(format!("Failed to parse enum option: {}", e))
+                    })?;
 
                 enum_
                     .set_option(option_name)
@@ -565,41 +572,57 @@ pub fn parse_value_to_ty(value: &PrimitiveType, ty: &mut Ty) -> Result<(), Error
                 )));
             }
         },
-        PrimitiveType::Number(number) => match ty {
-            Ty::Primitive(primitive) => match *primitive {
-                Primitive::I8(ref mut i8) => {
-                    *i8 = Some(number
-                        .as_i64()
-                        .ok_or_else(|| Error::ParseError("Number out of range".to_string()))?
-                        as i8);
-                }
-                Primitive::I16(ref mut i16) => {
-                    *i16 = Some(number
-                        .as_i64()
-                        .ok_or_else(|| Error::ParseError("Number out of range".to_string()))?
-                        as i16);
-                }
-                Primitive::I32(ref mut i32) => {
-                    *i32 = Some(number
-                        .as_i64()
-                        .ok_or_else(|| Error::ParseError("Number out of range".to_string()))?
-                        as i32);
-                }
-                Primitive::I64(ref mut i64) => {
-                    *i64 = Some(number.as_i64()
-                        .ok_or_else(|| Error::ParseError("Number out of range".to_string()))?);
-                }
-                Primitive::U8(ref mut u8) => {
-                    *u8 = Some(number.as_u64().ok_or_else(|| Error::ParseError("Number out of range".to_string()))? as u8);
-                }
-                Primitive::U16(ref mut u16) => {
-                    *u16 = Some(number.as_u64().ok_or_else(|| Error::ParseError("Number out of range".to_string()))? as u16);
-                }
-                Primitive::U32(ref mut u32) => {
-                    *u32 = Some(number.as_u64().ok_or_else(|| Error::ParseError("Number out of range".to_string()))? as u32);
-                }
-                Primitive::U64(ref mut u64) => {
-                    *u64 = Some(number.as_u64().ok_or_else(|| Error::ParseError("Number out of range".to_string()))?);
+        PrimitiveType::Number(number) => {
+            match ty {
+                Ty::Primitive(primitive) => {
+                    match *primitive {
+                        Primitive::I8(ref mut i8) => {
+                            *i8 = Some(number.as_i64().ok_or_else(|| {
+                                Error::ParseError("Number out of range".to_string())
+                            })? as i8);
+                        }
+                        Primitive::I16(ref mut i16) => {
+                            *i16 = Some(number.as_i64().ok_or_else(|| {
+                                Error::ParseError("Number out of range".to_string())
+                            })? as i16);
+                        }
+                        Primitive::I32(ref mut i32) => {
+                            *i32 = Some(number.as_i64().ok_or_else(|| {
+                                Error::ParseError("Number out of range".to_string())
+                            })? as i32);
+                        }
+                        Primitive::I64(ref mut i64) => {
+                            *i64 = Some(number.as_i64().ok_or_else(|| {
+                                Error::ParseError("Number out of range".to_string())
+                            })?);
+                        }
+                        Primitive::U8(ref mut u8) => {
+                            *u8 = Some(number.as_u64().ok_or_else(|| {
+                                Error::ParseError("Number out of range".to_string())
+                            })? as u8);
+                        }
+                        Primitive::U16(ref mut u16) => {
+                            *u16 = Some(number.as_u64().ok_or_else(|| {
+                                Error::ParseError("Number out of range".to_string())
+                            })? as u16);
+                        }
+                        Primitive::U32(ref mut u32) => {
+                            *u32 = Some(number.as_u64().ok_or_else(|| {
+                                Error::ParseError("Number out of range".to_string())
+                            })? as u32);
+                        }
+                        Primitive::U64(ref mut u64) => {
+                            *u64 = Some(number.as_u64().ok_or_else(|| {
+                                Error::ParseError("Number out of range".to_string())
+                            })?);
+                        }
+                        _ => {
+                            return Err(Error::InvalidType(format!(
+                                "Invalid number type for {}",
+                                ty.name()
+                            )));
+                        }
+                    }
                 }
                 _ => {
                     return Err(Error::InvalidType(format!(
@@ -607,78 +630,84 @@ pub fn parse_value_to_ty(value: &PrimitiveType, ty: &mut Ty) -> Result<(), Error
                         ty.name()
                     )));
                 }
-            },
-            _ => {
-                return Err(Error::InvalidType(format!(
-                    "Invalid number type for {}",
-                    ty.name()
-                )));
             }
-        },
+        }
         PrimitiveType::Bool(boolean) => {
             *ty = Ty::Primitive(Primitive::Bool(Some(*boolean)));
         }
-        PrimitiveType::String(string) => match ty {
-            Ty::Primitive(primitive) => match primitive {
-                Primitive::I8(v) => {
-                    *v = Some(from_str!(string, i8)?);
-                }
-                Primitive::I16(v) => {
-                    *v = Some(from_str!(string, i16)?);
-                }
-                Primitive::I32(v) => {
-                    *v = Some(from_str!(string, i32)?);
-                }
-                Primitive::I64(v) => {
-                    *v = Some(from_str!(string, i64)?);
-                }
-                Primitive::I128(v) => {
-                    *v = Some(from_str!(string, i128)?);
-                }
-                Primitive::U8(v) => {
-                    *v = Some(from_str!(string, u8)?);
-                }
-                Primitive::U16(v) => {
-                    *v = Some(from_str!(string, u16)?);
-                }
-                Primitive::U32(v) => {
-                    *v = Some(from_str!(string, u32)?);
-                }
-                Primitive::U64(v) => {
-                    *v = Some(from_str!(string, u64)?);
-                }
-                Primitive::U128(v) => {
-                    *v = Some(from_str!(string, u128)?);
-                }
-                Primitive::Felt252(v) => {
-                    *v = Some(Felt::from_str(string).map_err(|e| Error::ParseError(format!("Failed to parse felt: {}", e)))?);
-                }
-                Primitive::ClassHash(v) => {
-                    *v = Some(Felt::from_str(string).map_err(|e| Error::ParseError(format!("Failed to parse class hash: {}", e)))?);
-                }
-                Primitive::ContractAddress(v) => {
-                    *v = Some(Felt::from_str(string).map_err(|e| Error::ParseError(format!("Failed to parse contract address: {}", e)))?);
-                }
-                Primitive::EthAddress(v) => {
-                    *v = Some(Felt::from_str(string).map_err(|e| Error::ParseError(format!("Failed to parse eth address: {}", e)))?);
-                }
-                Primitive::Bool(v) => {
-                    *v = Some(bool::from_str(string).map_err(|e| Error::ParseError(format!("Failed to parse bool: {}", e)))?);
+        PrimitiveType::String(string) => {
+            match ty {
+                Ty::Primitive(primitive) => match primitive {
+                    Primitive::I8(v) => {
+                        *v = Some(from_str!(string, i8)?);
+                    }
+                    Primitive::I16(v) => {
+                        *v = Some(from_str!(string, i16)?);
+                    }
+                    Primitive::I32(v) => {
+                        *v = Some(from_str!(string, i32)?);
+                    }
+                    Primitive::I64(v) => {
+                        *v = Some(from_str!(string, i64)?);
+                    }
+                    Primitive::I128(v) => {
+                        *v = Some(from_str!(string, i128)?);
+                    }
+                    Primitive::U8(v) => {
+                        *v = Some(from_str!(string, u8)?);
+                    }
+                    Primitive::U16(v) => {
+                        *v = Some(from_str!(string, u16)?);
+                    }
+                    Primitive::U32(v) => {
+                        *v = Some(from_str!(string, u32)?);
+                    }
+                    Primitive::U64(v) => {
+                        *v = Some(from_str!(string, u64)?);
+                    }
+                    Primitive::U128(v) => {
+                        *v = Some(from_str!(string, u128)?);
+                    }
+                    Primitive::Felt252(v) => {
+                        *v = Some(Felt::from_str(string).map_err(|e| {
+                            Error::ParseError(format!("Failed to parse felt: {}", e))
+                        })?);
+                    }
+                    Primitive::ClassHash(v) => {
+                        *v = Some(Felt::from_str(string).map_err(|e| {
+                            Error::ParseError(format!("Failed to parse class hash: {}", e))
+                        })?);
+                    }
+                    Primitive::ContractAddress(v) => {
+                        *v = Some(Felt::from_str(string).map_err(|e| {
+                            Error::ParseError(format!("Failed to parse contract address: {}", e))
+                        })?);
+                    }
+                    Primitive::EthAddress(v) => {
+                        *v = Some(Felt::from_str(string).map_err(|e| {
+                            Error::ParseError(format!("Failed to parse eth address: {}", e))
+                        })?);
+                    }
+                    Primitive::Bool(v) => {
+                        *v = Some(bool::from_str(string).map_err(|e| {
+                            Error::ParseError(format!("Failed to parse bool: {}", e))
+                        })?);
+                    }
+                    _ => {
+                        return Err(Error::InvalidType("Invalid primitive type".to_string()));
+                    }
+                },
+                Ty::ByteArray(s) => {
+                    s.clone_from(string);
                 }
                 _ => {
-                    return Err(Error::InvalidType("Invalid primitive type".to_string()));
+                    return Err(Error::InvalidType(format!(
+                        "Invalid string type for {}",
+                        ty.name()
+                    )));
                 }
-            },
-            Ty::ByteArray(s) => {
-                s.clone_from(string);
             }
-            _ => {
-                return Err(Error::InvalidType(format!(
-                    "Invalid string type for {}",
-                    ty.name()
-                )));
-            }
-        },
+        }
     }
 
     Ok(())
@@ -742,8 +771,12 @@ pub fn map_ty_to_primitive(ty: &Ty) -> Result<PrimitiveType, Error> {
             Primitive::U256(u256) => {
                 let mut object = IndexMap::new();
                 let bytes = u256.map_or([0u8; 32], |u256| u256.to_be_bytes());
-                let high = u128::from_be_bytes(bytes[..16].try_into().map_err(|e| Error::ParseError(format!("Failed to parse u256 high bytes: {}", e)))?);
-                let low = u128::from_be_bytes(bytes[16..].try_into().map_err(|e| Error::ParseError(format!("Failed to parse u256 low bytes: {}", e)))?);
+                let high = u128::from_be_bytes(bytes[..16].try_into().map_err(|e| {
+                    Error::ParseError(format!("Failed to parse u256 high bytes: {}", e))
+                })?);
+                let low = u128::from_be_bytes(bytes[16..].try_into().map_err(|e| {
+                    Error::ParseError(format!("Failed to parse u256 low bytes: {}", e))
+                })?);
                 object.insert("high".to_string(), PrimitiveType::String(high.to_string()));
                 object.insert("low".to_string(), PrimitiveType::String(low.to_string()));
                 Ok(PrimitiveType::Object(object))
