@@ -141,7 +141,7 @@ impl Sql {
         token_id: U256,
     ) -> Result<()> {
         let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
-        if !self.local_cache.contains_token_id(&id).await {
+        if !self.local_cache.is_token_registered(&id).await {
             return Ok(());
         }
 
@@ -173,10 +173,11 @@ impl Sql {
         token_id: &str,
         provider: &P,
     ) -> Result<()> {
-        let mut registry = self.local_cache.token_id_registry.lock().await;
-        if registry.contains(token_id) {
-            return Ok(());
-        }
+        let _lock = match self.local_cache.get_token_registration_lock(token_id).await {
+            Some(lock) => lock,
+            None => return Ok(()), // Already registered by another thread
+        };
+        let _guard = _lock.lock().await;
 
         let block_id = BlockId::Tag(BlockTag::Pending);
         let requests = vec![
@@ -252,7 +253,7 @@ impl Sql {
             }),
         ))?;
 
-        registry.insert(token_id.to_string());
+        self.local_cache.mark_token_registered(token_id).await;
 
         Ok(())
     }
@@ -264,10 +265,13 @@ impl Sql {
         actual_token_id: U256,
         provider: &P,
     ) -> Result<()> {
-        let mut registry = self.local_cache.token_id_registry.lock().await;
-        if registry.contains(id) {
-            return Ok(());
-        }
+        println!("try_register_nft_token_metadata: {}", id);
+        let _lock = match self.local_cache.get_token_registration_lock(id).await {
+            Some(lock) => lock,
+            None => return Ok(()), // Already registered by another thread
+        };
+        println!("try_register_nft_token_metadata: got lock");
+        let _guard = _lock.lock().await;
 
         let metadata = fetch_token_metadata(
             contract_address,
@@ -288,7 +292,7 @@ impl Sql {
             }),
         ))?;
 
-        registry.insert(id.to_string());
+        self.local_cache.mark_token_registered(id).await;
 
         Ok(())
     }
