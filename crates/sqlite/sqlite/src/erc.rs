@@ -141,11 +141,9 @@ impl Sql {
         token_id: U256,
     ) -> Result<()> {
         let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
-        let _lock = match self.local_cache.get_token_registration_lock(&id).await {
-            Some(lock) => lock,
-            None => return Ok(()), // Already registered by another thread
-        };
-        let _guard = _lock.lock().await;
+        if !self.local_cache.is_token_registered(&id).await {
+            return Ok(());
+        }
 
         let metadata = fetch_token_metadata(
             contract_address,
@@ -159,14 +157,12 @@ impl Sql {
             "".to_string(),
             vec![],
             QueryType::UpdateNftMetadata(UpdateNftMetadataQuery {
-                id: id.clone(),
+                id,
                 contract_address,
                 token_id,
                 metadata,
             }),
         ))?;
-
-        self.local_cache.mark_token_registered(&id).await;
 
         Ok(())
     }
