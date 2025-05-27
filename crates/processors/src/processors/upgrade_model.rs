@@ -142,7 +142,10 @@ where
             // Since a column may not exist in the previous schema, the diff from prev_schema to
             // new_schema will be None. To ensure we always have a diff, we use the schema_diff if
             // the diff from prev_schema to new_schema is None.
-            prev_schema.diff(&new_schema).as_ref().or(Some(&schema_diff)),
+            prev_schema
+                .diff(&new_schema)
+                .as_ref()
+                .or(Some(&schema_diff)),
         )
         .await?;
 
