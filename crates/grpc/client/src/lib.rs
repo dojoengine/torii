@@ -21,13 +21,13 @@ use torii_proto::proto::world::{
     world_client, RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEntitiesRequest,
     RetrieveEntitiesResponse, RetrieveEventMessagesRequest, RetrieveEventsRequest,
     RetrieveEventsResponse, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
-    RetrieveTokensRequest, RetrieveTokensResponse, SubscribeEntitiesRequest,
-    SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsRequest,
-    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
-    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, UpdateEntitiesSubscriptionRequest,
-    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
-    UpdateTokenSubscriptionRequest, WorldMetadataRequest,
+    RetrieveTokenCollectionsRequest, RetrieveTokenCollectionsResponse, RetrieveTokensRequest,
+    RetrieveTokensResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
+    SubscribeEventMessagesRequest, SubscribeEventsRequest, SubscribeEventsResponse,
+    SubscribeIndexerRequest, SubscribeIndexerResponse, SubscribeTokenBalancesRequest,
+    SubscribeTokenBalancesResponse, SubscribeTokensRequest, SubscribeTokensResponse,
+    UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
+    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
@@ -243,6 +243,35 @@ impl WorldClient {
             .map(|res| res.into_inner())
     }
 
+    pub async fn retrieve_token_collections(
+        &mut self,
+        account_addresses: Vec<Felt>,
+        contract_addresses: Vec<Felt>,
+        token_ids: Vec<U256>,
+        limit: Option<u32>,
+        cursor: Option<String>,
+    ) -> Result<RetrieveTokenCollectionsResponse, Error> {
+        self.inner
+            .retrieve_token_collections(RetrieveTokenCollectionsRequest {
+                account_addresses: account_addresses
+                    .into_iter()
+                    .map(|a| a.to_bytes_be().to_vec())
+                    .collect(),
+                contract_addresses: contract_addresses
+                    .into_iter()
+                    .map(|c| c.to_bytes_be().to_vec())
+                    .collect(),
+                token_ids: token_ids
+                    .into_iter()
+                    .map(|id| id.to_be_bytes().to_vec())
+                    .collect(),
+                limit: limit.unwrap_or_default(),
+                cursor: cursor.unwrap_or_default(),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
+    }
     pub async fn retrieve_entities(
         &mut self,
         query: Query,
