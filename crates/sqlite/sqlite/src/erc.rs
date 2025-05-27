@@ -173,10 +173,6 @@ impl Sql {
         token_id: &str,
         provider: &P,
     ) -> Result<()> {
-        if self.local_cache.is_token_registered(token_id).await {
-            return Ok(());
-        }
-
         let _lock = match self.local_cache.get_token_registration_lock(token_id).await {
             Some(lock) => lock,
             None => return Ok(()), // Already registered by another thread
@@ -269,10 +265,6 @@ impl Sql {
         actual_token_id: U256,
         provider: &P,
     ) -> Result<()> {
-        if self.local_cache.is_token_registered(id).await {
-            return Ok(());
-        }
-
         let _lock = match self.local_cache.get_token_registration_lock(id).await {
             Some(lock) => lock,
             None => return Ok(()), // Already registered by another thread
