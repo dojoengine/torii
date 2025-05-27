@@ -201,9 +201,7 @@ impl LocalCache {
     pub async fn get_token_registration_lock(&self, token_id: &str) -> Option<Arc<Mutex<()>>> {
         let registry = self.token_id_registry.read().await;
         match registry.get(token_id) {
-            Some(TokenState::Registering(mutex)) => {
-                Some(mutex.clone())
-            }
+            Some(TokenState::Registering(mutex)) => Some(mutex.clone()),
             Some(TokenState::Registered) => None,
             Some(TokenState::NotRegistered) | None => {
                 // Mark as registering and return the lock
