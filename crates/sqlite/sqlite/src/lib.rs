@@ -969,7 +969,12 @@ impl Sql {
                 "TEXT CONSTRAINT [{column_name}_check] CHECK([{column_name}] IN ({all_options}))"
             );
 
-                if enum_upgrade_diff.is_some() {
+                // If new variants (without any type) of enums are added, the list of options of the enums will be
+                // different from the new type we are upgrading to (`ty`).
+                // They must be considered as an "upgrade" in this specific case.
+                if enum_upgrade_diff.is_some()
+                    || (schema_diff.is_some() && schema_diff.unwrap() != ty)
+                {
                     modify_column(
                         alter_table_queries,
                         &column_name,
