@@ -58,7 +58,7 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
                 let (option_name, value) = object
                     .fields
                     .first()
-                    .ok_or_else(|| Error::InvalidEnum("Enum variant not found".to_string()))?;
+                    .ok_or_else(|| Error::FieldNotFound("enum variant not found".to_string()))?;
 
                 enum_
                     .options
@@ -70,14 +70,11 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
                             Ok(())
                         }
                     })
-                    .collect::<Result<Vec<_>, Error>>()
-                    .map_err(|e| {
-                        Error::InvalidEnum(format!("Failed to parse enum option: {}", e))
-                    })?;
+                    .collect::<Result<Vec<_>, Error>>()?;
 
                 enum_
                     .set_option(option_name)
-                    .map_err(|e| Error::InvalidEnum(format!("Failed to set enum option: {}", e)))?;
+                    .map_err(|e| Error::EnumError(e))?;
             }
             _ => {
                 return Err(Error::InvalidType(format!(

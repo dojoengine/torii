@@ -2,6 +2,7 @@ use std::convert::Infallible;
 use std::io;
 
 use dojo_types::primitive::PrimitiveError;
+use dojo_types::schema::EnumError;
 use libp2p::gossipsub::{PublishError, SubscriptionError};
 use libp2p::noise;
 use starknet::providers::ProviderError;
@@ -20,9 +21,6 @@ pub enum MessageError {
     #[error("Field not found: {0}")]
     FieldNotFound(String),
 
-    #[error("Invalid enum: {0}")]
-    InvalidEnum(String),
-
     #[error("Invalid tuple length mismatch")]
     InvalidTupleLength,
 
@@ -40,6 +38,9 @@ pub enum MessageError {
 
     #[error("Failed to serialize model key: {0}")]
     SerializeModelKeyError(#[from] PrimitiveError),
+
+    #[error(transparent)]
+    EnumError(#[from] EnumError),
 }
 
 #[derive(Error, Debug)]
