@@ -969,9 +969,9 @@ impl Sql {
                 "TEXT CONSTRAINT [{column_name}_check] CHECK([{column_name}] IN ({all_options}))"
             );
 
-                // If new variants (without any type) of enums are added, the list of options of the enums will be
-                // different from the new type we are upgrading to (`ty`).
-                // They must be considered as an "upgrade" in this specific case.
+                // If new variants of an enum are added, without the enum itself being added through an upgrade
+                // to the model, then we should consider this as an upgrade. The reason is that for this specific 
+                // case, we only need to modify the column and its constraints. Not add it.
                 if enum_upgrade_diff.is_some()
                     || (schema_diff.is_some() && schema_diff.unwrap() != ty)
                 {
@@ -982,8 +982,11 @@ impl Sql {
                         &format!("[{column_name}]"),
                     );
                 } else if enum_schema_diff.is_some() {
+                    // In the case where the enum is being added to the model, we need to add the column and its constraints
                     alter_column(&column_name, &sql_type, indices);
                 } else {
+                    // And in the default case where we have no upgrade at all (nor to the model, nor to the enum)
+                    // just add the column and its constraints as part of the create query.
                     add_column(&column_name, &sql_type, indices);
                 }
 
