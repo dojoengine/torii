@@ -970,7 +970,7 @@ impl Sql {
             );
 
                 // If new variants of an enum are added, without the enum itself being added through an upgrade
-                // to the model, then we should consider this as an upgrade. The reason is that for this specific 
+                // to the model, then we should consider this as an upgrade. The reason is that for this specific
                 // case, we only need to modify the column and its constraints. Not add it.
                 if enum_upgrade_diff.is_some()
                     || (schema_diff.is_some() && schema_diff.unwrap() != ty)
