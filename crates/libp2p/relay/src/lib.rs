@@ -27,8 +27,8 @@ use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::Provider;
 use starknet_core::types::typed_data::TypeReference;
-use starknet_crypto::poseidon_hash_many;
 use starknet_core::types::TypedData;
+use starknet_crypto::poseidon_hash_many;
 use torii_sqlite::executor::QueryMessage;
 use torii_sqlite::utils::felts_to_sql_string;
 use torii_sqlite::Sql;
@@ -261,7 +261,8 @@ impl<P: Provider + Sync> Relay<P> {
                                 }
                             };
 
-                            let typed_data = serde_json::from_str::<TypedData>(&data.message).unwrap();
+                            let typed_data =
+                                serde_json::from_str::<TypedData>(&data.message).unwrap();
                             let ty = match validate_message(&self.db, &typed_data).await {
                                 Ok(parsed_message) => parsed_message,
                                 Err(e) => {
@@ -545,11 +546,16 @@ fn ty_keys(ty: &Ty) -> Result<Vec<Felt>, Error> {
     if let Ty::Struct(s) = &ty {
         let mut keys = Vec::new();
         for m in s.keys() {
-            keys.extend(m.serialize().map_err(|e|Error::MessageError(MessageError::SerializeModelKeyError(e)))?);
+            keys.extend(
+                m.serialize()
+                    .map_err(|e| Error::MessageError(MessageError::SerializeModelKeyError(e)))?,
+            );
         }
         Ok(keys)
     } else {
-        Err(Error::MessageError(MessageError::InvalidType("Message should be a struct".to_string())))
+        Err(Error::MessageError(MessageError::InvalidType(
+            "Message should be a struct".to_string(),
+        )))
     }
 }
 
@@ -557,7 +563,9 @@ fn ty_model_id(ty: &Ty) -> Result<Felt, Error> {
     let namespaced_name = ty.name();
 
     if !is_valid_tag(&namespaced_name) {
-        return Err(Error::MessageError(MessageError::InvalidModelTag(namespaced_name)));
+        return Err(Error::MessageError(MessageError::InvalidModelTag(
+            namespaced_name,
+        )));
     }
 
     let selector = compute_selector_from_tag(&namespaced_name);
@@ -627,10 +635,16 @@ fn get_identity_from_ty(ty: &Ty) -> Result<Felt, Error> {
         .get("identity")
         .ok_or_else(|| Error::MessageError(MessageError::FieldNotFound("identity".to_string())))?
         .as_primitive()
-        .ok_or_else(|| Error::MessageError(MessageError::InvalidType("Identity should be a primitive".to_string())))?
+        .ok_or_else(|| {
+            Error::MessageError(MessageError::InvalidType(
+                "Identity should be a primitive".to_string(),
+            ))
+        })?
         .as_contract_address()
         .ok_or_else(|| {
-            Error::MessageError(MessageError::InvalidType("Identity should be a contract address".to_string()))
+            Error::MessageError(MessageError::InvalidType(
+                "Identity should be a contract address".to_string(),
+            ))
         })?;
     Ok(identity)
 }

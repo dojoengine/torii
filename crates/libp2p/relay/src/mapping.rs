@@ -55,7 +55,8 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
             // where the K is the variant name
             // and the value is the variant value
             Ty::Enum(enum_) => {
-                let (option_name, value) = object.fields
+                let (option_name, value) = object
+                    .fields
                     .first()
                     .ok_or_else(|| Error::InvalidEnum("Enum variant not found".to_string()))?;
 
@@ -116,32 +117,22 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
                 )));
             }
         },
-        Value::UnsignedInteger(number) => {
-            match ty {
-                Ty::Primitive(primitive) => {
-                    match *primitive {
-                        Primitive::U8(ref mut u8) => {
-                            *u8 = Some(*number as u8);
-                        }
-                        Primitive::U16(ref mut u16) => {
-                            *u16 = Some(*number as u16);
-                        }
-                        Primitive::U32(ref mut u32) => {
-                            *u32 = Some(*number as u32);
-                        }
-                        Primitive::U64(ref mut u64) => {
-                            *u64 = Some(*number as u64);
-                        }
-                        Primitive::U128(ref mut u128) => {
-                            *u128 = Some(*number as u128);
-                        }
-                        _ => {
-                            return Err(Error::InvalidType(format!(
-                                "Invalid number type for {}",
-                                ty.name()
-                            )));
-                        }
-                    }
+        Value::UnsignedInteger(number) => match ty {
+            Ty::Primitive(primitive) => match *primitive {
+                Primitive::U8(ref mut u8) => {
+                    *u8 = Some(*number as u8);
+                }
+                Primitive::U16(ref mut u16) => {
+                    *u16 = Some(*number as u16);
+                }
+                Primitive::U32(ref mut u32) => {
+                    *u32 = Some(*number as u32);
+                }
+                Primitive::U64(ref mut u64) => {
+                    *u64 = Some(*number as u64);
+                }
+                Primitive::U128(ref mut u128) => {
+                    *u128 = Some(*number as u128);
                 }
                 _ => {
                     return Err(Error::InvalidType(format!(
@@ -149,34 +140,30 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
                         ty.name()
                     )));
                 }
+            },
+            _ => {
+                return Err(Error::InvalidType(format!(
+                    "Invalid number type for {}",
+                    ty.name()
+                )));
             }
-        }
-        Value::SignedInteger(number) => {
-            match ty {
-                Ty::Primitive(primitive) => {
-                    match *primitive {
-                        Primitive::I8(ref mut i8) => {
-                            *i8 = Some(*number as i8);
-                        }
-                        Primitive::I16(ref mut i16) => {
-                            *i16 = Some(*number as i16);
-                        }
-                        Primitive::I32(ref mut i32) => {
-                            *i32 = Some(*number as i32);
-                        }
-                        Primitive::I64(ref mut i64) => {
-                            *i64 = Some(*number as i64);
-                        }
-                        Primitive::I128(ref mut i128) => {
-                            *i128 = Some(*number as i128);
-                        }
-                        _ => {
-                            return Err(Error::InvalidType(format!(
-                                "Invalid number type for {}",
-                                ty.name()
-                            )));
-                        }
-                    }
+        },
+        Value::SignedInteger(number) => match ty {
+            Ty::Primitive(primitive) => match *primitive {
+                Primitive::I8(ref mut i8) => {
+                    *i8 = Some(*number as i8);
+                }
+                Primitive::I16(ref mut i16) => {
+                    *i16 = Some(*number as i16);
+                }
+                Primitive::I32(ref mut i32) => {
+                    *i32 = Some(*number as i32);
+                }
+                Primitive::I64(ref mut i64) => {
+                    *i64 = Some(*number as i64);
+                }
+                Primitive::I128(ref mut i128) => {
+                    *i128 = Some(*number as i128);
                 }
                 _ => {
                     return Err(Error::InvalidType(format!(
@@ -184,53 +171,57 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
                         ty.name()
                     )));
                 }
+            },
+            _ => {
+                return Err(Error::InvalidType(format!(
+                    "Invalid number type for {}",
+                    ty.name()
+                )));
             }
-        }
+        },
         Value::Boolean(boolean) => {
             *ty = Ty::Primitive(Primitive::Bool(Some(*boolean)));
         }
-        Value::String(string) => {
-            match ty {
-                Ty::Primitive(primitive) => match primitive {
-                    Primitive::I64(v) => {
-                        *v = Some(from_str!(string, i64)?);
-                    }
-                    Primitive::I128(v) => {
-                        *v = Some(from_str!(string, i128)?);
-                    }
-                    Primitive::U64(v) => {
-                        *v = Some(from_str!(string, u64)?);
-                    }
-                    Primitive::U128(v) => {
-                        *v = Some(from_str!(string, u128)?);
-                    }
-                    Primitive::Felt252(v) => {
-                        *v = Some(Felt::from_str(string).map_err(Error::ParseFeltError)?);
-                    }
-                    Primitive::ClassHash(v) => {
-                        *v = Some(Felt::from_str(string).map_err(Error::ParseFeltError)?);
-                    }
-                    Primitive::ContractAddress(v) => {
-                        *v = Some(Felt::from_str(string).map_err(Error::ParseFeltError)?);
-                    }
-                    Primitive::EthAddress(v) => {
-                        *v = Some(Felt::from_str(string).map_err(Error::ParseFeltError)?);
-                    }
-                    _ => {
-                        return Err(Error::InvalidType("Invalid primitive type".to_string()));
-                    }
-                },
-                Ty::ByteArray(s) => {
-                    s.clone_from(string);
+        Value::String(string) => match ty {
+            Ty::Primitive(primitive) => match primitive {
+                Primitive::I64(v) => {
+                    *v = Some(from_str!(string, i64)?);
+                }
+                Primitive::I128(v) => {
+                    *v = Some(from_str!(string, i128)?);
+                }
+                Primitive::U64(v) => {
+                    *v = Some(from_str!(string, u64)?);
+                }
+                Primitive::U128(v) => {
+                    *v = Some(from_str!(string, u128)?);
+                }
+                Primitive::Felt252(v) => {
+                    *v = Some(Felt::from_str(string).map_err(Error::ParseFeltError)?);
+                }
+                Primitive::ClassHash(v) => {
+                    *v = Some(Felt::from_str(string).map_err(Error::ParseFeltError)?);
+                }
+                Primitive::ContractAddress(v) => {
+                    *v = Some(Felt::from_str(string).map_err(Error::ParseFeltError)?);
+                }
+                Primitive::EthAddress(v) => {
+                    *v = Some(Felt::from_str(string).map_err(Error::ParseFeltError)?);
                 }
                 _ => {
-                    return Err(Error::InvalidType(format!(
-                        "Invalid string type for {}",
-                        ty.name()
-                    )));
+                    return Err(Error::InvalidType("Invalid primitive type".to_string()));
                 }
+            },
+            Ty::ByteArray(s) => {
+                s.clone_from(string);
             }
-        }
+            _ => {
+                return Err(Error::InvalidType(format!(
+                    "Invalid string type for {}",
+                    ty.name()
+                )));
+            }
+        },
     }
 
     Ok(())
