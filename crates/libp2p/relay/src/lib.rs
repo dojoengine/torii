@@ -26,6 +26,7 @@ use rand::thread_rng;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::Provider;
+use starknet_core::types::typed_data::TypeReference;
 use starknet_crypto::poseidon_hash_many;
 use starknet_core::types::TypedData;
 use torii_sqlite::executor::QueryMessage;
@@ -37,8 +38,10 @@ use webrtc::tokio::Certificate;
 mod constants;
 pub mod error;
 mod events;
+mod mapping;
 
-use crate::error::Error;
+use crate::error::{Error, MessageError};
+use crate::mapping::parse_value_to_ty;
 use torii_libp2p_types::Message;
 
 pub(crate) const LOG_TARGET: &str = "torii::relay::server";
@@ -542,15 +545,11 @@ fn ty_keys(ty: &Ty) -> Result<Vec<Felt>, Error> {
     if let Ty::Struct(s) = &ty {
         let mut keys = Vec::new();
         for m in s.keys() {
-            keys.extend(m.serialize().map_err(|_| {
-                Error::InvalidMessageError("Failed to serialize model key".to_string())
-            })?);
+            keys.extend(m.serialize().map_err(|e|Error::MessageError(MessageError::SerializeModelKeyError(e)))?);
         }
         Ok(keys)
     } else {
-        Err(Error::InvalidMessageError(
-            "Entity is not a struct".to_string(),
-        ))
+        Err(Error::MessageError(MessageError::InvalidType("Message should be a struct".to_string())))
     }
 }
 
@@ -558,10 +557,7 @@ fn ty_model_id(ty: &Ty) -> Result<Felt, Error> {
     let namespaced_name = ty.name();
 
     if !is_valid_tag(&namespaced_name) {
-        return Err(Error::InvalidMessageError(format!(
-            "Invalid message model (invalid tag): {}",
-            namespaced_name
-        )));
+        return Err(Error::MessageError(MessageError::InvalidModelTag(namespaced_name)));
     }
 
     let selector = compute_selector_from_tag(&namespaced_name);
@@ -571,24 +567,20 @@ fn ty_model_id(ty: &Ty) -> Result<Felt, Error> {
 // Validates the message model
 // and returns the identity and signature
 async fn validate_message(db: &Sql, message: &TypedData) -> Result<Ty, Error> {
-    if !is_valid_tag(&message.primary_type()) {
-        return Err(Error::InvalidMessageError(format!(
-            "Invalid message model (invalid tag): {}",
-            message.primary_type
-        )));
+    let tag = message.primary_type().signature_ref_repr();
+    if !is_valid_tag(&tag) {
+        return Err(Error::MessageError(MessageError::InvalidModelTag(tag)));
     }
 
-    let selector = compute_selector_from_tag(&message.primary_type);
+    let selector = compute_selector_from_tag(&tag);
 
     let mut ty = db
         .model(selector)
         .await
-        .map_err(|e| {
-            Error::InvalidMessageError(format!("Model {} not found: {}", message.primary_type, e))
-        })?
+        .map_err(|e| Error::MessageError(MessageError::ModelNotFound(e.to_string())))?
         .schema;
 
-    parse_value_to_ty(&PrimitiveType::Object(message.message.clone()), &mut ty)?;
+    parse_value_to_ty(message.message(), &mut ty)?;
 
     Ok(ty)
 }
@@ -631,14 +623,14 @@ fn read_or_create_certificate(path: &Path) -> anyhow::Result<Certificate> {
 fn get_identity_from_ty(ty: &Ty) -> Result<Felt, Error> {
     let identity = ty
         .as_struct()
-        .ok_or_else(|| Error::InvalidMessageError("Message is not a struct".to_string()))?
+        .ok_or_else(|| Error::MessageError(MessageError::MessageNotStruct))?
         .get("identity")
-        .ok_or_else(|| Error::InvalidMessageError("No field identity".to_string()))?
+        .ok_or_else(|| Error::MessageError(MessageError::FieldNotFound("identity".to_string())))?
         .as_primitive()
-        .ok_or_else(|| Error::InvalidMessageError("Identity is not a primitive".to_string()))?
+        .ok_or_else(|| Error::MessageError(MessageError::InvalidType("Identity should be a primitive".to_string())))?
         .as_contract_address()
         .ok_or_else(|| {
-            Error::InvalidMessageError("Identity is not a contract address".to_string())
+            Error::MessageError(MessageError::InvalidType("Identity should be a contract address".to_string()))
         })?;
     Ok(identity)
 }

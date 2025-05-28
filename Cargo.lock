@@ -11393,6 +11393,7 @@ version = "1.5.5-preview.3"
 dependencies = [
  "anyhow",
  "chrono",
+ "crypto-bigint",
  "dojo-types 1.5.0-alpha.2",
  "dojo-world",
  "futures",

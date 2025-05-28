@@ -1,11 +1,46 @@
 use std::convert::Infallible;
 use std::io;
 
+use dojo_types::primitive::PrimitiveError;
 use libp2p::gossipsub::{PublishError, SubscriptionError};
 use libp2p::noise;
 use starknet::providers::ProviderError;
+use starknet_core::types::typed_data::TypedDataError;
+use starknet_core::types::FromStrError;
 use thiserror::Error;
-use torii_typed_data::error::Error as TypedDataError;
+
+#[derive(Error, Debug)]
+pub enum MessageError {
+    #[error("Invalid type: {0}")]
+    InvalidType(String),
+
+    #[error(transparent)]
+    ParseIntError(#[from] std::num::ParseIntError),
+
+    #[error("Field not found: {0}")]
+    FieldNotFound(String),
+
+    #[error("Invalid enum: {0}")]
+    InvalidEnum(String),
+
+    #[error("Invalid tuple length mismatch")]
+    InvalidTupleLength,
+
+    #[error(transparent)]
+    ParseFeltError(#[from] FromStrError),
+
+    #[error("Invalid model tag: {0}")]
+    InvalidModelTag(String),
+
+    #[error("Model not found: {0}")]
+    ModelNotFound(String),
+
+    #[error("Message is not a struct")]
+    MessageNotStruct,
+
+    #[error("Failed to serialize model key: {0}")]
+    SerializeModelKeyError(#[from] PrimitiveError),
+}
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -40,15 +75,12 @@ pub enum Error {
     #[error("Failed to read certificate: {0}")]
     ReadCertificateError(anyhow::Error),
 
-    #[error("Invalid type provided: {0}")]
-    InvalidTypeError(String),
-
     #[error(transparent)]
     ProviderError(#[from] ProviderError),
 
     #[error(transparent)]
-    TypedDataError(#[from] TypedDataError),
+    MessageError(#[from] MessageError),
 
-    #[error("Invalid message provided: {0}")]
-    InvalidMessageError(String),
+    #[error(transparent)]
+    TypedDataError(#[from] TypedDataError),
 }
