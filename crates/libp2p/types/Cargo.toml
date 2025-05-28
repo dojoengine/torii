@@ -10,4 +10,3 @@ version.workspace = true
 [dependencies]
 serde.workspace = true
 starknet.workspace = true
-torii-typed-data.workspace = true

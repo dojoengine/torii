@@ -15,7 +15,6 @@ anyhow.workspace = true
 serde_json.workspace = true
 starknet.workspace = true
 thiserror.workspace = true
-torii-typed-data.workspace = true
 tracing = "0.1.41"
 torii-libp2p-types = { workspace = true }
 
