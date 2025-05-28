@@ -72,9 +72,7 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
                     })
                     .collect::<Result<Vec<_>, Error>>()?;
 
-                enum_
-                    .set_option(option_name)
-                    .map_err(|e| Error::EnumError(e))?;
+                enum_.set_option(option_name).map_err(Error::EnumError)?;
             }
             _ => {
                 return Err(Error::InvalidType(format!(
@@ -93,7 +91,7 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
                 // parse each value to the inner type
                 for value in &values.elements {
                     let mut ty = inner_type.clone();
-                    parse_value_to_ty(&value, &mut ty)?;
+                    parse_value_to_ty(value, &mut ty)?;
                     array.push(ty);
                 }
             }
@@ -129,7 +127,7 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
                     *u64 = Some(*number as u64);
                 }
                 Primitive::U128(ref mut u128) => {
-                    *u128 = Some(*number as u128);
+                    *u128 = Some(*number);
                 }
                 _ => {
                     return Err(Error::InvalidType(format!(
@@ -160,7 +158,7 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
                     *i64 = Some(*number as i64);
                 }
                 Primitive::I128(ref mut i128) => {
-                    *i128 = Some(*number as i128);
+                    *i128 = Some(*number);
                 }
                 _ => {
                     return Err(Error::InvalidType(format!(
