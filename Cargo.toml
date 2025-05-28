@@ -178,6 +178,7 @@ pprof = { version = "0.13.0", features = [ "criterion", "flamegraph" ] }
 # Slot integration. Dojo don't need to manually include `account_sdk` as dependency as `slot` already re-exports it.
 slot = { git = "https://github.com/cartridge-gg/slot", rev = "1298a30" }
 
+starknet-core = "0.12.3"
 starknet = "0.12.0"
 starknet-crypto = "0.7.1"
 starknet-types-core = { version = "0.1.7", features = [ "arbitrary", "hash" ] }

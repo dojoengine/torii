@@ -27,6 +27,7 @@ use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::Provider;
 use starknet_crypto::poseidon_hash_many;
+use starknet_core::types::TypedData;
 use torii_sqlite::executor::QueryMessage;
 use torii_sqlite::utils::felts_to_sql_string;
 use torii_sqlite::Sql;
@@ -39,7 +40,6 @@ mod events;
 
 use crate::error::Error;
 use torii_libp2p_types::Message;
-use torii_typed_data::typed_data::{parse_value_to_ty, PrimitiveType, TypedData};
 
 pub(crate) const LOG_TARGET: &str = "torii::relay::server";
 
@@ -258,7 +258,8 @@ impl<P: Provider + Sync> Relay<P> {
                                 }
                             };
 
-                            let ty = match validate_message(&self.db, &data.message).await {
+                            let typed_data = serde_json::from_str::<TypedData>(&data.message).unwrap();
+                            let ty = match validate_message(&self.db, &typed_data).await {
                                 Ok(parsed_message) => parsed_message,
                                 Err(e) => {
                                     warn!(
@@ -360,7 +361,7 @@ impl<P: Provider + Sync> Relay<P> {
                             if !match validate_signature(
                                 &self.provider,
                                 entity_identity,
-                                &data.message,
+                                &typed_data,
                                 &data.signature,
                             )
                             .await
@@ -519,7 +520,7 @@ async fn validate_signature<P: Provider + Sync>(
     message: &TypedData,
     signature: &[Felt],
 ) -> Result<bool, Error> {
-    let message_hash = message.encode(entity_identity)?;
+    let message_hash = message.message_hash(entity_identity)?;
 
     let mut calldata = vec![message_hash, Felt::from(signature.len())];
     calldata.extend(signature);
@@ -570,7 +571,7 @@ fn ty_model_id(ty: &Ty) -> Result<Felt, Error> {
 // Validates the message model
 // and returns the identity and signature
 async fn validate_message(db: &Sql, message: &TypedData) -> Result<Ty, Error> {
-    if !is_valid_tag(&message.primary_type) {
+    if !is_valid_tag(&message.primary_type()) {
         return Err(Error::InvalidMessageError(format!(
             "Invalid message model (invalid tag): {}",
             message.primary_type
