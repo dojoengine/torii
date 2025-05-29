@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use dashmap::DashMap;
 use futures::Stream;
 use futures_util::StreamExt;
 use rand::Rng;
@@ -12,15 +12,17 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use tokio::sync::RwLock;
 use torii_proto::KeysClause;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
-use torii_sqlite::error::{Error, ParseError};
+use torii_sqlite::error::Error;
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::Event;
-use tracing::{error, trace};
+use tracing::error;
 
-use super::{match_keys, SUBSCRIPTION_CHANNEL_SIZE};
+use super::{
+    broadcast_to_subscribers, match_keys, SubscriberSender, SubscriptionManager,
+    SUBSCRIPTION_CHANNEL_SIZE,
+};
 use torii_proto::proto::types::Event as ProtoEvent;
 use torii_proto::proto::world::SubscribeEventsResponse;
 
@@ -34,36 +36,132 @@ pub struct EventSubscriber {
     sender: Sender<Result<SubscribeEventsResponse, tonic::Status>>,
 }
 
-#[derive(Debug, Default)]
-pub struct EventManager {
-    subscribers: RwLock<HashMap<usize, EventSubscriber>>,
+impl SubscriberSender<SubscribeEventsResponse> for EventSubscriber {
+    fn sender(&self) -> &Sender<Result<SubscribeEventsResponse, tonic::Status>> {
+        &self.sender
+    }
 }
 
-impl EventManager {
-    pub async fn add_subscriber(
+#[derive(Debug, Default)]
+pub struct EventManager {
+    subscribers: DashMap<u64, EventSubscriber>,
+}
+
+impl SubscriptionManager<Vec<KeysClause>> for EventManager {
+    type Subscriber = EventSubscriber;
+    type Response = SubscribeEventsResponse;
+    type Item = Event;
+
+    fn new() -> Self {
+        Self {
+            subscribers: DashMap::new(),
+        }
+    }
+
+    fn subscribers(&self) -> &DashMap<u64, Self::Subscriber> {
+        &self.subscribers
+    }
+
+    async fn add_subscriber(
         &self,
         keys: Vec<KeysClause>,
     ) -> Result<Receiver<Result<SubscribeEventsResponse, tonic::Status>>, Error> {
-        let id = rand::thread_rng().gen::<usize>();
+        let id = rand::thread_rng().gen::<u64>();
         let (sender, receiver) = channel(SUBSCRIPTION_CHANNEL_SIZE);
 
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from
         // initial subscribe call
-        let _ = sender
-            .send(Ok(SubscribeEventsResponse { event: None }))
-            .await;
+        let _ = sender.send(Ok(Self::get_initial_response(id))).await;
 
         self.subscribers
-            .write()
-            .await
-            .insert(id, EventSubscriber { keys, sender });
+            .insert(id, Self::create_subscriber(id, sender, keys));
 
         Ok(receiver)
     }
 
-    pub(super) async fn remove_subscriber(&self, id: usize) {
-        self.subscribers.write().await.remove(&id);
+    async fn update_subscriber(&self, id: u64, keys: Vec<KeysClause>) {
+        if let Some(subscriber) = self.subscribers.get(&id) {
+            let sender = subscriber.sender.clone();
+            self.subscribers
+                .insert(id, EventSubscriber { keys, sender });
+        }
+    }
+
+    async fn remove_subscriber(&self, id: u64) {
+        self.subscribers.remove(&id);
+    }
+
+    fn create_subscriber(
+        _id: u64,
+        sender: Sender<Result<SubscribeEventsResponse, tonic::Status>>,
+        keys: Vec<KeysClause>,
+    ) -> Self::Subscriber {
+        EventSubscriber { keys, sender }
+    }
+
+    fn should_send_to_subscriber(subscriber: &Self::Subscriber, event: &Self::Item) -> bool {
+        let keys = match event
+            .keys
+            .trim_end_matches(SQL_FELT_DELIMITER)
+            .split(SQL_FELT_DELIMITER)
+            .filter(|s| !s.is_empty())
+            .map(Felt::from_str)
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(k) => k,
+            Err(_) => return false,
+        };
+
+        match_keys(&keys, &subscriber.keys)
+    }
+
+    fn create_response(_subscriber_id: u64, event: &Self::Item) -> Self::Response {
+        let keys = event
+            .keys
+            .trim_end_matches(SQL_FELT_DELIMITER)
+            .split(SQL_FELT_DELIMITER)
+            .filter(|s| !s.is_empty())
+            .map(Felt::from_str)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_default();
+
+        let data = event
+            .data
+            .trim_end_matches(SQL_FELT_DELIMITER)
+            .split(SQL_FELT_DELIMITER)
+            .filter(|s| !s.is_empty())
+            .map(Felt::from_str)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap_or_default();
+
+        let transaction_hash = Felt::from_str(&event.transaction_hash).unwrap_or_default();
+
+        SubscribeEventsResponse {
+            event: Some(ProtoEvent {
+                keys: keys.iter().map(|k| k.to_bytes_be().to_vec()).collect(),
+                data: data.iter().map(|d| d.to_bytes_be().to_vec()).collect(),
+                transaction_hash: transaction_hash.to_bytes_be().to_vec(),
+            }),
+        }
+    }
+
+    fn get_initial_response(_subscriber_id: u64) -> Self::Response {
+        SubscribeEventsResponse { event: None }
+    }
+}
+
+#[allow(dead_code)]
+impl EventManager {
+    pub async fn add_subscriber(
+        &self,
+        keys: Vec<KeysClause>,
+    ) -> Result<Receiver<Result<SubscribeEventsResponse, tonic::Status>>, Error> {
+        <Self as SubscriptionManager<Vec<KeysClause>>>::add_subscriber(self, keys).await
+    }
+
+    pub(super) async fn remove_subscriber(&self, id: u64) {
+        <Self as SubscriptionManager<Vec<KeysClause>>>::remove_subscriber(self, id).await
     }
 }
 
@@ -99,63 +197,7 @@ impl Service {
     }
 
     async fn process_event(subs: &Arc<EventManager>, event: &Event) -> Result<(), Error> {
-        let mut closed_stream = Vec::new();
-        let keys = event
-            .keys
-            .trim_end_matches(SQL_FELT_DELIMITER)
-            .split(SQL_FELT_DELIMITER)
-            .filter(|s| !s.is_empty())
-            .map(Felt::from_str)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::from)?;
-        let data = event
-            .data
-            .trim_end_matches(SQL_FELT_DELIMITER)
-            .split(SQL_FELT_DELIMITER)
-            .filter(|s| !s.is_empty())
-            .map(Felt::from_str)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::from)?;
-
-        for (idx, sub) in subs.subscribers.read().await.iter() {
-            if !match_keys(&keys, &sub.keys) {
-                continue;
-            }
-
-            let resp = SubscribeEventsResponse {
-                event: Some(ProtoEvent {
-                    keys: keys.iter().map(|k| k.to_bytes_be().to_vec()).collect(),
-                    data: data.iter().map(|d| d.to_bytes_be().to_vec()).collect(),
-                    transaction_hash: Felt::from_str(&event.transaction_hash)
-                        .map_err(ParseError::from)?
-                        .to_bytes_be()
-                        .to_vec(),
-                }),
-            };
-
-            // Use try_send to avoid blocking on slow subscribers
-            match sub.sender.try_send(Ok(resp)) {
-                Ok(_) => {
-                    // Message sent successfully
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    // Channel is full, subscriber is too slow - disconnect them
-                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
-                    closed_stream.push(*idx);
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    // Channel is closed, subscriber has disconnected
-                    closed_stream.push(*idx);
-                }
-            }
-        }
-
-        for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing events stream.");
-            subs.remove_subscriber(id).await
-        }
-
-        Ok(())
+        broadcast_to_subscribers::<EventManager, Vec<KeysClause>>(subs, event, LOG_TARGET).await
     }
 }
 

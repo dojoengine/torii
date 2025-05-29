@@ -1,9 +1,12 @@
+use dashmap::DashMap;
 use dojo_types::schema::Ty;
 use starknet_crypto::Felt;
-
+use tokio::sync::mpsc::{Receiver, Sender};
 use torii_proto::{
     Clause, ComparisonOperator, KeysClause, LogicalOperator, MemberValue, PatternMatching,
 };
+use torii_sqlite::error::Error;
+use tracing::trace;
 
 pub mod entity;
 pub mod error;
@@ -14,6 +17,76 @@ pub mod token;
 pub mod token_balance;
 
 pub(crate) const SUBSCRIPTION_CHANNEL_SIZE: usize = 64;
+
+pub trait SubscriptionManager<T: Send + 'static> {
+    type Subscriber: Send + Sync;
+    type Response: Send;
+    type Item: Send + Sync;
+
+    fn new() -> Self;
+    fn subscribers(&self) -> &DashMap<u64, Self::Subscriber>;
+    #[allow(async_fn_in_trait)]
+    async fn add_subscriber(
+        &self,
+        params: T,
+    ) -> Result<Receiver<Result<Self::Response, tonic::Status>>, Error>;
+    #[allow(async_fn_in_trait)]
+    async fn update_subscriber(&self, id: u64, params: T);
+    #[allow(async_fn_in_trait)]
+    async fn remove_subscriber(&self, id: u64);
+    fn create_subscriber(
+        id: u64,
+        sender: Sender<Result<Self::Response, tonic::Status>>,
+        params: T,
+    ) -> Self::Subscriber;
+    fn should_send_to_subscriber(subscriber: &Self::Subscriber, item: &Self::Item) -> bool;
+    fn create_response(subscriber_id: u64, item: &Self::Item) -> Self::Response;
+    fn get_initial_response(subscriber_id: u64) -> Self::Response;
+}
+
+pub trait SubscriberSender<R> {
+    fn sender(&self) -> &Sender<Result<R, tonic::Status>>;
+}
+
+pub async fn broadcast_to_subscribers<M, T>(
+    manager: &M,
+    item: &M::Item,
+    log_target: &str,
+) -> Result<(), Error>
+where
+    M: SubscriptionManager<T>,
+    T: Send + 'static,
+    M::Subscriber: SubscriberSender<M::Response>,
+{
+    let mut closed_streams = Vec::new();
+
+    for entry in manager.subscribers().iter() {
+        let (id, subscriber) = entry.pair();
+
+        if !M::should_send_to_subscriber(subscriber, item) {
+            continue;
+        }
+
+        let response = M::create_response(*id, item);
+
+        match subscriber.sender().try_send(Ok(response)) {
+            Ok(_) => {}
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                trace!(target = log_target, subscriber_id = %id, "Disconnecting slow subscriber - channel full");
+                closed_streams.push(*id);
+            }
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                closed_streams.push(*id);
+            }
+        }
+    }
+
+    for id in closed_streams {
+        manager.remove_subscriber(id).await;
+    }
+
+    Ok(())
+}
 
 pub(crate) fn match_entity(
     id: Felt,

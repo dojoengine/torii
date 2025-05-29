@@ -11274,6 +11274,7 @@ dependencies = [
  "cainome",
  "camino",
  "crypto-bigint",
+ "dashmap 6.1.0",
  "dojo-test-utils",
  "dojo-types 1.5.0-alpha.2",
  "dojo-utils",
