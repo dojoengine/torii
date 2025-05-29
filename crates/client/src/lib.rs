@@ -15,7 +15,7 @@ use torii_libp2p_client::{EventLoop, RelayClient};
 use torii_libp2p_types::Message;
 use torii_proto::proto::world::{
     RetrieveControllersResponse, RetrieveEntitiesResponse, RetrieveEventsResponse,
-    RetrieveTokenBalancesResponse, RetrieveTokensResponse,
+    RetrieveTokenBalancesResponse, RetrieveTokenCollectionsResponse, RetrieveTokensResponse,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
@@ -138,6 +138,41 @@ impl Client {
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<TokenBalance>, _>>()?,
+            next_cursor: if next_cursor.is_empty() {
+                None
+            } else {
+                Some(next_cursor)
+            },
+        })
+    }
+
+    /// Retrieves tokens matching contract addresses.
+    pub async fn token_collections(
+        &self,
+        account_addresses: Vec<Felt>,
+        contract_addresses: Vec<Felt>,
+        token_ids: Vec<U256>,
+        limit: Option<u32>,
+        cursor: Option<String>,
+    ) -> Result<Page<Token>, Error> {
+        let mut grpc_client = self.inner.write().await;
+        let RetrieveTokenCollectionsResponse {
+            tokens,
+            next_cursor,
+        } = grpc_client
+            .retrieve_token_collections(
+                account_addresses,
+                contract_addresses,
+                token_ids,
+                limit,
+                cursor,
+            )
+            .await?;
+        Ok(Page {
+            items: tokens
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<Token>, _>>()?,
             next_cursor: if next_cursor.is_empty() {
                 None
             } else {

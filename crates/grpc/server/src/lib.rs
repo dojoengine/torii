@@ -43,7 +43,9 @@ use torii_sqlite::cache::ModelCache;
 use torii_sqlite::constants::SQL_DEFAULT_LIMIT;
 use torii_sqlite::error::{ParseError, QueryError};
 use torii_sqlite::model::{decode_cursor, encode_cursor, fetch_entities, map_row_to_ty};
-use torii_sqlite::types::{Page, Pagination, PaginationDirection, Token, TokenBalance};
+use torii_sqlite::types::{
+    Page, Pagination, PaginationDirection, Token, TokenBalance, TokenCollection,
+};
 use torii_sqlite::utils::u256_to_sql_string;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
@@ -55,11 +57,12 @@ use torii_proto::proto::types::LogicalOperator;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
     RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEventMessagesRequest,
-    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokensRequest,
-    RetrieveTokensResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
-    SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeIndexerRequest,
-    SubscribeIndexerResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokensRequest, SubscribeTokensResponse, UpdateEventMessagesSubscriptionRequest,
+    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
+    RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, UpdateEventMessagesSubscriptionRequest,
     UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
     WorldMetadataResponse,
 };
@@ -863,6 +866,70 @@ impl DojoWorld {
         })
     }
 
+    async fn retrieve_token_collections(
+        &self,
+        account_addresses: Vec<Felt>,
+        contract_addresses: Vec<Felt>,
+        token_ids: Vec<U256>,
+        limit: Option<u32>,
+        cursor: Option<String>,
+    ) -> Result<RetrieveTokenCollectionsResponse, Error> {
+        let mut query =
+            "SELECT t.contract_address as contract_address, t.name as name, t.symbol as symbol, t.decimals as decimals, t.metadata as metadata, count(t.contract_address) as count FROM tokens t".to_owned();
+
+        let mut bind_values = Vec::new();
+        let mut conditions = Vec::new();
+
+        if !account_addresses.is_empty() {
+            query += "  JOIN token_balances tb ON tb.token_id = CONCAT(t.contract_address, ':', t.token_id)";
+
+            let placeholders = vec!["?"; account_addresses.len()].join(", ");
+            conditions.push(format!("tb.account_address IN ({})", placeholders));
+            bind_values.extend(account_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+
+        if !contract_addresses.is_empty() {
+            let placeholders = vec!["?"; contract_addresses.len()].join(", ");
+            conditions.push(format!("t.contract_address IN ({})", placeholders));
+            bind_values.extend(contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+        if !token_ids.is_empty() {
+            let placeholders = vec!["?"; token_ids.len()].join(", ");
+            conditions.push(format!("t.token_id IN ({})", placeholders));
+            bind_values.extend(token_ids.iter().map(|id| u256_to_sql_string(&(*id).into())));
+        }
+
+        if let Some(cursor) = cursor {
+            bind_values.push(decode_cursor(&cursor)?);
+            conditions.push("t.id >= ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            query += &format!(" WHERE {}", conditions.join(" AND "));
+        }
+
+        query += " GROUP BY t.contract_address ORDER BY t.id LIMIT ?";
+        bind_values.push((limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) + 1).to_string());
+
+        let mut query = sqlx::query_as(&query);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+
+        let mut tokens: Vec<TokenCollection> = query.fetch_all(&self.pool).await?;
+        let next_cursor = if tokens.len() > limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) as usize {
+            encode_cursor(&tokens.pop().unwrap().contract_address)?
+        } else {
+            String::new()
+        };
+
+        let tokens = tokens.iter().map(|token| token.clone().into()).collect();
+        Ok(RetrieveTokenCollectionsResponse {
+            tokens,
+            next_cursor,
+        })
+    }
+
     async fn retrieve_entities(
         &self,
         table: &str,
@@ -1401,6 +1468,48 @@ impl proto::world::world_server::World for DojoWorld {
 
         let tokens = self
             .retrieve_tokens(
+                contract_addresses,
+                token_ids,
+                if limit > 0 { Some(limit) } else { None },
+                if !cursor.is_empty() {
+                    Some(cursor)
+                } else {
+                    None
+                },
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(Response::new(tokens))
+    }
+
+    async fn retrieve_token_collections(
+        &self,
+        request: Request<RetrieveTokenCollectionsRequest>,
+    ) -> Result<Response<RetrieveTokenCollectionsResponse>, Status> {
+        let RetrieveTokenCollectionsRequest {
+            account_addresses,
+            contract_addresses,
+            token_ids,
+            limit,
+            cursor,
+        } = request.into_inner();
+
+        let account_addresses = account_addresses
+            .iter()
+            .map(|address| Felt::from_bytes_be_slice(address))
+            .collect::<Vec<_>>();
+        let contract_addresses = contract_addresses
+            .iter()
+            .map(|address| Felt::from_bytes_be_slice(address))
+            .collect::<Vec<_>>();
+        let token_ids = token_ids
+            .iter()
+            .map(|id| crypto_bigint::U256::from_be_slice(id))
+            .collect::<Vec<_>>();
+
+        let tokens = self
+            .retrieve_token_collections(
+                account_addresses,
                 contract_addresses,
                 token_ids,
                 if limit > 0 { Some(limit) } else { None },

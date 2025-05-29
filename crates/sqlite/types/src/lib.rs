@@ -148,6 +148,17 @@ pub struct Token {
 
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct TokenCollection {
+    pub contract_address: String,
+    pub name: String,
+    pub symbol: String,
+    pub decimals: u8,
+    pub count: u32,
+    pub metadata: String,
+}
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct OptimisticTokenBalance {
     pub id: String,
     pub balance: String,
