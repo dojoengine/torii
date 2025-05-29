@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use dashmap::DashMap;
 use futures::Stream;
 use futures_util::StreamExt;
 use rand::Rng;
@@ -12,18 +12,19 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use tokio::sync::RwLock;
 use torii_proto::proto::types::Entity;
 use torii_proto::Clause;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
-use torii_sqlite::error::{Error, ParseError};
+use torii_sqlite::error::Error;
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::OptimisticEventMessage;
-use tracing::{error, trace};
+use tracing::error;
 
 use torii_proto::proto::world::SubscribeEntityResponse;
 
-use super::{match_entity, SUBSCRIPTION_CHANNEL_SIZE};
+use super::{
+    broadcast_to_subscribers, match_entity, SubscriptionManager, SUBSCRIPTION_CHANNEL_SIZE,
+};
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::event_message";
 
@@ -35,13 +36,33 @@ pub struct EventMessageSubscriber {
     pub(crate) sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
 }
 
-#[derive(Debug, Default)]
-pub struct EventMessageManager {
-    subscribers: RwLock<HashMap<u64, EventMessageSubscriber>>,
+impl super::SubscriberSender<SubscribeEntityResponse> for EventMessageSubscriber {
+    fn sender(&self) -> &Sender<Result<SubscribeEntityResponse, tonic::Status>> {
+        &self.sender
+    }
 }
 
-impl EventMessageManager {
-    pub async fn add_subscriber(
+#[derive(Debug, Default)]
+pub struct EventMessageManager {
+    subscribers: DashMap<u64, EventMessageSubscriber>,
+}
+
+impl SubscriptionManager<Option<Clause>> for EventMessageManager {
+    type Subscriber = EventMessageSubscriber;
+    type Response = SubscribeEntityResponse;
+    type Item = OptimisticEventMessage;
+
+    fn new() -> Self {
+        Self {
+            subscribers: DashMap::new(),
+        }
+    }
+
+    fn subscribers(&self) -> &DashMap<u64, Self::Subscriber> {
+        &self.subscribers
+    }
+
+    async fn add_subscriber(
         &self,
         clause: Option<Clause>,
     ) -> Result<Receiver<Result<SubscribeEntityResponse, tonic::Status>>, Error> {
@@ -52,38 +73,108 @@ impl EventMessageManager {
         // initially send empty stream message to return from
         // initial subscribe call
         let _ = sender
-            .send(Ok(SubscribeEntityResponse {
-                entity: None,
-                subscription_id,
-            }))
+            .send(Ok(Self::get_initial_response(subscription_id)))
             .await;
 
-        self.subscribers
-            .write()
-            .await
-            .insert(subscription_id, EventMessageSubscriber { clause, sender });
+        self.subscribers.insert(
+            subscription_id,
+            Self::create_subscriber(subscription_id, sender, clause),
+        );
 
         Ok(receiver)
     }
 
-    pub async fn update_subscriber(&self, id: u64, clause: Option<Clause>) {
-        let sender = {
-            let subscribers = self.subscribers.read().await;
-            if let Some(subscriber) = subscribers.get(&id) {
-                subscriber.sender.clone()
-            } else {
-                return; // Subscriber not found, exit early
-            }
+    async fn update_subscriber(&self, id: u64, clause: Option<Clause>) {
+        let sender = if let Some(subscriber) = self.subscribers.get(&id) {
+            subscriber.sender.clone()
+        } else {
+            return; // Subscriber not found, exit early
         };
 
         self.subscribers
-            .write()
-            .await
             .insert(id, EventMessageSubscriber { clause, sender });
     }
 
+    async fn remove_subscriber(&self, id: u64) {
+        self.subscribers.remove(&id);
+    }
+
+    fn create_subscriber(
+        _id: u64,
+        sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
+        clause: Option<Clause>,
+    ) -> Self::Subscriber {
+        EventMessageSubscriber { clause, sender }
+    }
+
+    fn should_send_to_subscriber(subscriber: &Self::Subscriber, entity: &Self::Item) -> bool {
+        if let Some(clause) = &subscriber.clause {
+            let hashed = match Felt::from_str(&entity.id) {
+                Ok(h) => h,
+                Err(_) => return false,
+            };
+
+            let keys = match entity
+                .keys
+                .trim_end_matches(SQL_FELT_DELIMITER)
+                .split(SQL_FELT_DELIMITER)
+                .map(Felt::from_str)
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(k) => k,
+                Err(_) => return false,
+            };
+
+            match_entity(hashed, &keys, &entity.updated_model, clause)
+        } else {
+            true // No clause means subscriber wants all entities
+        }
+    }
+
+    fn create_response(subscriber_id: u64, entity: &Self::Item) -> Self::Response {
+        // This should NEVER be None
+        let model = entity
+            .updated_model
+            .as_ref()
+            .unwrap()
+            .as_struct()
+            .unwrap()
+            .clone();
+
+        SubscribeEntityResponse {
+            entity: Some(Entity {
+                hashed_keys: Felt::from_str(&entity.id)
+                    .map(|f| f.to_bytes_be().to_vec())
+                    .unwrap_or_default(),
+                models: vec![model.into()],
+            }),
+            subscription_id: subscriber_id,
+        }
+    }
+
+    fn get_initial_response(subscriber_id: u64) -> Self::Response {
+        SubscribeEntityResponse {
+            entity: None,
+            subscription_id: subscriber_id,
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl EventMessageManager {
+    pub async fn add_subscriber(
+        &self,
+        clause: Option<Clause>,
+    ) -> Result<Receiver<Result<SubscribeEntityResponse, tonic::Status>>, Error> {
+        <Self as SubscriptionManager<Option<Clause>>>::add_subscriber(self, clause).await
+    }
+
+    pub async fn update_subscriber(&self, id: u64, clause: Option<Clause>) {
+        <Self as SubscriptionManager<Option<Clause>>>::update_subscriber(self, id, clause).await
+    }
+
     pub(super) async fn remove_subscriber(&self, id: u64) {
-        self.subscribers.write().await.remove(&id);
+        <Self as SubscriptionManager<Option<Clause>>>::remove_subscriber(self, id).await
     }
 }
 
@@ -122,68 +213,8 @@ impl Service {
         subs: &Arc<EventMessageManager>,
         entity: &OptimisticEventMessage,
     ) -> Result<(), Error> {
-        let mut closed_stream = Vec::new();
-        let hashed = Felt::from_str(&entity.id).map_err(ParseError::FromStr)?;
-        let keys = entity
-            .keys
-            .trim_end_matches(SQL_FELT_DELIMITER)
-            .split(SQL_FELT_DELIMITER)
-            .map(Felt::from_str)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::FromStr)?;
-
-        for (idx, sub) in subs.subscribers.read().await.iter() {
-            // Check if the subscriber is interested in this entity
-            // If we have a clause of hashed keys, then check that the id of the entity
-            // is in the list of hashed keys.
-
-            // If we have a clause of keys, then check that the key pattern of the entity
-            // matches the key pattern of the subscriber.
-            if let Some(clause) = &sub.clause {
-                if !match_entity(hashed, &keys, &entity.updated_model, clause) {
-                    continue;
-                }
-            }
-
-            // This should NEVER be None
-            let model = entity
-                .updated_model
-                .as_ref()
-                .unwrap()
-                .as_struct()
-                .unwrap()
-                .clone();
-            let resp = SubscribeEntityResponse {
-                entity: Some(Entity {
-                    hashed_keys: hashed.to_bytes_be().to_vec(),
-                    models: vec![model.into()],
-                }),
-                subscription_id: *idx,
-            };
-
-            // Use try_send to avoid blocking on slow subscribers
-            match sub.sender.try_send(Ok(resp)) {
-                Ok(_) => {
-                    // Message sent successfully
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    // Channel is full, subscriber is too slow - disconnect them
-                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
-                    closed_stream.push(*idx);
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    // Channel is closed, subscriber has disconnected
-                    closed_stream.push(*idx);
-                }
-            }
-        }
-
-        for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing entity stream.");
-            subs.remove_subscriber(id).await
-        }
-
-        Ok(())
+        broadcast_to_subscribers::<EventMessageManager, Option<Clause>>(subs, entity, LOG_TARGET)
+            .await
     }
 }
 

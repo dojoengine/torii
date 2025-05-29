@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use rand::Rng;
 use sqlx::{Pool, Sqlite};
@@ -12,15 +12,16 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use tokio::sync::RwLock;
-use torii_sqlite::error::{Error, ParseError};
+use torii_sqlite::error::Error;
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::ContractCursor as ContractUpdated;
-use tracing::{error, trace};
+use tracing::error;
 
 use torii_proto::proto::world::SubscribeIndexerResponse;
 
-use super::SUBSCRIPTION_CHANNEL_SIZE;
+use super::{
+    broadcast_to_subscribers, SubscriberSender, SubscriptionManager, SUBSCRIPTION_CHANNEL_SIZE,
+};
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::indexer";
 
@@ -32,18 +33,111 @@ pub struct IndexerSubscriber {
     sender: Sender<Result<SubscribeIndexerResponse, tonic::Status>>,
 }
 
-#[derive(Debug, Default)]
-pub struct IndexerManager {
-    subscribers: RwLock<HashMap<usize, IndexerSubscriber>>,
+impl SubscriberSender<SubscribeIndexerResponse> for IndexerSubscriber {
+    fn sender(&self) -> &Sender<Result<SubscribeIndexerResponse, tonic::Status>> {
+        &self.sender
+    }
 }
 
+#[derive(Debug, Default)]
+pub struct IndexerManager {
+    subscribers: DashMap<u64, IndexerSubscriber>,
+}
+
+impl SubscriptionManager<Felt> for IndexerManager {
+    type Subscriber = IndexerSubscriber;
+    type Response = SubscribeIndexerResponse;
+    type Item = ContractUpdated;
+
+    fn new() -> Self {
+        Self {
+            subscribers: DashMap::new(),
+        }
+    }
+
+    fn subscribers(&self) -> &DashMap<u64, Self::Subscriber> {
+        &self.subscribers
+    }
+
+    async fn add_subscriber(
+        &self,
+        contract_address: Felt,
+    ) -> Result<Receiver<Result<SubscribeIndexerResponse, tonic::Status>>, Error> {
+        let id = rand::thread_rng().gen::<u64>();
+        let (sender, receiver) = channel(SUBSCRIPTION_CHANNEL_SIZE);
+
+        self.subscribers
+            .insert(id, Self::create_subscriber(id, sender, contract_address));
+
+        Ok(receiver)
+    }
+
+    async fn update_subscriber(&self, id: u64, contract_address: Felt) {
+        if let Some(subscriber) = self.subscribers.get(&id) {
+            let sender = subscriber.sender.clone();
+            self.subscribers.insert(
+                id,
+                IndexerSubscriber {
+                    contract_address,
+                    sender,
+                },
+            );
+        }
+    }
+
+    async fn remove_subscriber(&self, id: u64) {
+        self.subscribers.remove(&id);
+    }
+
+    fn create_subscriber(
+        _id: u64,
+        sender: Sender<Result<SubscribeIndexerResponse, tonic::Status>>,
+        contract_address: Felt,
+    ) -> Self::Subscriber {
+        IndexerSubscriber {
+            contract_address,
+            sender,
+        }
+    }
+
+    fn should_send_to_subscriber(subscriber: &Self::Subscriber, update: &Self::Item) -> bool {
+        let contract_address = match Felt::from_str(&update.contract_address) {
+            Ok(addr) => addr,
+            Err(_) => return false,
+        };
+
+        subscriber.contract_address == Felt::ZERO || subscriber.contract_address == contract_address
+    }
+
+    fn create_response(_subscriber_id: u64, update: &Self::Item) -> Self::Response {
+        let contract_address = Felt::from_str(&update.contract_address).unwrap_or_default();
+
+        SubscribeIndexerResponse {
+            head: update.head,
+            tps: update.tps,
+            last_block_timestamp: update.last_block_timestamp,
+            contract_address: contract_address.to_bytes_be().to_vec(),
+        }
+    }
+
+    fn get_initial_response(_subscriber_id: u64) -> Self::Response {
+        SubscribeIndexerResponse {
+            head: 0,
+            tps: 0,
+            last_block_timestamp: 0,
+            contract_address: vec![],
+        }
+    }
+}
+
+#[allow(dead_code)]
 impl IndexerManager {
     pub async fn add_subscriber(
         &self,
         pool: &Pool<Sqlite>,
         contract_address: Felt,
     ) -> Result<Receiver<Result<SubscribeIndexerResponse, tonic::Status>>, Error> {
-        let id = rand::thread_rng().gen::<usize>();
+        let id = rand::thread_rng().gen::<u64>();
         let (sender, receiver) = channel(SUBSCRIPTION_CHANNEL_SIZE);
 
         let mut statement = "SELECT * FROM contracts".to_string();
@@ -69,7 +163,8 @@ impl IndexerManager {
                 }))
                 .await;
         }
-        self.subscribers.write().await.insert(
+
+        self.subscribers.insert(
             id,
             IndexerSubscriber {
                 contract_address,
@@ -80,8 +175,8 @@ impl IndexerManager {
         Ok(receiver)
     }
 
-    pub(super) async fn remove_subscriber(&self, id: usize) {
-        self.subscribers.write().await.remove(&id);
+    pub(super) async fn remove_subscriber(&self, id: u64) {
+        <Self as SubscriptionManager<Felt>>::remove_subscriber(self, id).await
     }
 }
 
@@ -120,45 +215,7 @@ impl Service {
         subs: &Arc<IndexerManager>,
         update: &ContractUpdated,
     ) -> Result<(), Error> {
-        let mut closed_stream = Vec::new();
-        let contract_address =
-            Felt::from_str(&update.contract_address).map_err(ParseError::FromStr)?;
-
-        for (idx, sub) in subs.subscribers.read().await.iter() {
-            if sub.contract_address != Felt::ZERO && sub.contract_address != contract_address {
-                continue;
-            }
-
-            let resp = SubscribeIndexerResponse {
-                head: update.head,
-                tps: update.tps,
-                last_block_timestamp: update.last_block_timestamp,
-                contract_address: contract_address.to_bytes_be().to_vec(),
-            };
-
-            // Use try_send to avoid blocking on slow subscribers
-            match sub.sender.try_send(Ok(resp)) {
-                Ok(_) => {
-                    // Message sent successfully
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    // Channel is full, subscriber is too slow - disconnect them
-                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
-                    closed_stream.push(*idx);
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    // Channel is closed, subscriber has disconnected
-                    closed_stream.push(*idx);
-                }
-            }
-        }
-
-        for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing indexer updates stream.");
-            subs.remove_subscriber(id).await
-        }
-
-        Ok(())
+        broadcast_to_subscribers::<IndexerManager, Felt>(subs, update, LOG_TARGET).await
     }
 }
 

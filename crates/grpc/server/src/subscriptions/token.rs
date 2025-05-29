@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -6,22 +6,24 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crypto_bigint::{Encoding, U256};
+use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use rand::Rng;
 use starknet_crypto::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use tokio::sync::RwLock;
-use torii_sqlite::error::{Error, ParseError};
+use torii_sqlite::error::Error;
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::OptimisticToken;
-use tracing::{error, trace};
+use tracing::error;
 
 use torii_proto::proto::types::Token;
 use torii_proto::proto::world::SubscribeTokensResponse;
 
-use super::SUBSCRIPTION_CHANNEL_SIZE;
+use super::{
+    broadcast_to_subscribers, SubscriberSender, SubscriptionManager, SUBSCRIPTION_CHANNEL_SIZE,
+};
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::token";
 
@@ -37,38 +39,145 @@ pub struct TokenSubscriber {
     pub sender: Sender<Result<SubscribeTokensResponse, tonic::Status>>,
 }
 
-#[derive(Debug, Default)]
-pub struct TokenManager {
-    subscribers: RwLock<HashMap<u64, TokenSubscriber>>,
+impl SubscriberSender<SubscribeTokensResponse> for TokenSubscriber {
+    fn sender(&self) -> &Sender<Result<SubscribeTokensResponse, tonic::Status>> {
+        &self.sender
+    }
 }
 
+#[derive(Debug, Default)]
+pub struct TokenManager {
+    subscribers: DashMap<u64, TokenSubscriber>,
+}
+
+impl SubscriptionManager<(Vec<Felt>, Vec<U256>)> for TokenManager {
+    type Subscriber = TokenSubscriber;
+    type Response = SubscribeTokensResponse;
+    type Item = OptimisticToken;
+
+    fn new() -> Self {
+        Self {
+            subscribers: DashMap::new(),
+        }
+    }
+
+    fn subscribers(&self) -> &DashMap<u64, Self::Subscriber> {
+        &self.subscribers
+    }
+
+    async fn add_subscriber(
+        &self,
+        params: (Vec<Felt>, Vec<U256>),
+    ) -> Result<Receiver<Result<SubscribeTokensResponse, tonic::Status>>, Error> {
+        let (contract_addresses, token_ids) = params;
+        let subscription_id = rand::thread_rng().gen::<u64>();
+        let (sender, receiver) = channel(SUBSCRIPTION_CHANNEL_SIZE);
+
+        // Send initial empty response
+        let _ = sender
+            .send(Ok(Self::get_initial_response(subscription_id)))
+            .await;
+
+        self.subscribers.insert(
+            subscription_id,
+            Self::create_subscriber(subscription_id, sender, (contract_addresses, token_ids)),
+        );
+
+        Ok(receiver)
+    }
+
+    async fn update_subscriber(&self, id: u64, params: (Vec<Felt>, Vec<U256>)) {
+        let (contract_addresses, token_ids) = params;
+        if let Some(subscriber) = self.subscribers.get(&id) {
+            let sender = subscriber.sender.clone();
+            self.subscribers.insert(
+                id,
+                TokenSubscriber {
+                    contract_addresses: contract_addresses.into_iter().collect(),
+                    token_ids: token_ids.into_iter().collect(),
+                    sender,
+                },
+            );
+        }
+    }
+
+    async fn remove_subscriber(&self, id: u64) {
+        self.subscribers.remove(&id);
+    }
+
+    fn create_subscriber(
+        _id: u64,
+        sender: Sender<Result<SubscribeTokensResponse, tonic::Status>>,
+        params: (Vec<Felt>, Vec<U256>),
+    ) -> Self::Subscriber {
+        let (contract_addresses, token_ids) = params;
+        TokenSubscriber {
+            contract_addresses: contract_addresses.into_iter().collect(),
+            token_ids: token_ids.into_iter().collect(),
+            sender,
+        }
+    }
+
+    fn should_send_to_subscriber(subscriber: &Self::Subscriber, token: &Self::Item) -> bool {
+        let contract_address = match Felt::from_str(&token.contract_address) {
+            Ok(addr) => addr,
+            Err(_) => return false,
+        };
+
+        let token_id = U256::from_be_hex(token.token_id.trim_start_matches("0x"));
+
+        // Skip if contract address filter doesn't match
+        if !subscriber.contract_addresses.is_empty()
+            && !subscriber.contract_addresses.contains(&contract_address)
+        {
+            return false;
+        }
+
+        // Skip if token ID filter doesn't match
+        if !subscriber.token_ids.is_empty() && !subscriber.token_ids.contains(&token_id) {
+            return false;
+        }
+
+        true
+    }
+
+    fn create_response(subscriber_id: u64, token: &Self::Item) -> Self::Response {
+        let contract_address = Felt::from_str(&token.contract_address).unwrap_or_default();
+        let token_id = U256::from_be_hex(token.token_id.trim_start_matches("0x"));
+
+        SubscribeTokensResponse {
+            subscription_id: subscriber_id,
+            token: Some(Token {
+                token_id: token_id.to_be_bytes().to_vec(),
+                contract_address: contract_address.to_bytes_be().to_vec(),
+                name: token.name.clone(),
+                symbol: token.symbol.clone(),
+                decimals: token.decimals as u32,
+                metadata: token.metadata.as_bytes().to_vec(),
+            }),
+        }
+    }
+
+    fn get_initial_response(subscriber_id: u64) -> Self::Response {
+        SubscribeTokensResponse {
+            subscription_id: subscriber_id,
+            token: None,
+        }
+    }
+}
+
+#[allow(dead_code)]
 impl TokenManager {
     pub async fn add_subscriber(
         &self,
         contract_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
     ) -> Result<Receiver<Result<SubscribeTokensResponse, tonic::Status>>, Error> {
-        let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(SUBSCRIPTION_CHANNEL_SIZE);
-
-        // Send initial empty response
-        let _ = sender
-            .send(Ok(SubscribeTokensResponse {
-                subscription_id,
-                token: None,
-            }))
-            .await;
-
-        self.subscribers.write().await.insert(
-            subscription_id,
-            TokenSubscriber {
-                contract_addresses: contract_addresses.into_iter().collect(),
-                token_ids: token_ids.into_iter().collect(),
-                sender,
-            },
-        );
-
-        Ok(receiver)
+        <Self as SubscriptionManager<(Vec<Felt>, Vec<U256>)>>::add_subscriber(
+            self,
+            (contract_addresses, token_ids),
+        )
+        .await
     }
 
     pub async fn update_subscriber(
@@ -77,27 +186,16 @@ impl TokenManager {
         contract_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
     ) {
-        let sender = {
-            let subscribers = self.subscribers.read().await;
-            if let Some(subscriber) = subscribers.get(&id) {
-                subscriber.sender.clone()
-            } else {
-                return; // Subscriber not found, exit early
-            }
-        };
-
-        self.subscribers.write().await.insert(
+        <Self as SubscriptionManager<(Vec<Felt>, Vec<U256>)>>::update_subscriber(
+            self,
             id,
-            TokenSubscriber {
-                contract_addresses: contract_addresses.into_iter().collect(),
-                token_ids: token_ids.into_iter().collect(),
-                sender,
-            },
-        );
+            (contract_addresses, token_ids),
+        )
+        .await
     }
 
     pub(super) async fn remove_subscriber(&self, id: u64) {
-        self.subscribers.write().await.remove(&id);
+        <Self as SubscriptionManager<(Vec<Felt>, Vec<U256>)>>::remove_subscriber(self, id).await
     }
 }
 
@@ -136,59 +234,8 @@ impl Service {
         subs: &Arc<TokenManager>,
         token: &OptimisticToken,
     ) -> Result<(), Error> {
-        let mut closed_stream = Vec::new();
-        let contract_address =
-            Felt::from_str(&token.contract_address).map_err(ParseError::FromStr)?;
-        let token_id = U256::from_be_hex(token.token_id.trim_start_matches("0x"));
-
-        for (idx, sub) in subs.subscribers.read().await.iter() {
-            // Skip if contract address filter doesn't match
-            if !sub.contract_addresses.is_empty()
-                && !sub.contract_addresses.contains(&contract_address)
-            {
-                continue;
-            }
-
-            // Skip if token ID filter doesn't match
-            if !sub.token_ids.is_empty() && !sub.token_ids.contains(&token_id) {
-                continue;
-            }
-
-            let resp = SubscribeTokensResponse {
-                subscription_id: *idx,
-                token: Some(Token {
-                    token_id: token_id.to_be_bytes().to_vec(),
-                    contract_address: contract_address.to_bytes_be().to_vec(),
-                    name: token.name.clone(),
-                    symbol: token.symbol.clone(),
-                    decimals: token.decimals as u32,
-                    metadata: token.metadata.as_bytes().to_vec(),
-                }),
-            };
-
-            // Use try_send to avoid blocking on slow subscribers
-            match sub.sender.try_send(Ok(resp)) {
-                Ok(_) => {
-                    // Message sent successfully
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    // Channel is full, subscriber is too slow - disconnect them
-                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
-                    closed_stream.push(*idx);
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    // Channel is closed, subscriber has disconnected
-                    closed_stream.push(*idx);
-                }
-            }
-        }
-
-        for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing token stream.");
-            subs.remove_subscriber(id).await
-        }
-
-        Ok(())
+        broadcast_to_subscribers::<TokenManager, (Vec<Felt>, Vec<U256>)>(subs, token, LOG_TARGET)
+            .await
     }
 }
 
