@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::convert::TryInto;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -16,7 +15,7 @@ use starknet::core::types::{Event, Felt};
 use starknet_crypto::poseidon_hash_many;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Semaphore;
-use torii_sqlite_types::{HookEvent, ParsedCall};
+use torii_sqlite_types::{ContractCursor, HookEvent, ParsedCall};
 use utils::felts_to_sql_string;
 
 use crate::constants::SQL_FELT_DELIMITER;
@@ -69,11 +68,12 @@ pub struct Sql {
     config: SqlConfig,
 }
 
-#[derive(Debug, Clone)]
-pub struct Cursors {
-    pub cursor_map: HashMap<Felt, Felt>,
+#[derive(Default, Debug, Clone)]
+pub struct Cursor {
+    pub last_pending_block_contract_tx: Option<Felt>,
     pub last_pending_block_tx: Option<Felt>,
     pub head: Option<u64>,
+    pub last_block_timestamp: Option<u64>,
 }
 
 impl Sql {
@@ -158,53 +158,42 @@ impl Sql {
         Ok(())
     }
 
-    pub async fn cursors(&self) -> Result<Cursors> {
-        let cursors = sqlx::query_as::<_, (String, String)>(
-            "SELECT contract_address, last_pending_block_contract_tx FROM contracts WHERE \
-             last_pending_block_contract_tx IS NOT NULL",
-        )
-        .fetch_all(&self.pool)
-        .await?;
+    pub async fn cursors(&self) -> Result<HashMap<Felt, Cursor>> {
+        let cursors = sqlx::query_as::<_, ContractCursor>("SELECT * FROM contracts")
+            .fetch_all(&self.pool)
+            .await?;
 
-        let (head, last_pending_block_tx) = sqlx::query_as::<_, (Option<i64>, Option<String>)>(
-            "SELECT head, last_pending_block_tx FROM contracts WHERE 1=1",
-        )
-        .fetch_one(&self.pool)
-        .await?;
-
-        let head = head.map(|h| h.try_into().expect("doesn't fit in u64"));
-        let last_pending_block_tx =
-            last_pending_block_tx.map(|t| Felt::from_str(&t).expect("its a valid felt"));
-        Ok(Cursors {
-            cursor_map: cursors
-                .into_iter()
-                .map(|(c, t)| {
-                    (
-                        Felt::from_str(&c).expect("its a valid felt"),
-                        Felt::from_str(&t).expect("its a valid felt"),
-                    )
-                })
-                .collect(),
-            last_pending_block_tx,
-            head,
-        })
+        Ok(cursors
+            .into_iter()
+            .map(|c| {
+                (
+                    Felt::from_str(&c.contract_address).expect("Valid contract address felt"),
+                    Cursor {
+                        last_pending_block_contract_tx: c.last_pending_block_contract_tx.map(|t| {
+                            Felt::from_str(&t).expect("Valid last pending block contract tx felt")
+                        }),
+                        last_pending_block_tx: c
+                            .last_pending_block_tx
+                            .map(|t| Felt::from_str(&t).expect("Valid last pending block tx felt")),
+                        head: c.head.map(|h| h as u64),
+                        last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
+                    },
+                )
+            })
+            .collect())
     }
 
     pub fn update_cursors(
         &mut self,
-        last_block_number: u64,
-        last_block_timestamp: u64,
-        last_pending_block_tx: Option<Felt>,
-        cursor_map: HashMap<Felt, (Felt, u64)>,
+        cursors: HashMap<Felt, Cursor>,
+        num_transactions: HashMap<Felt, u64>,
     ) -> Result<()> {
         self.executor.send(QueryMessage::new(
             "".to_string(),
             vec![],
             QueryType::UpdateCursors(UpdateCursorsQuery {
-                cursor_map,
-                last_pending_block_tx,
-                last_block_number,
-                last_block_timestamp,
+                cursors,
+                num_transactions,
             }),
         ))?;
         Ok(())

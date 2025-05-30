@@ -62,9 +62,9 @@ impl IndexerManager {
         for contract in contracts {
             let _ = sender
                 .send(Ok(SubscribeIndexerResponse {
-                    head: contract.head,
-                    tps: contract.tps,
-                    last_block_timestamp: contract.last_block_timestamp,
+                    head: contract.head.unwrap(),
+                    tps: contract.tps.unwrap(),
+                    last_block_timestamp: contract.last_block_timestamp.unwrap(),
                     contract_address: contract_address.to_bytes_be().to_vec(),
                 }))
                 .await;
@@ -130,9 +130,9 @@ impl Service {
             }
 
             let resp = SubscribeIndexerResponse {
-                head: update.head,
-                tps: update.tps,
-                last_block_timestamp: update.last_block_timestamp,
+                head: update.head.unwrap(),
+                tps: update.tps.unwrap(),
+                last_block_timestamp: update.last_block_timestamp.unwrap(),
                 contract_address: contract_address.to_bytes_be().to_vec(),
             };
 

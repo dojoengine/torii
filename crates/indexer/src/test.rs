@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -40,7 +39,6 @@ where
     P: Provider + Send + Sync + core::fmt::Debug + Clone + 'static,
 {
     let (shutdown_tx, _) = broadcast::channel(1);
-    let to = provider.block_hash_and_number().await?.block_number;
     let mut engine = Engine::new(
         world,
         db.clone(),
@@ -53,11 +51,12 @@ where
         contracts,
     );
 
-    let data = engine
-        .fetch_range(0, to, &HashMap::new(), to)
-        .await
-        .unwrap();
-    engine.process_range(data).await.unwrap();
+    let mut cursors = contracts
+        .iter()
+        .map(|c| (c.address, Default::default()))
+        .collect();
+    let data = engine.fetch(&mut cursors).await.unwrap();
+    engine.process(data).await.unwrap();
 
     db.apply_cache_diff().await.unwrap();
     db.execute().await.unwrap();
