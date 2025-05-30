@@ -11284,6 +11284,7 @@ dependencies = [
  "hyper 0.14.30",
  "katana-runner",
  "num-traits 0.2.19",
+ "num_cpus",
  "rand 0.8.5",
  "rayon",
  "scarb",
