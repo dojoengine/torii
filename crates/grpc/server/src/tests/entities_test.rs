@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -18,7 +17,7 @@ use starknet::accounts::Account;
 use starknet::core::types::Call;
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::jsonrpc::HttpTransport;
-use starknet::providers::{JsonRpcClient, Provider};
+use starknet::providers::JsonRpcClient;
 use starknet_crypto::poseidon_hash_many;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
@@ -121,6 +120,11 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     .unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
+
+    let contracts = &[Contract {
+        address: world_address,
+        r#type: ContractType::WORLD,
+    }];
     let mut engine = Engine::new(
         world_reader,
         db.clone(),
@@ -130,18 +134,18 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         },
         EngineConfig::default(),
         shutdown_tx,
-        &[Contract {
-            address: world_address,
-            r#type: ContractType::WORLD,
-        }],
+        contracts,
     );
 
-    let to = provider.block_hash_and_number().await.unwrap().block_number;
+    let cursors = contracts.iter().map(|c| (
+        c.address,
+        Default::default()
+    )).collect();
     let data = engine
-        .fetch_range(0, to, &HashMap::new(), to)
+        .fetch(&cursors)
         .await
         .unwrap();
-    engine.process_range(data).await.unwrap();
+    engine.process(data).await.unwrap();
 
     db.execute().await.unwrap();
 

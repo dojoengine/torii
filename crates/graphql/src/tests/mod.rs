@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -24,7 +23,7 @@ use starknet::accounts::{Account, ConnectedAccount};
 use starknet::core::types::{Call, Felt, InvokeTransactionResult};
 use starknet::macros::selector;
 use starknet::providers::jsonrpc::HttpTransport;
-use starknet::providers::{JsonRpcClient, Provider};
+use starknet::providers::JsonRpcClient;
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use torii_indexer::engine::{Engine, EngineConfig};
@@ -401,6 +400,10 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
     .unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
+    let contracts = &[Contract {
+        address: world_address,
+        r#type: ContractType::WORLD,
+    }];
     let mut engine = Engine::new(
         world,
         db.clone(),
@@ -410,22 +413,15 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         },
         EngineConfig::default(),
         shutdown_tx,
-        &[Contract {
-            address: world_address,
-            r#type: ContractType::WORLD,
-        }],
+        contracts,
     );
 
-    let to = account
-        .provider()
-        .block_hash_and_number()
-        .await?
-        .block_number;
-    let data = engine
-        .fetch_range(0, to, &HashMap::new(), to)
-        .await
-        .unwrap();
-    engine.process_range(data).await.unwrap();
+    let cursors = contracts
+        .iter()
+        .map(|c| (c.address, Default::default()))
+        .collect();
+    let data = engine.fetch(&cursors).await.unwrap();
+    engine.process(data).await.unwrap();
     db.execute().await.unwrap();
     Ok(pool)
 }

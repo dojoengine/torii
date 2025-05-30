@@ -68,7 +68,7 @@ pub struct Sql {
     config: SqlConfig,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct Cursor {
     pub last_pending_block_contract_tx: Option<Felt>,
     pub last_pending_block_tx: Option<Felt>,
