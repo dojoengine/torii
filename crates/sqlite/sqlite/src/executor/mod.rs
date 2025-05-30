@@ -303,10 +303,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     .fetch_all(&mut **tx)
                     .await?;
 
-                let new_head = update_cursors
-                    .last_block_number
-                    .try_into()
-                    .expect("doesn't fit in i64");
+                let new_head = update_cursors.last_block_number;
                 let new_timestamp = update_cursors.last_block_timestamp;
 
                 for cursor in &mut cursors {
@@ -314,10 +311,9 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         .cursor_map
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
                     {
-                        let cursor_timestamp: u64 = cursor
+                        let cursor_timestamp = cursor
                             .last_block_timestamp
-                            .try_into()
-                            .expect("doesn't fit in i64");
+                            .unwrap_or_default();
 
                         let num_transactions = new_cursor.1;
 
@@ -346,14 +342,15 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                             } else {
                                 None
                             };
-                        cursor.tps = new_tps.try_into().expect("does't fit in i64");
+                        cursor.tps = Some(new_tps.try_into().expect("does't fit in i64"));
                     } else {
-                        cursor.tps = 0;
+                        cursor.tps = Some(0);
                         cursor.last_pending_block_contract_tx = None;
                     }
-                    cursor.last_block_timestamp =
-                        new_timestamp.try_into().expect("doesn't fit in i64");
-                    cursor.head = new_head;
+                    cursor.last_block_timestamp = Some(
+                        new_timestamp.try_into().expect("doesn't fit in i64"),
+                    );
+                    cursor.head = Some(new_head);
                     cursor.last_pending_block_tx = update_cursors
                         .last_pending_block_tx
                         .map(|felt| felt_to_sql_string(&felt));
@@ -363,8 +360,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                          last_pending_block_tx = ?, last_pending_block_contract_tx = ? WHERE id = \
                          ?",
                     )
-                    .bind(cursor.head)
-                    .bind(cursor.last_block_timestamp)
+                    .bind(cursor.head.map(|h| h as i64))
+                    .bind(cursor.last_block_timestamp.map(|t| t as i64))
                     .bind(&cursor.last_pending_block_tx)
                     .bind(&cursor.last_pending_block_contract_tx)
                     .bind(&cursor.contract_address)
