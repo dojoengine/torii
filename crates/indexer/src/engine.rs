@@ -4,7 +4,7 @@ use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use bitflags::bitflags;
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
@@ -345,7 +345,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for block_number in &block_numbers {
             timestamp_requests.push(ProviderRequestData::GetBlockWithTxHashes(
                 GetBlockWithTxHashesRequest {
-                    block_id: if *block_number == latest_block_number {
+                    block_id: if *block_number > latest_block_number {
+                        BlockId::Tag(BlockTag::Pending)
+                    } else if *block_number == latest_block_number {
                         BlockId::Tag(BlockTag::Latest)
                     } else {
                         BlockId::Number(*block_number)
@@ -722,12 +724,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         let results_of_chunks: Vec<Vec<ProviderResponseData>> = try_join_all(futures)
             .await
-            .with_context(|| {
-                format!(
-                    "One or more batch requests failed during chunked execution. This could be due to the provider being overloaded. You can try reducing the batch chunk size. Total requests: {}. Batch chunk size: {}",
-                    requests.len(),
-                    self.config.batch_chunk_size
-                )
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    error = ?e,
+                    total_requests = requests.len(),
+                    batch_chunk_size = self.config.batch_chunk_size,
+                    "One or more batch requests failed during chunked execution. This could be due to the provider being overloaded. You can try reducing the batch chunk size."
+                );
+                e
             })?;
 
         let flattened_results = results_of_chunks.into_iter().flatten().collect();
