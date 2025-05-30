@@ -242,9 +242,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
-                // this is static. we always want to fetch to pending
-                // the to is used iwthin the processing of the results
-                to_block: Some(BlockId::Tag(BlockTag::Pending)),
+                // this is static. we always want to fetch to a block tag.
+                // the `to` in the range filter is used within the pre processing of the results
+                to_block: Some(BlockId::Tag(
+                    if self.config.flags.contains(IndexingFlags::PENDING_BLOCKS) {
+                        BlockTag::Pending
+                    } else {
+                        BlockTag::Latest
+                    },
+                )),
                 address: Some(*contract_address),
                 keys: None,
             };
@@ -441,7 +447,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             }
 
                             if is_pending {
-                                cursor.last_pending_block_contract_tx = Some(event.transaction_hash);
+                                cursor.last_pending_block_contract_tx =
+                                    Some(event.transaction_hash);
                             }
                             events.push(event);
                         }
@@ -479,10 +486,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         Ok(all_events)
     }
 
-    pub async fn process(
-        &mut self,
-        range: FetchRangeResult,
-    ) -> Result<()> {
+    pub async fn process(&mut self, range: FetchRangeResult) -> Result<()> {
         let mut processed_blocks = HashSet::new();
 
         // Process all transactions in the chunk
