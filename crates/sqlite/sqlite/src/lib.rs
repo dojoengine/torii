@@ -159,24 +159,28 @@ impl Sql {
     }
 
     pub async fn cursors(&self) -> Result<HashMap<Felt, Cursor>> {
-        let cursors = sqlx::query_as::<_, ContractCursor>(
-            "SELECT * FROM contracts",
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let cursors = sqlx::query_as::<_, ContractCursor>("SELECT * FROM contracts")
+            .fetch_all(&self.pool)
+            .await?;
 
-        Ok(cursors.into_iter().map(|c| {
-            (
-                Felt::from_str(&c.contract_address).expect("Valid contract address felt"),
-            Cursor {
-                last_pending_block_contract_tx: c.last_pending_block_contract_tx.map(|t| Felt::from_str(&t).expect("Valid last pending block contract tx felt")),
-                last_pending_block_tx: c.last_pending_block_tx.map(|t| Felt::from_str(&t).expect("Valid last pending block tx felt")),
-                head: c.head.map(|h| h as u64),
-                last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
-                },)
+        Ok(cursors
+            .into_iter()
+            .map(|c| {
+                (
+                    Felt::from_str(&c.contract_address).expect("Valid contract address felt"),
+                    Cursor {
+                        last_pending_block_contract_tx: c.last_pending_block_contract_tx.map(|t| {
+                            Felt::from_str(&t).expect("Valid last pending block contract tx felt")
+                        }),
+                        last_pending_block_tx: c
+                            .last_pending_block_tx
+                            .map(|t| Felt::from_str(&t).expect("Valid last pending block tx felt")),
+                        head: c.head.map(|h| h as u64),
+                        last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
+                    },
+                )
             })
-            .collect(),
-        )
+            .collect())
     }
 
     pub fn update_cursors(

@@ -302,8 +302,14 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     .await?;
 
                 for cursor in &mut cursors {
-                    let new_cursor = update_cursors.cursors.get(&Felt::from_str(&cursor.contract_address).unwrap()).expect("update cursor not found");
-                    let num_transactions = update_cursors.num_transactions.get(&Felt::from_str(&cursor.contract_address).unwrap()).unwrap_or(&0);
+                    let new_cursor = update_cursors
+                        .cursors
+                        .get(&Felt::from_str(&cursor.contract_address).unwrap())
+                        .expect("update cursor not found");
+                    let num_transactions = update_cursors
+                        .num_transactions
+                        .get(&Felt::from_str(&cursor.contract_address).unwrap())
+                        .unwrap_or(&0);
 
                     let new_head = new_cursor.head.unwrap_or_default() as u64;
                     let new_timestamp = new_cursor.last_block_timestamp.unwrap_or_default() as u64;

@@ -51,14 +51,11 @@ where
         contracts,
     );
 
-    let mut cursors = contracts.iter().map(|c| (
-        c.address,
-        Default::default()
-    )).collect();
-    let data = engine
-        .fetch(&mut cursors)
-        .await
-        .unwrap();
+    let mut cursors = contracts
+        .iter()
+        .map(|c| (c.address, Default::default()))
+        .collect();
+    let data = engine.fetch(&mut cursors).await.unwrap();
     engine.process(data).await.unwrap();
 
     db.apply_cache_diff().await.unwrap();
