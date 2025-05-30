@@ -236,9 +236,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // Create initial batch requests for all contracts
         let mut event_requests = Vec::new();
-        for (contract_address, Cursor { head, .. }) in cursors.iter() {
-            let from = head.map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
+        for (contract_address, cursor) in cursors.iter_mut() {
+            let from = cursor.head.map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
             let to = from + self.config.blocks_chunk_size;
+            cursor.head = Some(to.min(latest_block_number));
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
@@ -309,6 +310,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 .push(event);
         }
 
+        for (_, cursor) in cursors.iter_mut() {
+            if let Some(head) = cursor.head {
+                block_numbers.insert(head);
+            }
+        }
+
         // If transactions indexing flag is enabled, we should batch request all
         // of our recolted transactions
         if self.config.flags.contains(IndexingFlags::TRANSACTIONS) && !transactions.is_empty() {
@@ -371,6 +378,14 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         blocks.insert(*block_number, timestamp);
                     }
                     _ => unreachable!(),
+                }
+            }
+        }
+
+        for (_, cursor) in cursors.iter_mut() {
+            if let Some(head) = cursor.head {
+                if let Some(timestamp) = blocks.get(&head) {
+                    cursor.last_block_timestamp = Some(*timestamp);
                 }
             }
         }
