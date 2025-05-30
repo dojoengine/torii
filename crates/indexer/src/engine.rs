@@ -232,14 +232,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         cursors: &mut HashMap<Felt, Cursor>,
         latest_block_number: u64,
     ) -> Result<FetchRangeResult> {
+        let mut new_cursors = cursors.clone();
         let mut events = vec![];
 
         // Create initial batch requests for all contracts
         let mut event_requests = Vec::new();
-        for (contract_address, cursor) in cursors.iter_mut() {
-            let from = cursor.head.map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
+        for (contract_address, cursor) in new_cursors.iter_mut() {
+            let from = cursor
+                .head
+                .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
             let to = from + self.config.blocks_chunk_size;
-            cursor.head = Some(to.min(latest_block_number));
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
@@ -408,6 +410,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     ) -> Result<Vec<EmittedEvent>> {
         let mut all_events = Vec::new();
         let mut current_requests = initial_requests;
+        let old_cursors = cursors.clone();
 
         while !current_requests.is_empty() {
             let mut next_requests = Vec::new();
@@ -424,8 +427,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             for ((contract_address, to, original_request), result) in
                 current_requests.into_iter().zip(batch_results)
             {
+                let old_cursor = old_cursors.get(&contract_address).unwrap();
                 let cursor = cursors.get_mut(&contract_address).unwrap();
-                let mut last_contract_tx_tmp = cursor.last_pending_block_contract_tx.clone();
+                let mut last_contract_tx_tmp = old_cursor.last_pending_block_contract_tx.clone();
 
                 match result {
                     ProviderResponseData::GetEvents(events_page) => {
@@ -437,7 +441,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             let (block_number, is_pending) = match event.block_number {
                                 Some(block_number) => (block_number, false),
                                 // If we don't have a block number, this must be a pending block event
-                                None => (latest_block_number, true),
+                                None => (latest_block_number + 1, true),
                             };
 
                             last_block_number = Some(block_number);
@@ -456,7 +460,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                             // Skip the latest pending block transaction events
                             // * as we might have multiple events for the same transaction
-                            if let Some(last_contract_tx) = cursor.last_pending_block_contract_tx {
+                            if let Some(last_contract_tx) =
+                                old_cursor.last_pending_block_contract_tx
+                            {
                                 if event.transaction_hash == last_contract_tx {
                                     continue;
                                 }
@@ -469,6 +475,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             }
                             events.push(event);
                         }
+
+                        let new_head = to.min(latest_block_number);
+                        if cursor.head != Some(new_head) {
+                            cursor.last_pending_block_contract_tx = None;
+                        }
+                        cursor.head = Some(new_head);
 
                         // Add continuation request to next_requests instead of recursing
                         if let Some(continuation_token) = events_page.continuation_token {
