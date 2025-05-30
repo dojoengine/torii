@@ -120,7 +120,10 @@ impl Service {
         service
     }
 
-    async fn publish_updates(subs: Arc<EntityManager>, mut entity_receiver: UnboundedReceiver<OptimisticEntity>) {
+    async fn publish_updates(
+        subs: Arc<EntityManager>,
+        mut entity_receiver: UnboundedReceiver<OptimisticEntity>,
+    ) {
         while let Some(entity) = entity_receiver.recv().await {
             // Process each entity in a separate tarefa para permitir concorrência
             let subs = subs.clone();
