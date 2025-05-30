@@ -55,25 +55,6 @@ pub struct EngineConfig {
 }
 
 #[derive(Debug)]
-pub enum FetchDataResult {
-    Range(FetchRangeResult),
-    Pending(FetchPendingResult),
-    None,
-}
-
-impl FetchDataResult {
-    pub fn block_id(&self) -> Option<BlockId> {
-        match self {
-            FetchDataResult::Range(range) => {
-                Some(BlockId::Number(*range.blocks.keys().last().unwrap()))
-            }
-            FetchDataResult::Pending(_pending) => Some(BlockId::Tag(BlockTag::Pending)),
-            FetchDataResult::None => None,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct FetchRangeTransaction {
     // this is Some if the transactions indexing flag
     // is enabled
@@ -239,7 +220,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
     }
 
-    pub async fn fetch_data(&mut self, cursors: &Cursors) -> Result<FetchDataResult> {
+    pub async fn fetch_data(&mut self, cursors: &Cursors) -> Result<FetchRangeResult> {
         let latest_block = self.provider.block_hash_and_number().await?;
         let from = cursors.head.unwrap_or(self.config.world_block);
         // this is non-inclusive. this just means that we stop doing events pages fetches once we
@@ -250,34 +231,19 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             .min(from + self.config.blocks_chunk_size);
 
         let instant = Instant::now();
-        let result = if from < latest_block.block_number {
-            let from = if from == 0 { from } else { from + 1 };
+        let from = if from == 0 { from } else { from + 1 };
 
-            // Fetch all events from 'from' to our blocks chunk size
-            let range = self
-                .fetch_range(from, to, &cursors.cursor_map, latest_block.block_number)
-                .await?;
+        // Fetch all events from 'from' to our blocks chunk size
+        let range = self
+            .fetch(from, to, &cursors.cursor_map, latest_block.block_number)
+            .await?;
 
-            debug!(target: LOG_TARGET, duration = ?instant.elapsed(), from = %from, to = %range.blocks.keys().last().unwrap(), "Fetched data for range.");
-            FetchDataResult::Range(range)
-        } else if self.config.flags.contains(IndexingFlags::PENDING_BLOCKS) {
-            let data = self
-                .fetch_pending(latest_block.clone(), cursors.last_pending_block_tx)
-                .await?;
-            debug!(target: LOG_TARGET, duration = ?instant.elapsed(), latest_block_number = %latest_block.block_number, "Fetched pending data.");
-            if let Some(data) = data {
-                FetchDataResult::Pending(data)
-            } else {
-                FetchDataResult::None
-            }
-        } else {
-            FetchDataResult::None
-        };
+        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), from = %from, to = %range.blocks.keys().last().unwrap(), "Fetched data for range.");
 
-        Ok(result)
+        Ok(range)
     }
 
-    pub async fn fetch_range(
+    pub async fn fetch(
         &self,
         from: u64,
         to: u64,
@@ -321,7 +287,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for event in events {
             let block_number = match event.block_number {
                 Some(block_number) => block_number,
-                None => unreachable!("In fetch range all events should have block number"),
+                // If we don't have a block number, this must be a pending block event
+                None => latest_block_number + 1,
             };
 
             block_numbers.insert(block_number);
@@ -538,16 +505,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }))
     }
 
-    pub async fn process(&mut self, fetch_result: FetchDataResult) -> Result<()> {
-        match fetch_result {
-            FetchDataResult::Range(range) => self.process_range(range).await?,
-            FetchDataResult::Pending(data) => self.process_pending(data).await?,
-            FetchDataResult::None => {}
-        };
-
-        Ok(())
-    }
-
     pub async fn process_pending(&mut self, data: FetchPendingResult) -> Result<()> {
         // Skip transactions that have been processed already
         // Our cursor is the last processed transaction
@@ -606,7 +563,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         Ok(())
     }
 
-    pub async fn process_range(&mut self, range: FetchRangeResult) -> Result<()> {
+    pub async fn process(&mut self, range: FetchRangeResult) -> Result<()> {
         let mut processed_blocks = HashSet::new();
         let mut cursor_map = HashMap::new();
 
