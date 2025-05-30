@@ -311,8 +311,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
                         .unwrap_or(&0);
 
-                    let new_head = new_cursor.head.unwrap_or_default() as u64;
-                    let new_timestamp = new_cursor.last_block_timestamp.unwrap_or_default() as u64;
+                    let new_head = new_cursor.head.unwrap_or_default();
+                    let new_timestamp = new_cursor.last_block_timestamp.unwrap_or_default();
                     let cursor_timestamp = cursor.last_block_timestamp.unwrap_or_default() as u64;
 
                     let new_tps = if new_timestamp - cursor_timestamp != 0 {
@@ -350,8 +350,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                          last_pending_block_tx = ?, last_pending_block_contract_tx = ? WHERE id = \
                          ?",
                     )
-                    .bind(cursor.head.map(|h| h as i64))
-                    .bind(cursor.last_block_timestamp.map(|t| t as i64))
+                    .bind(cursor.head)
+                    .bind(cursor.last_block_timestamp)
                     .bind(&cursor.last_pending_block_tx)
                     .bind(&cursor.last_pending_block_contract_tx)
                     .bind(&cursor.contract_address)

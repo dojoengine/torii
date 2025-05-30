@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -354,12 +355,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for block_number in &block_numbers {
             timestamp_requests.push(ProviderRequestData::GetBlockWithTxHashes(
                 GetBlockWithTxHashesRequest {
-                    block_id: if *block_number > latest_block_number {
-                        BlockId::Tag(BlockTag::Pending)
-                    } else if *block_number == latest_block_number {
-                        BlockId::Tag(BlockTag::Latest)
-                    } else {
-                        BlockId::Number(*block_number)
+                    block_id: match block_number.cmp(&latest_block_number) {
+                        Ordering::Greater => BlockId::Tag(BlockTag::Pending),
+                        Ordering::Equal => BlockId::Tag(BlockTag::Latest),
+                        Ordering::Less => BlockId::Number(*block_number),
                     },
                 },
             ));
@@ -429,7 +428,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             {
                 let old_cursor = old_cursors.get(&contract_address).unwrap();
                 let cursor = cursors.get_mut(&contract_address).unwrap();
-                let mut last_contract_tx_tmp = old_cursor.last_pending_block_contract_tx.clone();
+                let mut last_contract_tx_tmp = old_cursor.last_pending_block_contract_tx;
 
                 match result {
                     ProviderResponseData::GetEvents(events_page) => {
