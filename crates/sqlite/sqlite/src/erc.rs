@@ -140,7 +140,8 @@ impl Sql {
         token_id: U256,
     ) -> Result<()> {
         let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
-        if !self.local_cache.is_token_registered(&id).await {
+        // Skip if metadata was recently updated (within 30 seconds)
+        if !self.local_cache.is_token_registered(&id).await || self.local_cache.is_token_metadata_updated(&id).await {
             return Ok(());
         }
 
@@ -151,12 +152,15 @@ impl Sql {
             "".to_string(),
             vec![],
             QueryType::UpdateNftMetadata(UpdateNftMetadataQuery {
-                id,
+                id: id.clone(),
                 contract_address,
                 token_id,
                 metadata,
             }),
         ))?;
+
+        // Mark token as having metadata updated
+        self.local_cache.mark_token_metadata_updated(&id).await;
 
         Ok(())
     }
