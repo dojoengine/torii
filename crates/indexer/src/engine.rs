@@ -14,10 +14,8 @@ use starknet::core::types::requests::{
     GetBlockWithTxHashesRequest, GetEventsRequest, GetTransactionByHashRequest,
 };
 use starknet::core::types::{
-    BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
-    MaybePendingBlockWithReceipts, MaybePendingBlockWithTxHashes, PendingBlockWithReceipts,
-    ResultPageRequest, Transaction, TransactionExecutionStatus, TransactionReceipt,
-    TransactionWithReceipt,
+    BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
+    MaybePendingBlockWithTxHashes, PendingBlockWithReceipts, ResultPageRequest, Transaction,
 };
 use starknet::macros::selector;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
@@ -27,7 +25,7 @@ use tokio::time::{sleep, Instant};
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
-use torii_sqlite::{Cursors, Sql};
+use torii_sqlite::{Cursor, Sql};
 use tracing::{debug, error, info, trace};
 
 use crate::constants::LOG_TARGET;
@@ -215,50 +213,42 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
     }
 
-    pub async fn fetch(&mut self, cursors: &Cursors) -> Result<FetchRangeResult> {
+    pub async fn fetch(&mut self, cursors: &HashMap<Felt, Cursor>) -> Result<FetchRangeResult> {
         let latest_block = self.provider.block_hash_and_number().await?;
-        let from = cursors.head.unwrap_or(self.config.world_block);
-        // this is non-inclusive. this just means that we stop doing events pages fetches once we
-        // reach a page with an event that is after the latest block. so in our final
-        // commit; we could end up with a higher head than this one.
-        let to = latest_block
-            .block_number
-            .min(from + self.config.blocks_chunk_size);
 
         let instant = Instant::now();
-        let from = if from == 0 { from } else { from + 1 };
-
         // Fetch all events from 'from' to our blocks chunk size
-        let range = self
-            .fetch_range(from, to, &cursors.cursor_map, latest_block.block_number)
-            .await?;
-
-        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), from = %from, to = %range.blocks.keys().last().unwrap(), "Fetched data for range.");
+        let range = self.fetch_range(cursors, latest_block.block_number).await?;
+        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
         Ok(range)
     }
 
     pub async fn fetch_range(
         &self,
-        from: u64,
-        to: u64,
-        cursor_map: &HashMap<Felt, Felt>,
+        cursors: &HashMap<Felt, Cursor>,
         latest_block_number: u64,
     ) -> Result<FetchRangeResult> {
         let mut events = vec![];
 
         // Create initial batch requests for all contracts
         let mut event_requests = Vec::new();
-        for (contract_address, _) in self.contracts.iter() {
+        for (contract_address, Cursor { head, .. }) in cursors.iter() {
+            let from = head.unwrap_or(self.config.world_block);
+            let to = from + self.config.blocks_chunk_size;
+
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
-                to_block: Some(BlockId::Tag(BlockTag::Latest)),
+                // this is static. we always want to fetch to pending
+                // the to is used iwthin the processing of the results
+                to_block: Some(BlockId::Tag(BlockTag::Pending)),
                 address: Some(*contract_address),
                 keys: None,
             };
 
             event_requests.push((
                 *contract_address,
+                to,
                 ProviderRequestData::GetEvents(GetEventsRequest {
                     filter: EventFilterWithPage {
                         event_filter: events_filter,
@@ -272,7 +262,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Recursively fetch all events using batch requests
-        events.extend(self.fetch_events(event_requests, cursor_map, to, latest_block_number).await?);
+        events.extend(
+            self.fetch_events(event_requests, cursors, latest_block_number)
+                .await?,
+        );
 
         // Process events to get unique blocks and transactions
         let mut blocks = BTreeMap::new();
@@ -331,9 +324,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             }
         }
 
-        // Always ensure the latest block number is included
-        block_numbers.insert(to);
-
         // Batch request block timestamps
         let mut timestamp_requests = Vec::new();
         for block_number in &block_numbers {
@@ -378,9 +368,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
     async fn fetch_events(
         &self,
-        initial_requests: Vec<(Felt, ProviderRequestData)>,
-        cursor_map: &HashMap<Felt, Felt>,
-        to: u64,
+        initial_requests: Vec<(Felt, u64, ProviderRequestData)>,
+        cursors: &HashMap<Felt, Cursor>,
         latest_block_number: u64,
     ) -> Result<Vec<EmittedEvent>> {
         let mut all_events = Vec::new();
@@ -393,15 +382,18 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             // Extract just the requests without the contract addresses
             let batch_requests: Vec<ProviderRequestData> = current_requests
                 .iter()
-                .map(|(_, req)| req.clone())
+                .map(|(_, _, req)| req.clone())
                 .collect();
             let batch_results = self.chunked_batch_requests(&batch_requests).await?;
 
             // Process results and prepare next batch of requests if needed
-            for ((contract_address, original_request), result) in
+            for ((contract_address, to, original_request), result) in
                 current_requests.into_iter().zip(batch_results)
             {
-                let last_contract_tx = cursor_map.get(&contract_address).cloned();
+                let last_contract_tx = cursors
+                    .get(&contract_address)
+                    .map(|c| c.last_pending_block_contract_tx.clone())
+                    .flatten();
                 let mut last_contract_tx_tmp = last_contract_tx;
 
                 match result {
@@ -451,6 +443,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                         Some(continuation_token);
                                     next_requests.push((
                                         contract_address,
+                                        to,
                                         ProviderRequestData::GetEvents(next_request),
                                     ));
                                 }
