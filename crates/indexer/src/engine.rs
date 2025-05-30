@@ -237,14 +237,14 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Create initial batch requests for all contracts
         let mut event_requests = Vec::new();
         for (contract_address, Cursor { head, .. }) in cursors.iter() {
-            let from = head.unwrap_or(self.config.world_block);
+            let from = head.map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
             let to = from + self.config.blocks_chunk_size;
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
                 // this is static. we always want to fetch to pending
                 // the to is used iwthin the processing of the results
-                to_block: Some(BlockId::Tag(BlockTag::Latest)),
+                to_block: Some(BlockId::Tag(BlockTag::Pending)),
                 address: Some(*contract_address),
                 keys: None,
             };
@@ -414,7 +414,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             let (block_number, is_pending) = match event.block_number {
                                 Some(block_number) => (block_number, false),
                                 // If we don't have a block number, this must be a pending block event
-                                None => (latest_block_number + 1, true),
+                                None => (latest_block_number, true),
                             };
 
                             last_block_number = Some(block_number);
@@ -447,6 +447,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         }
 
                         // Add continuation request to next_requests instead of recursing
+                        cursor.head = Some(last_block_number.unwrap_or(latest_block_number));
                         if let Some(continuation_token) = events_page.continuation_token {
                             if last_block_number.is_some() && last_block_number.unwrap() < to {
                                 if let ProviderRequestData::GetEvents(mut next_request) =
