@@ -28,6 +28,7 @@ use crate::types::{
     OptimisticEventMessage, ParsedCall, Token, TokenBalance, Transaction,
 };
 use crate::utils::{felt_to_sql_string, felts_to_sql_string, u256_to_sql_string, I256};
+use crate::Cursor;
 
 pub mod erc;
 pub use erc::{RegisterErc20TokenQuery, RegisterNftTokenQuery};
@@ -70,15 +71,6 @@ pub struct ApplyBalanceDiffQuery {
 }
 
 #[derive(Debug, Clone)]
-pub struct UpdateCursorsQuery {
-    // contract => (last_txn, txn_count)
-    pub cursor_map: HashMap<Felt, (Felt, u64)>,
-    pub last_block_number: u64,
-    pub last_block_timestamp: u64,
-    pub last_pending_block_tx: Option<Felt>,
-}
-
-#[derive(Debug, Clone)]
 pub struct EventMessageQuery {
     pub entity_id: String,
     pub model_id: String,
@@ -105,6 +97,12 @@ pub struct EntityQuery {
     pub block_timestamp: String,
     pub is_historical: bool,
     pub ty: Ty,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateCursorsQuery {
+    pub cursors: HashMap<Felt, Cursor>,
+    pub num_transactions: HashMap<Felt, u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -303,55 +301,41 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     .fetch_all(&mut **tx)
                     .await?;
 
-                let new_head = update_cursors.last_block_number;
-                let new_timestamp = update_cursors.last_block_timestamp;
-
                 for cursor in &mut cursors {
-                    if let Some(new_cursor) = update_cursors
-                        .cursor_map
-                        .get(&Felt::from_str(&cursor.contract_address).unwrap())
-                    {
-                        let cursor_timestamp = cursor
-                            .last_block_timestamp
+                    let new_cursor = update_cursors.cursors.get(&Felt::from_str(&cursor.contract_address).unwrap()).expect("update cursor not found");
+                    let num_transactions = update_cursors.num_transactions.get(&Felt::from_str(&cursor.contract_address).unwrap()).unwrap_or(&0);
+
+                    let new_head = new_cursor.head.unwrap_or_default() as u64;
+                    let new_timestamp = new_cursor.last_block_timestamp.unwrap_or_default() as u64;
+                    let cursor_timestamp = cursor.last_block_timestamp.unwrap_or_default() as u64;
+
+                    let new_tps = if new_timestamp - cursor_timestamp != 0 {
+                        num_transactions / (new_timestamp - cursor_timestamp)
+                    } else {
+                        let current_time = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs();
+
+                        let diff = current_time
+                            .checked_sub(cursor_timestamp)
                             .unwrap_or_default();
 
-                        let num_transactions = new_cursor.1;
-
-                        let new_tps = if new_timestamp - cursor_timestamp != 0 {
-                            num_transactions / (new_timestamp - cursor_timestamp)
+                        if diff > 0 {
+                            num_transactions / diff
                         } else {
-                            let current_time = SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs();
+                            *num_transactions
+                        }
+                    };
 
-                            let diff = current_time
-                                .checked_sub(cursor_timestamp)
-                                .unwrap_or_default();
-
-                            if diff > 0 {
-                                num_transactions / diff
-                            } else {
-                                num_transactions
-                            }
-                        };
-
-                        cursor.last_pending_block_contract_tx =
-                            if update_cursors.last_pending_block_tx.is_some() {
-                                Some(felt_to_sql_string(&new_cursor.0))
-                            } else {
-                                None
-                            };
-                        cursor.tps = Some(new_tps.try_into().expect("does't fit in i64"));
-                    } else {
-                        cursor.tps = Some(0);
-                        cursor.last_pending_block_contract_tx = None;
-                    }
-                    cursor.last_block_timestamp = Some(
-                        new_timestamp.try_into().expect("doesn't fit in i64"),
-                    );
-                    cursor.head = Some(new_head);
-                    cursor.last_pending_block_tx = update_cursors
+                    cursor.last_pending_block_contract_tx = new_cursor
+                        .last_pending_block_contract_tx
+                        .map(|felt| felt_to_sql_string(&felt));
+                    cursor.tps = Some(new_tps.try_into().expect("does't fit in i64"));
+                    cursor.last_block_timestamp =
+                        Some(new_timestamp.try_into().expect("doesn't fit in i64"));
+                    cursor.head = Some(new_head as i64);
+                    cursor.last_pending_block_tx = new_cursor
                         .last_pending_block_tx
                         .map(|felt| felt_to_sql_string(&felt));
 

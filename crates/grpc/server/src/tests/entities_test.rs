@@ -137,12 +137,12 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         contracts,
     );
 
-    let cursors = contracts.iter().map(|c| (
+    let mut cursors = contracts.iter().map(|c| (
         c.address,
         Default::default()
     )).collect();
     let data = engine
-        .fetch(&cursors)
+        .fetch(&mut cursors)
         .await
         .unwrap();
     engine.process(data).await.unwrap();

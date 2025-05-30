@@ -73,6 +73,7 @@ pub struct Cursor {
     pub last_pending_block_contract_tx: Option<Felt>,
     pub last_pending_block_tx: Option<Felt>,
     pub head: Option<u64>,
+    pub last_block_timestamp: Option<u64>,
 }
 
 impl Sql {
@@ -159,7 +160,7 @@ impl Sql {
 
     pub async fn cursors(&self) -> Result<HashMap<Felt, Cursor>> {
         let cursors = sqlx::query_as::<_, ContractCursor>(
-            "SELECT head, contract_address, last_pending_block_contract_tx, last_pending_block_tx FROM contracts",
+            "SELECT * FROM contracts",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -170,7 +171,8 @@ impl Sql {
             Cursor {
                 last_pending_block_contract_tx: c.last_pending_block_contract_tx.map(|t| Felt::from_str(&t).expect("Valid last pending block contract tx felt")),
                 last_pending_block_tx: c.last_pending_block_tx.map(|t| Felt::from_str(&t).expect("Valid last pending block tx felt")),
-                head: c.head,
+                head: c.head.map(|h| h as u64),
+                last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
                 },)
             })
             .collect(),
@@ -179,19 +181,15 @@ impl Sql {
 
     pub fn update_cursors(
         &mut self,
-        last_block_number: u64,
-        last_block_timestamp: u64,
-        last_pending_block_tx: Option<Felt>,
-        cursor_map: HashMap<Felt, (Felt, u64)>,
+        cursors: HashMap<Felt, Cursor>,
+        num_transactions: HashMap<Felt, u64>,
     ) -> Result<()> {
         self.executor.send(QueryMessage::new(
             "".to_string(),
             vec![],
             QueryType::UpdateCursors(UpdateCursorsQuery {
-                cursor_map,
-                last_pending_block_tx,
-                last_block_number,
-                last_block_timestamp,
+                cursors,
+                num_transactions,
             }),
         ))?;
         Ok(())
