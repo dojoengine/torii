@@ -1,7 +1,6 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use cainome::cairo_serde::CairoSerde;
 use starknet::core::types::{BlockId, BlockTag, FunctionCall, U256};
 use starknet::core::utils::get_selector_from_name;
@@ -11,6 +10,7 @@ use tracing::{debug, warn};
 
 use super::{ApplyBalanceDiffQuery, BrokerMessage, Executor};
 use crate::constants::{SQL_FELT_DELIMITER, TOKEN_BALANCE_TABLE};
+use crate::error::Error;
 use crate::executor::LOG_TARGET;
 use crate::simple_broker::SimpleBroker;
 use crate::types::{OptimisticTokenBalance, TokenBalance};
@@ -46,7 +46,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         &mut self,
         apply_balance_diff: ApplyBalanceDiffQuery,
         provider: Arc<P>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let erc_cache = apply_balance_diff.erc_cache;
         for (id_str, balance) in erc_cache.iter() {
             let id = id_str.split(SQL_FELT_DELIMITER).collect::<Vec<&str>>();
@@ -100,7 +100,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         token_id: &str,
         balance_diff: &I256,
         provider: Arc<P>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let tx = &mut self.transaction;
         let balance: Option<(String,)> = sqlx::query_as(&format!(
             "SELECT balance FROM {TOKEN_BALANCE_TABLE} WHERE id = ?"
@@ -130,8 +130,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         },
                         BlockId::Tag(BlockTag::Pending),
                     )
-                    .await
-                    .with_context(|| format!("Failed to fetch balance for id: {}", id))?;
+                    .await?;
 
                 let current_balance =
                     cainome::cairo_serde::U256::cairo_deserialize(&current_balance, 0).unwrap();

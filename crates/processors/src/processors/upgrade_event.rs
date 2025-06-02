@@ -79,7 +79,7 @@ where
                 );
                 return Ok(());
             }
-            Err(e) => return Err(e),
+            Err(e) => return Err(e.into()),
         };
         let name = model.name;
         let namespace = model.namespace;
