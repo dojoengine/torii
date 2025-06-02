@@ -11,6 +11,7 @@ use torii_sqlite::Sql;
 
 pub mod processors;
 pub mod task_manager;
+pub mod error;
 
 use crate::task_manager::TaskId;
 

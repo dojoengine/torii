@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Result;
 use dojo_world::contracts::WorldContractReader;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
@@ -9,6 +8,7 @@ use torii_sqlite::Sql;
 use torii_task_network::TaskNetwork;
 use tracing::{debug, error};
 
+use crate::error::Error;
 use crate::processors::Processors;
 use crate::EventProcessorConfig;
 
@@ -110,7 +110,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         }
     }
 
-    pub async fn process_tasks(&mut self) -> Result<()> {
+    pub async fn process_tasks(&mut self) -> Result<(), Error> {
         if self.task_network.is_empty() {
             return Ok(());
         }
@@ -181,7 +181,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                 }
             })
             .await
-            .map_err(|e| anyhow::anyhow!("Task network error: {}", e))
+            .map_err(|e| Error::TaskNetworkError(e))?;
+
+        Ok(())
     }
 
     pub fn clear_tasks(&mut self) {
