@@ -76,11 +76,12 @@ where
             .map_err(TaskNetworkError::GraphError)
     }
 
-    pub async fn process_tasks<F, Fut, O>(&mut self, task_handler: F) -> Result<()>
+    pub async fn process_tasks<F, Fut, O, E>(&mut self, task_handler: F) -> Result<()>
     where
         F: Fn(K, T) -> Fut + Clone + Send + Sync + 'static,
-        Fut: Future<Output = anyhow::Result<O>> + Send,
+        Fut: Future<Output = std::result::Result<O, E>> + Send,
         O: Send,
+        E: std::error::Error + Send + Sync + 'static,
     {
         if self.tasks.is_empty() {
             return Ok(());
@@ -128,7 +129,7 @@ where
                                 level = level_idx,
                                 "Error processing task."
                             );
-                            Err(e)
+                            Err(TaskNetworkError::TaskError(Box::new(e)))
                         }
                     }
                 }));
@@ -138,7 +139,7 @@ where
                 .await
                 .map_err(TaskNetworkError::JoinError)?;
             for result in results {
-                result.map_err(TaskNetworkError::TaskError)?;
+                result?;
             }
         }
 
@@ -184,7 +185,7 @@ mod tests {
                 async move {
                     let mut locked_results = results.lock().await;
                     locked_results.push((id, task));
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, std::io::Error>(())
                 }
             })
             .await
@@ -219,7 +220,7 @@ mod tests {
                 async move {
                     let mut locked = executed.lock().await;
                     locked.push(id);
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, std::io::Error>(())
                 }
             })
             .await
@@ -250,7 +251,7 @@ mod tests {
                 async move {
                     let mut locked = executed.lock().await;
                     locked.push(id);
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, std::io::Error>(())
                 }
             })
             .await
@@ -315,7 +316,7 @@ mod tests {
                         }
                     }
 
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, std::io::Error>(())
                 }
             })
             .await
@@ -366,7 +367,7 @@ mod tests {
                 async move {
                     let mut locked = executed.lock().await;
                     locked.push(id);
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, std::io::Error>(())
                 }
             })
             .await

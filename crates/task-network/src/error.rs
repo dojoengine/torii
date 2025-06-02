@@ -12,5 +12,5 @@ pub enum TaskNetworkError {
     JoinError(#[from] tokio::task::JoinError),
 
     #[error("Task error: {0}")]
-    TaskError(anyhow::Error),
+    TaskError(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
