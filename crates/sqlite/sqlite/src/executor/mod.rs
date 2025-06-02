@@ -20,7 +20,8 @@ use torii_sqlite_types::OptimisticToken;
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
-use crate::error::{Error, ParseError};
+use crate::error::ParseError;
+use crate::executor::error::{ExecutorError, ExecutorQueryError};
 use crate::simple_broker::SimpleBroker;
 use crate::types::{
     ContractCursor, Entity as EntityUpdated, Event as EventEmitted,
@@ -31,9 +32,13 @@ use crate::utils::{felt_to_sql_string, felts_to_sql_string, u256_to_sql_string, 
 use crate::Cursor;
 
 pub mod erc;
+pub mod error;
 pub use erc::{RegisterErc20TokenQuery, RegisterNftTokenQuery};
 
 pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor";
+
+pub type Result<T> = std::result::Result<T, ExecutorError>;
+pub type QueryResult<T> = std::result::Result<T, ExecutorQueryError>;
 
 #[derive(Debug, Clone)]
 pub enum Argument {
@@ -141,7 +146,7 @@ pub struct QueryMessage {
     pub statement: String,
     pub arguments: Vec<Argument>,
     pub query_type: QueryType,
-    tx: Option<oneshot::Sender<Result<(), Error>>>,
+    tx: Option<oneshot::Sender<Result<()>>>,
 }
 
 impl QueryMessage {
@@ -158,7 +163,7 @@ impl QueryMessage {
         statement: String,
         arguments: Vec<Argument>,
         query_type: QueryType,
-    ) -> (Self, oneshot::Receiver<Result<(), Error>>) {
+    ) -> (Self, oneshot::Receiver<Result<()>>) {
         let (tx, rx) = oneshot::channel();
         (
             Self {
@@ -183,7 +188,7 @@ impl QueryMessage {
     pub fn other_recv(
         statement: String,
         arguments: Vec<Argument>,
-    ) -> (Self, oneshot::Receiver<Result<(), Error>>) {
+    ) -> (Self, oneshot::Receiver<Result<()>>) {
         let (tx, rx) = oneshot::channel();
         (
             Self {
@@ -205,7 +210,7 @@ impl QueryMessage {
         }
     }
 
-    pub fn execute_recv() -> (Self, oneshot::Receiver<Result<(), Error>>) {
+    pub fn execute_recv() -> (Self, oneshot::Receiver<Result<()>>) {
         let (tx, rx) = oneshot::channel();
         (
             Self {
@@ -218,7 +223,7 @@ impl QueryMessage {
         )
     }
 
-    pub fn rollback_recv() -> (Self, oneshot::Receiver<Result<(), Error>>) {
+    pub fn rollback_recv() -> (Self, oneshot::Receiver<Result<()>>) {
         let (tx, rx) = oneshot::channel();
         (
             Self {
@@ -237,7 +242,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         pool: Pool<Sqlite>,
         shutdown_tx: Sender<()>,
         provider: Arc<P>,
-    ) -> Result<(Self, UnboundedSender<QueryMessage>), Error> {
+    ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
         let (tx, rx) = unbounded_channel();
         let transaction = pool.begin().await?;
         let publish_queue = Vec::new();
@@ -256,7 +261,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         ))
     }
 
-    pub async fn run(&mut self) -> Result<(), Error> {
+    pub async fn run(&mut self) -> Result<()> {
         loop {
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
@@ -270,7 +275,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     match self.handle_query_message(msg).await {
                         Ok(()) => {},
                         Err(e) => {
-                            error!(target: LOG_TARGET, r#type = ?query_type, error = %e, "Failed to execute query.");
+                            error!(target: LOG_TARGET, r#type = ?query_type, error = ?e, "Failed to execute query.");
                             debug!(target: LOG_TARGET, query = ?statement, arguments = ?arguments, "Failed to execute query.");
                         }
                     }
@@ -279,7 +284,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         }
     }
 
-    async fn handle_query_message(&mut self, query_message: QueryMessage) -> Result<(), Error> {
+    async fn handle_query_message(&mut self, query_message: QueryMessage) -> QueryResult<()> {
         let tx = &mut self.transaction;
 
         let mut query = sqlx::query(&query_message.statement);
@@ -437,7 +442,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     entity_counter += 1;
 
                     let data = serde_json::to_string(&entity.ty.to_json_value()?)
-                        .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+                        .map_err(|e| ExecutorQueryError::Parse(ParseError::FromJsonStr(e)))?;
                     if let Some(keys) = entity.keys_str {
                         sqlx::query(
                             "INSERT INTO entities_historical (id, keys, event_id, data, model_id, \
@@ -557,7 +562,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     event_counter += 1;
 
                     let data = serde_json::to_string(&em_query.ty.to_json_value()?)
-                        .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+                        .map_err(|e| ExecutorQueryError::Parse(ParseError::FromJsonStr(e)))?;
                     sqlx::query(
                         "INSERT INTO event_messages_historical (id, keys, event_id, data, \
                          model_id, executed_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *",
@@ -655,16 +660,22 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                                 let name = match &results[0] {
                                     ProviderResponseData::Call(name) if name.len() == 1 => {
                                         parse_cairo_short_string(&name[0]).map_err(|e| {
-                                            Error::Parse(ParseError::ParseCairoShortString(e))
+                                            ExecutorQueryError::Parse(
+                                                ParseError::ParseCairoShortString(e),
+                                            )
                                         })?
                                     }
                                     ProviderResponseData::Call(name) => {
                                         ByteArray::cairo_deserialize(name, 0)
                                             .map_err(|e| {
-                                                Error::Parse(ParseError::CairoSerdeError(e))
+                                                ExecutorQueryError::Parse(
+                                                    ParseError::CairoSerdeError(e),
+                                                )
                                             })?
                                             .to_string()
-                                            .map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?
+                                            .map_err(|e| {
+                                                ExecutorQueryError::Parse(ParseError::FromUtf8(e))
+                                            })?
                                     }
                                     _ => String::new(),
                                 };
@@ -673,16 +684,22 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                                 let symbol = match &results[1] {
                                     ProviderResponseData::Call(symbol) if symbol.len() == 1 => {
                                         parse_cairo_short_string(&symbol[0]).map_err(|e| {
-                                            Error::Parse(ParseError::ParseCairoShortString(e))
+                                            ExecutorQueryError::Parse(
+                                                ParseError::ParseCairoShortString(e),
+                                            )
                                         })?
                                     }
                                     ProviderResponseData::Call(symbol) => {
                                         ByteArray::cairo_deserialize(symbol, 0)
                                             .map_err(|e| {
-                                                Error::Parse(ParseError::CairoSerdeError(e))
+                                                ExecutorQueryError::Parse(
+                                                    ParseError::CairoSerdeError(e),
+                                                )
                                             })?
                                             .to_string()
-                                            .map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?
+                                            .map_err(|e| {
+                                                ExecutorQueryError::Parse(ParseError::FromUtf8(e))
+                                            })?
                                     }
                                     _ => String::new(),
                                 };
@@ -740,10 +757,10 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
 
                 if let Some(sender) = query_message.tx {
                     if let Err(e) = sender.send(res) {
-                        e?;
+                        e.map_err(ExecutorQueryError::Executor)?;
                     }
                 } else {
-                    res?;
+                    res.map_err(ExecutorQueryError::Executor)?;
                 }
             }
             QueryType::Rollback => {
@@ -754,10 +771,10 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
 
                 if let Some(sender) = query_message.tx {
                     if let Err(e) = sender.send(res) {
-                        e?;
+                        e.map_err(ExecutorQueryError::Executor)?;
                     }
                 } else {
-                    res?;
+                    res.map_err(ExecutorQueryError::Executor)?;
                 }
             }
             QueryType::UpdateNftMetadata(update_metadata) => {
@@ -785,7 +802,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         Ok(())
     }
 
-    async fn execute(&mut self) -> Result<(), Error> {
+    async fn execute(&mut self) -> Result<()> {
         let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
         transaction.commit().await?;
         self.pool
@@ -799,7 +816,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         Ok(())
     }
 
-    async fn rollback(&mut self) -> Result<(), Error> {
+    async fn rollback(&mut self) -> Result<()> {
         let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
         transaction.rollback().await?;
         self.pool

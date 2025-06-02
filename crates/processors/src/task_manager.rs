@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Result;
 use dojo_world::contracts::WorldContractReader;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
@@ -9,6 +8,7 @@ use torii_sqlite::Sql;
 use torii_task_network::TaskNetwork;
 use tracing::{debug, error};
 
+use crate::error::Error;
 use crate::processors::Processors;
 use crate::EventProcessorConfig;
 
@@ -72,7 +72,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             if let Err(e) = self.task_network.add_task(task_identifier, task_data) {
                 error!(
                     target: LOG_TARGET,
-                    error = %e,
+                    error = ?e,
                     task_id = %task_identifier,
                     "Failed to add task to network."
                 );
@@ -100,7 +100,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             ) {
                 error!(
                     target: LOG_TARGET,
-                    error = %e,
+                    error = ?e,
                     task_id = %task_identifier,
                     dependencies = ?dependencies,
                     parallelized_event = ?parallelized_event,
@@ -110,7 +110,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         }
     }
 
-    pub async fn process_tasks(&mut self) -> Result<()> {
+    pub async fn process_tasks(&mut self) -> Result<(), Error> {
         if self.task_network.is_empty() {
             return Ok(());
         }
@@ -168,7 +168,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 error!(
                                     target: LOG_TARGET,
                                     event_name = processor.event_key(),
-                                    error = %e,
+                                    error = ?e,
                                     task_id = %task_id,
                                     "Processing parallelized event."
                                 );
@@ -177,11 +177,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         }
                     }
 
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, Error>(())
                 }
             })
             .await
-            .map_err(|e| anyhow::anyhow!("Task network error: {}", e))
+            .map_err(Error::TaskNetworkError)?;
+
+        Ok(())
     }
 
     pub fn clear_tasks(&mut self) {

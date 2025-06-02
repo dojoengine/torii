@@ -8,8 +8,6 @@ use starknet::core::utils::{
 };
 use starknet::providers::ProviderError;
 
-use crate::executor::QueryMessage;
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Parsing error: {0}")]
@@ -19,7 +17,7 @@ pub enum Error {
     #[error(transparent)]
     Query(#[from] QueryError),
     #[error(transparent)]
-    Metadata(#[from] MetadataError),
+    TokenMetadata(#[from] TokenMetadataError),
     #[error(transparent)]
     PrimitiveError(#[from] PrimitiveError),
     #[error(transparent)]
@@ -27,17 +25,17 @@ pub enum Error {
     #[error(transparent)]
     ProviderError(#[from] ProviderError),
     #[error(transparent)]
-    ExecutorSendError(#[from] tokio::sync::mpsc::error::SendError<QueryMessage>),
-    #[error(transparent)]
-    ExecutorRecvError(#[from] tokio::sync::oneshot::error::RecvError),
+    Executor(#[from] crate::executor::error::ExecutorError),
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum MetadataError {
+pub enum TokenMetadataError {
     #[error(transparent)]
-    IpfsError(#[from] ipfs_api_backend_hyper::Error),
+    Parse(#[from] ParseError),
     #[error(transparent)]
-    DataUrlError(#[from] data_url::DataUrlError),
+    Ipfs(#[from] ipfs_api_backend_hyper::Error),
+    #[error(transparent)]
+    DataUrl(#[from] data_url::DataUrlError),
     #[error(transparent)]
     InvalidBase64(#[from] data_url::forgiving_base64::InvalidBase64),
     #[error(transparent)]
@@ -82,6 +80,8 @@ pub enum ParseError {
     FromJsonStr(#[from] serde_json::Error),
     #[error(transparent)]
     FromSlice(#[from] std::array::TryFromSliceError),
+    #[error(transparent)]
+    Utf8Error(#[from] std::str::Utf8Error),
     #[error(transparent)]
     FromUtf8(#[from] std::string::FromUtf8Error),
     #[error("Entity is not a struct")]

@@ -134,7 +134,7 @@ impl Service {
     ) {
         while let Some(balance) = balance_receiver.recv().await {
             if let Err(e) = Self::process_balance_update(&subs, &balance).await {
-                error!(target = LOG_TARGET, error = %e, "Processing balance update.");
+                error!(target = LOG_TARGET, error = ?e, "Processing balance update.");
             }
         }
     }
@@ -220,7 +220,7 @@ impl Future for Service {
 
         while let Poll::Ready(Some(balance)) = this.simple_broker.poll_next_unpin(cx) {
             if let Err(e) = this.balance_sender.send(balance) {
-                error!(target = LOG_TARGET, error = %e, "Sending balance update to processor.");
+                error!(target = LOG_TARGET, error = ?e, "Sending balance update to processor.");
             }
         }
 

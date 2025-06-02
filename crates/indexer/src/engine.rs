@@ -190,7 +190,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     debug!(target: LOG_TARGET, "Updated cursors, applied cache diff and executed.");
                                 },
                                 Err(e) => {
-                                    error!(target: LOG_TARGET, error = %e, "Processing fetched data.");
+                                    error!(target: LOG_TARGET, error = ?e, "Processing fetched data.");
                                     erroring_out = true;
                                     self.db.rollback().await?;
                                     self.task_manager.clear_tasks();
@@ -204,7 +204,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         }
                         Err(e) => {
                             erroring_out = true;
-                            error!(target: LOG_TARGET, error = %e, "Fetching data.");
+                            error!(target: LOG_TARGET, error = ?e, "Fetching data.");
                             sleep(backoff_delay).await;
                             if backoff_delay < max_backoff_delay {
                                 backoff_delay *= 2;
@@ -539,7 +539,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Process parallelized events
-        self.task_manager.process_tasks().await?;
+        self.task_manager
+            .process_tasks()
+            .await
+            .map_err(ProcessError::Processors)?;
 
         Ok(())
     }
@@ -672,7 +675,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         if self.config.flags.contains(IndexingFlags::RAW_EVENTS) {
             self.db
                 .store_event(event_id, event, transaction_hash, block_timestamp)
-                .map_err(ProcessError::SqliteError)?;
+                .map_err(ProcessError::Sqlite)?;
         }
 
         let event_key = event.keys[0];
@@ -695,7 +698,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     )
                     .await
                 {
-                    error!(target: LOG_TARGET, error = %e, "Processing catch all event processor.");
+                    error!(target: LOG_TARGET, error = ?e, "Processing catch all event processor.");
                     return Err(e.into());
                 }
             } else {

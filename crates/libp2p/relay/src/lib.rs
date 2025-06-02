@@ -254,7 +254,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 Err(e) => {
                                     warn!(
                                         target: LOG_TARGET,
-                                        error = %e,
+                                        error = ?e,
                                         "Deserializing message."
                                     );
                                     continue;
@@ -268,7 +268,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 Err(e) => {
                                     warn!(
                                         target: LOG_TARGET,
-                                        error = %e,
+                                        error = ?e,
                                         "Validating message."
                                     );
                                     continue;
@@ -289,7 +289,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 Err(e) => {
                                     warn!(
                                         target: LOG_TARGET,
-                                        error = %e,
+                                        error = ?e,
                                         "Acquiring pool."
                                     );
                                     continue;
@@ -301,7 +301,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 Err(e) => {
                                     warn!(
                                         target: LOG_TARGET,
-                                        error = %e,
+                                        error = ?e,
                                         "Retrieving message model keys."
                                     );
                                     continue;
@@ -325,7 +325,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 Err(e) => {
                                     warn!(
                                         target: LOG_TARGET,
-                                        error = %e,
+                                        error = ?e,
                                         "Fetching entity."
                                     );
                                     continue;
@@ -338,7 +338,7 @@ impl<P: Provider + Sync> Relay<P> {
                                     Err(e) => {
                                         warn!(
                                             target: LOG_TARGET,
-                                            error = %e,
+                                            error = ?e,
                                             "Parsing identity."
                                         );
                                         continue;
@@ -349,7 +349,7 @@ impl<P: Provider + Sync> Relay<P> {
                                     Err(e) => {
                                         warn!(
                                             target: LOG_TARGET,
-                                            error = %e,
+                                            error = ?e,
                                             "Getting identity from message."
                                         );
                                         continue;
@@ -374,7 +374,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 Err(e) => {
                                     warn!(
                                         target: LOG_TARGET,
-                                        error = %e,
+                                        error = ?e,
                                         "Verifying signature."
                                     );
                                     continue;
@@ -402,7 +402,7 @@ impl<P: Provider + Sync> Relay<P> {
                             {
                                 warn!(
                                     target: LOG_TARGET,
-                                    error = %e,
+                                    error = ?e,
                                     "Setting message."
                                 );
                                 continue;
@@ -441,7 +441,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 )) => {}
                                 Err(e) => warn!(
                                     target: LOG_TARGET,
-                                    error = %e,
+                                    error = ?e,
                                     "Publishing message to peers."
                                 ),
                             }

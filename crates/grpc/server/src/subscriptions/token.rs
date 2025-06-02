@@ -127,7 +127,7 @@ impl Service {
     ) {
         while let Some(token) = token_receiver.recv().await {
             if let Err(e) = Self::process_token_update(&subs, &token).await {
-                error!(target = LOG_TARGET, error = %e, "Processing token update.");
+                error!(target = LOG_TARGET, error = ?e, "Processing token update.");
             }
         }
     }
@@ -200,7 +200,7 @@ impl Future for Service {
 
         while let Poll::Ready(Some(token)) = this.simple_broker.poll_next_unpin(cx) {
             if let Err(e) = this.token_sender.send(token) {
-                error!(target = LOG_TARGET, error = %e, "Sending token update to processor.");
+                error!(target = LOG_TARGET, error = ?e, "Sending token update to processor.");
             }
         }
 

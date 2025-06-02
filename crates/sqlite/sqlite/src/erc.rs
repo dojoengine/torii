@@ -14,8 +14,9 @@ use tracing::{debug, warn};
 use super::utils::{u256_to_sql_string, I256};
 use super::{Sql, SQL_FELT_DELIMITER};
 use crate::constants::TOKEN_TRANSFER_TABLE;
-use crate::error::{Error, MetadataError, ParseError};
+use crate::error::{Error, ParseError, TokenMetadataError};
 use crate::executor::erc::{RegisterNftTokenQuery, UpdateNftMetadataQuery};
+use crate::executor::error::ExecutorError;
 use crate::executor::{
     ApplyBalanceDiffQuery, Argument, QueryMessage, QueryType, RegisterErc20TokenQuery,
 };
@@ -148,19 +149,21 @@ impl Sql {
             .nft_metadata_semaphore
             .acquire()
             .await
-            .map_err(|e| Error::Metadata(MetadataError::AcquireError(e)))?;
+            .map_err(|e| Error::TokenMetadata(TokenMetadataError::AcquireError(e)))?;
         let metadata = fetch_token_metadata(contract_address, token_id, provider).await?;
 
-        self.executor.send(QueryMessage::new(
-            "".to_string(),
-            vec![],
-            QueryType::UpdateNftMetadata(UpdateNftMetadataQuery {
-                id,
-                contract_address,
-                token_id,
-                metadata,
-            }),
-        ))?;
+        self.executor
+            .send(QueryMessage::new(
+                "".to_string(),
+                vec![],
+                QueryType::UpdateNftMetadata(UpdateNftMetadataQuery {
+                    id,
+                    contract_address,
+                    token_id,
+                    metadata,
+                }),
+            ))
+            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
 
         Ok(())
     }
@@ -217,7 +220,7 @@ impl Sql {
                 .map_err(|e| Error::Parse(ParseError::CairoSerdeError(e)))?
                 .to_string()
                 .map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?,
-            _ => return Err(Error::Metadata(MetadataError::InvalidTokenName)),
+            _ => return Err(Error::TokenMetadata(TokenMetadataError::InvalidTokenName)),
         };
 
         // Parse symbol
@@ -230,27 +233,33 @@ impl Sql {
                 .map_err(|e| Error::Parse(ParseError::CairoSerdeError(e)))?
                 .to_string()
                 .map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?,
-            _ => return Err(Error::Metadata(MetadataError::InvalidTokenSymbol)),
+            _ => return Err(Error::TokenMetadata(TokenMetadataError::InvalidTokenSymbol)),
         };
 
         // Parse decimals
         let decimals = match &results[2] {
             ProviderResponseData::Call(decimals) => u8::cairo_deserialize(decimals, 0)
                 .map_err(|e| Error::Parse(ParseError::CairoSerdeError(e)))?,
-            _ => return Err(Error::Metadata(MetadataError::InvalidTokenDecimals)),
+            _ => {
+                return Err(Error::TokenMetadata(
+                    TokenMetadataError::InvalidTokenDecimals,
+                ))
+            }
         };
 
-        self.executor.send(QueryMessage::new(
-            "".to_string(),
-            vec![],
-            QueryType::RegisterErc20Token(RegisterErc20TokenQuery {
-                token_id: token_id.to_string(),
-                contract_address,
-                name,
-                symbol,
-                decimals,
-            }),
-        ))?;
+        self.executor
+            .send(QueryMessage::new(
+                "".to_string(),
+                vec![],
+                QueryType::RegisterErc20Token(RegisterErc20TokenQuery {
+                    token_id: token_id.to_string(),
+                    contract_address,
+                    name,
+                    symbol,
+                    decimals,
+                }),
+            ))
+            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
 
         self.local_cache.mark_token_registered(token_id).await;
 
@@ -274,19 +283,21 @@ impl Sql {
             .nft_metadata_semaphore
             .acquire()
             .await
-            .map_err(|e| Error::Metadata(MetadataError::AcquireError(e)))?;
+            .map_err(|e| Error::TokenMetadata(TokenMetadataError::AcquireError(e)))?;
         let metadata = fetch_token_metadata(contract_address, actual_token_id, provider).await?;
 
-        self.executor.send(QueryMessage::new(
-            "".to_string(),
-            vec![],
-            QueryType::RegisterNftToken(RegisterNftTokenQuery {
-                id: id.to_string(),
-                contract_address,
-                token_id: actual_token_id,
-                metadata,
-            }),
-        ))?;
+        self.executor
+            .send(QueryMessage::new(
+                "".to_string(),
+                vec![],
+                QueryType::RegisterNftToken(RegisterNftTokenQuery {
+                    id: id.to_string(),
+                    contract_address,
+                    token_id: actual_token_id,
+                    metadata,
+                }),
+            ))
+            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
 
         self.local_cache.mark_token_registered(id).await;
 
@@ -310,20 +321,22 @@ impl Sql {
              amount, token_id, event_id, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING"
         );
 
-        self.executor.send(QueryMessage::new(
-            insert_query.to_string(),
-            vec![
-                Argument::String(id),
-                Argument::FieldElement(contract_address),
-                Argument::FieldElement(from),
-                Argument::FieldElement(to),
-                Argument::String(u256_to_sql_string(&amount)),
-                Argument::String(token_id.to_string()),
-                Argument::String(event_id.to_string()),
-                Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
-            ],
-            QueryType::Other,
-        ))?;
+        self.executor
+            .send(QueryMessage::new(
+                insert_query.to_string(),
+                vec![
+                    Argument::String(id),
+                    Argument::FieldElement(contract_address),
+                    Argument::FieldElement(from),
+                    Argument::FieldElement(to),
+                    Argument::String(u256_to_sql_string(&amount)),
+                    Argument::String(token_id.to_string()),
+                    Argument::String(event_id.to_string()),
+                    Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
+                ],
+                QueryType::Other,
+            ))
+            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
 
         Ok(())
     }
@@ -331,13 +344,15 @@ impl Sql {
     pub async fn apply_cache_diff(&mut self) -> Result<(), Error> {
         if !self.local_cache.erc_cache.read().await.is_empty() {
             let mut erc_cache = self.local_cache.erc_cache.write().await;
-            self.executor.send(QueryMessage::new(
-                "".to_string(),
-                vec![],
-                QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery {
-                    erc_cache: mem::replace(&mut erc_cache, HashMap::with_capacity(64)),
-                }),
-            ))?;
+            self.executor
+                .send(QueryMessage::new(
+                    "".to_string(),
+                    vec![],
+                    QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery {
+                        erc_cache: mem::replace(&mut erc_cache, HashMap::with_capacity(64)),
+                    }),
+                ))
+                .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
         }
         Ok(())
     }
@@ -347,7 +362,7 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
     provider: &P,
     contract_address: Felt,
     token_id: U256,
-) -> Result<String, Error> {
+) -> Result<String, TokenMetadataError> {
     let token_uri = if let Ok(token_uri) = provider
         .call(
             FunctionCall {
@@ -396,14 +411,14 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
     let mut token_uri = if let Ok(byte_array) = ByteArray::cairo_deserialize(&token_uri, 0) {
         byte_array
             .to_string()
-            .map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?
+            .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?
     } else if let Ok(felt_array) = Vec::<Felt>::cairo_deserialize(&token_uri, 0) {
         felt_array
             .iter()
             .map(parse_cairo_short_string)
             .collect::<Result<Vec<String>, _>>()
             .map(|strings| strings.join(""))
-            .map_err(|e| Error::Parse(ParseError::ParseCairoShortString(e)))?
+            .map_err(|e| TokenMetadataError::Parse(ParseError::ParseCairoShortString(e)))?
     } else {
         debug!(
             contract_address = format!("{:#x}", contract_address),
@@ -425,7 +440,7 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
     contract_address: Felt,
     token_id: U256,
     provider: &P,
-) -> Result<String, Error> {
+) -> Result<String, TokenMetadataError> {
     let token_uri = fetch_token_uri(provider, contract_address, token_id).await?;
 
     if token_uri.is_empty() {
@@ -434,9 +449,8 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
 
     let metadata = fetch_metadata(&token_uri).await;
     match metadata {
-        Ok(metadata) => {
-            serde_json::to_string(&metadata).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))
-        }
+        Ok(metadata) => serde_json::to_string(&metadata)
+            .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e))),
         Err(_) => {
             warn!(
                 contract_address = format!("{:#x}", contract_address),
@@ -451,7 +465,7 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
 
 // given a uri which can be either http/https url or data uri, fetch the metadata erc721
 // metadata json schema
-pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, Error> {
+pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, TokenMetadataError> {
     // Parse the token_uri
 
     match token_uri {
@@ -460,10 +474,10 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, Error>
             debug!(token_uri = %token_uri, "Fetching metadata from http/https URL");
             let response = fetch_content_from_http(token_uri)
                 .await
-                .map_err(|e| Error::Metadata(MetadataError::Http(e)))?;
+                .map_err(TokenMetadataError::Http)?;
 
             let json: serde_json::Value = serde_json::from_slice(&response)
-                .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+                .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))?;
 
             Ok(json)
         }
@@ -472,10 +486,10 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, Error>
             debug!(cid = %cid, "Fetching metadata from IPFS");
             let response = fetch_content_from_ipfs(cid)
                 .await
-                .map_err(|e| Error::Metadata(MetadataError::IpfsError(e)))?;
+                .map_err(TokenMetadataError::Ipfs)?;
 
             let json: serde_json::Value = serde_json::from_slice(&response)
-                .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+                .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))?;
 
             Ok(json)
         }
@@ -486,19 +500,18 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, Error>
             // HACK: https://github.com/servo/rust-url/issues/908
             let uri = token_uri.replace("#", "%23");
 
-            let data_url = DataUrl::process(&uri)
-                .map_err(|e| Error::Metadata(MetadataError::DataUrlError(e)))?;
+            let data_url = DataUrl::process(&uri).map_err(TokenMetadataError::DataUrl)?;
 
             // Ensure the MIME type is JSON
             if data_url.mime_type() != &Mime::from_str("application/json").unwrap() {
-                return Err(Error::Metadata(MetadataError::InvalidMimeType(
+                return Err(TokenMetadataError::InvalidMimeType(
                     data_url.mime_type().to_string(),
-                )));
+                ));
             }
 
             let decoded = data_url
                 .decode_to_vec()
-                .map_err(|e| Error::Metadata(MetadataError::InvalidBase64(e)))?;
+                .map_err(TokenMetadataError::InvalidBase64)?;
             // HACK: Loot Survior NFT metadata contains control characters which makes the json
             // DATA invalid so filter them out
             let decoded_str = String::from_utf8_lossy(&decoded.0)
@@ -508,12 +521,10 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, Error>
             let sanitized_json = sanitize_json_string(&decoded_str);
 
             let json: serde_json::Value = serde_json::from_str(&sanitized_json)
-                .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+                .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))?;
 
             Ok(json)
         }
-        uri => Err(Error::Metadata(MetadataError::UnsupportedUriScheme(
-            uri.to_string(),
-        ))),
+        uri => Err(TokenMetadataError::UnsupportedUriScheme(uri.to_string())),
     }
 }

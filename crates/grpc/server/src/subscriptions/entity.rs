@@ -111,7 +111,7 @@ impl Service {
             while let Some(entity) = entity_receiver.recv().await {
                 // Send to a worker in a round-robin fashion
                 if let Err(e) = worker_senders[worker_index].send(entity) {
-                    error!(target = LOG_TARGET, error = %e, "Failed to send entity to worker.");
+                    error!(target = LOG_TARGET, error = ?e, "Failed to send entity to worker.");
                 }
                 worker_index = (worker_index + 1) % worker_count;
             }
@@ -129,7 +129,7 @@ impl Service {
             let subs = subs.clone();
             tokio::spawn(async move {
                 if let Err(e) = Self::process_entity_update(&subs, &entity).await {
-                    error!(target = LOG_TARGET, error = %e, "Processing entity update.");
+                    error!(target = LOG_TARGET, error = ?e, "Processing entity update.");
                 }
             });
         }
@@ -237,7 +237,7 @@ impl Future for Service {
             match this.simple_broker.poll_next_unpin(cx) {
                 Poll::Ready(Some(entity)) => {
                     if let Err(e) = this.entity_sender.send(entity) {
-                        error!(target = LOG_TARGET, error = %e, "Sending entity update to processor.");
+                        error!(target = LOG_TARGET, error = ?e, "Sending entity update to processor.");
                     }
                 }
                 Poll::Ready(None) => return Poll::Ready(()),

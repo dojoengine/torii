@@ -1,7 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
@@ -12,6 +11,7 @@ use torii_sqlite::Sql;
 use tracing::{debug, info};
 
 use crate::task_manager::TaskId;
+use crate::Result;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_update_record";
@@ -56,7 +56,7 @@ where
         event_id: &str,
         event: &Event,
         config: &EventProcessorConfig,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
@@ -87,11 +87,7 @@ where
                 return Ok(());
             }
             Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Failed to retrieve model with selector {:#x}: {}",
-                    event.selector,
-                    e
-                ));
+                return Err(e.into());
             }
         };
 
@@ -110,7 +106,7 @@ where
                 // so we should get rid of them to avoid trying to deserialize them
                 struct_.children.retain(|field| !field.key);
             }
-            _ => return Err(anyhow::anyhow!("Expected struct")),
+            _ => unreachable!(),
         }
 
         let mut values = event.values.to_vec();
