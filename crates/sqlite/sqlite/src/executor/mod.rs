@@ -20,8 +20,8 @@ use torii_sqlite_types::OptimisticToken;
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
-use crate::executor::error::{ExecutorError, ExecutorQueryError};
 use crate::error::ParseError;
+use crate::executor::error::{ExecutorError, ExecutorQueryError};
 use crate::simple_broker::SimpleBroker;
 use crate::types::{
     ContractCursor, Entity as EntityUpdated, Event as EventEmitted,
@@ -31,8 +31,8 @@ use crate::types::{
 use crate::utils::{felt_to_sql_string, felts_to_sql_string, u256_to_sql_string, I256};
 use crate::Cursor;
 
-pub mod error;
 pub mod erc;
+pub mod error;
 pub use erc::{RegisterErc20TokenQuery, RegisterNftTokenQuery};
 
 pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor";
@@ -660,16 +660,22 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                                 let name = match &results[0] {
                                     ProviderResponseData::Call(name) if name.len() == 1 => {
                                         parse_cairo_short_string(&name[0]).map_err(|e| {
-                                            ExecutorQueryError::Parse(ParseError::ParseCairoShortString(e))
+                                            ExecutorQueryError::Parse(
+                                                ParseError::ParseCairoShortString(e),
+                                            )
                                         })?
                                     }
                                     ProviderResponseData::Call(name) => {
                                         ByteArray::cairo_deserialize(name, 0)
                                             .map_err(|e| {
-                                                ExecutorQueryError::Parse(ParseError::CairoSerdeError(e))
+                                                ExecutorQueryError::Parse(
+                                                    ParseError::CairoSerdeError(e),
+                                                )
                                             })?
                                             .to_string()
-                                            .map_err(|e| ExecutorQueryError::Parse(ParseError::FromUtf8(e)))?
+                                            .map_err(|e| {
+                                                ExecutorQueryError::Parse(ParseError::FromUtf8(e))
+                                            })?
                                     }
                                     _ => String::new(),
                                 };
@@ -678,16 +684,22 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                                 let symbol = match &results[1] {
                                     ProviderResponseData::Call(symbol) if symbol.len() == 1 => {
                                         parse_cairo_short_string(&symbol[0]).map_err(|e| {
-                                            ExecutorQueryError::Parse(ParseError::ParseCairoShortString(e))
+                                            ExecutorQueryError::Parse(
+                                                ParseError::ParseCairoShortString(e),
+                                            )
                                         })?
                                     }
                                     ProviderResponseData::Call(symbol) => {
                                         ByteArray::cairo_deserialize(symbol, 0)
                                             .map_err(|e| {
-                                                ExecutorQueryError::Parse(ParseError::CairoSerdeError(e))
+                                                ExecutorQueryError::Parse(
+                                                    ParseError::CairoSerdeError(e),
+                                                )
                                             })?
                                             .to_string()
-                                            .map_err(|e| ExecutorQueryError::Parse(ParseError::FromUtf8(e)))?
+                                            .map_err(|e| {
+                                                ExecutorQueryError::Parse(ParseError::FromUtf8(e))
+                                            })?
                                     }
                                     _ => String::new(),
                                 };

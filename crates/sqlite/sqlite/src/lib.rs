@@ -1156,10 +1156,12 @@ impl Sql {
             Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
         ];
 
-        self.executor.send(QueryMessage::other(
-            insert_controller.to_string(),
-            arguments,
-        )).map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+        self.executor
+            .send(QueryMessage::other(
+                insert_controller.to_string(),
+                arguments,
+            ))
+            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
 
         Ok(())
     }

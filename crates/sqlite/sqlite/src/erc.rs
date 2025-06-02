@@ -14,7 +14,7 @@ use tracing::{debug, warn};
 use super::utils::{u256_to_sql_string, I256};
 use super::{Sql, SQL_FELT_DELIMITER};
 use crate::constants::TOKEN_TRANSFER_TABLE;
-use crate::error::{Error, TokenMetadataError, ParseError};
+use crate::error::{Error, ParseError, TokenMetadataError};
 use crate::executor::erc::{RegisterNftTokenQuery, UpdateNftMetadataQuery};
 use crate::executor::error::ExecutorError;
 use crate::executor::{
@@ -152,16 +152,18 @@ impl Sql {
             .map_err(|e| Error::TokenMetadata(TokenMetadataError::AcquireError(e)))?;
         let metadata = fetch_token_metadata(contract_address, token_id, provider).await?;
 
-        self.executor.send(QueryMessage::new(
-            "".to_string(),
-            vec![],
-            QueryType::UpdateNftMetadata(UpdateNftMetadataQuery {
-                id,
-                contract_address,
-                token_id,
-                metadata,
-            }),
-        )).map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+        self.executor
+            .send(QueryMessage::new(
+                "".to_string(),
+                vec![],
+                QueryType::UpdateNftMetadata(UpdateNftMetadataQuery {
+                    id,
+                    contract_address,
+                    token_id,
+                    metadata,
+                }),
+            ))
+            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
 
         Ok(())
     }
@@ -238,20 +240,26 @@ impl Sql {
         let decimals = match &results[2] {
             ProviderResponseData::Call(decimals) => u8::cairo_deserialize(decimals, 0)
                 .map_err(|e| Error::Parse(ParseError::CairoSerdeError(e)))?,
-            _ => return Err(Error::TokenMetadata(TokenMetadataError::InvalidTokenDecimals)),
+            _ => {
+                return Err(Error::TokenMetadata(
+                    TokenMetadataError::InvalidTokenDecimals,
+                ))
+            }
         };
 
-        self.executor.send(QueryMessage::new(
-            "".to_string(),
-            vec![],
-            QueryType::RegisterErc20Token(RegisterErc20TokenQuery {
-                token_id: token_id.to_string(),
-                contract_address,
-                name,
-                symbol,
-                decimals,
-            }),
-        )).map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+        self.executor
+            .send(QueryMessage::new(
+                "".to_string(),
+                vec![],
+                QueryType::RegisterErc20Token(RegisterErc20TokenQuery {
+                    token_id: token_id.to_string(),
+                    contract_address,
+                    name,
+                    symbol,
+                    decimals,
+                }),
+            ))
+            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
 
         self.local_cache.mark_token_registered(token_id).await;
 
@@ -278,16 +286,18 @@ impl Sql {
             .map_err(|e| Error::TokenMetadata(TokenMetadataError::AcquireError(e)))?;
         let metadata = fetch_token_metadata(contract_address, actual_token_id, provider).await?;
 
-        self.executor.send(QueryMessage::new(
-            "".to_string(),
-            vec![],
-            QueryType::RegisterNftToken(RegisterNftTokenQuery {
-                id: id.to_string(),
-                contract_address,
-                token_id: actual_token_id,
-                metadata,
-            }),
-        )).map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+        self.executor
+            .send(QueryMessage::new(
+                "".to_string(),
+                vec![],
+                QueryType::RegisterNftToken(RegisterNftTokenQuery {
+                    id: id.to_string(),
+                    contract_address,
+                    token_id: actual_token_id,
+                    metadata,
+                }),
+            ))
+            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
 
         self.local_cache.mark_token_registered(id).await;
 
@@ -311,20 +321,22 @@ impl Sql {
              amount, token_id, event_id, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING"
         );
 
-        self.executor.send(QueryMessage::new(
-            insert_query.to_string(),
-            vec![
-                Argument::String(id),
-                Argument::FieldElement(contract_address),
-                Argument::FieldElement(from),
-                Argument::FieldElement(to),
-                Argument::String(u256_to_sql_string(&amount)),
-                Argument::String(token_id.to_string()),
-                Argument::String(event_id.to_string()),
-                Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
-            ],
-            QueryType::Other,
-        )).map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+        self.executor
+            .send(QueryMessage::new(
+                insert_query.to_string(),
+                vec![
+                    Argument::String(id),
+                    Argument::FieldElement(contract_address),
+                    Argument::FieldElement(from),
+                    Argument::FieldElement(to),
+                    Argument::String(u256_to_sql_string(&amount)),
+                    Argument::String(token_id.to_string()),
+                    Argument::String(event_id.to_string()),
+                    Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
+                ],
+                QueryType::Other,
+            ))
+            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
 
         Ok(())
     }
@@ -332,13 +344,15 @@ impl Sql {
     pub async fn apply_cache_diff(&mut self) -> Result<(), Error> {
         if !self.local_cache.erc_cache.read().await.is_empty() {
             let mut erc_cache = self.local_cache.erc_cache.write().await;
-            self.executor.send(QueryMessage::new(
-                "".to_string(),
-                vec![],
-                QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery {
-                    erc_cache: mem::replace(&mut erc_cache, HashMap::with_capacity(64)),
-                }),
-            )).map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            self.executor
+                .send(QueryMessage::new(
+                    "".to_string(),
+                    vec![],
+                    QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery {
+                        erc_cache: mem::replace(&mut erc_cache, HashMap::with_capacity(64)),
+                    }),
+                ))
+                .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
         }
         Ok(())
     }
@@ -513,8 +527,8 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, Error>
 
             Ok(json)
         }
-        uri => Err(Error::TokenMetadata(TokenMetadataError::UnsupportedUriScheme(
-            uri.to_string(),
-        ))),
+        uri => Err(Error::TokenMetadata(
+            TokenMetadataError::UnsupportedUriScheme(uri.to_string()),
+        )),
     }
 }
