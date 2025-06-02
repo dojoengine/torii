@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
 use dojo_types::naming::get_tag;
 use dojo_types::primitive::SqlType;
 use dojo_types::schema::{Struct, Ty};
@@ -19,6 +18,7 @@ use torii_sqlite_types::{ContractCursor, HookEvent, ParsedCall};
 use utils::felts_to_sql_string;
 
 use crate::constants::SQL_FELT_DELIMITER;
+use crate::error::{Error, ParseError};
 use crate::executor::{
     Argument, DeleteEntityQuery, EventMessageQuery, QueryMessage, QueryType, UpdateCursorsQuery,
 };
@@ -82,7 +82,7 @@ impl Sql {
         executor: UnboundedSender<QueryMessage>,
         contracts: &[Contract],
         model_cache: Arc<ModelCache>,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         Self::new_with_config(pool, executor, contracts, model_cache, Default::default()).await
     }
 
@@ -92,7 +92,7 @@ impl Sql {
         contracts: &[Contract],
         model_cache: Arc<ModelCache>,
         config: SqlConfig,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         for contract in contracts {
             executor.send(QueryMessage::other(
                 "INSERT OR IGNORE INTO contracts (id, contract_address, contract_type) VALUES (?, \
@@ -126,7 +126,7 @@ impl Sql {
         &mut self,
         contract: Felt,
         last_pending_block_contract_tx: Option<Felt>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let last_pending_block_contract_tx = if let Some(f) = last_pending_block_contract_tx {
             Argument::String(format!("{:#x}", f))
         } else {
@@ -135,15 +135,20 @@ impl Sql {
 
         let id = Argument::FieldElement(contract);
 
-        self.executor.send(QueryMessage::other(
-            "UPDATE contracts SET last_pending_block_contract_tx = ? WHERE id = ?".to_string(),
-            vec![last_pending_block_contract_tx, id],
-        ))?;
+        self.executor
+            .send(QueryMessage::other(
+                "UPDATE contracts SET last_pending_block_contract_tx = ? WHERE id = ?".to_string(),
+                vec![last_pending_block_contract_tx, id],
+            ))
+            .map_err(Error::ExecutorSendError)?;
 
         Ok(())
     }
 
-    pub fn set_last_pending_block_tx(&mut self, last_pending_block_tx: Option<Felt>) -> Result<()> {
+    pub fn set_last_pending_block_tx(
+        &mut self,
+        last_pending_block_tx: Option<Felt>,
+    ) -> Result<(), Error> {
         let last_pending_block_tx = if let Some(f) = last_pending_block_tx {
             Argument::String(format!("{:#x}", f))
         } else {
@@ -158,36 +163,37 @@ impl Sql {
         Ok(())
     }
 
-    pub async fn cursors(&self) -> Result<HashMap<Felt, Cursor>> {
+    pub async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, Error> {
         let cursors = sqlx::query_as::<_, ContractCursor>("SELECT * FROM contracts")
             .fetch_all(&self.pool)
             .await?;
 
-        Ok(cursors
-            .into_iter()
-            .map(|c| {
-                (
-                    Felt::from_str(&c.contract_address).expect("Valid contract address felt"),
-                    Cursor {
-                        last_pending_block_contract_tx: c.last_pending_block_contract_tx.map(|t| {
-                            Felt::from_str(&t).expect("Valid last pending block contract tx felt")
-                        }),
-                        last_pending_block_tx: c
-                            .last_pending_block_tx
-                            .map(|t| Felt::from_str(&t).expect("Valid last pending block tx felt")),
-                        head: c.head.map(|h| h as u64),
-                        last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
-                    },
-                )
-            })
-            .collect())
+        let mut cursors_map = HashMap::new();
+        for c in cursors {
+            let contract_address = Felt::from_str(&c.contract_address)
+                .map_err(|e| Error::Parse(ParseError::FromStr(e)))?;
+            let cursor = Cursor {
+                last_pending_block_contract_tx: c
+                    .last_pending_block_contract_tx
+                    .map(|t| Felt::from_str(&t).map_err(|e| Error::Parse(ParseError::FromStr(e))))
+                    .transpose()?,
+                last_pending_block_tx: c
+                    .last_pending_block_tx
+                    .map(|t| Felt::from_str(&t).map_err(|e| Error::Parse(ParseError::FromStr(e))))
+                    .transpose()?,
+                head: c.head.map(|h| h as u64),
+                last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
+            };
+            cursors_map.insert(contract_address, cursor);
+        }
+        Ok(cursors_map)
     }
 
     pub fn update_cursors(
         &mut self,
         cursors: HashMap<Felt, Cursor>,
         num_transactions: HashMap<Felt, u64>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         self.executor.send(QueryMessage::new(
             "".to_string(),
             vec![],
@@ -212,7 +218,7 @@ impl Sql {
         block_timestamp: u64,
         schema_diff: Option<&Ty>,
         upgrade_diff: Option<&Ty>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let selector = compute_selector_from_names(namespace, &model.name());
         let namespaced_name = get_tag(namespace, &model.name());
         let namespaced_schema = Ty::Struct(Struct {
@@ -233,8 +239,8 @@ impl Sql {
             Argument::String(model.name().to_string()),
             Argument::FieldElement(class_hash),
             Argument::FieldElement(contract_address),
-            Argument::String(serde_json::to_string(&layout)?),
-            Argument::String(serde_json::to_string(&namespaced_schema)?),
+            Argument::String(serde_json::to_string(&layout).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?),
+            Argument::String(serde_json::to_string(&namespaced_schema).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?),
             Argument::Int(packed_size as i64),
             Argument::Int(unpacked_size as i64),
             Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
@@ -294,7 +300,7 @@ impl Sql {
         entity_id: Felt,
         model_id: Felt,
         keys_str: Option<&str>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let namespaced_name = entity.name();
 
         let entity_id = format!("{:#x}", entity_id);
@@ -372,7 +378,7 @@ impl Sql {
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let keys = if let Ty::Struct(s) = &entity {
             let mut keys = Vec::new();
             for m in s.keys() {
@@ -380,7 +386,7 @@ impl Sql {
             }
             keys
         } else {
-            return Err(anyhow!("Entity is not a struct"));
+            return Err(Error::Parse(ParseError::InvalidTyEntity));
         };
 
         let namespaced_name = entity.name();
@@ -447,7 +453,7 @@ impl Sql {
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let entity_id = format!("{:#x}", entity_id);
         let model_id = format!("{:#x}", model_id);
         let model_table = entity.name();
@@ -478,7 +484,12 @@ impl Sql {
         Ok(())
     }
 
-    pub fn set_metadata(&mut self, resource: &Felt, uri: &str, block_timestamp: u64) -> Result<()> {
+    pub fn set_metadata(
+        &mut self,
+        resource: &Felt,
+        uri: &str,
+        block_timestamp: u64,
+    ) -> Result<(), Error> {
         let resource = Argument::FieldElement(*resource);
         let uri = Argument::String(uri.to_string());
         let executed_at = Argument::String(utc_dt_string_from_timestamp(block_timestamp));
@@ -501,7 +512,7 @@ impl Sql {
         metadata: &WorldMetadata,
         icon_img: &Option<String>,
         cover_img: &Option<String>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let json = serde_json::to_string(metadata).unwrap(); // safe unwrap
 
         let mut update = vec!["uri=?", "json=?", "updated_at=CURRENT_TIMESTAMP"];
@@ -526,7 +537,7 @@ impl Sql {
         Ok(())
     }
 
-    pub async fn model(&self, selector: Felt) -> Result<Model> {
+    pub async fn model(&self, selector: Felt) -> Result<Model, Error> {
         self.model_cache
             .model(&selector)
             .await
@@ -548,7 +559,7 @@ impl Sql {
         block_timestamp: u64,
         calls: &[ParsedCall],
         unique_models: &HashSet<Felt>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         // Store the transaction in the transactions table
         self.executor.send(QueryMessage::new(
             "INSERT INTO transactions (id, transaction_hash, sender_address, calldata, \
@@ -583,7 +594,7 @@ impl Sql {
         event: &Event,
         transaction_hash: Felt,
         block_timestamp: u64,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let id = Argument::String(event_id.to_string());
         let keys = Argument::String(felts_to_sql_string(&event.keys));
         let data = Argument::String(felts_to_sql_string(&event.data));
@@ -608,7 +619,7 @@ impl Sql {
         entity_id: &str,
         entity: &Ty,
         block_timestamp: u64,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let mut columns = vec![
             "internal_id".to_string(),
             "internal_event_id".to_string(),
@@ -634,7 +645,7 @@ impl Sql {
             ty: &Ty,
             columns: &mut Vec<String>,
             arguments: &mut Vec<Argument>,
-        ) -> Result<()> {
+        ) -> Result<(), Error> {
             match ty {
                 Ty::Struct(s) => {
                     for member in &s.children {
@@ -677,7 +688,7 @@ impl Sql {
                         .iter()
                         .map(|v| v.to_json_value())
                         .collect::<Result<Vec<_>, _>>()?;
-                    arguments.push(Argument::String(serde_json::to_string(&values)?));
+                    arguments.push(Argument::String(serde_json::to_string(&values).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?));
                 }
                 Ty::Primitive(ty) => {
                     columns.push(format!("\"{}\"", prefix));
@@ -723,7 +734,7 @@ impl Sql {
         model: &Ty,
         schema_diff: Option<&Ty>,
         upgrade_diff: Option<&Ty>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let table_id = path[0].clone(); // Use only the root path component
         let mut columns = Vec::new();
         let mut indices = Vec::new();
@@ -807,7 +818,7 @@ impl Sql {
         schema_diff: Option<&Ty>,
         upgrade_diff: Option<&Ty>,
         is_key: bool,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let column_prefix = if path.len() > 1 {
             path[1..].join(".")
         } else {
@@ -1063,13 +1074,13 @@ impl Sql {
         Ok(())
     }
 
-    pub async fn execute(&self) -> Result<()> {
+    pub async fn execute(&self) -> Result<(), Error> {
         let (execute, recv) = QueryMessage::execute_recv();
         self.executor.send(execute)?;
         recv.await?
     }
 
-    pub async fn rollback(&self) -> Result<()> {
+    pub async fn rollback(&self) -> Result<(), Error> {
         let (rollback, recv) = QueryMessage::rollback_recv();
         self.executor.send(rollback)?;
         recv.await?
@@ -1080,7 +1091,7 @@ impl Sql {
         username: &str,
         address: &str,
         block_timestamp: u64,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let insert_controller = "
             INSERT INTO controllers (id, username, address, deployed_at)
             VALUES (?, ?, ?, ?)

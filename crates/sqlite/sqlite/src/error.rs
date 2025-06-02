@@ -3,8 +3,10 @@ use std::num::ParseIntError;
 use dojo_types::primitive::PrimitiveError;
 use dojo_types::schema::EnumError;
 use starknet::core::types::FromStrError;
-use starknet::core::utils::{CairoShortStringToFeltError, NonAsciiNameError};
+use starknet::core::utils::{CairoShortStringToFeltError, NonAsciiNameError, ParseCairoShortStringError};
 use starknet::providers::ProviderError;
+
+use crate::executor::QueryMessage;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -20,6 +22,10 @@ pub enum Error {
     EnumError(#[from] EnumError),
     #[error(transparent)]
     ProviderError(#[from] ProviderError),
+    #[error(transparent)]
+    ExecutorSendError(#[from] tokio::sync::mpsc::error::SendError<QueryMessage>),
+    #[error(transparent)]
+    ExecutorRecvError(#[from] tokio::sync::oneshot::error::RecvError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -28,6 +34,8 @@ pub enum ParseError {
     NonAsciiName(#[from] NonAsciiNameError),
     #[error(transparent)]
     FromStr(#[from] FromStrError),
+    #[error(transparent)]
+    ParseCairoShortString(#[from] ParseCairoShortStringError),
     #[error(transparent)]
     CairoShortStringToFelt(#[from] CairoShortStringToFeltError),
     #[error(transparent)]
@@ -40,6 +48,8 @@ pub enum ParseError {
     FromSlice(#[from] std::array::TryFromSliceError),
     #[error(transparent)]
     FromUtf8(#[from] std::string::FromUtf8Error),
+    #[error("Entity is not a struct")]
+    InvalidTyEntity,
 }
 
 #[derive(Debug, thiserror::Error)]
