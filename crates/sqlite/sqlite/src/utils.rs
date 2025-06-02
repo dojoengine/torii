@@ -156,7 +156,7 @@ pub async fn fetch_content_from_http(url: &str) -> Result<Bytes, HttpError> {
                         response.text().await.unwrap_or_default(),
                     ));
                 }
-                return response.bytes().await.map_err(|e| HttpError::Reqwest(e));
+                return response.bytes().await.map_err(HttpError::Reqwest);
             }
             Err(e) => {
                 if retries >= REQ_MAX_RETRIES {

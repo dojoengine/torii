@@ -544,10 +544,7 @@ impl Sql {
     }
 
     pub async fn model(&self, selector: Felt) -> Result<Model, Error> {
-        self.model_cache
-            .model(&selector)
-            .await
-            .map_err(|e| e.into())
+        self.model_cache.model(&selector).await
     }
 
     #[allow(clippy::too_many_arguments)]
