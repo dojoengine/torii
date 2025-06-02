@@ -28,4 +28,6 @@ pub enum ProcessError {
     AnyhowError(#[from] anyhow::Error),
     #[error(transparent)]
     SqliteError(#[from] torii_sqlite::error::Error),
+    #[error(transparent)]
+    ProcessorsError(#[from] torii_processors::error::Error),
 }

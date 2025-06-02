@@ -1,7 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
 use async_trait::async_trait;
 use base64::engine::general_purpose;
 use base64::Engine as _;
@@ -12,10 +11,12 @@ use dojo_world::contracts::world::WorldContractReader;
 use dojo_world::uri::Uri;
 use starknet::core::types::{Event, Felt};
 use starknet::providers::Provider;
+use torii_sqlite::error::ParseError;
 use torii_sqlite::utils::fetch_content_from_ipfs;
 use torii_sqlite::Sql;
 use tracing::{error, info};
 
+use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
@@ -113,12 +114,18 @@ async fn try_retrieve(mut db: Sql, resource: Felt, uri_str: String) {
     }
 }
 
-async fn metadata(uri_str: String) -> Result<(WorldMetadata, Option<String>, Option<String>)> {
+async fn metadata(
+    uri_str: String,
+) -> Result<(WorldMetadata, Option<String>, Option<String>), Error> {
     let uri = Uri::Ipfs(uri_str);
-    let cid = uri.cid().ok_or("Uri is malformed").map_err(Error::msg)?;
+    let cid = uri.cid().ok_or(Error::UriMalformed)?;
 
-    let bytes = fetch_content_from_ipfs(cid).await?;
-    let metadata: WorldMetadata = serde_json::from_str(std::str::from_utf8(&bytes)?)?;
+    let bytes = fetch_content_from_ipfs(cid)
+        .await
+        .map_err(Error::IpfsError)?;
+    let metadata: WorldMetadata =
+        serde_json::from_str(std::str::from_utf8(&bytes).map_err(ParseError::Utf8Error)?)
+            .map_err(ParseError::FromJsonStr)?;
 
     let icon_img = fetch_image(&metadata.icon_uri).await;
     let cover_img = fetch_image(&metadata.cover_uri).await;

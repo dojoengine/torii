@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, Transaction};
@@ -13,9 +12,12 @@ pub mod error;
 pub mod processors;
 pub mod task_manager;
 
+use crate::error::Error;
 use crate::task_manager::TaskId;
 
 pub use processors::Processors;
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone, Debug, Default)]
 pub struct EventProcessorConfig {
@@ -63,7 +65,7 @@ where
         event_id: &str,
         event: &Event,
         _config: &EventProcessorConfig,
-    ) -> Result<(), Error>;
+    ) -> Result<()>;
 }
 
 #[async_trait]
@@ -75,7 +77,7 @@ pub trait BlockProcessor<P: Provider + Sync>: Send + Sync {
         provider: &P,
         block_number: u64,
         block_timestamp: u64,
-    ) -> Result<(), Error>;
+    ) -> Result<()>;
 }
 
 #[async_trait]
@@ -92,5 +94,5 @@ pub trait TransactionProcessor<P: Provider + Sync + std::fmt::Debug>: Send + Syn
         transaction: &Transaction,
         contract_class_cache: &ContractClassCache<P>,
         unique_models: &HashSet<Felt>,
-    ) -> Result<(), Error>;
+    ) -> Result<()>;
 }

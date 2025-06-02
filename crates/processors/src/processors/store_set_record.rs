@@ -1,7 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::world::WorldContractReader;
@@ -11,6 +10,7 @@ use torii_sqlite::utils::felts_to_sql_string;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
+use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
@@ -82,11 +82,7 @@ where
                 return Ok(());
             }
             Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Failed to retrieve model with selector {:#x}: {}",
-                    event.selector,
-                    e
-                ));
+                return Err(e.into());
             }
         };
 

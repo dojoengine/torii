@@ -539,7 +539,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Process parallelized events
-        self.task_manager.process_tasks().await?;
+        self.task_manager
+            .process_tasks()
+            .await
+            .map_err(ProcessError::ProcessorsError)?;
 
         Ok(())
     }

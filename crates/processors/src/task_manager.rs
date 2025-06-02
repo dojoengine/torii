@@ -177,7 +177,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         }
                     }
 
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, Error>(())
                 }
             })
             .await

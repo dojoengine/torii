@@ -83,6 +83,8 @@ pub enum ParseError {
     #[error(transparent)]
     FromSlice(#[from] std::array::TryFromSliceError),
     #[error(transparent)]
+    Utf8Error(#[from] std::str::Utf8Error),
+    #[error(transparent)]
     FromUtf8(#[from] std::string::FromUtf8Error),
     #[error("Entity is not a struct")]
     InvalidTyEntity,

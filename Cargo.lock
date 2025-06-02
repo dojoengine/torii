@@ -11449,6 +11449,7 @@ dependencies = [
  "dojo-types 1.5.0-alpha.2",
  "dojo-world",
  "futures-util",
+ "ipfs-api-backend-hyper",
  "lazy_static",
  "serde_json",
  "starknet 0.12.0",

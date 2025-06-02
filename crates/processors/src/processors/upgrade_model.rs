@@ -1,7 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
@@ -12,6 +11,7 @@ use torii_sqlite::Sql;
 use tracing::{debug, info};
 
 use crate::task_manager::TaskId;
+use crate::Result;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::upgrade_model";
@@ -49,7 +49,7 @@ where
         _event_id: &str,
         event: &Event,
         config: &EventProcessorConfig,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {

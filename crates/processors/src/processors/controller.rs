@@ -1,7 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
 use lazy_static::lazy_static;
@@ -10,9 +9,11 @@ use starknet::core::utils::parse_cairo_short_string;
 use starknet::macros::felt;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
+use torii_sqlite::error::ParseError;
 use torii_sqlite::Sql;
 use tracing::info;
 
+use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
@@ -105,7 +106,8 @@ where
 
         // Last felt in data is the salt which is the username encoded as short string
         let username_felt = event.data[event.data.len() - 1];
-        let username = parse_cairo_short_string(&username_felt)?;
+        let username = parse_cairo_short_string(&username_felt)
+            .map_err(|e| Error::ParseError(ParseError::ParseCairoShortString(e)))?;
 
         info!(
             target: LOG_TARGET,
