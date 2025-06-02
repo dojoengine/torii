@@ -31,9 +31,11 @@ pub enum Error {
 #[derive(Debug, thiserror::Error)]
 pub enum TokenMetadataError {
     #[error(transparent)]
-    IpfsError(#[from] ipfs_api_backend_hyper::Error),
+    Parse(#[from] ParseError),
     #[error(transparent)]
-    DataUrlError(#[from] data_url::DataUrlError),
+    Ipfs(#[from] ipfs_api_backend_hyper::Error),
+    #[error(transparent)]
+    DataUrl(#[from] data_url::DataUrlError),
     #[error(transparent)]
     InvalidBase64(#[from] data_url::forgiving_base64::InvalidBase64),
     #[error(transparent)]

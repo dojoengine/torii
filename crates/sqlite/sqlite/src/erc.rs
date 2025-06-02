@@ -362,7 +362,7 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
     provider: &P,
     contract_address: Felt,
     token_id: U256,
-) -> Result<String, Error> {
+) -> Result<String, TokenMetadataError> {
     let token_uri = if let Ok(token_uri) = provider
         .call(
             FunctionCall {
@@ -411,14 +411,14 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
     let mut token_uri = if let Ok(byte_array) = ByteArray::cairo_deserialize(&token_uri, 0) {
         byte_array
             .to_string()
-            .map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?
+            .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?
     } else if let Ok(felt_array) = Vec::<Felt>::cairo_deserialize(&token_uri, 0) {
         felt_array
             .iter()
             .map(parse_cairo_short_string)
             .collect::<Result<Vec<String>, _>>()
             .map(|strings| strings.join(""))
-            .map_err(|e| Error::Parse(ParseError::ParseCairoShortString(e)))?
+            .map_err(|e| TokenMetadataError::Parse(ParseError::ParseCairoShortString(e)))?
     } else {
         debug!(
             contract_address = format!("{:#x}", contract_address),
@@ -440,7 +440,7 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
     contract_address: Felt,
     token_id: U256,
     provider: &P,
-) -> Result<String, Error> {
+) -> Result<String, TokenMetadataError> {
     let token_uri = fetch_token_uri(provider, contract_address, token_id).await?;
 
     if token_uri.is_empty() {
@@ -450,7 +450,7 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
     let metadata = fetch_metadata(&token_uri).await;
     match metadata {
         Ok(metadata) => {
-            serde_json::to_string(&metadata).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))
+            serde_json::to_string(&metadata).map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))
         }
         Err(_) => {
             warn!(
@@ -466,7 +466,7 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
 
 // given a uri which can be either http/https url or data uri, fetch the metadata erc721
 // metadata json schema
-pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, Error> {
+pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, TokenMetadataError> {
     // Parse the token_uri
 
     match token_uri {
@@ -475,10 +475,10 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, Error>
             debug!(token_uri = %token_uri, "Fetching metadata from http/https URL");
             let response = fetch_content_from_http(token_uri)
                 .await
-                .map_err(|e| Error::TokenMetadata(TokenMetadataError::Http(e)))?;
+                .map_err(|e| TokenMetadataError::Http(e))?;
 
             let json: serde_json::Value = serde_json::from_slice(&response)
-                .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+                .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))?;
 
             Ok(json)
         }
@@ -487,10 +487,10 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, Error>
             debug!(cid = %cid, "Fetching metadata from IPFS");
             let response = fetch_content_from_ipfs(cid)
                 .await
-                .map_err(|e| Error::TokenMetadata(TokenMetadataError::IpfsError(e)))?;
+                .map_err(|e| TokenMetadataError::Ipfs(e))?;
 
             let json: serde_json::Value = serde_json::from_slice(&response)
-                .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+                .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))?;
 
             Ok(json)
         }
@@ -502,18 +502,18 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, Error>
             let uri = token_uri.replace("#", "%23");
 
             let data_url = DataUrl::process(&uri)
-                .map_err(|e| Error::TokenMetadata(TokenMetadataError::DataUrlError(e)))?;
+                .map_err(|e| TokenMetadataError::DataUrl(e))?;
 
             // Ensure the MIME type is JSON
             if data_url.mime_type() != &Mime::from_str("application/json").unwrap() {
-                return Err(Error::TokenMetadata(TokenMetadataError::InvalidMimeType(
+                return Err(TokenMetadataError::InvalidMimeType(
                     data_url.mime_type().to_string(),
-                )));
+                ));
             }
 
             let decoded = data_url
                 .decode_to_vec()
-                .map_err(|e| Error::TokenMetadata(TokenMetadataError::InvalidBase64(e)))?;
+                .map_err(|e| TokenMetadataError::InvalidBase64(e))?;
             // HACK: Loot Survior NFT metadata contains control characters which makes the json
             // DATA invalid so filter them out
             let decoded_str = String::from_utf8_lossy(&decoded.0)
@@ -523,12 +523,12 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, Error>
             let sanitized_json = sanitize_json_string(&decoded_str);
 
             let json: serde_json::Value = serde_json::from_str(&sanitized_json)
-                .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+                .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))?;
 
             Ok(json)
         }
-        uri => Err(Error::TokenMetadata(
-            TokenMetadataError::UnsupportedUriScheme(uri.to_string()),
+        uri => Err(TokenMetadataError::UnsupportedUriScheme(
+            uri.to_string(),
         )),
     }
 }
