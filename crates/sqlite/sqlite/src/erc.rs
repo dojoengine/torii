@@ -449,9 +449,8 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
 
     let metadata = fetch_metadata(&token_uri).await;
     match metadata {
-        Ok(metadata) => {
-            serde_json::to_string(&metadata).map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))
-        }
+        Ok(metadata) => serde_json::to_string(&metadata)
+            .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e))),
         Err(_) => {
             warn!(
                 contract_address = format!("{:#x}", contract_address),
@@ -501,8 +500,7 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, TokenM
             // HACK: https://github.com/servo/rust-url/issues/908
             let uri = token_uri.replace("#", "%23");
 
-            let data_url = DataUrl::process(&uri)
-                .map_err(|e| TokenMetadataError::DataUrl(e))?;
+            let data_url = DataUrl::process(&uri).map_err(|e| TokenMetadataError::DataUrl(e))?;
 
             // Ensure the MIME type is JSON
             if data_url.mime_type() != &Mime::from_str("application/json").unwrap() {
@@ -527,8 +525,6 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, TokenM
 
             Ok(json)
         }
-        uri => Err(TokenMetadataError::UnsupportedUriScheme(
-            uri.to_string(),
-        )),
+        uri => Err(TokenMetadataError::UnsupportedUriScheme(uri.to_string())),
     }
 }
