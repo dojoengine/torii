@@ -3,7 +3,6 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::str::FromStr;
 use std::time::Duration;
 
-use anyhow::Result;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{DateTime, Utc};
@@ -21,6 +20,7 @@ use crate::constants::{
     IPFS_CLIENT_PASSWORD, IPFS_CLIENT_URL, IPFS_CLIENT_USERNAME, REQ_MAX_RETRIES,
     SQL_FELT_DELIMITER,
 };
+use crate::error::HttpError;
 
 pub fn must_utc_datetime_from_timestamp(timestamp: u64) -> DateTime<Utc> {
     let naive_dt = DateTime::from_timestamp(timestamp as i64, 0)
@@ -143,7 +143,7 @@ static IPFS_CLIENT: Lazy<IpfsClient> = Lazy::new(|| {
 const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
 
 /// Fetch content from HTTP URL with retries
-pub async fn fetch_content_from_http(url: &str) -> Result<Bytes> {
+pub async fn fetch_content_from_http(url: &str) -> Result<Bytes, HttpError> {
     let mut retries = 0;
     let mut backoff = INITIAL_BACKOFF;
 
@@ -151,16 +151,16 @@ pub async fn fetch_content_from_http(url: &str) -> Result<Bytes> {
         match HTTP_CLIENT.get(url).send().await {
             Ok(response) => {
                 if !response.status().is_success() {
-                    return Err(anyhow::anyhow!(
-                        "HTTP request failed with status: {}",
-                        response.status()
+                    return Err(HttpError::StatusCode(
+                        response.status(),
+                        response.text().await.unwrap_or_default(),
                     ));
                 }
-                return response.bytes().await.map_err(Into::into);
+                return response.bytes().await.map_err(|e| HttpError::Reqwest(e));
             }
             Err(e) => {
                 if retries >= REQ_MAX_RETRIES {
-                    return Err(anyhow::anyhow!("HTTP request failed: {}", e));
+                    return Err(HttpError::Reqwest(e));
                 }
                 debug!(error = %e, retry = retries, "Request failed, retrying after backoff");
                 tokio::time::sleep(backoff).await;
@@ -172,7 +172,7 @@ pub async fn fetch_content_from_http(url: &str) -> Result<Bytes> {
 }
 
 /// Fetch content from IPFS with retries
-pub async fn fetch_content_from_ipfs(cid: &str) -> Result<Bytes> {
+pub async fn fetch_content_from_ipfs(cid: &str) -> Result<Bytes, ipfs_api_backend_hyper::Error> {
     let mut retries = 0;
     let mut backoff = INITIAL_BACKOFF;
 
@@ -186,7 +186,7 @@ pub async fn fetch_content_from_ipfs(cid: &str) -> Result<Bytes> {
             Ok(stream) => return Ok(Bytes::from(stream)),
             Err(e) => {
                 if retries >= REQ_MAX_RETRIES {
-                    return Err(anyhow::anyhow!("IPFS request failed: {}", e));
+                    return Err(e);
                 }
                 debug!(error = %e, retry = retries, "Request failed, retrying after backoff");
                 tokio::time::sleep(backoff).await;
