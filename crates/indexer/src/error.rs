@@ -15,19 +15,15 @@ pub enum Error {
 #[derive(Error, Debug)]
 pub enum FetchError {
     #[error(transparent)]
-    ProviderError(#[from] starknet::providers::ProviderError),
-    #[error(transparent)]
-    AnyhowError(#[from] anyhow::Error),
+    Provider(#[from] starknet::providers::ProviderError),
 }
 
 #[derive(Error, Debug)]
 pub enum ProcessError {
     #[error(transparent)]
-    ProviderError(#[from] starknet::providers::ProviderError),
+    Provider(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
-    AnyhowError(#[from] anyhow::Error),
+    Sqlite(#[from] torii_sqlite::error::Error),
     #[error(transparent)]
-    SqliteError(#[from] torii_sqlite::error::Error),
-    #[error(transparent)]
-    ProcessorsError(#[from] torii_processors::error::Error),
+    Processors(#[from] torii_processors::error::Error),
 }
