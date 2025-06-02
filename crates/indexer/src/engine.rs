@@ -672,7 +672,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         if self.config.flags.contains(IndexingFlags::RAW_EVENTS) {
             self.db
                 .store_event(event_id, event, transaction_hash, block_timestamp)
-                .map_err(|e| ProcessError::SqliteError(e))?;
+                .map_err(ProcessError::SqliteError)?;
         }
 
         let event_key = event.keys[0];
