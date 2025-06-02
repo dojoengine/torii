@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::model::Layout;
@@ -162,6 +163,7 @@ impl ModelCache {
 pub enum TokenState {
     Registered,
     Registering(Arc<Mutex<()>>),
+    MetadataUpdated(Instant),
     NotRegistered,
 }
 
@@ -195,9 +197,17 @@ impl LocalCache {
 
     pub async fn get_token_registration_lock(&self, token_id: &str) -> Option<Arc<Mutex<()>>> {
         let mut registry = self.token_id_registry.write().await;
+        
+        // Check if MetadataUpdated state has expired
+        if let Some(TokenState::MetadataUpdated(timestamp)) = registry.get(token_id) {
+            if timestamp.elapsed() >= Duration::from_secs(30) {
+                registry.insert(token_id.to_string(), TokenState::Registered);
+            }
+        }
+        
         match registry.get(token_id) {
             Some(TokenState::Registering(mutex)) => Some(mutex.clone()),
-            Some(TokenState::Registered) => None,
+            Some(TokenState::Registered) | Some(TokenState::MetadataUpdated(_)) => None,
             Some(TokenState::NotRegistered) | None => {
                 // Mark as registering and return the lock
                 let mutex = Arc::new(Mutex::new(()));
@@ -212,9 +222,38 @@ impl LocalCache {
         registry.insert(token_id.to_string(), TokenState::Registered);
     }
 
+    pub async fn mark_token_metadata_updated(&self, token_id: &str) {
+        let mut registry = self.token_id_registry.write().await;
+        registry.insert(token_id.to_string(), TokenState::MetadataUpdated(Instant::now()));
+    }
+
     pub async fn is_token_registered(&self, token_id: &str) -> bool {
-        let registry = self.token_id_registry.read().await;
-        matches!(registry.get(token_id), Some(TokenState::Registered))
+        let mut registry = self.token_id_registry.write().await;
+        
+        // Check if MetadataUpdated state has expired and update if needed
+        if let Some(TokenState::MetadataUpdated(timestamp)) = registry.get(token_id) {
+            if timestamp.elapsed() >= Duration::from_secs(30) {
+                registry.insert(token_id.to_string(), TokenState::Registered);
+                return true;
+            }
+        }
+        
+        matches!(registry.get(token_id), Some(TokenState::Registered) | Some(TokenState::MetadataUpdated(_)))
+    }
+
+    pub async fn is_token_metadata_updated(&self, token_id: &str) -> bool {
+        let mut registry = self.token_id_registry.write().await;
+        
+        // Check if MetadataUpdated state has expired
+        if let Some(TokenState::MetadataUpdated(timestamp)) = registry.get(token_id) {
+            if timestamp.elapsed() >= Duration::from_secs(30) {
+                registry.insert(token_id.to_string(), TokenState::Registered);
+                return false;
+            }
+            return true;
+        }
+        
+        false
     }
 }
 
