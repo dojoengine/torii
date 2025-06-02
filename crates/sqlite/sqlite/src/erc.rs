@@ -474,7 +474,7 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, TokenM
             debug!(token_uri = %token_uri, "Fetching metadata from http/https URL");
             let response = fetch_content_from_http(token_uri)
                 .await
-                .map_err(|e| TokenMetadataError::Http(e))?;
+                .map_err(TokenMetadataError::Http)?;
 
             let json: serde_json::Value = serde_json::from_slice(&response)
                 .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))?;
@@ -486,7 +486,7 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, TokenM
             debug!(cid = %cid, "Fetching metadata from IPFS");
             let response = fetch_content_from_ipfs(cid)
                 .await
-                .map_err(|e| TokenMetadataError::Ipfs(e))?;
+                .map_err(TokenMetadataError::Ipfs)?;
 
             let json: serde_json::Value = serde_json::from_slice(&response)
                 .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))?;
@@ -500,7 +500,7 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, TokenM
             // HACK: https://github.com/servo/rust-url/issues/908
             let uri = token_uri.replace("#", "%23");
 
-            let data_url = DataUrl::process(&uri).map_err(|e| TokenMetadataError::DataUrl(e))?;
+            let data_url = DataUrl::process(&uri).map_err(TokenMetadataError::DataUrl)?;
 
             // Ensure the MIME type is JSON
             if data_url.mime_type() != &Mime::from_str("application/json").unwrap() {
@@ -511,7 +511,7 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, TokenM
 
             let decoded = data_url
                 .decode_to_vec()
-                .map_err(|e| TokenMetadataError::InvalidBase64(e))?;
+                .map_err(TokenMetadataError::InvalidBase64)?;
             // HACK: Loot Survior NFT metadata contains control characters which makes the json
             // DATA invalid so filter them out
             let decoded_str = String::from_utf8_lossy(&decoded.0)
