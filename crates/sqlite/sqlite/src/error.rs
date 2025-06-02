@@ -8,8 +8,6 @@ use starknet::core::utils::{
 };
 use starknet::providers::ProviderError;
 
-use crate::executor::QueryMessage;
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Parsing error: {0}")]
@@ -19,7 +17,7 @@ pub enum Error {
     #[error(transparent)]
     Query(#[from] QueryError),
     #[error(transparent)]
-    Metadata(#[from] MetadataError),
+    TokenMetadata(#[from] TokenMetadataError),
     #[error(transparent)]
     PrimitiveError(#[from] PrimitiveError),
     #[error(transparent)]
@@ -27,13 +25,11 @@ pub enum Error {
     #[error(transparent)]
     ProviderError(#[from] ProviderError),
     #[error(transparent)]
-    ExecutorSendError(#[from] tokio::sync::mpsc::error::SendError<QueryMessage>),
-    #[error(transparent)]
-    ExecutorRecvError(#[from] tokio::sync::oneshot::error::RecvError),
+    Executor(#[from] crate::executor::error::ExecutorError),
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum MetadataError {
+pub enum TokenMetadataError {
     #[error(transparent)]
     IpfsError(#[from] ipfs_api_backend_hyper::Error),
     #[error(transparent)]
