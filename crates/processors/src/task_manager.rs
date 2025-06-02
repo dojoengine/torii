@@ -181,7 +181,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                 }
             })
             .await
-            .map_err(|e| Error::TaskNetworkError(e))?;
+            .map_err(Error::TaskNetworkError)?;
 
         Ok(())
     }
