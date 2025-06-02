@@ -5,7 +5,6 @@ use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
 use bitflags::bitflags;
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
@@ -30,6 +29,7 @@ use torii_sqlite::{Cursor, Sql};
 use tracing::{debug, error, info, trace};
 
 use crate::constants::LOG_TARGET;
+use crate::error::{Error, FetchError, ProcessError};
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
 
 bitflags! {
@@ -153,10 +153,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
     }
 
-    pub async fn start(&mut self) -> Result<()> {
+    pub async fn start(&mut self) -> Result<(), Error> {
         if let Err(e) = provider_utils::health_check_provider(self.provider.clone()).await {
             error!(target: LOG_TARGET,"Provider health check failed during engine start");
-            return Err(e);
+            return Err(e.into());
         }
 
         let mut backoff_delay = Duration::from_secs(1);
@@ -217,7 +217,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
     }
 
-    pub async fn fetch(&mut self, cursors: &mut HashMap<Felt, Cursor>) -> Result<FetchRangeResult> {
+    pub async fn fetch(
+        &mut self,
+        cursors: &mut HashMap<Felt, Cursor>,
+    ) -> Result<FetchRangeResult, FetchError> {
         let latest_block = self.provider.block_hash_and_number().await?;
 
         let instant = Instant::now();
@@ -232,7 +235,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         &self,
         cursors: &mut HashMap<Felt, Cursor>,
         latest_block_number: u64,
-    ) -> Result<FetchRangeResult> {
+    ) -> Result<FetchRangeResult, FetchError> {
         let mut new_cursors = cursors.clone();
         let mut events = vec![];
 
@@ -406,7 +409,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         initial_requests: Vec<(Felt, u64, ProviderRequestData)>,
         cursors: &mut HashMap<Felt, Cursor>,
         latest_block_number: u64,
-    ) -> Result<Vec<EmittedEvent>> {
+    ) -> Result<Vec<EmittedEvent>, FetchError> {
         let mut all_events = Vec::new();
         let mut current_requests = initial_requests;
         let old_cursors = cursors.clone();
@@ -498,11 +501,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             }
                         }
                     }
-                    _ => {
-                        return Err(anyhow::anyhow!(
-                            "Unexpected response type from batch events request"
-                        ));
-                    }
+                    _ => unreachable!(),
                 }
             }
 
@@ -513,7 +512,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         Ok(all_events)
     }
 
-    pub async fn process(&mut self, range: FetchRangeResult) -> Result<()> {
+    pub async fn process(&mut self, range: FetchRangeResult) -> Result<(), ProcessError> {
         let mut processed_blocks = HashSet::new();
 
         // Process all transactions in the chunk
@@ -552,7 +551,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         block_number: u64,
         block_timestamp: u64,
         transaction: Option<Transaction>,
-    ) -> Result<()> {
+    ) -> Result<(), ProcessError> {
         let mut unique_contracts = HashSet::new();
         let mut unique_models = HashSet::new();
         // Contract -> Cursor
@@ -613,7 +612,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         Ok(())
     }
 
-    async fn process_block(&mut self, block_number: u64, block_timestamp: u64) -> Result<()> {
+    async fn process_block(
+        &mut self,
+        block_number: u64,
+        block_timestamp: u64,
+    ) -> Result<(), ProcessError> {
         for processor in &self.processors.block {
             processor
                 .process(
@@ -637,7 +640,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         contract_addresses: &HashSet<Felt>,
         transaction: &Transaction,
         unique_models: &HashSet<Felt>,
-    ) -> Result<()> {
+    ) -> Result<(), ProcessError> {
         for processor in &self.processors.transaction {
             processor
                 .process(
@@ -665,10 +668,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         event: &Event,
         transaction_hash: Felt,
         contract_type: ContractType,
-    ) -> Result<()> {
+    ) -> Result<(), ProcessError> {
         if self.config.flags.contains(IndexingFlags::RAW_EVENTS) {
             self.db
-                .store_event(event_id, event, transaction_hash, block_timestamp)?;
+                .store_event(event_id, event, transaction_hash, block_timestamp)
+                .map_err(ProcessError::SqliteError)?;
         }
 
         let event_key = event.keys[0];
@@ -692,7 +696,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     .await
                 {
                     error!(target: LOG_TARGET, error = %e, "Processing catch all event processor.");
-                    return Err(e);
+                    return Err(e.into());
                 }
             } else {
                 let unprocessed_event = UnprocessedEvent {
@@ -737,7 +741,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     async fn chunked_batch_requests(
         &self,
         requests: &[ProviderRequestData],
-    ) -> Result<Vec<ProviderResponseData>> {
+    ) -> Result<Vec<ProviderResponseData>, FetchError> {
         if requests.is_empty() {
             return Ok(Vec::new());
         }

@@ -5,4 +5,5 @@ mod constants;
 mod test;
 
 pub mod engine;
+pub mod error;
 pub use engine::Engine;
