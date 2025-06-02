@@ -275,7 +275,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     match self.handle_query_message(msg).await {
                         Ok(()) => {},
                         Err(e) => {
-                            error!(target: LOG_TARGET, r#type = ?query_type, error = %e, "Failed to execute query.");
+                            error!(target: LOG_TARGET, r#type = ?query_type, error = ?e, "Failed to execute query.");
                             debug!(target: LOG_TARGET, query = ?statement, arguments = ?arguments, "Failed to execute query.");
                         }
                     }

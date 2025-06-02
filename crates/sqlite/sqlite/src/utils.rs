@@ -162,7 +162,7 @@ pub async fn fetch_content_from_http(url: &str) -> Result<Bytes, HttpError> {
                 if retries >= REQ_MAX_RETRIES {
                     return Err(HttpError::Reqwest(e));
                 }
-                debug!(error = %e, retry = retries, "Request failed, retrying after backoff");
+                debug!(error = ?e, retry = retries, "Request failed, retrying after backoff");
                 tokio::time::sleep(backoff).await;
                 retries += 1;
                 backoff *= 2;
@@ -188,7 +188,7 @@ pub async fn fetch_content_from_ipfs(cid: &str) -> Result<Bytes, ipfs_api_backen
                 if retries >= REQ_MAX_RETRIES {
                     return Err(e);
                 }
-                debug!(error = %e, retry = retries, "Request failed, retrying after backoff");
+                debug!(error = ?e, retry = retries, "Request failed, retrying after backoff");
                 tokio::time::sleep(backoff).await;
                 retries += 1;
                 backoff *= 2;

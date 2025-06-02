@@ -154,7 +154,7 @@ impl Runner {
                 if let Err(e) =
                     stream_snapshot_into_file(&snapshot_url, &database_path, &client).await
                 {
-                    error!(target: LOG_TARGET, error = %e, "Failed to download snapshot.");
+                    error!(target: LOG_TARGET, error = ?e, "Failed to download snapshot.");
                     // Decide if we should exit or continue with a fresh DB
                     // For now, let's exit as the user explicitly requested a snapshot.
                     return Err(e);
@@ -368,7 +368,7 @@ impl Runner {
 
         if self.args.runner.explorer {
             if let Err(e) = webbrowser::open(&explorer_url) {
-                error!(target: LOG_TARGET, error = %e, "Opening World Explorer in the browser.");
+                error!(target: LOG_TARGET, error = ?e, "Opening World Explorer in the browser.");
             }
         }
 

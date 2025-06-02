@@ -113,7 +113,7 @@ impl Service {
     ) {
         while let Some(event) = event_receiver.recv().await {
             if let Err(e) = Self::process_event_update(&subs, &event).await {
-                error!(target = LOG_TARGET, error = %e, "Processing event update.");
+                error!(target = LOG_TARGET, error = ?e, "Processing event update.");
             }
         }
     }
@@ -195,7 +195,7 @@ impl Future for Service {
 
         while let Poll::Ready(Some(event)) = this.simple_broker.poll_next_unpin(cx) {
             if let Err(e) = this.event_sender.send(event) {
-                error!(target = LOG_TARGET, error = %e, "Sending event update to processor.");
+                error!(target = LOG_TARGET, error = ?e, "Sending event update to processor.");
             }
         }
 

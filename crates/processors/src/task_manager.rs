@@ -72,7 +72,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             if let Err(e) = self.task_network.add_task(task_identifier, task_data) {
                 error!(
                     target: LOG_TARGET,
-                    error = %e,
+                    error = ?e,
                     task_id = %task_identifier,
                     "Failed to add task to network."
                 );
@@ -100,7 +100,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             ) {
                 error!(
                     target: LOG_TARGET,
-                    error = %e,
+                    error = ?e,
                     task_id = %task_identifier,
                     dependencies = ?dependencies,
                     parallelized_event = ?parallelized_event,
@@ -168,7 +168,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 error!(
                                     target: LOG_TARGET,
                                     event_name = processor.event_key(),
-                                    error = %e,
+                                    error = ?e,
                                     task_id = %task_id,
                                     "Processing parallelized event."
                                 );

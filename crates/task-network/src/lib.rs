@@ -124,7 +124,7 @@ where
                         Err(e) => {
                             error!(
                                 target: LOG_TARGET,
-                                error = %e,
+                                error = ?e,
                                 task_id = ?task_id,
                                 level = level_idx,
                                 "Error processing task."

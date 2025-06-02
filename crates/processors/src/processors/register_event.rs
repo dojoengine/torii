@@ -8,6 +8,7 @@ use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{BlockId, Event};
 use starknet::providers::Provider;
+use torii_sqlite::error::ParseError;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
@@ -89,6 +90,8 @@ where
         if !config.should_index(&namespace) {
             return Ok(());
         }
+
+        return Err(Error::ParseError(ParseError::InvalidTyEntity));
 
         // Called model here by language, but it's an event. Torii rework will make clear
         // distinction.

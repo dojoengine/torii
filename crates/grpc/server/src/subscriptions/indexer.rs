@@ -111,7 +111,7 @@ impl Service {
     ) {
         while let Some(update) = update_receiver.recv().await {
             if let Err(e) = Self::process_update(&subs, &update).await {
-                error!(target = LOG_TARGET, error = %e, "Processing indexer update.");
+                error!(target = LOG_TARGET, error = ?e, "Processing indexer update.");
             }
         }
     }
@@ -170,7 +170,7 @@ impl Future for Service {
 
         while let Poll::Ready(Some(update)) = this.simple_broker.poll_next_unpin(cx) {
             if let Err(e) = this.update_sender.send(update) {
-                error!(target = LOG_TARGET, error = %e, "Sending indexer update to processor.");
+                error!(target = LOG_TARGET, error = ?e, "Sending indexer update to processor.");
             }
         }
 

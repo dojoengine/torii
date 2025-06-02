@@ -65,7 +65,7 @@ async fn serve_static_file(
         match check_image_hash(&token_image_dir, &token_id, &pool).await {
             Ok(needs_update) => needs_update,
             Err(e) => {
-                error!(error = %e, "Failed to check image hash, will attempt to fetch");
+                error!(error = ?e, "Failed to check image hash, will attempt to fetch");
                 true
             }
         }
@@ -77,7 +77,7 @@ async fn serve_static_file(
         match fetch_and_process_image(&artifacts_dir, &token_id, pool).await {
             Ok(path) => path,
             Err(e) => {
-                error!(error = %e, "Failed to fetch and process image for token_id: {}", token_id);
+                error!(error = ?e, "Failed to fetch and process image for token_id: {}", token_id);
                 return Err(warp::reject::not_found());
             }
         };
@@ -85,7 +85,7 @@ async fn serve_static_file(
     let file_name = match file_name_from_dir_and_query(token_image_dir, &query) {
         Ok(file_name) => file_name,
         Err(e) => {
-            error!(error = %e, "Failed to get file name from directory and query");
+            error!(error = ?e, "Failed to get file name from directory and query");
             return Err(reject::not_found());
         }
     };

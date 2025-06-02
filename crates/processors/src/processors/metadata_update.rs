@@ -107,7 +107,7 @@ async fn try_retrieve(mut db: Sql, resource: Felt, uri_str: String) {
                 target: LOG_TARGET,
                 resource = %format!("{:#x}", resource),
                 uri = %uri_str,
-                error = %e,
+                error = ?e,
                 "Retrieving resource uri."
             );
         }
