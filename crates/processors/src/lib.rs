@@ -9,9 +9,9 @@ use starknet::providers::Provider;
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::Sql;
 
+pub mod error;
 pub mod processors;
 pub mod task_manager;
-pub mod error;
 
 use crate::task_manager::TaskId;
 
