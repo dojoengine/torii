@@ -3,7 +3,9 @@ use std::num::ParseIntError;
 use dojo_types::primitive::PrimitiveError;
 use dojo_types::schema::EnumError;
 use starknet::core::types::FromStrError;
-use starknet::core::utils::{CairoShortStringToFeltError, NonAsciiNameError, ParseCairoShortStringError};
+use starknet::core::utils::{
+    CairoShortStringToFeltError, NonAsciiNameError, ParseCairoShortStringError,
+};
 use starknet::providers::ProviderError;
 
 use crate::executor::QueryMessage;

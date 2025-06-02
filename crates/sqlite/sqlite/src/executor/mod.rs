@@ -436,7 +436,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 if entity.is_historical {
                     entity_counter += 1;
 
-                    let data = serde_json::to_string(&entity.ty.to_json_value()?).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+                    let data = serde_json::to_string(&entity.ty.to_json_value()?)
+                        .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
                     if let Some(keys) = entity.keys_str {
                         sqlx::query(
                             "INSERT INTO entities_historical (id, keys, event_id, data, model_id, \
@@ -555,7 +556,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 if em_query.is_historical {
                     event_counter += 1;
 
-                    let data = serde_json::to_string(&em_query.ty.to_json_value()?).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+                    let data = serde_json::to_string(&em_query.ty.to_json_value()?)
+                        .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
                     sqlx::query(
                         "INSERT INTO event_messages_historical (id, keys, event_id, data, \
                          model_id, executed_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *",
@@ -652,10 +654,17 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                                 // Parse name
                                 let name = match &results[0] {
                                     ProviderResponseData::Call(name) if name.len() == 1 => {
-                                        parse_cairo_short_string(&name[0]).map_err(|e| Error::Parse(ParseError::ParseCairoShortString(e)))?
+                                        parse_cairo_short_string(&name[0]).map_err(|e| {
+                                            Error::Parse(ParseError::ParseCairoShortString(e))
+                                        })?
                                     }
                                     ProviderResponseData::Call(name) => {
-                                        ByteArray::cairo_deserialize(name, 0).map_err(|e| Error::Parse(ParseError::CairoSerdeError(e)))?.to_string().map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?
+                                        ByteArray::cairo_deserialize(name, 0)
+                                            .map_err(|e| {
+                                                Error::Parse(ParseError::CairoSerdeError(e))
+                                            })?
+                                            .to_string()
+                                            .map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?
                                     }
                                     _ => String::new(),
                                 };
@@ -663,10 +672,17 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                                 // Parse symbol
                                 let symbol = match &results[1] {
                                     ProviderResponseData::Call(symbol) if symbol.len() == 1 => {
-                                        parse_cairo_short_string(&symbol[0]).map_err(|e| Error::Parse(ParseError::ParseCairoShortString(e)))?
+                                        parse_cairo_short_string(&symbol[0]).map_err(|e| {
+                                            Error::Parse(ParseError::ParseCairoShortString(e))
+                                        })?
                                     }
                                     ProviderResponseData::Call(symbol) => {
-                                        ByteArray::cairo_deserialize(symbol, 0).map_err(|e| Error::Parse(ParseError::CairoSerdeError(e)))?.to_string().map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?
+                                        ByteArray::cairo_deserialize(symbol, 0)
+                                            .map_err(|e| {
+                                                Error::Parse(ParseError::CairoSerdeError(e))
+                                            })?
+                                            .to_string()
+                                            .map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?
                                     }
                                     _ => String::new(),
                                 };

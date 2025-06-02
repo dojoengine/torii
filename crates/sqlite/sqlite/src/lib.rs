@@ -239,8 +239,14 @@ impl Sql {
             Argument::String(model.name().to_string()),
             Argument::FieldElement(class_hash),
             Argument::FieldElement(contract_address),
-            Argument::String(serde_json::to_string(&layout).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?),
-            Argument::String(serde_json::to_string(&namespaced_schema).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?),
+            Argument::String(
+                serde_json::to_string(&layout)
+                    .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?,
+            ),
+            Argument::String(
+                serde_json::to_string(&namespaced_schema)
+                    .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?,
+            ),
             Argument::Int(packed_size as i64),
             Argument::Int(unpacked_size as i64),
             Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
@@ -688,7 +694,10 @@ impl Sql {
                         .iter()
                         .map(|v| v.to_json_value())
                         .collect::<Result<Vec<_>, _>>()?;
-                    arguments.push(Argument::String(serde_json::to_string(&values).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?));
+                    arguments.push(Argument::String(
+                        serde_json::to_string(&values)
+                            .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?,
+                    ));
                 }
                 Ty::Primitive(ty) => {
                     columns.push(format!("\"{}\"", prefix));
