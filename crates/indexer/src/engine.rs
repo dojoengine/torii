@@ -456,22 +456,23 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 current_requests.into_iter().zip(batch_results)
             {
                 let old_cursor = old_cursors.get(&contract_address).unwrap();
-                let cursor = cursors.get_mut(&contract_address).unwrap();
+                let new_cursor = cursors.get_mut(&contract_address).unwrap();
                 let mut last_contract_tx_tmp = old_cursor.last_pending_block_contract_tx;
+                let mut last_block_number = None;
+                let mut is_pending = false;
 
                 match result {
                     ProviderResponseData::GetEvents(events_page) => {
-                        let mut last_block_number = None;
-
                         // Process events for this page, only including events up to our target
                         // block
                         for event in events_page.events.clone() {
-                            let (block_number, is_pending) = match event.block_number {
-                                Some(block_number) => (block_number, false),
+                            let block_number = match event.block_number {
+                                Some(block_number) => block_number,
                                 // If we don't have a block number, this must be a pending block event
-                                None => (latest_block_number + 1, true),
+                                None => latest_block_number + 1,
                             };
 
+                            is_pending = event.block_number.is_none();
                             last_block_number = Some(block_number);
                             if block_number > to {
                                 break;
@@ -494,21 +495,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 if event.transaction_hash == last_contract_tx {
                                     continue;
                                 }
-                                cursor.last_pending_block_contract_tx = None;
+                                new_cursor.last_pending_block_contract_tx = None;
                             }
 
                             if is_pending {
-                                cursor.last_pending_block_contract_tx =
+                                new_cursor.last_pending_block_contract_tx =
                                     Some(event.transaction_hash);
                             }
                             events.push(event);
                         }
-
-                        let new_head = to.min(latest_block_number);
-                        if cursor.head != Some(new_head) {
-                            cursor.last_pending_block_contract_tx = None;
-                        }
-                        cursor.head = Some(new_head);
 
                         // Add continuation request to next_requests instead of recursing
                         if let Some(continuation_token) = events_page.continuation_token {
@@ -525,6 +520,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     ));
                                 }
                             }
+                        } else {
+                            let new_head = to.min(latest_block_number);
+                            // We only reset the last pending block contract tx if we are not
+                            // processing pending events anymore. It can happen that during a short lapse,
+                            // we can have some pending events while the latest block number has been incremented.
+                            // So we want to make sure we don't reset the last pending block contract tx
+                            if new_cursor.head != Some(new_head) && !is_pending {
+                                new_cursor.last_pending_block_contract_tx = None;
+                            }
+                            new_cursor.head = Some(new_head);
                         }
                     }
                     _ => unreachable!(),
