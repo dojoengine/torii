@@ -156,7 +156,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     pub async fn start(&mut self) -> Result<(), Error> {
         if let Err(e) = provider_utils::health_check_provider(self.provider.clone()).await {
             error!(target: LOG_TARGET,"Provider health check failed during engine start");
-            return Err(e.into());
+            return Err(Error::AnyhowError(e));
         }
 
         let mut backoff_delay = Duration::from_secs(1);

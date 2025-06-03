@@ -3,7 +3,9 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
-    FetchError(#[from] Box<Error>),
+    FetchError(#[from] FetchError),
+    #[error(transparent)]
+    ProcessError(#[from] ProcessError),
     #[error(transparent)]
     SqliteError(#[from] torii_sqlite::error::Error),
     #[error(transparent)]
