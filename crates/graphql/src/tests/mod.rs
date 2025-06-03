@@ -421,7 +421,7 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         .map(|c| (c.address, Default::default()))
         .collect();
     let data = engine.fetch(&mut cursors).await.unwrap();
-    engine.process(data).await.unwrap();
+    engine.process(&data).await.unwrap();
     db.execute().await.unwrap();
     Ok(pool)
 }
