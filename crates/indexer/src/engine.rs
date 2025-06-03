@@ -192,7 +192,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 fetching_backoff_delay = Duration::from_secs(1);
                                 info!(target: LOG_TARGET, "Fetching reestablished.");
                             }
-                            
+
                             // Cache the fetch result for retry
                             cached_data = Some((fetch_result.clone(), cursors.clone()));
 
