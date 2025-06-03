@@ -53,7 +53,7 @@ pub struct EngineConfig {
     pub world_block: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FetchRangeTransaction {
     // this is Some if the transactions indexing flag
     // is enabled
@@ -61,7 +61,7 @@ pub struct FetchRangeTransaction {
     pub events: Vec<EmittedEvent>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FetchRangeResult {
     // block_number -> (transaction_hash -> events)
     pub transactions: BTreeMap<u64, LinkedHashMap<Felt, FetchRangeTransaction>>,
@@ -164,26 +164,51 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
-        let mut erroring_out = false;
+        let mut fetching_erroring_out = false;
+        let mut processing_erroring_out = false;
+        // The last fetch result & cursors, in case the processing fails, but not fetching.
+        // Thus we can retry the processing with the same data instead of fetching again.
+        let mut cached_data: Option<(FetchRangeResult, HashMap<Felt, Cursor>)> = None;
+
         loop {
-            let mut cursors = self.db.cursors().await?;
             tokio::select! {
                 _ = shutdown_rx.recv() => {
                     break Ok(());
                 }
-                res = self.fetch(&mut cursors) => {
+                res = async {
+                    if let Some((last_fetch_result, last_cursors)) = cached_data.as_ref() {
+                        Result::<_, Error>::Ok((last_fetch_result.clone(), last_cursors.clone()))
+                    } else {
+                        let mut cursors = self.db.cursors().await?;
+                        let fetch_result = self.fetch(&mut cursors).await?;
+                        Ok((fetch_result, cursors))
+                    }
+                } => {
                     match res {
-                        Ok(fetch_result) => {
-                            let instant = Instant::now();
-                            if erroring_out {
-                                erroring_out = false;
+                        Ok((fetch_result, cursors)) => {
+                            if fetching_erroring_out {
+                                fetching_erroring_out = false;
                                 backoff_delay = Duration::from_secs(1);
-                                info!(target: LOG_TARGET, "Syncing reestablished.");
+                                info!(target: LOG_TARGET, "Fetching reestablished.");
                             }
+                            
+                            // Cache the fetch result for retry
+                            cached_data = Some((fetch_result.clone(), cursors.clone()));
 
+                            let instant = Instant::now();
                             let num_transactions = fetch_result.num_transactions.clone();
+
                             match self.process(fetch_result).await {
                                 Ok(_) => {
+                                    // Only reset backoff delay after successful processing
+                                    if processing_erroring_out {
+                                        processing_erroring_out = false;
+                                        backoff_delay = Duration::from_secs(1);
+                                        info!(target: LOG_TARGET, "Processing reestablished.");
+                                    }
+                                    // Reset the cached data
+                                    cached_data = None;
+
                                     self.db.update_cursors(cursors, num_transactions)?;
                                     self.db.apply_cache_diff().await?;
                                     self.db.execute().await?;
@@ -191,7 +216,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 },
                                 Err(e) => {
                                     error!(target: LOG_TARGET, error = ?e, "Processing fetched data.");
-                                    erroring_out = true;
+                                    processing_erroring_out = true;
                                     self.db.rollback().await?;
                                     self.task_manager.clear_tasks();
                                     sleep(backoff_delay).await;
@@ -203,7 +228,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed fetched data.");
                         }
                         Err(e) => {
-                            erroring_out = true;
+                            fetching_erroring_out = true;
                             error!(target: LOG_TARGET, error = ?e, "Fetching data.");
                             sleep(backoff_delay).await;
                             if backoff_delay < max_backoff_delay {
