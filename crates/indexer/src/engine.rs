@@ -263,12 +263,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         cursors: &mut HashMap<Felt, Cursor>,
         latest_block_number: u64,
     ) -> Result<FetchRangeResult, FetchError> {
-        let mut new_cursors = cursors.clone();
         let mut events = vec![];
 
         // Create initial batch requests for all contracts
         let mut event_requests = Vec::new();
-        for (contract_address, cursor) in new_cursors.iter_mut() {
+        for (contract_address, cursor) in cursors.iter() {
             let from = cursor
                 .head
                 .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
