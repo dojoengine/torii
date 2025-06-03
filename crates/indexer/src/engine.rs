@@ -69,6 +69,8 @@ pub struct FetchRangeResult {
     pub blocks: BTreeMap<u64, u64>,
     // contract_address -> transaction count
     pub num_transactions: HashMap<Felt, u64>,
+    // new updated cursors
+    pub cursors: HashMap<Felt, Cursor>,
 }
 
 #[derive(Debug)]
@@ -169,7 +171,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let mut processing_erroring_out = false;
         // The last fetch result & cursors, in case the processing fails, but not fetching.
         // Thus we can retry the processing with the same data instead of fetching again.
-        let mut cached_data: Option<(FetchRangeResult, HashMap<Felt, Cursor>)> = None;
+        let mut cached_data: Option<Arc<FetchRangeResult>> = None;
 
         loop {
             tokio::select! {
@@ -177,16 +179,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     break Ok(());
                 }
                 res = async {
-                    if let Some((last_fetch_result, last_cursors)) = cached_data.as_ref() {
-                        Result::<_, Error>::Ok((last_fetch_result.clone(), last_cursors.clone()))
+                    if let Some(last_fetch_result) = cached_data.as_ref() {
+                        Result::<_, Error>::Ok(last_fetch_result.clone())
                     } else {
                         let mut cursors = self.db.cursors().await?;
                         let fetch_result = self.fetch(&mut cursors).await?;
-                        Ok((fetch_result, cursors))
+                        Ok(Arc::new(fetch_result))
                     }
                 } => {
                     match res {
-                        Ok((fetch_result, cursors)) => {
+                        Ok(fetch_result) => {
                             if fetching_erroring_out && cached_data.is_none() {
                                 fetching_erroring_out = false;
                                 fetching_backoff_delay = Duration::from_secs(1);
@@ -194,12 +196,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             }
 
                             // Cache the fetch result for retry
-                            cached_data = Some((fetch_result.clone(), cursors.clone()));
+                            cached_data = Some(fetch_result.clone());
 
                             let instant = Instant::now();
-                            let num_transactions = fetch_result.num_transactions.clone();
 
-                            match self.process(fetch_result).await {
+                            match self.process(&fetch_result).await {
                                 Ok(_) => {
                                     // Only reset backoff delay after successful processing
                                     if processing_erroring_out {
@@ -209,9 +210,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     }
                                     // Reset the cached data
                                     cached_data = None;
-
-                                    self.db.update_cursors(cursors, num_transactions)?;
-                                    self.db.apply_cache_diff().await?;
                                     self.db.execute().await?;
                                     debug!(target: LOG_TARGET, "Updated cursors, applied cache diff and executed.");
                                 },
@@ -260,7 +258,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
     pub async fn fetch_range(
         &self,
-        cursors: &mut HashMap<Felt, Cursor>,
+        cursors: &HashMap<Felt, Cursor>,
         latest_block_number: u64,
     ) -> Result<FetchRangeResult, FetchError> {
         let mut events = vec![];
@@ -304,8 +302,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Recursively fetch all events using batch requests
+        let mut cursors = cursors.clone();
         events.extend(
-            self.fetch_events(event_requests, cursors, latest_block_number)
+            self.fetch_events(event_requests, &mut cursors, latest_block_number)
                 .await?,
         );
 
@@ -427,6 +426,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             transactions,
             blocks,
             num_transactions,
+            cursors,
         })
     }
 
@@ -538,27 +538,27 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         Ok(all_events)
     }
 
-    pub async fn process(&mut self, range: FetchRangeResult) -> Result<(), ProcessError> {
+    pub async fn process(&mut self, range: &FetchRangeResult) -> Result<(), ProcessError> {
         let mut processed_blocks = HashSet::new();
 
         // Process all transactions in the chunk
-        for (block_number, transactions) in range.transactions {
+        for (block_number, transactions) in &range.transactions {
             for (transaction_hash, tx) in transactions {
                 trace!(target: LOG_TARGET, "Processing transaction hash: {:#x}", transaction_hash);
 
                 self.process_transaction_with_events(
-                    transaction_hash,
+                    *transaction_hash,
                     tx.events.as_slice(),
-                    block_number,
-                    range.blocks[&block_number],
-                    tx.transaction,
+                    *block_number,
+                    range.blocks[block_number],
+                    &tx.transaction,
                 )
                 .await?;
             }
 
             // Process block
             if !processed_blocks.contains(&block_number) {
-                self.process_block(block_number, range.blocks[&block_number])
+                self.process_block(*block_number, range.blocks[block_number])
                     .await?;
                 processed_blocks.insert(block_number);
             }
@@ -570,6 +570,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             .await
             .map_err(ProcessError::Processors)?;
 
+        // Apply ERC balances cache diff
+        self.db.apply_cache_diff().await?;
+
+        // Update cursors
+        self.db
+            .update_cursors(range.cursors.clone(), range.num_transactions.clone())?;
+
         Ok(())
     }
 
@@ -579,7 +586,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         events: &[EmittedEvent],
         block_number: u64,
         block_timestamp: u64,
-        transaction: Option<Transaction>,
+        transaction: &Option<Transaction>,
     ) -> Result<(), ProcessError> {
         let mut unique_contracts = HashSet::new();
         let mut unique_models = HashSet::new();
@@ -625,7 +632,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             .await?;
         }
 
-        if let Some(ref transaction) = transaction {
+        if let Some(transaction) = transaction {
             Self::process_transaction(
                 self,
                 block_number,
