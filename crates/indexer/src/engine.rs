@@ -159,7 +159,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             return Err(Error::AnyhowError(e));
         }
 
-        let mut backoff_delay = Duration::from_secs(1);
+        let mut fetching_backoff_delay = Duration::from_secs(1);
+        let mut processing_backoff_delay = Duration::from_secs(1);
         let max_backoff_delay = Duration::from_secs(60);
 
         let mut shutdown_rx = self.shutdown_tx.subscribe();
@@ -186,9 +187,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 } => {
                     match res {
                         Ok((fetch_result, cursors)) => {
-                            if fetching_erroring_out {
+                            if fetching_erroring_out && cached_data.is_none() {
                                 fetching_erroring_out = false;
-                                backoff_delay = Duration::from_secs(1);
+                                fetching_backoff_delay = Duration::from_secs(1);
                                 info!(target: LOG_TARGET, "Fetching reestablished.");
                             }
                             
@@ -203,7 +204,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     // Only reset backoff delay after successful processing
                                     if processing_erroring_out {
                                         processing_erroring_out = false;
-                                        backoff_delay = Duration::from_secs(1);
+                                        processing_backoff_delay = Duration::from_secs(1);
                                         info!(target: LOG_TARGET, "Processing reestablished.");
                                     }
                                     // Reset the cached data
@@ -219,9 +220,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     processing_erroring_out = true;
                                     self.db.rollback().await?;
                                     self.task_manager.clear_tasks();
-                                    sleep(backoff_delay).await;
-                                    if backoff_delay < max_backoff_delay {
-                                        backoff_delay *= 2;
+                                    sleep(processing_backoff_delay).await;
+                                    if processing_backoff_delay < max_backoff_delay {
+                                        processing_backoff_delay *= 2;
                                     }
                                 }
                             }
@@ -229,10 +230,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         }
                         Err(e) => {
                             fetching_erroring_out = true;
+                            cached_data = None;
                             error!(target: LOG_TARGET, error = ?e, "Fetching data.");
-                            sleep(backoff_delay).await;
-                            if backoff_delay < max_backoff_delay {
-                                backoff_delay *= 2;
+                            sleep(fetching_backoff_delay).await;
+                            if fetching_backoff_delay < max_backoff_delay {
+                                fetching_backoff_delay *= 2;
                             }
                         }
                     };
