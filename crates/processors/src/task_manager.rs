@@ -149,6 +149,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                             debug!(
                                 target: LOG_TARGET,
                                 event_name = processor.event_key(),
+                                event_id = %event_id,
+                                block_number = %block_number,
                                 task_id = %task_id,
                                 "Processing parallelized event."
                             );

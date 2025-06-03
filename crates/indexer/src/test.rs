@@ -56,7 +56,7 @@ where
         .map(|c| (c.address, Default::default()))
         .collect();
     let data = engine.fetch(&mut cursors).await.unwrap();
-    engine.process(data).await.unwrap();
+    engine.process(&data).await.unwrap();
 
     db.apply_cache_diff().await.unwrap();
     db.execute().await.unwrap();

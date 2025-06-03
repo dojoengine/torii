@@ -53,7 +53,7 @@ pub struct EngineConfig {
     pub world_block: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FetchRangeTransaction {
     // this is Some if the transactions indexing flag
     // is enabled
@@ -61,7 +61,7 @@ pub struct FetchRangeTransaction {
     pub events: Vec<EmittedEvent>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FetchRangeResult {
     // block_number -> (transaction_hash -> events)
     pub transactions: BTreeMap<u64, LinkedHashMap<Felt, FetchRangeTransaction>>,
@@ -69,6 +69,8 @@ pub struct FetchRangeResult {
     pub blocks: BTreeMap<u64, u64>,
     // contract_address -> transaction count
     pub num_transactions: HashMap<Felt, u64>,
+    // new updated cursors
+    pub cursors: HashMap<Felt, Cursor>,
 }
 
 #[derive(Debug)]
@@ -159,55 +161,78 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             return Err(Error::AnyhowError(e));
         }
 
-        let mut backoff_delay = Duration::from_secs(1);
+        let mut fetching_backoff_delay = Duration::from_secs(1);
+        let mut processing_backoff_delay = Duration::from_secs(1);
         let max_backoff_delay = Duration::from_secs(60);
 
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
-        let mut erroring_out = false;
+        let mut fetching_erroring_out = false;
+        let mut processing_erroring_out = false;
+        // The last fetch result & cursors, in case the processing fails, but not fetching.
+        // Thus we can retry the processing with the same data instead of fetching again.
+        let mut cached_data: Option<Arc<FetchRangeResult>> = None;
+
         loop {
-            let mut cursors = self.db.cursors().await?;
             tokio::select! {
                 _ = shutdown_rx.recv() => {
                     break Ok(());
                 }
-                res = self.fetch(&mut cursors) => {
+                res = async {
+                    if let Some(last_fetch_result) = cached_data.as_ref() {
+                        Result::<_, Error>::Ok(last_fetch_result.clone())
+                    } else {
+                        let mut cursors = self.db.cursors().await?;
+                        let fetch_result = self.fetch(&mut cursors).await?;
+                        Ok(Arc::new(fetch_result))
+                    }
+                } => {
                     match res {
                         Ok(fetch_result) => {
-                            let instant = Instant::now();
-                            if erroring_out {
-                                erroring_out = false;
-                                backoff_delay = Duration::from_secs(1);
-                                info!(target: LOG_TARGET, "Syncing reestablished.");
+                            if fetching_erroring_out && cached_data.is_none() {
+                                fetching_erroring_out = false;
+                                fetching_backoff_delay = Duration::from_secs(1);
+                                info!(target: LOG_TARGET, "Fetching reestablished.");
                             }
 
-                            let num_transactions = fetch_result.num_transactions.clone();
-                            match self.process(fetch_result).await {
+                            // Cache the fetch result for retry
+                            cached_data = Some(fetch_result.clone());
+
+                            let instant = Instant::now();
+
+                            match self.process(&fetch_result).await {
                                 Ok(_) => {
-                                    self.db.update_cursors(cursors, num_transactions)?;
-                                    self.db.apply_cache_diff().await?;
+                                    // Only reset backoff delay after successful processing
+                                    if processing_erroring_out {
+                                        processing_erroring_out = false;
+                                        processing_backoff_delay = Duration::from_secs(1);
+                                        info!(target: LOG_TARGET, "Processing reestablished.");
+                                    }
+                                    // Reset the cached data
+                                    cached_data = None;
                                     self.db.execute().await?;
                                     debug!(target: LOG_TARGET, "Updated cursors, applied cache diff and executed.");
                                 },
                                 Err(e) => {
                                     error!(target: LOG_TARGET, error = ?e, "Processing fetched data.");
-                                    erroring_out = true;
+                                    processing_erroring_out = true;
                                     self.db.rollback().await?;
                                     self.task_manager.clear_tasks();
-                                    sleep(backoff_delay).await;
-                                    if backoff_delay < max_backoff_delay {
-                                        backoff_delay *= 2;
+                                    sleep(processing_backoff_delay).await;
+                                    if processing_backoff_delay < max_backoff_delay {
+                                        processing_backoff_delay *= 2;
                                     }
                                 }
                             }
                             debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed fetched data.");
                         }
                         Err(e) => {
-                            erroring_out = true;
+                            fetching_erroring_out = true;
+                            cached_data = None;
                             error!(target: LOG_TARGET, error = ?e, "Fetching data.");
-                            sleep(backoff_delay).await;
-                            if backoff_delay < max_backoff_delay {
-                                backoff_delay *= 2;
+                            sleep(fetching_backoff_delay).await;
+                            if fetching_backoff_delay < max_backoff_delay {
+                                fetching_backoff_delay *= 2;
                             }
                         }
                     };
@@ -233,15 +258,14 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
     pub async fn fetch_range(
         &self,
-        cursors: &mut HashMap<Felt, Cursor>,
+        cursors: &HashMap<Felt, Cursor>,
         latest_block_number: u64,
     ) -> Result<FetchRangeResult, FetchError> {
-        let mut new_cursors = cursors.clone();
         let mut events = vec![];
 
         // Create initial batch requests for all contracts
         let mut event_requests = Vec::new();
-        for (contract_address, cursor) in new_cursors.iter_mut() {
+        for (contract_address, cursor) in cursors.iter() {
             let from = cursor
                 .head
                 .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
@@ -278,8 +302,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Recursively fetch all events using batch requests
+        let mut cursors = cursors.clone();
         events.extend(
-            self.fetch_events(event_requests, cursors, latest_block_number)
+            self.fetch_events(event_requests, &mut cursors, latest_block_number)
                 .await?,
         );
 
@@ -401,6 +426,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             transactions,
             blocks,
             num_transactions,
+            cursors,
         })
     }
 
@@ -430,22 +456,23 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 current_requests.into_iter().zip(batch_results)
             {
                 let old_cursor = old_cursors.get(&contract_address).unwrap();
-                let cursor = cursors.get_mut(&contract_address).unwrap();
+                let new_cursor = cursors.get_mut(&contract_address).unwrap();
                 let mut last_contract_tx_tmp = old_cursor.last_pending_block_contract_tx;
+                let mut last_block_number = None;
+                let mut is_pending = false;
 
                 match result {
                     ProviderResponseData::GetEvents(events_page) => {
-                        let mut last_block_number = None;
-
                         // Process events for this page, only including events up to our target
                         // block
                         for event in events_page.events.clone() {
-                            let (block_number, is_pending) = match event.block_number {
-                                Some(block_number) => (block_number, false),
+                            let block_number = match event.block_number {
+                                Some(block_number) => block_number,
                                 // If we don't have a block number, this must be a pending block event
-                                None => (latest_block_number + 1, true),
+                                None => latest_block_number + 1,
                             };
 
+                            is_pending = event.block_number.is_none();
                             last_block_number = Some(block_number);
                             if block_number > to {
                                 break;
@@ -468,21 +495,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 if event.transaction_hash == last_contract_tx {
                                     continue;
                                 }
-                                cursor.last_pending_block_contract_tx = None;
+                                new_cursor.last_pending_block_contract_tx = None;
                             }
 
                             if is_pending {
-                                cursor.last_pending_block_contract_tx =
+                                new_cursor.last_pending_block_contract_tx =
                                     Some(event.transaction_hash);
                             }
                             events.push(event);
                         }
-
-                        let new_head = to.min(latest_block_number);
-                        if cursor.head != Some(new_head) {
-                            cursor.last_pending_block_contract_tx = None;
-                        }
-                        cursor.head = Some(new_head);
 
                         // Add continuation request to next_requests instead of recursing
                         if let Some(continuation_token) = events_page.continuation_token {
@@ -499,6 +520,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     ));
                                 }
                             }
+                        } else {
+                            let new_head = to.min(latest_block_number);
+                            // We only reset the last pending block contract tx if we are not
+                            // processing pending events anymore. It can happen that during a short lapse,
+                            // we can have some pending events while the latest block number has been incremented.
+                            // So we want to make sure we don't reset the last pending block contract tx
+                            if new_cursor.head != Some(new_head) && !is_pending {
+                                new_cursor.last_pending_block_contract_tx = None;
+                            }
+                            new_cursor.head = Some(new_head);
                         }
                     }
                     _ => unreachable!(),
@@ -512,27 +543,27 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         Ok(all_events)
     }
 
-    pub async fn process(&mut self, range: FetchRangeResult) -> Result<(), ProcessError> {
+    pub async fn process(&mut self, range: &FetchRangeResult) -> Result<(), ProcessError> {
         let mut processed_blocks = HashSet::new();
 
         // Process all transactions in the chunk
-        for (block_number, transactions) in range.transactions {
+        for (block_number, transactions) in &range.transactions {
             for (transaction_hash, tx) in transactions {
                 trace!(target: LOG_TARGET, "Processing transaction hash: {:#x}", transaction_hash);
 
                 self.process_transaction_with_events(
-                    transaction_hash,
+                    *transaction_hash,
                     tx.events.as_slice(),
-                    block_number,
-                    range.blocks[&block_number],
-                    tx.transaction,
+                    *block_number,
+                    range.blocks[block_number],
+                    &tx.transaction,
                 )
                 .await?;
             }
 
             // Process block
             if !processed_blocks.contains(&block_number) {
-                self.process_block(block_number, range.blocks[&block_number])
+                self.process_block(*block_number, range.blocks[block_number])
                     .await?;
                 processed_blocks.insert(block_number);
             }
@@ -544,6 +575,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             .await
             .map_err(ProcessError::Processors)?;
 
+        // Apply ERC balances cache diff
+        self.db.apply_cache_diff().await?;
+
+        // Update cursors
+        self.db
+            .update_cursors(range.cursors.clone(), range.num_transactions.clone())?;
+
         Ok(())
     }
 
@@ -553,7 +591,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         events: &[EmittedEvent],
         block_number: u64,
         block_timestamp: u64,
-        transaction: Option<Transaction>,
+        transaction: &Option<Transaction>,
     ) -> Result<(), ProcessError> {
         let mut unique_contracts = HashSet::new();
         let mut unique_models = HashSet::new();
@@ -599,7 +637,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             .await?;
         }
 
-        if let Some(ref transaction) = transaction {
+        if let Some(transaction) = transaction {
             Self::process_transaction(
                 self,
                 block_number,
