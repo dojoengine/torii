@@ -26,8 +26,8 @@ pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::entity"
 
 #[derive(Debug)]
 pub struct EntitiesSubscriber {
-    clause: Option<Clause>,
-    sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
+    pub(crate) clause: Option<Clause>,
+    pub(crate) sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
 }
 
 #[derive(Debug, Default)]
@@ -65,7 +65,7 @@ impl EntityManager {
         }
     }
 
-    pub async fn remove_subscriber(&self, id: u64) {
+    pub(super) async fn remove_subscriber(&self, id: u64) {
         self.subscribers.remove(&id);
     }
 }
@@ -79,7 +79,7 @@ pub struct Service {
 
 impl Service {
     pub fn new(subs_manager: Arc<EntityManager>) -> Self {
-        let (entity_sender, mut entity_receiver) = unbounded_channel();
+        let (entity_sender, entity_receiver) = unbounded_channel();
         let service = Self {
             simple_broker: Box::pin(SimpleBroker::<OptimisticEntity>::subscribe()),
             entity_sender,
@@ -97,11 +97,11 @@ impl Service {
             });
         }
 
-        // Spawn a task to distribute entities to workers
+        // Spawn a task to distribute entities to workers in round-robin fashion
         tokio::spawn(async move {
             let mut worker_index = 0;
+            let mut entity_receiver = entity_receiver;
             while let Some(entity) = entity_receiver.recv().await {
-                // Send to a worker in a round-robin fashion
                 if let Err(e) = worker_senders[worker_index].send(entity) {
                     error!(target = LOG_TARGET, error = ?e, "Failed to send entity to worker.");
                 }
@@ -117,13 +117,9 @@ impl Service {
         mut entity_receiver: UnboundedReceiver<OptimisticEntity>,
     ) {
         while let Some(entity) = entity_receiver.recv().await {
-            // Process each entity in a separate tarefa para permitir concorrência
-            let subs = subs.clone();
-            tokio::spawn(async move {
-                if let Err(e) = Self::process_entity_update(&subs, &entity).await {
-                    error!(target = LOG_TARGET, error = ?e, "Processing entity update.");
-                }
-            });
+            if let Err(e) = Self::process_entity_update(&subs, &entity).await {
+                error!(target = LOG_TARGET, error = %e, "Processing entity update.");
+            }
         }
     }
 
@@ -131,7 +127,9 @@ impl Service {
         subs: &Arc<EntityManager>,
         entity: &OptimisticEntity,
     ) -> Result<(), Error> {
+        let mut closed_stream = Vec::new();
         let hashed = Felt::from_str(&entity.id).map_err(ParseError::FromStr)?;
+
         let keys = entity
             .keys
             .trim_end_matches(SQL_FELT_DELIMITER)
@@ -146,63 +144,50 @@ impl Service {
             .collect::<Result<Vec<_>, _>>()
             .map_err(ParseError::FromStr)?;
 
-        // Take a snapshot of subscribers to minimize lock time
-        let subscribers: Vec<_> = subs
-            .subscribers
-            .iter()
-            .map(|entry| (*entry.key(), entry.clause.clone(), entry.sender.clone()))
-            .collect();
+        for entry in subs.subscribers.iter() {
+            let (idx, sub) = (entry.key(), entry.value());
 
-        let mut closed_stream = Vec::new();
-
-        // Process subscribers concurrently
-        let tasks: Vec<_> = subscribers
-            .into_iter()
-            .filter_map(|(id, clause, sender)| {
-                if let Some(clause) = &clause {
-                    if !match_entity(hashed, &keys, &entity.updated_model, clause) {
-                        return None;
-                    }
+            if let Some(clause) = &sub.clause {
+                if !match_entity(hashed, &keys, &entity.updated_model, clause) {
+                    continue;
                 }
+            }
 
-                let resp = if entity.deleted {
-                    SubscribeEntityResponse {
-                        entity: Some(torii_proto::proto::types::Entity {
-                            hashed_keys: hashed.to_bytes_be().to_vec(),
-                            models: vec![],
-                        }),
-                        subscription_id: id,
-                    }
-                } else {
-                    let model = entity
-                        .updated_model
-                        .as_ref()
-                        .unwrap()
-                        .as_struct()
-                        .unwrap()
-                        .clone();
-                    SubscribeEntityResponse {
-                        entity: Some(torii_proto::proto::types::Entity {
-                            hashed_keys: hashed.to_bytes_be().to_vec(),
-                            models: vec![model.into()],
-                        }),
-                        subscription_id: id,
-                    }
-                };
+            let resp = if entity.deleted {
+                SubscribeEntityResponse {
+                    entity: Some(torii_proto::proto::types::Entity {
+                        hashed_keys: hashed.to_bytes_be().to_vec(),
+                        models: vec![],
+                    }),
+                    subscription_id: *idx,
+                }
+            } else {
+                let model = entity
+                    .updated_model
+                    .as_ref()
+                    .unwrap()
+                    .as_struct()
+                    .unwrap()
+                    .clone();
+                SubscribeEntityResponse {
+                    entity: Some(torii_proto::proto::types::Entity {
+                        hashed_keys: hashed.to_bytes_be().to_vec(),
+                        models: vec![model.into()],
+                    }),
+                    subscription_id: *idx,
+                }
+            };
 
-                Some(tokio::spawn(async move {
-                    match sender.send(Ok(resp)).await {
-                        Ok(_) => Ok(id),
-                        Err(_) => Err(id), // Channel closed or full
-                    }
-                }))
-            })
-            .collect();
-
-        // Wait for all sends to complete and collect failed subscriber IDs
-        for task in tasks {
-            if let Ok(Err(id)) = task.await {
-                closed_stream.push(id);
+            // Use try_send to avoid blocking on slow subscribers
+            match sub.sender.try_send(Ok(resp)) {
+                Ok(_) => {}
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
+                    closed_stream.push(*idx);
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    closed_stream.push(*idx);
+                }
             }
         }
 
