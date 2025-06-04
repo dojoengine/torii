@@ -57,11 +57,8 @@ impl EntityManager {
     }
 
     pub async fn update_subscriber(&self, id: u64, clause: Option<Clause>) {
-        if let Some(entry) = self.subscribers.get(&id) {
-            let sender = entry.sender.clone();
-            drop(entry);
-            self.subscribers
-                .insert(id, EntitiesSubscriber { clause, sender });
+        if let Some(mut subscriber) = self.subscribers.get_mut(&id) {
+            subscriber.clause = clause;
         }
     }
 
