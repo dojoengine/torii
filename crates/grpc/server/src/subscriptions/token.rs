@@ -21,8 +21,6 @@ use tracing::{error, trace};
 use torii_proto::proto::types::Token;
 use torii_proto::proto::world::SubscribeTokensResponse;
 
-use super::SUBSCRIPTION_CHANNEL_SIZE;
-
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::token";
 
 #[derive(Debug)]
@@ -40,16 +38,24 @@ pub struct TokenSubscriber {
 #[derive(Debug, Default)]
 pub struct TokenManager {
     subscribers: DashMap<u64, TokenSubscriber>,
+    subscription_buffer_size: usize,
 }
 
 impl TokenManager {
+    pub fn new(subscription_buffer_size: usize) -> Self {
+        Self {
+            subscribers: DashMap::new(),
+            subscription_buffer_size,
+        }
+    }
+
     pub async fn add_subscriber(
         &self,
         contract_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
     ) -> Result<Receiver<Result<SubscribeTokensResponse, tonic::Status>>, Error> {
         let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(SUBSCRIPTION_CHANNEL_SIZE);
+        let (sender, receiver) = channel(self.subscription_buffer_size);
 
         // Send initial empty response
         let _ = sender

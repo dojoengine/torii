@@ -36,6 +36,7 @@ use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
 use torii_cli::ToriiArgs;
+use torii_grpc_server::GrpcConfig;
 use torii_indexer::engine::{Engine, EngineConfig, IndexingFlags};
 use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
@@ -297,8 +298,16 @@ impl Runner {
         );
 
         let shutdown_rx = shutdown_tx.subscribe();
-        let (grpc_addr, grpc_server) =
-            torii_grpc_server::new(shutdown_rx, &readonly_pool, world_address, model_cache).await?;
+        let (grpc_addr, grpc_server) = torii_grpc_server::new(
+            shutdown_rx,
+            &readonly_pool,
+            world_address,
+            model_cache,
+            GrpcConfig {
+                subscription_buffer_size: self.args.grpc.subscription_buffer_size,
+            },
+        )
+        .await?;
 
         let temp_dir = TempDir::new()?;
         let artifacts_path = self

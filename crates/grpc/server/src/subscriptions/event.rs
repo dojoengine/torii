@@ -19,7 +19,7 @@ use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::Event;
 use tracing::{error, trace};
 
-use super::{match_keys, SUBSCRIPTION_CHANNEL_SIZE};
+use super::match_keys;
 use torii_proto::proto::types::Event as ProtoEvent;
 use torii_proto::proto::world::SubscribeEventsResponse;
 
@@ -36,15 +36,23 @@ pub struct EventSubscriber {
 #[derive(Debug, Default)]
 pub struct EventManager {
     subscribers: DashMap<usize, EventSubscriber>,
+    subscription_buffer_size: usize,
 }
 
 impl EventManager {
+    pub fn new(subscription_buffer_size: usize) -> Self {
+        Self {
+            subscribers: DashMap::new(),
+            subscription_buffer_size,
+        }
+    }
+
     pub async fn add_subscriber(
         &self,
         keys: Vec<KeysClause>,
     ) -> Result<Receiver<Result<SubscribeEventsResponse, tonic::Status>>, Error> {
         let id = rand::thread_rng().gen::<usize>();
-        let (sender, receiver) = channel(SUBSCRIPTION_CHANNEL_SIZE);
+        let (sender, receiver) = channel(self.subscription_buffer_size);
 
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from

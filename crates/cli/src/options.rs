@@ -22,6 +22,7 @@ pub const DEFAULT_MAX_CONCURRENT_TASKS: usize = 100;
 pub const DEFAULT_RELAY_PORT: u16 = 9090;
 pub const DEFAULT_RELAY_WEBRTC_PORT: u16 = 9091;
 pub const DEFAULT_RELAY_WEBSOCKET_PORT: u16 = 9092;
+pub const DEFAULT_GRPC_SUBSCRIPTION_BUFFER_SIZE: usize = 256;
 
 pub const DEFAULT_ERC_MAX_METADATA_TASKS: usize = 10;
 pub const DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT: u64 = 1000;
@@ -466,6 +467,19 @@ pub struct RunnerOptions {
         help = "Check if contracts are deployed before starting torii."
     )]
     pub check_contracts: bool,
+}
+
+#[derive(Default, Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
+#[serde(default)]
+#[command(next_help_heading = "GRPC options")]
+pub struct GrpcOptions {
+    /// The buffer size for the subscription channel.
+    #[arg(
+        long = "grpc.subscription_buffer_size",
+        default_value_t = DEFAULT_GRPC_SUBSCRIPTION_BUFFER_SIZE,
+        help = "The buffer size for the subscription channel."
+    )]
+    pub subscription_buffer_size: usize,
 }
 
 // Parses clap cli argument which is expected to be in the format:
