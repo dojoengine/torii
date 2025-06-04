@@ -9,9 +9,8 @@ use starknet::core::utils::parse_cairo_short_string;
 use starknet::macros::felt;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
-use torii_sqlite::error::ParseError;
 use torii_sqlite::Sql;
-use tracing::info;
+use tracing::{error, info};
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
@@ -106,8 +105,14 @@ where
 
         // Last felt in data is the salt which is the username encoded as short string
         let username_felt = event.data[event.data.len() - 1];
-        let username = parse_cairo_short_string(&username_felt)
-            .map_err(|e| Error::ParseError(ParseError::ParseCairoShortString(e)))?;
+        let username = match parse_cairo_short_string(&username_felt) {
+            Ok(username) => username,
+            Err(e) => {
+                error!(target: LOG_TARGET, username = ?username_felt, error = ?e, "Parsing controller username.");
+                // Skip the controller username that is not following the format.
+                return Ok(());
+            }
+        };
 
         info!(
             target: LOG_TARGET,
