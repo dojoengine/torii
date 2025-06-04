@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::mem;
 use std::str::FromStr;
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
@@ -57,20 +56,21 @@ impl Sql {
             event_id,
         )?;
 
-        {
-            let mut erc_cache = self.local_cache.erc_cache.write().await;
-            if from_address != Felt::ZERO {
-                // from_address/contract_address/
-                let from_balance_id = felts_to_sql_string(&[from_address, contract_address]);
-                let from_balance = erc_cache.entry(from_balance_id).or_default();
-                *from_balance -= I256::from(amount);
-            }
+        if from_address != Felt::ZERO {
+            // from_address/contract_address/
+            let from_balance_id = felts_to_sql_string(&[from_address, contract_address]);
+            let mut from_balance = self
+                .local_cache
+                .erc_cache
+                .entry(from_balance_id)
+                .or_default();
+            *from_balance -= I256::from(amount);
+        }
 
-            if to_address != Felt::ZERO {
-                let to_balance_id = felts_to_sql_string(&[to_address, contract_address]);
-                let to_balance = erc_cache.entry(to_balance_id).or_default();
-                *to_balance += I256::from(amount);
-            }
+        if to_address != Felt::ZERO {
+            let to_balance_id = felts_to_sql_string(&[to_address, contract_address]);
+            let mut to_balance = self.local_cache.erc_cache.entry(to_balance_id).or_default();
+            *to_balance += I256::from(amount);
         }
 
         Ok(())
@@ -108,27 +108,28 @@ impl Sql {
         )?;
 
         // from_address/contract_address:id
-        {
-            let mut erc_cache = self.local_cache.erc_cache.write().await;
-            if from_address != Felt::ZERO {
-                let from_balance_id = format!(
-                    "{}{SQL_FELT_DELIMITER}{}",
-                    felt_to_sql_string(&from_address),
-                    &id
-                );
-                let from_balance = erc_cache.entry(from_balance_id).or_default();
-                *from_balance -= I256::from(amount);
-            }
+        if from_address != Felt::ZERO {
+            let from_balance_id = format!(
+                "{}{SQL_FELT_DELIMITER}{}",
+                felt_to_sql_string(&from_address),
+                &id
+            );
+            let mut from_balance = self
+                .local_cache
+                .erc_cache
+                .entry(from_balance_id)
+                .or_default();
+            *from_balance -= I256::from(amount);
+        }
 
-            if to_address != Felt::ZERO {
-                let to_balance_id = format!(
-                    "{}{SQL_FELT_DELIMITER}{}",
-                    felt_to_sql_string(&to_address),
-                    &id
-                );
-                let to_balance = erc_cache.entry(to_balance_id).or_default();
-                *to_balance += I256::from(amount);
-            }
+        if to_address != Felt::ZERO {
+            let to_balance_id = format!(
+                "{}{SQL_FELT_DELIMITER}{}",
+                felt_to_sql_string(&to_address),
+                &id
+            );
+            let mut to_balance = self.local_cache.erc_cache.entry(to_balance_id).or_default();
+            *to_balance += I256::from(amount);
         }
 
         Ok(())
@@ -342,15 +343,20 @@ impl Sql {
     }
 
     pub async fn apply_cache_diff(&mut self) -> Result<(), Error> {
-        if !self.local_cache.erc_cache.read().await.is_empty() {
-            let mut erc_cache = self.local_cache.erc_cache.write().await;
+        if !self.local_cache.erc_cache.is_empty() {
+            let erc_cache = self
+                .local_cache
+                .erc_cache
+                .iter()
+                .map(|t| (t.key().clone(), t.value().clone()))
+                .collect::<HashMap<String, I256>>();
+            self.local_cache.erc_cache.clear();
+            self.local_cache.erc_cache.shrink_to_fit();
             self.executor
                 .send(QueryMessage::new(
                     "".to_string(),
                     vec![],
-                    QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery {
-                        erc_cache: mem::replace(&mut erc_cache, HashMap::with_capacity(64)),
-                    }),
+                    QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery { erc_cache }),
                 ))
                 .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
         }
