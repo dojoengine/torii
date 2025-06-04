@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use dashmap::DashMap;
 use futures::Stream;
 use futures_util::StreamExt;
 use rand::Rng;
@@ -12,7 +12,6 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use tokio::sync::RwLock;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
@@ -27,13 +26,14 @@ pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::entity"
 
 #[derive(Debug)]
 pub struct EntitiesSubscriber {
-    clause: Option<Clause>,
-    sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
+    /// The clause that the subscriber is interested in
+    pub(crate) clause: Option<Clause>,
+    /// The channel to send the response back to the subscriber.
+    pub(crate) sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
 }
-
 #[derive(Debug, Default)]
 pub struct EntityManager {
-    subscribers: RwLock<HashMap<u64, EntitiesSubscriber>>,
+    subscribers: DashMap<u64, EntitiesSubscriber>,
 }
 
 impl EntityManager {
@@ -44,6 +44,9 @@ impl EntityManager {
         let subscription_id = rand::thread_rng().gen::<u64>();
         let (sender, receiver) = channel(SUBSCRIPTION_CHANNEL_SIZE);
 
+        // NOTE: unlock issue with firefox/safari
+        // initially send empty stream message to return from
+        // initial subscribe call
         let _ = sender
             .send(Ok(SubscribeEntityResponse {
                 entity: None,
@@ -52,29 +55,19 @@ impl EntityManager {
             .await;
 
         self.subscribers
-            .write()
-            .await
             .insert(subscription_id, EntitiesSubscriber { clause, sender });
 
         Ok(receiver)
     }
 
     pub async fn update_subscriber(&self, id: u64, clause: Option<Clause>) {
-        let sender = {
-            let subscribers = self.subscribers.read().await;
-            subscribers.get(&id).map(|sub| sub.sender.clone())
-        };
-
-        if let Some(sender) = sender {
-            self.subscribers
-                .write()
-                .await
-                .insert(id, EntitiesSubscriber { clause, sender });
+        if let Some(mut subscriber) = self.subscribers.get_mut(&id) {
+            subscriber.clause = clause;
         }
     }
 
-    pub async fn remove_subscriber(&self, id: u64) {
-        self.subscribers.write().await.remove(&id);
+    pub(super) async fn remove_subscriber(&self, id: u64) {
+        self.subscribers.remove(&id);
     }
 }
 
@@ -87,35 +80,13 @@ pub struct Service {
 
 impl Service {
     pub fn new(subs_manager: Arc<EntityManager>) -> Self {
-        let (entity_sender, mut entity_receiver) = unbounded_channel();
+        let (entity_sender, entity_receiver) = unbounded_channel();
         let service = Self {
             simple_broker: Box::pin(SimpleBroker::<OptimisticEntity>::subscribe()),
             entity_sender,
         };
 
-        // Create a worker pool with separate channels for each worker
-        let worker_count = num_cpus::get().min(4);
-        let mut worker_senders = Vec::with_capacity(worker_count);
-        for _ in 0..worker_count {
-            let (worker_sender, worker_receiver) = unbounded_channel();
-            worker_senders.push(worker_sender);
-            let subs = subs_manager.clone();
-            tokio::spawn(async move {
-                Self::publish_updates(subs, worker_receiver).await;
-            });
-        }
-
-        // Spawn a task to distribute entities to workers
-        tokio::spawn(async move {
-            let mut worker_index = 0;
-            while let Some(entity) = entity_receiver.recv().await {
-                // Send to a worker in a round-robin fashion
-                if let Err(e) = worker_senders[worker_index].send(entity) {
-                    error!(target = LOG_TARGET, error = ?e, "Failed to send entity to worker.");
-                }
-                worker_index = (worker_index + 1) % worker_count;
-            }
-        });
+        tokio::spawn(Self::publish_updates(subs_manager, entity_receiver));
 
         service
     }
@@ -125,13 +96,9 @@ impl Service {
         mut entity_receiver: UnboundedReceiver<OptimisticEntity>,
     ) {
         while let Some(entity) = entity_receiver.recv().await {
-            // Process each entity in a separate tarefa para permitir concorrência
-            let subs = subs.clone();
-            tokio::spawn(async move {
-                if let Err(e) = Self::process_entity_update(&subs, &entity).await {
-                    error!(target = LOG_TARGET, error = ?e, "Processing entity update.");
-                }
-            });
+            if let Err(e) = Self::process_entity_update(&subs, &entity).await {
+                error!(target = LOG_TARGET, error = %e, "Processing entity update.");
+            }
         }
     }
 
@@ -139,7 +106,10 @@ impl Service {
         subs: &Arc<EntityManager>,
         entity: &OptimisticEntity,
     ) -> Result<(), Error> {
+        let mut closed_stream = Vec::new();
         let hashed = Felt::from_str(&entity.id).map_err(ParseError::FromStr)?;
+        // keys is empty when an entity is updated with StoreUpdateRecord or Member but the entity
+        // has never been set before. In that case, we dont know the keys
         let keys = entity
             .keys
             .trim_end_matches(SQL_FELT_DELIMITER)
@@ -154,72 +124,68 @@ impl Service {
             .collect::<Result<Vec<_>, _>>()
             .map_err(ParseError::FromStr)?;
 
-        // Take a snapshot of subscribers to minimize lock time
-        let subscribers: Vec<_> = {
-            let subs_read = subs.subscribers.read().await;
-            subs_read
-                .iter()
-                .map(|(id, sub)| (*id, sub.clause.clone(), sub.sender.clone()))
-                .collect()
-        };
+        for sub in subs.subscribers.iter() {
+            let idx = sub.key();
+            let sub = sub.value();
 
-        let mut closed_stream = Vec::new();
+            // Check if the subscriber is interested in this entity
+            // If we have a clause of hashed keys, then check that the id of the entity
+            // is in the list of hashed keys.
 
-        // Process subscribers concurrently
-        let tasks: Vec<_> = subscribers
-            .into_iter()
-            .filter_map(|(id, clause, sender)| {
-                if let Some(clause) = &clause {
-                    if !match_entity(hashed, &keys, &entity.updated_model, clause) {
-                        return None;
-                    }
+            // If we have a clause of keys, then check that the key pattern of the entity
+            // matches the key pattern of the subscriber.
+            if let Some(clause) = &sub.clause {
+                if !match_entity(hashed, &keys, &entity.updated_model, clause) {
+                    continue;
                 }
+            }
 
-                let resp = if entity.deleted {
-                    SubscribeEntityResponse {
-                        entity: Some(torii_proto::proto::types::Entity {
-                            hashed_keys: hashed.to_bytes_be().to_vec(),
-                            models: vec![],
-                        }),
-                        subscription_id: id,
-                    }
-                } else {
-                    let model = entity
-                        .updated_model
-                        .as_ref()
-                        .unwrap()
-                        .as_struct()
-                        .unwrap()
-                        .clone();
-                    SubscribeEntityResponse {
-                        entity: Some(torii_proto::proto::types::Entity {
-                            hashed_keys: hashed.to_bytes_be().to_vec(),
-                            models: vec![model.into()],
-                        }),
-                        subscription_id: id,
-                    }
-                };
+            let resp = if entity.deleted {
+                SubscribeEntityResponse {
+                    entity: Some(torii_proto::proto::types::Entity {
+                        hashed_keys: hashed.to_bytes_be().to_vec(),
+                        models: vec![],
+                    }),
+                    subscription_id: *idx,
+                }
+            } else {
+                // This should NEVER be None
+                let model = entity
+                    .updated_model
+                    .as_ref()
+                    .unwrap()
+                    .as_struct()
+                    .unwrap()
+                    .clone();
+                SubscribeEntityResponse {
+                    entity: Some(torii_proto::proto::types::Entity {
+                        hashed_keys: hashed.to_bytes_be().to_vec(),
+                        models: vec![model.into()],
+                    }),
+                    subscription_id: *idx,
+                }
+            };
 
-                Some(tokio::spawn(async move {
-                    match sender.send(Ok(resp)).await {
-                        Ok(_) => Ok(id),
-                        Err(_) => Err(id), // Channel closed or full
-                    }
-                }))
-            })
-            .collect();
-
-        // Wait for all sends to complete and collect failed subscriber IDs
-        for task in tasks {
-            if let Ok(Err(id)) = task.await {
-                closed_stream.push(id);
+            // Use try_send to avoid blocking on slow subscribers
+            match sub.sender.try_send(Ok(resp)) {
+                Ok(_) => {
+                    // Message sent successfully
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    // Channel is full, subscriber is too slow - disconnect them
+                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
+                    closed_stream.push(*idx);
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    // Channel is closed, subscriber has disconnected
+                    closed_stream.push(*idx);
+                }
             }
         }
 
-        // Remove disconnected subscribers
         for id in closed_stream {
             trace!(target = LOG_TARGET, id = %id, "Closing entity stream.");
-            subs.remove_subscriber(id).await;
+            subs.remove_subscriber(id).await
         }
 
         Ok(())
@@ -232,16 +198,9 @@ impl Future for Service {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
-        // Process in batches to reduce channel contention
-        for _ in 0..100 {
-            match this.simple_broker.poll_next_unpin(cx) {
-                Poll::Ready(Some(entity)) => {
-                    if let Err(e) = this.entity_sender.send(entity) {
-                        error!(target = LOG_TARGET, error = ?e, "Sending entity update to processor.");
-                    }
-                }
-                Poll::Ready(None) => return Poll::Ready(()),
-                Poll::Pending => break,
+        while let Poll::Ready(Some(entity)) = this.simple_broker.poll_next_unpin(cx) {
+            if let Err(e) = this.entity_sender.send(entity) {
+                error!(target = LOG_TARGET, error = %e, "Sending entity update to processor.");
             }
         }
 

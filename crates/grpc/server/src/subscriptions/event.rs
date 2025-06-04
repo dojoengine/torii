@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use dashmap::DashMap;
 use futures::Stream;
 use futures_util::StreamExt;
 use rand::Rng;
@@ -12,7 +12,6 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use tokio::sync::RwLock;
 use torii_proto::KeysClause;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
@@ -36,7 +35,7 @@ pub struct EventSubscriber {
 
 #[derive(Debug, Default)]
 pub struct EventManager {
-    subscribers: RwLock<HashMap<usize, EventSubscriber>>,
+    subscribers: DashMap<usize, EventSubscriber>,
 }
 
 impl EventManager {
@@ -55,15 +54,13 @@ impl EventManager {
             .await;
 
         self.subscribers
-            .write()
-            .await
             .insert(id, EventSubscriber { keys, sender });
 
         Ok(receiver)
     }
 
     pub(super) async fn remove_subscriber(&self, id: usize) {
-        self.subscribers.write().await.remove(&id);
+        self.subscribers.remove(&id);
     }
 }
 
@@ -117,7 +114,10 @@ impl Service {
             .collect::<Result<Vec<_>, _>>()
             .map_err(ParseError::from)?;
 
-        for (idx, sub) in subs.subscribers.read().await.iter() {
+        for sub in subs.subscribers.iter() {
+            let idx = sub.key();
+            let sub = sub.value();
+
             if !match_keys(&keys, &sub.keys) {
                 continue;
             }
