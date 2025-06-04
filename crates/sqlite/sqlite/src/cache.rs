@@ -198,7 +198,7 @@ impl LocalCache {
                 TokenState::Registering(mutex) => Some(mutex.clone()),
                 TokenState::Registered => None,
                 TokenState::NotRegistered => {
-                    // drop(entry);
+                    drop(entry);
                     self.begin_token_registration(token_id)
                 }
             },
