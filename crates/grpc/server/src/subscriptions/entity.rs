@@ -85,29 +85,7 @@ impl Service {
             entity_sender,
         };
 
-        // Create a worker pool with separate channels for each worker
-        let worker_count = num_cpus::get().min(4);
-        let mut worker_senders = Vec::with_capacity(worker_count);
-        for _ in 0..worker_count {
-            let (worker_sender, worker_receiver) = unbounded_channel();
-            worker_senders.push(worker_sender);
-            let subs = subs_manager.clone();
-            tokio::spawn(async move {
-                Self::publish_updates(subs, worker_receiver).await;
-            });
-        }
-
-        // Spawn a task to distribute entities to workers in round-robin fashion
-        tokio::spawn(async move {
-            let mut worker_index = 0;
-            let mut entity_receiver = entity_receiver;
-            while let Some(entity) = entity_receiver.recv().await {
-                if let Err(e) = worker_senders[worker_index].send(entity) {
-                    error!(target = LOG_TARGET, error = ?e, "Failed to send entity to worker.");
-                }
-                worker_index = (worker_index + 1) % worker_count;
-            }
-        });
+        tokio::spawn(Self::publish_updates(subs_manager, entity_receiver));
 
         service
     }
@@ -191,7 +169,6 @@ impl Service {
             }
         }
 
-        // Remove disconnected subscribers
         for id in closed_stream {
             trace!(target = LOG_TARGET, id = %id, "Closing entity stream.");
             subs.remove_subscriber(id).await;
@@ -207,16 +184,9 @@ impl Future for Service {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
-        // Process in batches to reduce channel contention
-        for _ in 0..100 {
-            match this.simple_broker.poll_next_unpin(cx) {
-                Poll::Ready(Some(entity)) => {
-                    if let Err(e) = this.entity_sender.send(entity) {
-                        error!(target = LOG_TARGET, error = ?e, "Sending entity update to processor.");
-                    }
-                }
-                Poll::Ready(None) => return Poll::Ready(()),
-                Poll::Pending => break,
+        while let Poll::Ready(Some(entity)) = this.simple_broker.poll_next_unpin(cx) {
+            if let Err(e) = this.entity_sender.send(entity) {
+                error!(target = LOG_TARGET, error = ?e, "Sending entity update to processor.");
             }
         }
 
