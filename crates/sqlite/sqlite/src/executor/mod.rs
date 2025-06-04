@@ -339,9 +339,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         }
                     };
 
-                    cursor.last_pending_block_contract_tx = new_cursor
-                        .last_pending_block_contract_tx
-                        .map(|felt| felt_to_sql_string(&felt));
+                    cursor.last_pending_block_contract_tx =
+                        new_cursor.last_pending_block_contract_tx.clone();
                     cursor.tps = Some(new_tps.try_into().expect("does't fit in i64"));
                     cursor.last_block_timestamp =
                         Some(new_timestamp.try_into().expect("doesn't fit in i64"));

@@ -438,7 +438,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     ) -> Result<Vec<EmittedEvent>, FetchError> {
         let mut all_events = Vec::new();
         let mut current_requests = initial_requests;
-        let old_cursors = cursors.clone();
+        let mut old_cursors = cursors.clone();
 
         while !current_requests.is_empty() {
             let mut next_requests = Vec::new();
@@ -455,9 +455,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             for ((contract_address, to, original_request), result) in
                 current_requests.into_iter().zip(batch_results)
             {
-                let old_cursor = old_cursors.get(&contract_address).unwrap();
+                let old_cursor = old_cursors.get_mut(&contract_address).unwrap();
                 let new_cursor = cursors.get_mut(&contract_address).unwrap();
-                let mut last_contract_tx_tmp = old_cursor.last_pending_block_contract_tx;
+                let mut previous_contract_tx = None;
+                let mut event_idx = 0;
+                let mut last_contract_tx_tmp = old_cursor.last_pending_block_contract_tx.clone();
                 let mut last_block_number = None;
                 let mut is_pending = false;
 
@@ -472,16 +474,26 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 None => latest_block_number + 1,
                             };
 
-                            is_pending = event.block_number.is_none();
                             last_block_number = Some(block_number);
+                            is_pending = event.block_number.is_none();
                             if block_number > to {
                                 break;
                             }
 
+                            if previous_contract_tx != Some(event.transaction_hash) {
+                                event_idx = 0;
+                                previous_contract_tx = Some(event.transaction_hash);
+                            }
+                            let event_id = format!(
+                                "{:#064x}:{:#x}:{:#04x}",
+                                block_number, event.transaction_hash, event_idx
+                            );
+                            event_idx += 1;
+
                             // Then we skip all transactions until we reach the last pending
                             // processed transaction (if any)
-                            if let Some(last_contract_tx) = last_contract_tx_tmp {
-                                if event.transaction_hash != last_contract_tx {
+                            if let Some(last_contract_tx) = last_contract_tx_tmp.clone() {
+                                if event_id != last_contract_tx {
                                     continue;
                                 }
                                 last_contract_tx_tmp = None;
@@ -490,35 +502,40 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             // Skip the latest pending block transaction events
                             // * as we might have multiple events for the same transaction
                             if let Some(last_contract_tx) =
-                                old_cursor.last_pending_block_contract_tx
+                                old_cursor.last_pending_block_contract_tx.take()
                             {
-                                if event.transaction_hash == last_contract_tx {
+                                if event_id == last_contract_tx {
                                     continue;
                                 }
                                 new_cursor.last_pending_block_contract_tx = None;
                             }
 
                             if is_pending {
-                                new_cursor.last_pending_block_contract_tx =
-                                    Some(event.transaction_hash);
+                                new_cursor.last_pending_block_contract_tx = Some(event_id.clone());
                             }
+
                             events.push(event);
                         }
 
                         // Add continuation request to next_requests instead of recursing
-                        if let Some(continuation_token) = events_page.continuation_token {
-                            if last_block_number.is_some() && last_block_number.unwrap() < to {
-                                if let ProviderRequestData::GetEvents(mut next_request) =
-                                    original_request
-                                {
-                                    next_request.filter.result_page_request.continuation_token =
-                                        Some(continuation_token);
-                                    next_requests.push((
-                                        contract_address,
-                                        to,
-                                        ProviderRequestData::GetEvents(next_request),
-                                    ));
-                                }
+                        // We only fetch next events if;
+                        // - we have a continuation token
+                        // - we have a last block number (which means we have processed atleast one event)
+                        // - the last block number is less than the to block
+                        if events_page.continuation_token.is_some()
+                            && last_block_number.is_some()
+                            && last_block_number.unwrap() < to
+                        {
+                            if let ProviderRequestData::GetEvents(mut next_request) =
+                                original_request
+                            {
+                                next_request.filter.result_page_request.continuation_token =
+                                    events_page.continuation_token;
+                                next_requests.push((
+                                    contract_address,
+                                    to,
+                                    ProviderRequestData::GetEvents(next_request),
+                                ));
                             }
                         } else {
                             let new_head = to.min(latest_block_number);
