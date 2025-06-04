@@ -339,25 +339,21 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         }
                     };
 
-                    cursor.last_pending_block_contract_tx =
-                        new_cursor.last_pending_block_contract_tx.clone();
+                    cursor.last_pending_block_event_id =
+                        new_cursor.last_pending_block_event_id.clone();
                     cursor.tps = Some(new_tps.try_into().expect("does't fit in i64"));
                     cursor.last_block_timestamp =
                         Some(new_timestamp.try_into().expect("doesn't fit in i64"));
                     cursor.head = Some(new_head as i64);
-                    cursor.last_pending_block_tx = new_cursor
-                        .last_pending_block_tx
-                        .map(|felt| felt_to_sql_string(&felt));
 
                     sqlx::query(
                         "UPDATE contracts SET head = ?, last_block_timestamp = ?, \
-                         last_pending_block_tx = ?, last_pending_block_contract_tx = ? WHERE id = \
+                         last_pending_block_event_id = ? WHERE id = \
                          ?",
                     )
                     .bind(cursor.head)
                     .bind(cursor.last_block_timestamp)
-                    .bind(&cursor.last_pending_block_tx)
-                    .bind(&cursor.last_pending_block_contract_tx)
+                    .bind(&cursor.last_pending_block_event_id)
                     .bind(&cursor.contract_address)
                     .execute(&mut **tx)
                     .await?;

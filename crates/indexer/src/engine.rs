@@ -460,7 +460,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 let new_cursor = cursors.get_mut(&contract_address).unwrap();
                 let mut previous_contract_tx = None;
                 let mut event_idx = 0;
-                let mut last_contract_tx_tmp = old_cursor.last_pending_block_contract_tx.clone();
+                let mut last_pending_block_event_id_tmp = old_cursor.last_pending_block_event_id.clone();
                 let mut last_block_number = None;
                 let mut is_pending = false;
 
@@ -491,20 +491,20 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                             // Then we skip all transactions until we reach the last pending
                             // processed transaction (if any)
-                            if let Some(last_contract_tx) = last_contract_tx_tmp.clone() {
-                                let (cursor_block_number, _, _) = parse_event_id(&last_contract_tx);
-                                if event_id != last_contract_tx
+                            if let Some(last_pending_block_event_id) = last_pending_block_event_id_tmp.clone() {
+                                let (cursor_block_number, _, _) = parse_event_id(&last_pending_block_event_id);
+                                if event_id != last_pending_block_event_id
                                     && cursor_block_number == block_number
                                 {
                                     continue;
                                 }
-                                last_contract_tx_tmp = None;
+                                last_pending_block_event_id_tmp = None;
                             }
 
                             // Skip the latest pending block transaction events
                             // * as we might have multiple events for the same transaction
                             if let Some(last_contract_tx) =
-                                old_cursor.last_pending_block_contract_tx.take()
+                                old_cursor.last_pending_block_event_id.take()
                             {
                                 let (cursor_block_number, _, _) = parse_event_id(&last_contract_tx);
                                 if event_id == last_contract_tx
@@ -512,11 +512,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 {
                                     continue;
                                 }
-                                new_cursor.last_pending_block_contract_tx = None;
+                                new_cursor.last_pending_block_event_id = None;
                             }
 
                             if is_pending {
-                                new_cursor.last_pending_block_contract_tx = Some(event_id.clone());
+                                new_cursor.last_pending_block_event_id = Some(event_id.clone());
                             }
 
                             events.push(event);
@@ -549,7 +549,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             // we can have some pending events while the latest block number has been incremented.
                             // So we want to make sure we don't reset the last pending block contract tx
                             if new_cursor.head != Some(new_head) && !is_pending {
-                                new_cursor.last_pending_block_contract_tx = None;
+                                new_cursor.last_pending_block_event_id = None;
                             }
                             new_cursor.head = Some(new_head);
                         }
