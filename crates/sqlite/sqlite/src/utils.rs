@@ -65,6 +65,26 @@ pub fn sql_string_to_felts(sql_string: &str) -> Vec<Felt> {
         .collect()
 }
 
+pub fn format_event_id(block_number: u64, transaction_hash: &Felt, event_idx: u64) -> String {
+    format!(
+        "{:#064x}:{:#x}:{:#04x}",
+        block_number, transaction_hash, event_idx
+    )
+}
+
+type BlockNumber = u64;
+type TransactionHash = Felt;
+type EventIdx = u64;
+
+pub fn parse_event_id(event_id: &str) -> (BlockNumber, TransactionHash, EventIdx) {
+    let parts: Vec<&str> = event_id.split(':').collect();
+    (
+        parts[0].parse().unwrap(),
+        Felt::from_str(parts[1]).unwrap(),
+        parts[2].parse().unwrap(),
+    )
+}
+
 /// Sanitizes a JSON string by escaping unescaped double quotes within string values.
 pub fn sanitize_json_string(s: &str) -> String {
     let mut result = String::new();

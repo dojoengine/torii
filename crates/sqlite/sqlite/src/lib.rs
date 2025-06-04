@@ -176,8 +176,7 @@ impl Sql {
             let contract_address = Felt::from_str(&c.contract_address)
                 .map_err(|e| Error::Parse(ParseError::FromStr(e)))?;
             let cursor = Cursor {
-                last_pending_block_contract_tx: c
-                    .last_pending_block_contract_tx,
+                last_pending_block_contract_tx: c.last_pending_block_contract_tx,
                 last_pending_block_tx: c
                     .last_pending_block_tx
                     .map(|t| Felt::from_str(&t).map_err(|e| Error::Parse(ParseError::FromStr(e))))

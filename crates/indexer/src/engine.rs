@@ -25,6 +25,7 @@ use tokio::time::{sleep, Instant};
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
+use torii_sqlite::utils::{format_event_id, parse_event_id};
 use torii_sqlite::{Cursor, Sql};
 use tracing::{debug, error, info, trace};
 
@@ -484,16 +485,17 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 event_idx = 0;
                                 previous_contract_tx = Some(event.transaction_hash);
                             }
-                            let event_id = format!(
-                                "{:#064x}:{:#x}:{:#04x}",
-                                block_number, event.transaction_hash, event_idx
-                            );
+                            let event_id =
+                                format_event_id(block_number, &event.transaction_hash, event_idx);
                             event_idx += 1;
 
                             // Then we skip all transactions until we reach the last pending
                             // processed transaction (if any)
                             if let Some(last_contract_tx) = last_contract_tx_tmp.clone() {
-                                if event_id != last_contract_tx {
+                                let (cursor_block_number, _, _) = parse_event_id(&last_contract_tx);
+                                if event_id != last_contract_tx
+                                    && cursor_block_number == block_number
+                                {
                                     continue;
                                 }
                                 last_contract_tx_tmp = None;
@@ -504,7 +506,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             if let Some(last_contract_tx) =
                                 old_cursor.last_pending_block_contract_tx.take()
                             {
-                                if event_id == last_contract_tx {
+                                let (cursor_block_number, _, _) = parse_event_id(&last_contract_tx);
+                                if event_id == last_contract_tx
+                                    && cursor_block_number == block_number
+                                {
                                     continue;
                                 }
                                 new_cursor.last_pending_block_contract_tx = None;
@@ -616,10 +621,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for (event_idx, event) in events.iter().enumerate() {
             // NOTE: erc* processors expect the event_id to be in this format to get
             // transaction_hash:
-            let event_id = format!(
-                "{:#064x}:{:#x}:{:#04x}",
-                block_number, transaction_hash, event_idx
-            );
+            let event_id = format_event_id(block_number, &transaction_hash, event_idx as u64);
 
             let event = Event {
                 from_address: event.from_address,
