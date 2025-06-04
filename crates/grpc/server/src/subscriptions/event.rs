@@ -19,7 +19,7 @@ use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::Event;
 use tracing::{error, trace};
 
-use super::{match_keys};
+use super::match_keys;
 use torii_proto::proto::types::Event as ProtoEvent;
 use torii_proto::proto::world::SubscribeEventsResponse;
 
@@ -46,7 +46,7 @@ impl EventManager {
             subscription_buffer_size,
         }
     }
-    
+
     pub async fn add_subscriber(
         &self,
         keys: Vec<KeysClause>,

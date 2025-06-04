@@ -98,12 +98,19 @@ pub struct DojoWorld {
 }
 
 impl DojoWorld {
-    pub fn new(pool: Pool<Sqlite>, world_address: Felt, model_cache: Arc<ModelCache>, config: GrpcConfig) -> Self {
+    pub fn new(
+        pool: Pool<Sqlite>,
+        world_address: Felt,
+        model_cache: Arc<ModelCache>,
+        config: GrpcConfig,
+    ) -> Self {
         let entity_manager = Arc::new(EntityManager::new(config.subscription_buffer_size));
-        let event_message_manager = Arc::new(EventMessageManager::new(config.subscription_buffer_size));
+        let event_message_manager =
+            Arc::new(EventMessageManager::new(config.subscription_buffer_size));
         let event_manager = Arc::new(EventManager::new(config.subscription_buffer_size));
         let indexer_manager = Arc::new(IndexerManager::new(config.subscription_buffer_size));
-        let token_balance_manager = Arc::new(TokenBalanceManager::new(config.subscription_buffer_size));
+        let token_balance_manager =
+            Arc::new(TokenBalanceManager::new(config.subscription_buffer_size));
         let token_manager = Arc::new(TokenManager::new(config.subscription_buffer_size));
 
         tokio::task::spawn(subscriptions::entity::Service::new(Arc::clone(

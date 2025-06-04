@@ -298,10 +298,16 @@ impl Runner {
         );
 
         let shutdown_rx = shutdown_tx.subscribe();
-        let (grpc_addr, grpc_server) =
-            torii_grpc_server::new(shutdown_rx, &readonly_pool, world_address, model_cache, GrpcConfig {
+        let (grpc_addr, grpc_server) = torii_grpc_server::new(
+            shutdown_rx,
+            &readonly_pool,
+            world_address,
+            model_cache,
+            GrpcConfig {
                 subscription_buffer_size: self.args.grpc.subscription_buffer_size,
-            }).await?;
+            },
+        )
+        .await?;
 
         let temp_dir = TempDir::new()?;
         let artifacts_path = self

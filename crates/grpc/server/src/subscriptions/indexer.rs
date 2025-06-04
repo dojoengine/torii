@@ -42,7 +42,7 @@ impl IndexerManager {
             subscription_buffer_size,
         }
     }
-    
+
     pub async fn add_subscriber(
         &self,
         pool: &Pool<Sqlite>,

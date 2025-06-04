@@ -22,7 +22,7 @@ use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeEntityResponse;
 
-use super::{match_entity};
+use super::match_entity;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::event_message";
 
@@ -47,7 +47,7 @@ impl EventMessageManager {
             subscription_buffer_size,
         }
     }
-    
+
     pub async fn add_subscriber(
         &self,
         clause: Option<Clause>,

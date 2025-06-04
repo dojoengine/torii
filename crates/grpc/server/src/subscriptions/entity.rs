@@ -18,7 +18,7 @@ use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::OptimisticEntity;
 use tracing::{error, trace};
 
-use super::{match_entity};
+use super::match_entity;
 use torii_proto::proto::world::SubscribeEntityResponse;
 use torii_proto::Clause;
 
@@ -44,7 +44,7 @@ impl EntityManager {
             subscription_buffer_size,
         }
     }
-    
+
     pub async fn add_subscriber(
         &self,
         clause: Option<Clause>,
