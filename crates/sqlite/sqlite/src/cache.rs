@@ -186,7 +186,7 @@ impl LocalCache {
         Self {
             erc_cache: DashMap::new(),
             token_id_registry: token_id_registry
-                    .iter()
+                .iter()
                 .map(|token_id| (token_id.clone(), TokenState::Registered))
                 .collect(),
         }
@@ -214,11 +214,15 @@ impl LocalCache {
     }
 
     pub async fn mark_token_registered(&self, token_id: &str) {
-        self.token_id_registry.insert(token_id.to_string(), TokenState::Registered);
+        self.token_id_registry
+            .insert(token_id.to_string(), TokenState::Registered);
     }
 
     pub async fn is_token_registered(&self, token_id: &str) -> bool {
-        self.token_id_registry.get(token_id).map(|t| matches!(t.value(), TokenState::Registered)).unwrap_or(false)
+        self.token_id_registry
+            .get(token_id)
+            .map(|t| matches!(t.value(), TokenState::Registered))
+            .unwrap_or(false)
     }
 }
 
