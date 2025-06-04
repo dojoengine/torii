@@ -31,7 +31,7 @@ use torii_sqlite::Sql;
 use torii_proto::proto::types::KeysClause;
 use torii_proto::schema::Entity;
 
-use crate::DojoWorld;
+use crate::{DojoWorld, GrpcConfig};
 
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
@@ -147,7 +147,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     db.execute().await.unwrap();
 
     let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let grpc = DojoWorld::new(db.pool, world_address, model_cache);
+    let grpc = DojoWorld::new(db.pool, world_address, model_cache, GrpcConfig::default());
 
     let entities = grpc
         .query_by_keys(

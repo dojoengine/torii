@@ -468,6 +468,19 @@ pub struct RunnerOptions {
     pub check_contracts: bool,
 }
 
+#[derive(Default, Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
+#[serde(default)]
+#[command(next_help_heading = "GRPC options")]
+pub struct GrpcOptions {
+    /// The buffer size for the subscription channel.
+    #[arg(
+        long = "grpc.subscription_buffer_size",
+        default_value_t = 256,
+        help = "The buffer size for the subscription channel."
+    )]
+    pub subscription_buffer_size: usize,
+}
+
 // Parses clap cli argument which is expected to be in the format:
 // - model-tag:field1,field2;othermodel-tag:field3,field4
 fn parse_model_indices(part: &str) -> anyhow::Result<ModelIndices> {

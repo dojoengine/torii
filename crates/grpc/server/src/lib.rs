@@ -94,16 +94,17 @@ pub struct DojoWorld {
     indexer_manager: Arc<IndexerManager>,
     token_balance_manager: Arc<TokenBalanceManager>,
     token_manager: Arc<TokenManager>,
+    _config: GrpcConfig,
 }
 
 impl DojoWorld {
-    pub fn new(pool: Pool<Sqlite>, world_address: Felt, model_cache: Arc<ModelCache>) -> Self {
-        let entity_manager = Arc::new(EntityManager::default());
-        let event_message_manager = Arc::new(EventMessageManager::default());
-        let event_manager = Arc::new(EventManager::default());
-        let indexer_manager = Arc::new(IndexerManager::default());
-        let token_balance_manager = Arc::new(TokenBalanceManager::default());
-        let token_manager = Arc::new(TokenManager::default());
+    pub fn new(pool: Pool<Sqlite>, world_address: Felt, model_cache: Arc<ModelCache>, config: GrpcConfig) -> Self {
+        let entity_manager = Arc::new(EntityManager::new(config.subscription_buffer_size));
+        let event_message_manager = Arc::new(EventMessageManager::new(config.subscription_buffer_size));
+        let event_manager = Arc::new(EventManager::new(config.subscription_buffer_size));
+        let indexer_manager = Arc::new(IndexerManager::new(config.subscription_buffer_size));
+        let token_balance_manager = Arc::new(TokenBalanceManager::new(config.subscription_buffer_size));
+        let token_manager = Arc::new(TokenManager::new(config.subscription_buffer_size));
 
         tokio::task::spawn(subscriptions::entity::Service::new(Arc::clone(
             &entity_manager,
@@ -139,6 +140,7 @@ impl DojoWorld {
             indexer_manager,
             token_balance_manager,
             token_manager,
+            _config: config,
         }
     }
 }
@@ -1809,11 +1811,25 @@ const DEFAULT_ALLOW_HEADERS: [&str; 6] = [
     "grpc-encoding",
 ];
 
+#[derive(Clone, Debug)]
+pub struct GrpcConfig {
+    pub subscription_buffer_size: usize,
+}
+
+impl Default for GrpcConfig {
+    fn default() -> Self {
+        Self {
+            subscription_buffer_size: 1000,
+        }
+    }
+}
+
 pub async fn new(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     pool: &Pool<Sqlite>,
     world_address: Felt,
     model_cache: Arc<ModelCache>,
+    config: GrpcConfig,
 ) -> Result<
     (
         SocketAddr,
@@ -1829,7 +1845,7 @@ pub async fn new(
         .build()
         .unwrap();
 
-    let world = DojoWorld::new(pool.clone(), world_address, model_cache);
+    let world = DojoWorld::new(pool.clone(), world_address, model_cache, config);
     let server = WorldServer::new(world)
         .accept_compressed(CompressionEncoding::Gzip)
         .send_compressed(CompressionEncoding::Gzip);

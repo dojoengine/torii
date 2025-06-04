@@ -13,8 +13,6 @@ pub mod indexer;
 pub mod token;
 pub mod token_balance;
 
-pub(crate) const SUBSCRIPTION_CHANNEL_SIZE: usize = 64;
-
 pub(crate) fn match_entity(
     id: Felt,
     keys: &[Felt],
