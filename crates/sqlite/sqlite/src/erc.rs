@@ -348,10 +348,11 @@ impl Sql {
                 .local_cache
                 .erc_cache
                 .iter()
-                .map(|t| (t.key().clone(), t.value().clone()))
+                .map(|t| (t.key().clone(), *t.value()))
                 .collect::<HashMap<String, I256>>();
             self.local_cache.erc_cache.clear();
             self.local_cache.erc_cache.shrink_to_fit();
+
             self.executor
                 .send(QueryMessage::new(
                     "".to_string(),
