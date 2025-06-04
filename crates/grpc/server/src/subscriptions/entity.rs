@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use dashmap::DashMap;
 use futures::Stream;
 use futures_util::StreamExt;
 use rand::Rng;
@@ -12,7 +12,6 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use tokio::sync::RwLock;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
@@ -33,7 +32,7 @@ pub struct EntitiesSubscriber {
 
 #[derive(Debug, Default)]
 pub struct EntityManager {
-    subscribers: RwLock<HashMap<u64, EntitiesSubscriber>>,
+    subscribers: DashMap<u64, EntitiesSubscriber>,
 }
 
 impl EntityManager {
@@ -52,29 +51,22 @@ impl EntityManager {
             .await;
 
         self.subscribers
-            .write()
-            .await
             .insert(subscription_id, EntitiesSubscriber { clause, sender });
 
         Ok(receiver)
     }
 
     pub async fn update_subscriber(&self, id: u64, clause: Option<Clause>) {
-        let sender = {
-            let subscribers = self.subscribers.read().await;
-            subscribers.get(&id).map(|sub| sub.sender.clone())
-        };
-
-        if let Some(sender) = sender {
+        if let Some(entry) = self.subscribers.get(&id) {
+            let sender = entry.sender.clone();
+            drop(entry);
             self.subscribers
-                .write()
-                .await
                 .insert(id, EntitiesSubscriber { clause, sender });
         }
     }
 
     pub async fn remove_subscriber(&self, id: u64) {
-        self.subscribers.write().await.remove(&id);
+        self.subscribers.remove(&id);
     }
 }
 
@@ -155,13 +147,11 @@ impl Service {
             .map_err(ParseError::FromStr)?;
 
         // Take a snapshot of subscribers to minimize lock time
-        let subscribers: Vec<_> = {
-            let subs_read = subs.subscribers.read().await;
-            subs_read
-                .iter()
-                .map(|(id, sub)| (*id, sub.clause.clone(), sub.sender.clone()))
-                .collect()
-        };
+        let subscribers: Vec<_> = subs
+            .subscribers
+            .iter()
+            .map(|entry| (*entry.key(), entry.clause.clone(), entry.sender.clone()))
+            .collect();
 
         let mut closed_stream = Vec::new();
 

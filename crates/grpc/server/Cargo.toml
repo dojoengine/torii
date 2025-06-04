@@ -6,6 +6,7 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+dashmap.workspace = true
 dojo-types.workspace = true
 futures.workspace = true
 futures-util.workspace = true
