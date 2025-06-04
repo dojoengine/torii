@@ -71,8 +71,7 @@ pub struct Sql {
 
 #[derive(Default, Debug, Clone)]
 pub struct Cursor {
-    pub last_pending_block_contract_tx: Option<String>,
-    pub last_pending_block_tx: Option<Felt>,
+    pub last_pending_block_event_id: Option<String>,
     pub head: Option<u64>,
     pub last_block_timestamp: Option<u64>,
 }
@@ -176,11 +175,7 @@ impl Sql {
             let contract_address = Felt::from_str(&c.contract_address)
                 .map_err(|e| Error::Parse(ParseError::FromStr(e)))?;
             let cursor = Cursor {
-                last_pending_block_contract_tx: c.last_pending_block_contract_tx,
-                last_pending_block_tx: c
-                    .last_pending_block_tx
-                    .map(|t| Felt::from_str(&t).map_err(|e| Error::Parse(ParseError::FromStr(e))))
-                    .transpose()?,
+                last_pending_block_event_id: c.last_pending_block_event_id,
                 head: c.head.map(|h| h as u64),
                 last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
             };
