@@ -122,6 +122,9 @@ impl ModelReader<Error> for ModelSQLReader {
     async fn layout(&self) -> Result<Layout, Error> {
         Ok(self.layout.clone())
     }
+    async fn use_legacy_storage(&self) -> Result<bool, Error> {
+        Ok(false)
+    }
 }
 
 /// Populate the values of a Ty (schema) from SQLite row.

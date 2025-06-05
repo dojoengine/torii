@@ -10,7 +10,7 @@ version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-async-graphql = { version = "7.0.11", features = [ "chrono", "dynamic-schema" ] }
+async-graphql = { version = "7.0.11", features = ["chrono", "dynamic-schema"] }
 async-graphql-warp = "7.0.11"
 async-recursion = "1.0.5"
 base64.workspace = true
@@ -36,9 +36,9 @@ warp.workspace = true
 
 [dev-dependencies]
 camino.workspace = true
-dojo-test-utils = { workspace = true, features = [ "build-examples" ] }
+dojo-test-utils = { workspace = true, features = ["build-examples"] }
 dojo-utils.workspace = true
-dojo-world = { workspace = true, features = [ "ipfs" ] }
+dojo-world = { workspace = true, features = ["ipfs"] }
 katana-runner.workspace = true
 serial_test = "2.0.0"
 starknet.workspace = true
@@ -48,5 +48,5 @@ toml.workspace = true
 # TODO: check if it's better to actually reexpose scarb in sozo-scarbext to
 # avoid having to depend on scarb here.
 scarb.workspace = true
-sozo-scarbext.workspace = true
+scarb-interop.workspace = true
 torii-processors = { workspace = true }

@@ -51,7 +51,7 @@ dojo-utils.workspace = true
 katana-runner.workspace = true
 scarb.workspace = true
 tempfile.workspace = true
-sozo-scarbext.workspace = true
+scarb-interop.workspace = true
 torii-indexer.workspace = true
 torii-processors = { workspace = true }
 

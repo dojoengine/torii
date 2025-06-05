@@ -10,6 +10,8 @@ use erc4906_metadata_update::Erc4906MetadataUpdateProcessor;
 use erc721_legacy_transfer::Erc721LegacyTransferProcessor;
 use erc721_transfer::Erc721TransferProcessor;
 use event_message::EventMessageProcessor;
+use external_contract_registered::ExternalContractRegisteredProcessor;
+use external_contract_upgraded::ExternalContractUpgradedProcessor;
 use metadata_update::MetadataUpdateProcessor;
 use raw_event::RawEventProcessor;
 use register_event::RegisterEventProcessor;
@@ -37,6 +39,8 @@ mod erc4906_metadata_update;
 mod erc721_legacy_transfer;
 mod erc721_transfer;
 mod event_message;
+mod external_contract_registered;
+mod external_contract_upgraded;
 mod metadata_update;
 mod raw_event;
 mod register_event;
@@ -91,6 +95,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Processors<P> {
                     Box::new(StoreUpdateMemberProcessor),
                     Box::new(MetadataUpdateProcessor),
                     Box::new(EventMessageProcessor),
+                    Box::new(ExternalContractRegisteredProcessor),
+                    Box::new(ExternalContractUpgradedProcessor),
                 ],
             ),
             (
