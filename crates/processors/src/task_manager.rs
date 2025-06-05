@@ -10,7 +10,7 @@ use tracing::{debug, error};
 
 use crate::error::Error;
 use crate::processors::Processors;
-use crate::EventProcessorConfig;
+use crate::{EventProcessorConfig, IndexingMode};
 
 const LOG_TARGET: &str = "torii::indexer::task_manager";
 
@@ -130,18 +130,100 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                 async move {
                     let mut local_db = db.clone();
 
-                    // Process all events for this task sequentially
+                    let mut events = task_data.events;
+                    events.sort_by_key(|e| e.block_number);
+
+                    let mut latest_events_map: std::collections::HashMap<
+                        (String, starknet_crypto::Felt, starknet_crypto::Felt),
+                        ParallelizedEvent,
+                    > = std::collections::HashMap::new();
+                    let mut historical_events = Vec::new();
+
+                    for event_data in events {
+                        let contract_processors =
+                            processors.get_event_processors(event_data.contract_type);
+                        if let Some(processors_for_key) =
+                            contract_processors.get(&event_data.event.keys[0])
+                        {
+                            let processor = processors_for_key
+                                .iter()
+                                .find(|p| p.validate(&event_data.event))
+                                .expect("Must find at least one processor for the event");
+
+                            if processor.indexing_mode() == IndexingMode::Latest {
+                                let event_key = processor.event_key();
+                                let model_selector = event_data.event.keys[1];
+                                let entity_id = event_data.event.keys[2];
+                                let dedup_key = (event_key, model_selector, entity_id);
+
+                                latest_events_map.insert(dedup_key, event_data);
+                            } else {
+                                historical_events.push(event_data);
+                            }
+                        }
+                    }
+
+                    // Process historical events first
                     for ParallelizedEvent {
                         contract_type,
                         event,
                         block_number,
                         block_timestamp,
                         event_id,
-                    } in task_data.events
+                    } in historical_events
                     {
                         let contract_processors = processors.get_event_processors(contract_type);
-                        if let Some(processors) = contract_processors.get(&event.keys[0]) {
-                            let processor = processors
+                        if let Some(processors_for_key) = contract_processors.get(&event.keys[0]) {
+                            let processor = processors_for_key
+                                .iter()
+                                .find(|p| p.validate(&event))
+                                .expect("Must find at least one processor for the event");
+
+                            debug!(
+                                target: LOG_TARGET,
+                                event_name = processor.event_key(),
+                                event_id = %event_id,
+                                block_number = %block_number,
+                                task_id = %task_id,
+                                "Processing parallelized event."
+                            );
+
+                            if let Err(e) = processor
+                                .process(
+                                    world.clone(),
+                                    &mut local_db,
+                                    block_number,
+                                    block_timestamp,
+                                    &event_id,
+                                    &event,
+                                    &event_processor_config,
+                                )
+                                .await
+                            {
+                                error!(
+                                    target: LOG_TARGET,
+                                    event_name = processor.event_key(),
+                                    error = ?e,
+                                    task_id = %task_id,
+                                    "Processing parallelized event."
+                                );
+                                return Err(e);
+                            }
+                        }
+                    }
+
+                    // Process latest events (deduplicated)
+                    for ParallelizedEvent {
+                        contract_type,
+                        event,
+                        block_number,
+                        block_timestamp,
+                        event_id,
+                    } in latest_events_map.into_values()
+                    {
+                        let contract_processors = processors.get_event_processors(contract_type);
+                        if let Some(processors_for_key) = contract_processors.get(&event.keys[0]) {
+                            let processor = processors_for_key
                                 .iter()
                                 .find(|p| p.validate(&event))
                                 .expect("Must find at least one processor for the event");
