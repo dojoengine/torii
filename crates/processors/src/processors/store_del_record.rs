@@ -44,6 +44,10 @@ where
         vec![hasher.finish()] // Return the dependency on the register_model task
     }
 
+    fn indexing_mode(&self) -> crate::IndexingMode {
+        crate::IndexingMode::Latest
+    }
+
     async fn process(
         &self,
         _world: Arc<WorldContractReader<P>>,

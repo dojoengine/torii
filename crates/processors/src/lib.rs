@@ -19,6 +19,12 @@ pub use processors::Processors;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum IndexingMode {
+    Historical,
+    Latest,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct EventProcessorConfig {
     pub namespaces: HashSet<String>,
@@ -53,6 +59,10 @@ where
 
     fn task_dependencies(&self, _event: &Event) -> Vec<TaskId> {
         vec![] // Default implementation returns no dependencies
+    }
+
+    fn indexing_mode(&self) -> IndexingMode {
+        IndexingMode::Historical
     }
 
     #[allow(clippy::too_many_arguments)]

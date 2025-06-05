@@ -22,7 +22,7 @@ use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
 use tokio::sync::broadcast::Sender;
 use tokio::time::{sleep, Instant};
-use torii_processors::{EventProcessorConfig, Processors};
+use torii_processors::{EventProcessorConfig, IndexingMode, Processors};
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::utils::{format_event_id, parse_event_id};
@@ -92,6 +92,7 @@ pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     task_manager: TaskManager<P>,
     contracts: Arc<HashMap<Felt, ContractType>>,
     contract_class_cache: Arc<ContractClassCache<P>>,
+    latest_events: HashMap<(Felt, Felt), (String, u64)>,
 }
 
 impl Default for EngineConfig {
@@ -153,6 +154,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 event_processor_config,
             ),
             contract_class_cache: Arc::new(ContractClassCache::new(provider)),
+            latest_events: HashMap::new(),
         }
     }
 
@@ -786,6 +788,21 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         let task_identifier = processor.task_identifier(event);
         let dependencies = processor.task_dependencies(event);
+
+        if processor.indexing_mode() == IndexingMode::Latest {
+            let model_selector = event.keys[1];
+            let entity_id = event.keys[2];
+            let dedup_key = (model_selector, entity_id);
+
+            if let Some((_, existing_block_number)) = self.latest_events.get(&dedup_key) {
+                if block_number <= *existing_block_number {
+                    return Ok(());
+                }
+            }
+
+            self.latest_events
+                .insert(dedup_key, (event_id.to_string(), block_number));
+        }
 
         self.task_manager.add_parallelized_event_with_dependencies(
             task_identifier,
