@@ -92,7 +92,7 @@ pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     task_manager: TaskManager<P>,
     contracts: Arc<HashMap<Felt, ContractType>>,
     contract_class_cache: Arc<ContractClassCache<P>>,
-    latest_events: HashMap<(Felt, Felt), (String, u64)>,
+    latest_events: HashMap<(String, Felt, Felt), (String, u64)>,
 }
 
 impl Default for EngineConfig {
@@ -790,9 +790,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let dependencies = processor.task_dependencies(event);
 
         if processor.indexing_mode() == IndexingMode::Latest {
+            let event_key = processor.event_key();
             let model_selector = event.keys[1];
             let entity_id = event.keys[2];
-            let dedup_key = (model_selector, entity_id);
+            let dedup_key = (event_key, model_selector, entity_id);
 
             if let Some((_, existing_block_number)) = self.latest_events.get(&dedup_key) {
                 if block_number <= *existing_block_number {
