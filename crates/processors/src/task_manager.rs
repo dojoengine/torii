@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use dojo_world::contracts::WorldContractReader;
+use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
+use starknet_crypto::Felt;
 use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
 use torii_task_network::TaskNetwork;
@@ -10,7 +12,7 @@ use tracing::{debug, error};
 
 use crate::error::Error;
 use crate::processors::Processors;
-use crate::EventProcessorConfig;
+use crate::{EventProcessorConfig, IndexingMode};
 
 const LOG_TARGET: &str = "torii::indexer::task_manager";
 
@@ -19,6 +21,7 @@ pub type TaskPriority = usize;
 
 #[derive(Debug, Clone)]
 pub struct ParallelizedEvent {
+    pub indexing_mode: IndexingMode,
     pub contract_type: ContractType,
     pub block_number: u64,
     pub block_timestamp: u64,
@@ -26,9 +29,11 @@ pub struct ParallelizedEvent {
     pub event: Event,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct TaskData {
     events: Vec<ParallelizedEvent>,
+    latest_only_events: LinkedHashMap<Felt, ParallelizedEvent>,
+    
 }
 
 #[allow(missing_debug_implementations)]
@@ -62,22 +67,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         task_identifier: TaskId,
         parallelized_event: ParallelizedEvent,
     ) {
-        if let Some(task_data) = self.task_network.get_mut(&task_identifier) {
-            task_data.events.push(parallelized_event);
-        } else {
-            let task_data = TaskData {
-                events: vec![parallelized_event],
-            };
-
-            if let Err(e) = self.task_network.add_task(task_identifier, task_data) {
-                error!(
-                    target: LOG_TARGET,
-                    error = ?e,
-                    task_id = %task_identifier,
-                    "Failed to add task to network."
-                );
-            }
-        }
+        self.add_parallelized_event_with_dependencies(task_identifier, vec![], parallelized_event);
     }
 
     pub fn add_parallelized_event_with_dependencies(
@@ -87,10 +77,22 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         parallelized_event: ParallelizedEvent,
     ) {
         if let Some(task_data) = self.task_network.get_mut(&task_identifier) {
-            task_data.events.push(parallelized_event);
+            if parallelized_event.indexing_mode == IndexingMode::Latest {
+                task_data.latest_only_events.insert(parallelized_event.event.keys[0], parallelized_event);
+            } else {
+                task_data.events.push(parallelized_event);
+            }
         } else {
-            let task_data = TaskData {
-                events: vec![parallelized_event.clone()],
+            let task_data = if parallelized_event.indexing_mode == IndexingMode::Latest {
+                TaskData {
+                    latest_only_events: LinkedHashMap::from_iter(vec![(parallelized_event.event.keys[0], parallelized_event.clone())]),
+                    ..Default::default()
+                }
+            } else {
+                TaskData {
+                    events: vec![parallelized_event.clone()],
+                    ..Default::default()
+                }
             };
 
             if let Err(e) = self.task_network.add_task_with_dependencies(
@@ -137,9 +139,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         block_number,
                         block_timestamp,
                         event_id,
-                    } in task_data.events
+                        ..
+                    } in task_data.events.iter().chain(task_data.latest_only_events.values())
                     {
-                        let contract_processors = processors.get_event_processors(contract_type);
+                        let contract_processors = processors.get_event_processors(*contract_type);
                         if let Some(processors) = contract_processors.get(&event.keys[0]) {
                             let processor = processors
                                 .iter()
@@ -159,8 +162,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 .process(
                                     world.clone(),
                                     &mut local_db,
-                                    block_number,
-                                    block_timestamp,
+                                    *block_number,
+                                    *block_timestamp,
                                     &event_id,
                                     &event,
                                     &event_processor_config,

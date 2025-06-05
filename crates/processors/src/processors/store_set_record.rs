@@ -12,7 +12,7 @@ use tracing::{debug, info};
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig, IndexingMode};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_set_record";
 
@@ -43,6 +43,10 @@ where
         let mut hasher = DefaultHasher::new();
         event.keys[1].hash(&mut hasher); // Use the model selector to create a unique ID
         vec![hasher.finish()] // Return the dependency on the register_model task
+    }
+
+    fn indexing_mode(&self) -> IndexingMode {
+        IndexingMode::Latest
     }
 
     async fn process(

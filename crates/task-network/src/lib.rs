@@ -38,9 +38,7 @@ where
     }
 
     pub fn add_task(&mut self, task_id: K, task: T) -> Result<()> {
-        self.tasks
-            .add_node(task_id, task)
-            .map_err(TaskNetworkError::GraphError)?;
+        self.add_task_with_dependencies(task_id, task, vec![])?;
         Ok(())
     }
 

@@ -31,6 +31,12 @@ impl EventProcessorConfig {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IndexingMode {
+    Historical,
+    Latest,
+}
+
 #[async_trait]
 pub trait EventProcessor<P>: Send + Sync
 where
@@ -53,6 +59,10 @@ where
 
     fn task_dependencies(&self, _event: &Event) -> Vec<TaskId> {
         vec![] // Default implementation returns no dependencies
+    }
+
+    fn indexing_mode(&self) -> IndexingMode {
+        IndexingMode::Historical
     }
 
     #[allow(clippy::too_many_arguments)]
