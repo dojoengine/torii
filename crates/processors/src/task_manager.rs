@@ -33,7 +33,6 @@ pub struct ParallelizedEvent {
 struct TaskData {
     events: Vec<ParallelizedEvent>,
     latest_only_events: LinkedHashMap<Felt, ParallelizedEvent>,
-    
 }
 
 #[allow(missing_debug_implementations)]
@@ -78,14 +77,19 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
     ) {
         if let Some(task_data) = self.task_network.get_mut(&task_identifier) {
             if parallelized_event.indexing_mode == IndexingMode::Latest {
-                task_data.latest_only_events.insert(parallelized_event.event.keys[0], parallelized_event);
+                task_data
+                    .latest_only_events
+                    .insert(parallelized_event.event.keys[0], parallelized_event);
             } else {
                 task_data.events.push(parallelized_event);
             }
         } else {
             let task_data = if parallelized_event.indexing_mode == IndexingMode::Latest {
                 TaskData {
-                    latest_only_events: LinkedHashMap::from_iter(vec![(parallelized_event.event.keys[0], parallelized_event.clone())]),
+                    latest_only_events: LinkedHashMap::from_iter(vec![(
+                        parallelized_event.event.keys[0],
+                        parallelized_event.clone(),
+                    )]),
                     ..Default::default()
                 }
             } else {
@@ -140,7 +144,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         block_timestamp,
                         event_id,
                         ..
-                    } in task_data.events.iter().chain(task_data.latest_only_events.values())
+                    } in task_data
+                        .events
+                        .iter()
+                        .chain(task_data.latest_only_events.values())
                     {
                         let contract_processors = processors.get_event_processors(*contract_type);
                         if let Some(processors) = contract_processors.get(&event.keys[0]) {

@@ -11,8 +11,8 @@ use torii_sqlite::Sql;
 use tracing::{debug, info};
 
 use crate::task_manager::TaskId;
-use crate::{IndexingMode, Result};
 use crate::{EventProcessor, EventProcessorConfig};
+use crate::{IndexingMode, Result};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_update_record";
 
