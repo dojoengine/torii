@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use dojo_world::contracts::WorldContractReader;
 use starknet::core::types::Event;
+use starknet::macros::selector;
 use starknet::providers::Provider;
 use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
@@ -154,9 +155,19 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 let event_key = processor.event_key();
                                 let model_selector = event_data.event.keys[1];
                                 let entity_id = event_data.event.keys[2];
-                                let dedup_key = (event_key, model_selector, entity_id);
+                                let dedup_key = (event_key.clone(), model_selector, entity_id);
 
-                                latest_events_map.insert(dedup_key, event_data);
+                                let should_insert = if event_key == "StoreDelRecord" {
+                                    true // Delete events always overwrite
+                                } else if let Some(existing_event) = latest_events_map.get(&dedup_key) {
+                                    existing_event.event.keys[0] != selector!("StoreDelRecord") // Only replace non-delete events
+                                } else {
+                                    true // No existing event, safe to insert
+                                };
+
+                                if should_insert {
+                                    latest_events_map.insert(dedup_key, event_data);
+                                }
                             } else {
                                 historical_events.push(event_data);
                             }
