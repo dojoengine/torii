@@ -779,11 +779,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         let task_identifier = processor.task_identifier(event);
         let dependencies = processor.task_dependencies(event);
+        let indexing_mode = processor.indexing_mode();
 
         self.task_manager.add_parallelized_event_with_dependencies(
             task_identifier,
             dependencies,
             ParallelizedEvent {
+                indexing_mode,
                 contract_type,
                 event_id: event_id.to_string(),
                 event: event.clone(),
