@@ -159,8 +159,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
 
                                 let should_insert = if event_key == "StoreDelRecord" {
                                     true // Delete events always overwrite
-                                } else if let Some(existing_event) = latest_events_map.get(&dedup_key) {
-                                    existing_event.event.keys[0] != selector!("StoreDelRecord") // Only replace non-delete events
+                                } else if let Some(existing_event) =
+                                    latest_events_map.get(&dedup_key)
+                                {
+                                    existing_event.event.keys[0] != selector!("StoreDelRecord")
+                                // Only replace non-delete events
                                 } else {
                                     true // No existing event, safe to insert
                                 };
