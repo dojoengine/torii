@@ -61,8 +61,8 @@ where
         vec![] // Default implementation returns no dependencies
     }
 
-    fn indexing_mode(&self) -> IndexingMode {
-        IndexingMode::Historical
+    async fn indexing_mode(&self, _event: &Event, _db: &Sql) -> Result<IndexingMode> {
+        Ok(IndexingMode::Historical)
     }
 
     #[allow(clippy::too_many_arguments)]

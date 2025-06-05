@@ -59,6 +59,12 @@ impl Default for SqlConfig {
     }
 }
 
+impl SqlConfig {
+    pub fn is_historical(&self, model_name: &str) -> bool {
+        self.historical_models.contains(model_name)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Sql {
     pub pool: Pool<Sqlite>,
@@ -66,7 +72,7 @@ pub struct Sql {
     nft_metadata_semaphore: Arc<Semaphore>,
     model_cache: Arc<ModelCache>,
     local_cache: Arc<LocalCache>,
-    config: SqlConfig,
+    pub config: SqlConfig,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -120,6 +126,11 @@ impl Sql {
         db.execute().await?;
 
         Ok(db)
+    }
+
+    pub async fn is_model_historical(&self, selector: Felt) -> Result<bool, Error> {
+        let model = self.model(selector).await?;
+        Ok(self.config.is_historical(&model.name))
     }
 
     pub fn set_last_pending_block_contract_tx(

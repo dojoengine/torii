@@ -47,8 +47,14 @@ where
         vec![hasher.finish()] // Return the dependency on the register_model task
     }
 
-    fn indexing_mode(&self) -> IndexingMode {
-        IndexingMode::Latest
+    async fn indexing_mode(&self, event: &Event, db: &Sql) -> Result<IndexingMode> {
+        let model_id = event.keys[1];
+        let is_historical = db.is_model_historical(model_id).await?;
+        if is_historical {
+            Ok(IndexingMode::Historical)
+        } else {
+            Ok(IndexingMode::Latest)
+        }
     }
 
     async fn process(

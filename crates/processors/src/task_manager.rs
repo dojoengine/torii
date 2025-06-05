@@ -153,7 +153,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         if let Some(processors) = contract_processors.get(&event.keys[0]) {
                             let processor = processors
                                 .iter()
-                                .find(|p| p.validate(&event))
+                                .find(|p| p.validate(event))
                                 .expect("Must find at least one processor for the event");
 
                             debug!(
@@ -171,8 +171,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                     &mut local_db,
                                     *block_number,
                                     *block_timestamp,
-                                    &event_id,
-                                    &event,
+                                    event_id,
+                                    event,
                                     &event_processor_config,
                                 )
                                 .await
