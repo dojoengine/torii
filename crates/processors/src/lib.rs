@@ -23,12 +23,25 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct EventProcessorConfig {
     pub namespaces: HashSet<String>,
     pub strict_model_reader: bool,
+    pub historical_models: HashSet<Felt>,
 }
 
 impl EventProcessorConfig {
     pub fn should_index(&self, namespace: &str) -> bool {
         self.namespaces.is_empty() || self.namespaces.contains(namespace)
     }
+
+    pub fn is_historical(&self, selector: &Felt) -> bool {
+        self.historical_models.contains(selector)
+    }
+}
+
+type EventKey = u64;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum IndexingMode {
+    Historical,
+    Latest(EventKey),
 }
 
 #[async_trait]
@@ -53,6 +66,10 @@ where
 
     fn task_dependencies(&self, _event: &Event) -> Vec<TaskId> {
         vec![] // Default implementation returns no dependencies
+    }
+
+    fn indexing_mode(&self, _event: &Event, _config: &EventProcessorConfig) -> IndexingMode {
+        IndexingMode::Historical
     }
 
     #[allow(clippy::too_many_arguments)]

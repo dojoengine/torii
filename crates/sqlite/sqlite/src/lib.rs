@@ -42,7 +42,7 @@ pub use torii_sqlite_types as types;
 pub struct SqlConfig {
     pub all_model_indices: bool,
     pub model_indices: Vec<ModelIndices>,
-    pub historical_models: HashSet<String>,
+    pub historical_models: HashSet<Felt>,
     pub hooks: Vec<Hook>,
     pub max_metadata_tasks: usize,
 }
@@ -59,6 +59,12 @@ impl Default for SqlConfig {
     }
 }
 
+impl SqlConfig {
+    pub fn is_historical(&self, selector: &Felt) -> bool {
+        self.historical_models.contains(selector)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Sql {
     pub pool: Pool<Sqlite>,
@@ -66,7 +72,7 @@ pub struct Sql {
     nft_metadata_semaphore: Arc<Semaphore>,
     model_cache: Arc<ModelCache>,
     local_cache: Arc<LocalCache>,
-    config: SqlConfig,
+    pub config: SqlConfig,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -305,13 +311,13 @@ impl Sql {
         event_id: &str,
         block_timestamp: u64,
         entity_id: Felt,
-        model_id: Felt,
+        model_selector: Felt,
         keys_str: Option<&str>,
     ) -> Result<(), Error> {
         let namespaced_name = entity.name();
 
         let entity_id = format!("{:#x}", entity_id);
-        let model_id = format!("{:#x}", model_id);
+        let model_id = format!("{:#x}", model_selector);
 
         let insert_entities = if keys_str.is_some() {
             "INSERT INTO entities (id, event_id, executed_at, keys) VALUES (?, ?, ?, ?) ON \
@@ -345,7 +351,7 @@ impl Sql {
                     model_id: model_id.clone(),
                     keys_str: keys_str.map(|s| s.to_string()),
                     ty: entity.clone(),
-                    is_historical: self.config.historical_models.contains(&entity.name()),
+                    is_historical: self.config.is_historical(&model_selector),
                 }),
             ))
             .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
@@ -404,10 +410,8 @@ impl Sql {
         let (model_namespace, model_name) = namespaced_name.split_once('-').unwrap();
 
         let entity_id = format!("{:#x}", poseidon_hash_many(&keys));
-        let model_id = format!(
-            "{:#x}",
-            compute_selector_from_names(model_namespace, model_name)
-        );
+        let model_selector = compute_selector_from_names(model_namespace, model_name);
+        let model_id = format!("{:#x}", model_selector);
 
         let keys_str = felts_to_sql_string(&keys);
         let block_timestamp_str = utc_dt_string_from_timestamp(block_timestamp);
@@ -432,7 +436,7 @@ impl Sql {
                     event_id: event_id.to_string(),
                     block_timestamp: block_timestamp_str.clone(),
                     ty: entity.clone(),
-                    is_historical: self.config.historical_models.contains(&entity.name()),
+                    is_historical: self.config.is_historical(&model_selector),
                 }),
             ))
             .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
