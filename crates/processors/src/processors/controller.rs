@@ -362,7 +362,7 @@ mod tests {
 
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
 
-        parse_controller_calldata_webauthn(&udc_event.calldata).unwrap();
+        assert!(is_cartridge_controller(&udc_event));
         assert_eq!(parse_cairo_short_string(&udc_event.salt).unwrap(), "glihm");
     }
 
@@ -419,7 +419,7 @@ mod tests {
 
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
 
-        assert!(parse_controller_calldata_webauthn(&udc_event.calldata).is_ok());
+        assert!(is_cartridge_controller(&udc_event));
         assert!(parse_cairo_short_string(&udc_event.salt).is_err());
     }
 
@@ -450,7 +450,7 @@ mod tests {
 
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
 
-        parse_controller_calldata_eip191(&udc_event.calldata).unwrap();
+        assert!(is_cartridge_controller(&udc_event));
         assert_eq!(
             parse_cairo_short_string(&udc_event.salt).unwrap(),
             "glihm-discord"
