@@ -128,6 +128,31 @@ pub enum QueryType {
     Other,
 }
 
+impl std::fmt::Display for QueryType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                QueryType::StoreTransaction(_) => "StoreTransaction",
+                QueryType::UpdateCursors(_) => "UpdateCursors",
+                QueryType::SetEntity(_) => "SetEntity",
+                QueryType::DeleteEntity(_) => "DeleteEntity",
+                QueryType::EventMessage(_) => "EventMessage",
+                QueryType::ApplyBalanceDiff(_) => "ApplyBalanceDiff",
+                QueryType::RegisterNftToken(_) => "RegisterNftToken",
+                QueryType::RegisterErc20Token(_) => "RegisterErc20Token",
+                QueryType::RegisterModel => "RegisterModel",
+                QueryType::StoreEvent => "StoreEvent",
+                QueryType::UpdateNftMetadata(_) => "UpdateNftMetadata",
+                QueryType::Execute => "Execute",
+                QueryType::Rollback => "Rollback",
+                QueryType::Other => "Other",
+            }
+        )
+    }
+}
+
 #[derive(Debug)]
 pub struct Executor<'c, P: Provider + Sync + Send + 'static> {
     // Queries should use `transaction` instead of `pool`
@@ -275,8 +300,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     match self.handle_query_message(msg).await {
                         Ok(()) => {},
                         Err(e) => {
-                            error!(target: LOG_TARGET, r#type = ?query_type, error = ?e, "Failed to execute query.");
-                            debug!(target: LOG_TARGET, query = ?statement, arguments = ?arguments, "Failed to execute query.");
+                            error!(target: LOG_TARGET, r#type = %query_type, error = ?e, "Failed to execute query.");
+                            debug!(target: LOG_TARGET, query = ?statement, arguments = ?arguments, query_type = ?query_type, "Failed to execute query.");
                         }
                     }
                 }
