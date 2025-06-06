@@ -13,7 +13,7 @@ use tracing::info;
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig, IndexingMode};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::event_message";
 
@@ -51,6 +51,18 @@ where
         // selector
         event.keys[1].hash(&mut hasher);
         vec![hasher.finish()]
+    }
+
+    fn indexing_mode(&self, event: &Event, config: &EventProcessorConfig) -> IndexingMode {
+        let model_id = event.keys[1];
+        let is_historical = config.is_historical(&model_id);
+        if is_historical {
+            IndexingMode::Historical
+        } else {
+            let mut hasher = DefaultHasher::new();
+            event.keys[0].hash(&mut hasher);
+            IndexingMode::Latest(hasher.finish())
+        }
     }
 
     async fn process(
