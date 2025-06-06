@@ -23,6 +23,7 @@ use crate::utils::{
     felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, fetch_content_from_http,
     fetch_content_from_ipfs, sanitize_json_string, utc_dt_string_from_timestamp,
 };
+use crate::Cursor;
 
 impl Sql {
     #[allow(clippy::too_many_arguments)]
@@ -342,7 +343,7 @@ impl Sql {
         Ok(())
     }
 
-    pub async fn apply_cache_diff(&mut self) -> Result<(), Error> {
+    pub async fn apply_cache_diff(&mut self, cursors: HashMap<Felt, Cursor>) -> Result<(), Error> {
         if !self.local_cache.erc_cache.is_empty() {
             let erc_cache = self
                 .local_cache
@@ -357,7 +358,7 @@ impl Sql {
                 .send(QueryMessage::new(
                     "".to_string(),
                     vec![],
-                    QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery { erc_cache }),
+                    QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery { erc_cache, cursors }),
                 ))
                 .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
         }

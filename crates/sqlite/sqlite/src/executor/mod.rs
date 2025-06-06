@@ -73,6 +73,7 @@ pub struct DeleteEntityQuery {
 #[derive(Debug, Clone)]
 pub struct ApplyBalanceDiffQuery {
     pub erc_cache: HashMap<String, I256>,
+    pub cursors: HashMap<Felt, Cursor>,
 }
 
 #[derive(Debug, Clone)]

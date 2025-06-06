@@ -58,7 +58,7 @@ where
     let data = engine.fetch(&mut cursors).await.unwrap();
     engine.process(&data).await.unwrap();
 
-    db.apply_cache_diff().await.unwrap();
+    db.apply_cache_diff(cursors).await.unwrap();
     db.execute().await.unwrap();
 
     Ok(engine)

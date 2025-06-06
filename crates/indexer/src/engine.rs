@@ -15,7 +15,7 @@ use starknet::core::types::requests::{
 };
 use starknet::core::types::{
     BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
-    MaybePendingBlockWithTxHashes, PendingBlockWithReceipts, ResultPageRequest, Transaction,
+    MaybePendingBlockWithTxHashes, ResultPageRequest, Transaction,
 };
 use starknet::macros::selector;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
@@ -72,13 +72,6 @@ pub struct FetchRangeResult {
     pub num_transactions: HashMap<Felt, u64>,
     // new updated cursors
     pub cursors: HashMap<Felt, Cursor>,
-}
-
-#[derive(Debug)]
-pub struct FetchPendingResult {
-    pub pending_block: Box<PendingBlockWithReceipts>,
-    pub last_pending_block_tx: Option<Felt>,
-    pub block_number: u64,
 }
 
 #[allow(missing_debug_implementations)]
@@ -602,7 +595,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             .map_err(ProcessError::Processors)?;
 
         // Apply ERC balances cache diff
-        self.db.apply_cache_diff().await?;
+        self.db.apply_cache_diff(range.cursors.clone()).await?;
 
         // Update cursors
         self.db
