@@ -125,13 +125,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         block_timestamp,
                         event_id,
                         ..
-                    } in task_data.events.iter()
+                    } in task_data.events
                     {
-                        let contract_processors = processors.get_event_processors(*contract_type);
+                        let contract_processors = processors.get_event_processors(contract_type);
                         if let Some(processors) = contract_processors.get(&event.keys[0]) {
                             let processor = processors
                                 .iter()
-                                .find(|p| p.validate(event))
+                                .find(|p| p.validate(&event))
                                 .expect("Must find at least one processor for the event");
 
                             debug!(
@@ -143,15 +143,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 "Processing parallelized event."
                             );
 
-                            if processor.indexing_mode(event, &local_db).await?
+                            if processor.indexing_mode(&event, &local_db).await?
                                 == IndexingMode::Latest
                             {
                                 latest_only_events.insert(
                                     event.keys[0],
                                     ParallelizedEvent {
-                                        contract_type: contract_type.clone(),
-                                        block_number: *block_number,
-                                        block_timestamp: *block_timestamp,
+                                        contract_type,
+                                        block_number,
+                                        block_timestamp,
                                         event_id: event_id.clone(),
                                         event: event.clone(),
                                     },
@@ -163,10 +163,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 .process(
                                     world.clone(),
                                     &mut local_db,
-                                    *block_number,
-                                    *block_timestamp,
-                                    event_id,
-                                    event,
+                                    block_number,
+                                    block_timestamp,
+                                    &event_id,
+                                    &event,
                                     &event_processor_config,
                                 )
                                 .await
@@ -194,23 +194,23 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                             event,
                             ..
                         },
-                    ) in latest_only_events.iter()
+                    ) in latest_only_events
                     {
-                        let contract_processors = processors.get_event_processors(*contract_type);
-                        if let Some(processors) = contract_processors.get(key) {
+                        let contract_processors = processors.get_event_processors(contract_type);
+                        if let Some(processors) = contract_processors.get(&key) {
                             let processor = processors
                                 .iter()
-                                .find(|p| p.validate(event))
+                                .find(|p| p.validate(&event))
                                 .expect("Must find at least one processor for the event");
 
                             if let Err(e) = processor
                                 .process(
                                     world.clone(),
                                     &mut local_db,
-                                    *block_number,
-                                    *block_timestamp,
-                                    event_id,
-                                    event,
+                                    block_number,
+                                    block_timestamp,
+                                    &event_id,
+                                    &event,
                                     &event_processor_config,
                                 )
                                 .await
