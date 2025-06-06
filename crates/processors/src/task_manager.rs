@@ -125,9 +125,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         block_timestamp,
                         event_id,
                         ..
-                    } in task_data
-                        .events
-                        .iter()
+                    } in task_data.events.iter()
                     {
                         let contract_processors = processors.get_event_processors(*contract_type);
                         if let Some(processors) = contract_processors.get(&event.keys[0]) {
@@ -145,14 +143,19 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 "Processing parallelized event."
                             );
 
-                            if processor.indexing_mode(event, &local_db).await? == IndexingMode::Latest {
-                                latest_only_events.insert(event.keys[0], ParallelizedEvent {
-                                    contract_type: contract_type.clone(),
-                                    block_number: *block_number,
-                                    block_timestamp: *block_timestamp,
-                                    event_id: event_id.clone(),
-                                    event: event.clone(),
-                                });
+                            if processor.indexing_mode(event, &local_db).await?
+                                == IndexingMode::Latest
+                            {
+                                latest_only_events.insert(
+                                    event.keys[0],
+                                    ParallelizedEvent {
+                                        contract_type: contract_type.clone(),
+                                        block_number: *block_number,
+                                        block_timestamp: *block_timestamp,
+                                        event_id: event_id.clone(),
+                                        event: event.clone(),
+                                    },
+                                );
                                 continue;
                             }
 
@@ -181,14 +184,18 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         }
                     }
 
-                    for (key, ParallelizedEvent {
-                        contract_type,
-                        block_number,
-                        block_timestamp,
-                        event_id,
-                        event,
-                        ..
-                    }) in latest_only_events.iter() {
+                    for (
+                        key,
+                        ParallelizedEvent {
+                            contract_type,
+                            block_number,
+                            block_timestamp,
+                            event_id,
+                            event,
+                            ..
+                        },
+                    ) in latest_only_events.iter()
+                    {
                         let contract_processors = processors.get_event_processors(*contract_type);
                         if let Some(processors) = contract_processors.get(key) {
                             let processor = processors
