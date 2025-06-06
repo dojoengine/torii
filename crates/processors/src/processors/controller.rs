@@ -312,7 +312,7 @@ mod tests {
     /// Tests the parsing of a calldata that is a Cartridge controller deployment calldata with WebAuthn.
     /// Taken from mainnet: <https://voyager.online/event/678075_19_0>
     #[test]
-    fn test_parse_cartridge_controller_calldata_default() {
+    fn test_parse_cartridge_controller_calldata_webauthn() {
         let event = Event {
             keys: vec![felt!(
                 "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
@@ -364,6 +364,63 @@ mod tests {
 
         parse_controller_calldata_webauthn(&udc_event.calldata).unwrap();
         assert_eq!(parse_cairo_short_string(&udc_event.salt).unwrap(), "glihm");
+    }
+
+    /// Tests the parsing of a calldata for a Cartridge controller that has invalid salt.
+    /// Taken from mainnet: <https://voyager.online/event/1364488_7_182>
+    #[test]
+    fn test_parse_cartridge_controller_invalid_salt() {
+        let event = Event {
+            keys: vec![felt!(
+                "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
+            )],
+            data: vec![
+                felt!("0x1d21ea9b21623d3298c1b207080fb573a36cd11ba244e5f91f6d0184690f8fd"),
+                felt!("0x494ab036657fea16b10064bfd2d3a7666f546aab3724e7f8559cfed07584202"),
+                felt!("0x0"),
+                felt!("0x32e17891b6cc89e0c3595a3df7cee760b5993744dc8dfef2bd4d443e65c0f40"),
+                felt!("0x1e"),
+                felt!("0x0"),
+                felt!("0x4"),
+                felt!("0x16"),
+                felt!("0x68"),
+                felt!("0x74"),
+                felt!("0x74"),
+                felt!("0x70"),
+                felt!("0x73"),
+                felt!("0x3a"),
+                felt!("0x2f"),
+                felt!("0x2f"),
+                felt!("0x78"),
+                felt!("0x2e"),
+                felt!("0x63"),
+                felt!("0x61"),
+                felt!("0x72"),
+                felt!("0x74"),
+                felt!("0x72"),
+                felt!("0x69"),
+                felt!("0x64"),
+                felt!("0x67"),
+                felt!("0x65"),
+                felt!("0x2e"),
+                felt!("0x67"),
+                felt!("0x67"),
+                felt!("0x9d0aec9905466c9adf79584fa75fed3"),
+                felt!("0x20a97ec3f8efbc2aca0cf7cabb420b4a"),
+                felt!("0xce942e6fdf18ac48aca69c39d9419c2f"),
+                felt!("0x1248229349df98a8ed21e4eaa337df35"),
+                felt!("0x1"),
+                felt!("0x76acb5e81b78b7e01241565c5cead1a30b93b608b44868c72936cb96d49243f"),
+            ],
+            from_address: felt!(
+                "0x041a78e741e5af2fec34b695679bc6891742439f7afb8484ecd7766661ad02bf"
+            ),
+        };
+
+        let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
+
+        assert!(parse_controller_calldata_webauthn(&udc_event.calldata).is_ok());
+        assert!(parse_cairo_short_string(&udc_event.salt).is_err());
     }
 
     /// Tests the parsing of a calldata that is a Cartridge controller deployment calldata with EIP191.
