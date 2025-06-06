@@ -249,7 +249,14 @@ impl Runner {
             );
         }
 
-        let historical_models = self.args.sql.historical.clone().into_iter().map(|tag| compute_selector_from_tag(&tag)).collect::<HashSet<_>>();
+        let historical_models = self
+            .args
+            .sql
+            .historical
+            .clone()
+            .into_iter()
+            .map(|tag| compute_selector_from_tag(&tag))
+            .collect::<HashSet<_>>();
         let db = Sql::new_with_config(
             pool.clone(),
             sender.clone(),
