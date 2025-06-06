@@ -193,7 +193,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             cached_data = Some(fetch_result.clone());
 
                             let instant = Instant::now();
-
                             match self.process(&fetch_result).await {
                                 Ok(_) => {
                                     // Only reset backoff delay after successful processing
@@ -205,7 +204,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     // Reset the cached data
                                     cached_data = None;
                                     self.db.execute().await?;
-                                    debug!(target: LOG_TARGET, "Updated cursors, applied cache diff and executed.");
                                 },
                                 Err(e) => {
                                     error!(target: LOG_TARGET, error = ?e, "Processing fetched data.");
@@ -218,6 +216,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     }
                                 }
                             }
+
                             debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed fetched data.");
                         }
                         Err(e) => {
@@ -443,12 +442,19 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 .iter()
                 .map(|(_, _, req)| req.clone())
                 .collect();
+
+            debug!(target: LOG_TARGET, "Retrieving events for contracts.");
+            let instant = Instant::now();
             let batch_results = self.chunked_batch_requests(&batch_requests).await?;
+            debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Retrieved events for contracts.");
 
             // Process results and prepare next batch of requests if needed
             for ((contract_address, to, original_request), result) in
                 current_requests.into_iter().zip(batch_results)
             {
+                let contract_type = self.contracts.get(&contract_address).unwrap();
+                debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Pre-processing events for contract.");
+
                 let old_cursor = old_cursors.get_mut(&contract_address).unwrap();
                 let new_cursor = cursors.get_mut(&contract_address).unwrap();
                 let mut previous_contract_tx = None;
@@ -471,9 +477,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                             last_block_number = Some(block_number);
                             is_pending = event.block_number.is_none();
-                            if block_number > to {
-                                break;
-                            }
 
                             if previous_contract_tx != Some(event.transaction_hash) {
                                 event_idx = 0;
@@ -525,9 +528,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         // - we have a last block number (which means we have processed atleast one event)
                         // - the last block number is less than the to block
                         if events_page.continuation_token.is_some()
-                            && last_block_number.is_some()
-                            && last_block_number.unwrap() < to
+                            && (last_block_number.is_none() || last_block_number.unwrap() < to)
                         {
+                            debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Adding continuation request for contract.");
                             if let ProviderRequestData::GetEvents(mut next_request) =
                                 original_request
                             {
@@ -540,7 +543,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 ));
                             }
                         } else {
-                            let new_head = to.min(latest_block_number);
+                            let new_head = to.max(last_block_number.unwrap_or(0));
+                            let new_head = new_head.min(latest_block_number);
                             // We only reset the last pending block contract tx if we are not
                             // processing pending events anymore. It can happen that during a short lapse,
                             // we can have some pending events while the latest block number has been incremented.
@@ -549,6 +553,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 new_cursor.last_pending_block_event_id = None;
                             }
                             new_cursor.head = Some(new_head);
+
+                            debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, head = new_cursor.head, last_pending_block_event_id = new_cursor.last_pending_block_event_id, "Fetched and pre-processed events for contract.");
                         }
                     }
                     _ => unreachable!(),
@@ -589,15 +595,23 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Process parallelized events
+        debug!(target: LOG_TARGET, "Processing parallelized events.");
+        let instant = Instant::now();
         self.task_manager
             .process_tasks()
             .await
             .map_err(ProcessError::Processors)?;
 
+        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed parallelized events.");
+
         // Apply ERC balances cache diff
+        debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
+        let instant = Instant::now();
         self.db.apply_cache_diff(range.cursors.clone()).await?;
+        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
 
         // Update cursors
+        debug!(target: LOG_TARGET, cursors = ?range.cursors, "Updating cursors.");
         self.db
             .update_cursors(range.cursors.clone(), range.num_transactions.clone())?;
 
