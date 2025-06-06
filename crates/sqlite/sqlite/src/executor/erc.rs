@@ -58,12 +58,23 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     let mid = token_id.split(":").collect::<Vec<&str>>();
                     let contract_address = mid[0];
 
+                    let cursor = apply_balance_diff
+                        .cursors
+                        .get(&Felt::from_str(contract_address).unwrap())
+                        .unwrap();
+                    let block_id = if cursor.last_pending_block_event_id.is_some() {
+                        BlockId::Tag(BlockTag::Pending)
+                    } else {
+                        BlockId::Number(cursor.head.unwrap())
+                    };
+
                     self.apply_balance_diff_helper(
                         id_str,
                         account_address,
                         contract_address,
                         token_id,
                         balance,
+                        block_id,
                         Arc::clone(&provider),
                     )
                     .await?;
@@ -74,12 +85,23 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     let contract_address = id[1];
                     let token_id = id[1];
 
+                    let cursor = apply_balance_diff
+                        .cursors
+                        .get(&Felt::from_str(contract_address).unwrap())
+                        .unwrap();
+                    let block_id = if cursor.last_pending_block_event_id.is_some() {
+                        BlockId::Tag(BlockTag::Pending)
+                    } else {
+                        BlockId::Number(cursor.head.unwrap())
+                    };
+
                     self.apply_balance_diff_helper(
                         id_str,
                         account_address,
                         contract_address,
                         token_id,
                         balance,
+                        block_id,
                         Arc::clone(&provider),
                     )
                     .await?;
@@ -99,6 +121,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         contract_address: &str,
         token_id: &str,
         balance_diff: &I256,
+        block_id: BlockId,
         provider: Arc<P>,
     ) -> Result<(), Error> {
         let tx = &mut self.transaction;
@@ -128,7 +151,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                             entry_point_selector: get_selector_from_name("balance_of").unwrap(),
                             calldata: vec![Felt::from_str(account_address).unwrap()],
                         },
-                        BlockId::Tag(BlockTag::Pending),
+                        block_id,
                     )
                     .await
                 {
@@ -141,7 +164,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                                 entry_point_selector: get_selector_from_name("balanceOf").unwrap(),
                                 calldata: vec![Felt::from_str(account_address).unwrap()],
                             },
-                            BlockId::Tag(BlockTag::Pending),
+                            block_id,
                         )
                         .await?
                 };
