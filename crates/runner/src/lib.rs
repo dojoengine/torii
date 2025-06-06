@@ -11,6 +11,7 @@
 //!   for more info.
 
 use std::cmp;
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::str::FromStr;
@@ -248,7 +249,7 @@ impl Runner {
             );
         }
 
-        let historical_models = self.args.sql.historical.clone().into_iter().map(|tag| compute_selector_from_tag(&tag)).collect();
+        let historical_models = self.args.sql.historical.clone().into_iter().map(|tag| compute_selector_from_tag(&tag)).collect::<HashSet<_>>();
         let db = Sql::new_with_config(
             pool.clone(),
             sender.clone(),
@@ -257,7 +258,7 @@ impl Runner {
             SqlConfig {
                 all_model_indices: self.args.sql.all_model_indices,
                 model_indices: self.args.sql.model_indices.clone(),
-                historical_models,
+                historical_models: historical_models.clone(),
                 hooks: self.args.sql.hooks.clone(),
                 max_metadata_tasks: self.args.erc.max_metadata_tasks,
             },
