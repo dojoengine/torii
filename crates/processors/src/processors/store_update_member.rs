@@ -55,7 +55,11 @@ where
         if is_historical {
             IndexingMode::Historical
         } else {
-            IndexingMode::Latest
+            let mut hasher = DefaultHasher::new();
+            event.keys[0].hash(&mut hasher); // event id
+                                             // we need the memebr selector to make sure we dont miss some other member updates
+            event.keys[3].hash(&mut hasher); // member selector.
+            IndexingMode::Latest(hasher.finish())
         }
     }
 

@@ -36,10 +36,12 @@ impl EventProcessorConfig {
     }
 }
 
+type EventKey = u64;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IndexingMode {
     Historical,
-    Latest,
+    Latest(EventKey),
 }
 
 #[async_trait]

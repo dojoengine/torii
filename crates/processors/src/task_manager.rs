@@ -4,7 +4,6 @@ use dojo_world::contracts::WorldContractReader;
 use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
-use starknet_crypto::Felt;
 use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
 use torii_task_network::TaskNetwork;
@@ -12,7 +11,7 @@ use tracing::{debug, error};
 
 use crate::error::Error;
 use crate::processors::Processors;
-use crate::{EventProcessorConfig, IndexingMode};
+use crate::{EventKey, EventProcessorConfig, IndexingMode};
 
 const LOG_TARGET: &str = "torii::indexer::task_manager";
 
@@ -32,7 +31,7 @@ pub struct ParallelizedEvent {
 #[derive(Debug, Clone, Default)]
 struct TaskData {
     events: Vec<ParallelizedEvent>,
-    latest_only_events: LinkedHashMap<Felt, ParallelizedEvent>,
+    latest_only_events: LinkedHashMap<EventKey, ParallelizedEvent>,
 }
 
 #[allow(missing_debug_implementations)]
@@ -76,27 +75,29 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         parallelized_event: ParallelizedEvent,
     ) {
         if let Some(task_data) = self.task_network.get_mut(&task_identifier) {
-            if parallelized_event.indexing_mode == IndexingMode::Latest {
-                task_data
-                    .latest_only_events
-                    .insert(parallelized_event.event.keys[0], parallelized_event);
-            } else {
-                task_data.events.push(parallelized_event);
+            match parallelized_event.indexing_mode {
+                IndexingMode::Latest(event_key) => {
+                    task_data
+                        .latest_only_events
+                        .insert(event_key, parallelized_event);
+                }
+                IndexingMode::Historical => {
+                    task_data.events.push(parallelized_event);
+                }
             }
         } else {
-            let task_data = if parallelized_event.indexing_mode == IndexingMode::Latest {
-                TaskData {
+            let task_data = match parallelized_event.indexing_mode {
+                IndexingMode::Latest(event_key) => TaskData {
                     latest_only_events: LinkedHashMap::from_iter(vec![(
-                        parallelized_event.event.keys[0],
+                        event_key,
                         parallelized_event.clone(),
                     )]),
                     ..Default::default()
-                }
-            } else {
-                TaskData {
+                },
+                IndexingMode::Historical => TaskData {
                     events: vec![parallelized_event.clone()],
                     ..Default::default()
-                }
+                },
             };
 
             if let Err(e) = self.task_network.add_task_with_dependencies(
