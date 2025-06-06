@@ -121,16 +121,30 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 // emit transfer events properly so they are broken. For those cases
                 // we manually fetch the balance of the address using RPC
 
-                let current_balance = provider
+                let current_balance = if let Ok(current_balance) = provider
                     .call(
                         FunctionCall {
                             contract_address: Felt::from_str(contract_address).unwrap(),
-                            entry_point_selector: get_selector_from_name("balanceOf").unwrap(),
+                            entry_point_selector: get_selector_from_name("balance_of").unwrap(),
                             calldata: vec![Felt::from_str(account_address).unwrap()],
                         },
                         BlockId::Tag(BlockTag::Pending),
                     )
-                    .await?;
+                    .await
+                {
+                    current_balance
+                } else {
+                    provider
+                        .call(
+                            FunctionCall {
+                                contract_address: Felt::from_str(contract_address).unwrap(),
+                                entry_point_selector: get_selector_from_name("balanceOf").unwrap(),
+                                calldata: vec![Felt::from_str(account_address).unwrap()],
+                            },
+                            BlockId::Tag(BlockTag::Pending),
+                        )
+                        .await?
+                };
 
                 let current_balance =
                     cainome::cairo_serde::U256::cairo_deserialize(&current_balance, 0).unwrap();
