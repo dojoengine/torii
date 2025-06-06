@@ -471,9 +471,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                             last_block_number = Some(block_number);
                             is_pending = event.block_number.is_none();
-                            if block_number > to {
-                                break;
-                            }
 
                             if previous_contract_tx != Some(event.transaction_hash) {
                                 event_idx = 0;
@@ -525,8 +522,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         // - we have a last block number (which means we have processed atleast one event)
                         // - the last block number is less than the to block
                         if events_page.continuation_token.is_some()
-                            && last_block_number.is_some()
-                            && last_block_number.unwrap() < to
+                            && (last_block_number.is_none() || last_block_number.unwrap() < to)
                         {
                             if let ProviderRequestData::GetEvents(mut next_request) =
                                 original_request
@@ -540,7 +536,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 ));
                             }
                         } else {
-                            let new_head = to.min(latest_block_number);
+                            let new_head = to.max(last_block_number.unwrap_or(0));
+                            let new_head = new_head.min(latest_block_number);
                             // We only reset the last pending block contract tx if we are not
                             // processing pending events anymore. It can happen that during a short lapse,
                             // we can have some pending events while the latest block number has been incremented.
