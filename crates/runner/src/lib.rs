@@ -20,6 +20,7 @@ use std::time::Duration;
 use camino::Utf8PathBuf;
 use constants::UDC_ADDRESS;
 use dojo_metrics::exporters::prometheus::PrometheusRecorder;
+use dojo_types::naming::compute_selector_from_tag;
 use dojo_world::contracts::world::WorldContractReader;
 use futures::future::join_all;
 use sqlx::sqlite::{
@@ -247,6 +248,7 @@ impl Runner {
             );
         }
 
+        let historical_models = self.args.sql.historical.clone().into_iter().map(|tag| compute_selector_from_tag(&tag)).collect();
         let db = Sql::new_with_config(
             pool.clone(),
             sender.clone(),
@@ -255,7 +257,7 @@ impl Runner {
             SqlConfig {
                 all_model_indices: self.args.sql.all_model_indices,
                 model_indices: self.args.sql.model_indices.clone(),
-                historical_models: self.args.sql.historical.clone().into_iter().collect(),
+                historical_models,
                 hooks: self.args.sql.hooks.clone(),
                 max_metadata_tasks: self.args.erc.max_metadata_tasks,
             },
@@ -290,6 +292,7 @@ impl Runner {
                 event_processor_config: EventProcessorConfig {
                     strict_model_reader: self.args.indexing.strict_model_reader,
                     namespaces: self.args.indexing.namespaces.into_iter().collect(),
+                    historical_models,
                 },
                 world_block: self.args.indexing.world_block,
             },

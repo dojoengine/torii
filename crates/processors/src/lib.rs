@@ -23,11 +23,16 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct EventProcessorConfig {
     pub namespaces: HashSet<String>,
     pub strict_model_reader: bool,
+    pub historical_models: HashSet<Felt>,
 }
 
 impl EventProcessorConfig {
     pub fn should_index(&self, namespace: &str) -> bool {
         self.namespaces.is_empty() || self.namespaces.contains(namespace)
+    }
+
+    pub fn is_historical(&self, selector: &Felt) -> bool {
+        self.historical_models.contains(selector)
     }
 }
 
@@ -61,7 +66,11 @@ where
         vec![] // Default implementation returns no dependencies
     }
 
-    async fn indexing_mode(&self, _event: &Event, _db: &Sql) -> Result<IndexingMode> {
+    async fn indexing_mode(
+        &self,
+        _event: &Event,
+        _config: &EventProcessorConfig,
+    ) -> Result<IndexingMode> {
         Ok(IndexingMode::Historical)
     }
 
