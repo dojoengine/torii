@@ -4,7 +4,6 @@ use dojo_world::contracts::WorldContractReader;
 use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
-use starknet_crypto::Felt;
 use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
 use torii_task_network::TaskNetwork;
@@ -21,7 +20,6 @@ pub type TaskPriority = usize;
 
 #[derive(Debug, Clone)]
 pub struct ParallelizedEvent {
-    pub indexing_mode: IndexingMode,
     pub contract_type: ContractType,
     pub block_number: u64,
     pub block_timestamp: u64,
@@ -32,7 +30,6 @@ pub struct ParallelizedEvent {
 #[derive(Debug, Clone, Default)]
 struct TaskData {
     events: Vec<ParallelizedEvent>,
-    latest_only_events: LinkedHashMap<Felt, ParallelizedEvent>,
 }
 
 #[allow(missing_debug_implementations)]
@@ -76,27 +73,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         parallelized_event: ParallelizedEvent,
     ) {
         if let Some(task_data) = self.task_network.get_mut(&task_identifier) {
-            if parallelized_event.indexing_mode == IndexingMode::Latest {
-                task_data
-                    .latest_only_events
-                    .insert(parallelized_event.event.keys[0], parallelized_event);
-            } else {
-                task_data.events.push(parallelized_event);
-            }
+            task_data.events.push(parallelized_event);
         } else {
-            let task_data = if parallelized_event.indexing_mode == IndexingMode::Latest {
-                TaskData {
-                    latest_only_events: LinkedHashMap::from_iter(vec![(
-                        parallelized_event.event.keys[0],
-                        parallelized_event.clone(),
-                    )]),
-                    ..Default::default()
-                }
-            } else {
-                TaskData {
-                    events: vec![parallelized_event.clone()],
-                    ..Default::default()
-                }
+            let task_data = TaskData {
+                events: vec![parallelized_event.clone()],
             };
 
             if let Err(e) = self.task_network.add_task_with_dependencies(
@@ -137,6 +117,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                     let mut local_db = db.clone();
 
                     // Process all events for this task sequentially
+                    let mut latest_only_events = LinkedHashMap::new();
                     for ParallelizedEvent {
                         contract_type,
                         event,
@@ -147,7 +128,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                     } in task_data
                         .events
                         .iter()
-                        .chain(task_data.latest_only_events.values())
                     {
                         let contract_processors = processors.get_event_processors(*contract_type);
                         if let Some(processors) = contract_processors.get(&event.keys[0]) {
@@ -164,6 +144,17 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 task_id = %task_id,
                                 "Processing parallelized event."
                             );
+
+                            if processor.indexing_mode(event, &local_db).await? == IndexingMode::Latest {
+                                latest_only_events.insert(event.keys[0], ParallelizedEvent {
+                                    contract_type: contract_type.clone(),
+                                    block_number: *block_number,
+                                    block_timestamp: *block_timestamp,
+                                    event_id: event_id.clone(),
+                                    event: event.clone(),
+                                });
+                                continue;
+                            }
 
                             if let Err(e) = processor
                                 .process(
@@ -182,6 +173,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                     event_name = processor.event_key(),
                                     error = ?e,
                                     task_id = %task_id,
+                                    index_mode = ?IndexingMode::Historical,
                                     "Processing parallelized event."
                                 );
                                 return Err(e);
@@ -189,6 +181,45 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         }
                     }
 
+                    for (key, ParallelizedEvent {
+                        contract_type,
+                        block_number,
+                        block_timestamp,
+                        event_id,
+                        event,
+                        ..
+                    }) in latest_only_events.iter() {
+                        let contract_processors = processors.get_event_processors(*contract_type);
+                        if let Some(processors) = contract_processors.get(key) {
+                            let processor = processors
+                                .iter()
+                                .find(|p| p.validate(event))
+                                .expect("Must find at least one processor for the event");
+
+                            if let Err(e) = processor
+                                .process(
+                                    world.clone(),
+                                    &mut local_db,
+                                    *block_number,
+                                    *block_timestamp,
+                                    event_id,
+                                    event,
+                                    &event_processor_config,
+                                )
+                                .await
+                            {
+                                error!(
+                                    target: LOG_TARGET,
+                                    event_name = processor.event_key(),
+                                    error = ?e,
+                                    task_id = %task_id,
+                                    index_mode = ?IndexingMode::Latest,
+                                    "Processing parallelized event."
+                                );
+                                return Err(e);
+                            }
+                        }
+                    }
                     Ok::<_, Error>(())
                 }
             })
