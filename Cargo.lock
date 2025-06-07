@@ -11454,6 +11454,8 @@ dependencies = [
  "hashlink",
  "ipfs-api-backend-hyper",
  "lazy_static",
+ "reqwest",
+ "serde",
  "serde_json",
  "starknet 0.12.0",
  "starknet-crypto 0.7.4",

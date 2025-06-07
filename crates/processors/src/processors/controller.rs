@@ -19,19 +19,24 @@
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use cainome_cairo_serde::CairoSerde;
 use dojo_world::contracts::world::WorldContractReader;
 use lazy_static::lazy_static;
+use reqwest;
+use serde::{Deserialize, Serialize};
 use starknet::core::types::Event;
 use starknet::core::utils::parse_cairo_short_string;
 use starknet::macros::felt;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use thiserror::Error;
+use tokio::sync::RwLock;
+use tokio::time::sleep;
 use torii_sqlite::Sql;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
@@ -52,6 +57,8 @@ pub enum ControllerProcessorError {
     CartridgeMagicMismatch,
     #[error("Invalid Cartridge Encoding")]
     InvalidCartridgeEncoding,
+    #[error("Failed to fetch metadata")]
+    FetchMetadataError(String),
 }
 
 #[derive(cainome_cairo_serde_derive::CairoSerde, Debug)]
@@ -64,7 +71,44 @@ struct UdcContractDeployedEvent {
     salt: Felt,
 }
 
+const METADATA_URL: &str = "https://raw.githubusercontent.com/cartridge-gg/controller-rs/refs/heads/main/account_sdk/artifacts/metadata.json";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ControllerMetadata {
+    controllers: std::collections::HashMap<String, ControllerVersion>,
+    latest_version: String,
+    versions: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ControllerVersion {
+    casm_hash: Felt,
+    class_hash: Felt,
+}
+
+impl ControllerMetadata {
+    fn is_controller_version_known(&self, class_hash: &Felt) -> bool {
+        self.controllers
+            .values()
+            .any(|version| version.class_hash == *class_hash)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.controllers.is_empty() && self.latest_version.is_empty() && self.versions.is_empty()
+    }
+}
+
 lazy_static! {
+    static ref CONTROLLER_METADATA: RwLock<ControllerMetadata> = {
+        RwLock::new(ControllerMetadata {
+            controllers: std::collections::HashMap::new(),
+            latest_version: String::new(),
+            versions: Vec::new(),
+        })
+    };
+
+    static ref IS_INITIALIZED: RwLock<bool> = RwLock::new(false);
+
     // https://x.cartridge.gg/
     pub(crate) static ref CARTRIDGE_MAGIC: [Felt; 22] = [
         felt!("0x68"),
@@ -125,7 +169,7 @@ where
     ) -> Result<(), Error> {
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0)?;
 
-        if !is_cartridge_controller(&udc_event) {
+        if !is_cartridge_controller(&udc_event).await? {
             return Ok(());
         }
 
@@ -161,33 +205,47 @@ where
     }
 }
 
+/// Validates that a username only contains letters, numbers, and hyphens
+fn is_valid_username(username: &str) -> bool {
+    if username.is_empty() {
+        return false;
+    }
+    username.chars().all(|c| c.is_alphanumeric() || c == '-')
+}
+
 /// Checks if the controller is a Cartridge controller.
 /// The checks here are purely based on the calldata structure, where the probability
 /// of having a random calldata passing those tests is very low.
 ///
-/// If it is not enough, we should add a fetch of the controller class hashes for additional checks.
-fn is_cartridge_controller(event: &UdcContractDeployedEvent) -> bool {
-    if parse_controller_calldata_webauthn(&event.calldata).is_ok() {
-        return true;
+/// If it is not enough, we fetch the controller metadata and check the class hash against the known controller class hashes.
+async fn is_cartridge_controller(
+    event: &UdcContractDeployedEvent,
+) -> Result<bool, ControllerProcessorError> {
+    let is_known_calldata = parse_controller_calldata_webauthn(&event.calldata).is_ok()
+        || parse_controller_calldata_eip191(&event.calldata).is_ok()
+        || parse_controller_calldata_starknet(&event.calldata).is_ok()
+        || parse_controller_calldata_external(&event.calldata).is_ok()
+        || parse_controller_calldata_siws(&event.calldata).is_ok();
+
+    let username = parse_cairo_short_string(&event.salt).unwrap_or_default();
+
+    if is_known_calldata {
+        return Ok(is_valid_username(&username));
     }
 
-    if parse_controller_calldata_eip191(&event.calldata).is_ok() {
-        return true;
+    // We can discard any event without a valid username.
+    if !is_valid_username(&username) {
+        return Ok(false);
     }
 
-    if parse_controller_calldata_starknet(&event.calldata).is_ok() {
-        return true;
-    }
+    // Since we narrowed down the list of possible controllers, we can check the class hash against the metadata
+    // and update them first to ensure we have the latest version.
+    update_controller_metadata().await?;
 
-    if parse_controller_calldata_external(&event.calldata).is_ok() {
-        return true;
-    }
+    let metadata = CONTROLLER_METADATA.read().await;
 
-    if parse_controller_calldata_siws(&event.calldata).is_ok() {
-        return true;
-    }
-
-    false
+    // A controller is only valid if it has both a valid username AND a known class hash
+    Ok(metadata.is_controller_version_known(&event.class_hash))
 }
 
 /// Parses a calldata expected to be a Cartridge controller deployment calldata for WebAuthn (passkeys).
@@ -305,14 +363,134 @@ fn parse_controller_calldata_siws(calldata: &[Felt]) -> Result<(), ControllerPro
     Ok(())
 }
 
+/// Fetches the controller metadata from the Cartridge GitHub repository.
+async fn fetch_controller_metadata() -> Result<ControllerMetadata, ControllerProcessorError> {
+    const MAX_RETRIES: u32 = 3;
+    const INITIAL_BACKOFF: Duration = Duration::from_secs(2);
+
+    let client = reqwest::Client::new();
+
+    for attempt in 0..MAX_RETRIES {
+        match client.get(METADATA_URL).send().await {
+            Ok(response) => match response.json::<ControllerMetadata>().await {
+                Ok(metadata) => return Ok(metadata),
+                Err(e) => {
+                    if attempt < MAX_RETRIES - 1 {
+                        let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
+                        warn!(
+                            target: LOG_TARGET,
+                            attempt = attempt + 1,
+                            backoff_secs = backoff.as_secs(),
+                            error = ?e,
+                            "Failed to parse controller metadata, retrying..."
+                        );
+                        sleep(backoff).await;
+                    }
+                }
+            },
+            Err(e) => {
+                if attempt < MAX_RETRIES - 1 {
+                    let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
+                    warn!(
+                        target: LOG_TARGET,
+                        attempt = attempt + 1,
+                        backoff_secs = backoff.as_secs(),
+                        error = ?e,
+                        "Failed to fetch controller metadata, retrying..."
+                    );
+                    sleep(backoff).await;
+                }
+            }
+        }
+    }
+
+    Err(ControllerProcessorError::FetchMetadataError(
+        "Failed to fetch controller metadata after all retries".to_string(),
+    ))
+}
+
+/// Checks if the controller metadata needs initialization.
+pub async fn needs_initialization() -> bool {
+    let is_initialized = *IS_INITIALIZED.read().await;
+    if is_initialized {
+        return false;
+    }
+
+    let metadata = CONTROLLER_METADATA.read().await;
+    metadata.is_empty()
+}
+
+/// Initializes the controller metadata by fetching it from the Cartridge GitHub repository.
+/// This should be called once at startup.
+pub async fn init_controller_metadata() -> Result<(), ControllerProcessorError> {
+    // Check if already initialized
+    if !needs_initialization().await {
+        return Ok(());
+    }
+
+    match fetch_controller_metadata().await {
+        Ok(new_metadata) => {
+            let mut metadata = CONTROLLER_METADATA.write().await;
+            *metadata = new_metadata;
+            let mut is_initialized = IS_INITIALIZED.write().await;
+            *is_initialized = true;
+            info!(target: LOG_TARGET, "Initialized controller metadata");
+            Ok(())
+        }
+        Err(e) => {
+            error!(target: LOG_TARGET, error = ?e, "Failed to initialize controller metadata");
+            Err(e)
+        }
+    }
+}
+
+/// Updates the controller metadata by fetching fresh data from the Cartridge GitHub repository.
+pub async fn update_controller_metadata() -> Result<(), ControllerProcessorError> {
+    // Ensure we're initialized first
+    if needs_initialization().await {
+        init_controller_metadata().await?;
+    }
+
+    match fetch_controller_metadata().await {
+        Ok(new_metadata) => {
+            let mut metadata = CONTROLLER_METADATA.write().await;
+            *metadata = new_metadata;
+            info!(target: LOG_TARGET, "Updated controller metadata");
+            Ok(())
+        }
+        Err(e) => {
+            warn!(target: LOG_TARGET, error = ?e, "Failed to refresh controller metadata");
+            Err(e)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use starknet::macros::felt;
+
+    async fn setup_test_metadata() {
+        // Fetch real metadata for testing
+        match fetch_controller_metadata().await {
+            Ok(metadata) => {
+                let mut metadata_guard = CONTROLLER_METADATA.write().await;
+                *metadata_guard = metadata;
+                let mut is_initialized = IS_INITIALIZED.write().await;
+                *is_initialized = true;
+            }
+            Err(e) => {
+                panic!("Failed to fetch controller metadata for tests: {}", e);
+            }
+        }
+    }
 
     /// Tests the parsing of a calldata that is a Cartridge controller deployment calldata with WebAuthn.
     /// Taken from mainnet: <https://voyager.online/event/678075_19_0>
-    #[test]
-    fn test_parse_cartridge_controller_calldata_webauthn() {
+    #[tokio::test]
+    async fn test_parse_cartridge_controller_calldata_webauthn() {
+        setup_test_metadata().await;
+
         let event = Event {
             keys: vec![felt!(
                 "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
@@ -362,14 +540,16 @@ mod tests {
 
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
 
-        assert!(is_cartridge_controller(&udc_event));
+        assert!(is_cartridge_controller(&udc_event).await.unwrap());
         assert_eq!(parse_cairo_short_string(&udc_event.salt).unwrap(), "glihm");
     }
 
     /// Tests the parsing of a calldata for a Cartridge controller that has invalid salt.
     /// Taken from mainnet: <https://voyager.online/event/1364488_7_182>
-    #[test]
-    fn test_parse_cartridge_controller_invalid_salt() {
+    #[tokio::test]
+    async fn test_parse_cartridge_controller_invalid_salt() {
+        setup_test_metadata().await;
+
         let event = Event {
             keys: vec![felt!(
                 "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
@@ -419,14 +599,16 @@ mod tests {
 
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
 
-        assert!(is_cartridge_controller(&udc_event));
+        assert!(!is_cartridge_controller(&udc_event).await.unwrap());
         assert!(parse_cairo_short_string(&udc_event.salt).is_err());
     }
 
     /// Tests the parsing of a calldata that is a Cartridge controller deployment calldata with EIP191.
     /// Taken from mainnet: <https://voyager.online/event/1464416_90_0>
-    #[test]
-    fn test_parse_cartridge_controller_calldata_eip191() {
+    #[tokio::test]
+    async fn test_parse_cartridge_controller_calldata_eip191() {
+        setup_test_metadata().await;
+
         let event = Event {
             keys: vec![felt!(
                 "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
@@ -450,10 +632,61 @@ mod tests {
 
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
 
-        assert!(is_cartridge_controller(&udc_event));
+        assert!(is_cartridge_controller(&udc_event).await.unwrap());
         assert_eq!(
             parse_cairo_short_string(&udc_event.salt).unwrap(),
             "glihm-discord"
         );
+    }
+
+    /// Tests the parsing of a calldata that is a false positive (not a Cartridge controller, but similar calldata structure).
+    /// Taken from sepolia: <https://sepolia.voyager.online/event/56083_1_0>
+    #[tokio::test]
+    async fn test_parse_cartridge_controller_calldata_false_positive() {
+        setup_test_metadata().await;
+
+        let event = Event {
+            keys: vec![felt!(
+                "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
+            )],
+            data: vec![
+                felt!("0x4369f9e67071787d6df4170d3c02743516479d876c2a9d0cc3da3f67f044dc2"),
+                felt!("0x2f7cc642ce3db18dc24ec5b8df5f8fd306e10786d68316de6aaf9941f81eeca"),
+                felt!("0x1"),
+                felt!("0x3a4981ca2c6de58d229cf3e2ca3a35135bad75b9f9ee4c3b6cbfc26ce3c2a4c"),
+                felt!("0x7"),
+                felt!("0x1"),
+                felt!("0x5"),
+                felt!("0x12470f7aba85c8b81d63137dd5925d6ee114952b"),
+                felt!("0x109b4a318a4f5ddcbca6349b45f881b4137deafb"),
+                felt!("0x1ea62d73edf8ac05dfcea1a34b9796e937a29eff"),
+                felt!("0x2c59617248994d12816ee1fa77ce0a64eeb456bf"),
+                felt!("0x83cba8c619fb629b81a65c2e67fe15cf3e3c9747"),
+                felt!("0x718b425c79dd2d9b6f91d4735e11652281f00add994897dabda8b824cbae88"),
+            ],
+            from_address: felt!(
+                "0x041a78e741e5af2fec34b695679bc6891742439f7afb8484ecd7766661ad02bf"
+            ),
+        };
+
+        let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
+
+        assert!(!is_cartridge_controller(&udc_event).await.unwrap());
+    }
+
+    /// Tests the metadata fetching functionality
+    #[tokio::test]
+    async fn test_fetch_controller_metadata() {
+        let metadata = fetch_controller_metadata().await.unwrap();
+
+        // Verify the metadata structure
+        assert!(!metadata.controllers.is_empty());
+        assert!(!metadata.latest_version.is_empty());
+        assert!(!metadata.versions.is_empty());
+
+        // Verify that we can find a known controller version
+        let known_class_hash =
+            felt!("0x743c83c41ce99ad470aa308823f417b2141e02e04571f5c0004e743556e7faf");
+        assert!(metadata.is_controller_version_known(&known_class_hash));
     }
 }
