@@ -27,7 +27,7 @@ use upgrade_model::UpgradeModelProcessor;
 
 use crate::{BlockProcessor, EventProcessor, TransactionProcessor};
 
-mod controller;
+pub(crate) mod controller;
 mod erc1155_transfer_batch;
 mod erc1155_transfer_single;
 mod erc20_legacy_transfer;

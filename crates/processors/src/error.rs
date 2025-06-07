@@ -25,4 +25,6 @@ pub enum Error {
     CairoSerdeError(#[from] cainome::cairo_serde::Error),
     #[error(transparent)]
     JoinError(#[from] tokio::task::JoinError),
+    #[error(transparent)]
+    ControllerProcessorError(#[from] crate::processors::controller::ControllerProcessorError),
 }
