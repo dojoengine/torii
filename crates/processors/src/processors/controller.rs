@@ -190,13 +190,13 @@ where
         info!(
             target: LOG_TARGET,
             username = %username,
-            address = %format!("{:#x}", udc_event.address),
+            address = %format!("{:#064x}", udc_event.address),
             "Controller deployed."
         );
 
         db.add_controller(
             &username,
-            &format!("{:#x}", udc_event.address),
+            &format!("{:#064x}", udc_event.address),
             block_timestamp,
         )
         .await?;
