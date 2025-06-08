@@ -6,16 +6,11 @@
 //! The challenge here is that controller has different constructor calldata depending on the
 //! authentication method used, and no magic value for all the authentication methods.
 //!
-//! The current implementation, to avoid fetching the controllers class hashes each time to ensure the
-//! data are up to date (which is very costly), we only check the calldata structure.
-//!
 //! The checks here are purely based on the calldata structure, where the probability
 //! of having a random calldata passing those tests is very low.
 //!
-//! Each authentication method has a different calldata structure, but they all finish by the guardian
-//! data, or `0x1` if no guardian data is present.
-//!
-//! If it is not enough, we should add a fetch of the controller class hashes for additional checks.
+//! If it is not enough, we query the Cartridge API to check if the address is a known controller
+//! (this operation is costly, so we only do it if the calldata structure is not enough).
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
@@ -33,16 +28,16 @@ use starknet::macros::felt;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use thiserror::Error;
-use tokio::sync::RwLock;
 use tokio::time::sleep;
 use torii_sqlite::Sql;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::controller";
+const CARTRIDGE_LOOKUP_URL: &str = "https://api.cartridge.gg/lookup";
 
 #[derive(Default, Debug)]
 pub struct ControllerProcessor;
@@ -71,44 +66,7 @@ struct UdcContractDeployedEvent {
     salt: Felt,
 }
 
-const METADATA_URL: &str = "https://raw.githubusercontent.com/cartridge-gg/controller-rs/refs/heads/main/account_sdk/artifacts/metadata.json";
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ControllerMetadata {
-    controllers: std::collections::HashMap<String, ControllerVersion>,
-    latest_version: String,
-    versions: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ControllerVersion {
-    casm_hash: Felt,
-    class_hash: Felt,
-}
-
-impl ControllerMetadata {
-    fn is_controller_version_known(&self, class_hash: &Felt) -> bool {
-        self.controllers
-            .values()
-            .any(|version| version.class_hash == *class_hash)
-    }
-
-    fn is_empty(&self) -> bool {
-        self.controllers.is_empty() && self.latest_version.is_empty() && self.versions.is_empty()
-    }
-}
-
 lazy_static! {
-    static ref CONTROLLER_METADATA: RwLock<ControllerMetadata> = {
-        RwLock::new(ControllerMetadata {
-            controllers: std::collections::HashMap::new(),
-            latest_version: String::new(),
-            versions: Vec::new(),
-        })
-    };
-
-    static ref IS_INITIALIZED: RwLock<bool> = RwLock::new(false);
-
     // https://x.cartridge.gg/
     pub(crate) static ref CARTRIDGE_MAGIC: [Felt; 22] = [
         felt!("0x68"),
@@ -134,6 +92,22 @@ lazy_static! {
         felt!("0x67"),
         felt!("0x67"),
     ];
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LookupRequest {
+    addresses: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LookupResponse {
+    results: Vec<LookupResult>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LookupResult {
+    username: String,
+    addresses: Vec<String>,
 }
 
 #[async_trait]
@@ -213,39 +187,114 @@ fn is_valid_username(username: &str) -> bool {
     username.chars().all(|c| c.is_alphanumeric() || c == '-')
 }
 
+/// Fetches controller information from the Cartridge API.
+async fn fetch_controller_username(
+    address: &str,
+) -> Result<Option<String>, ControllerProcessorError> {
+    const MAX_RETRIES: u32 = 3;
+    const INITIAL_BACKOFF: Duration = Duration::from_secs(2);
+
+    debug!(
+        target: LOG_TARGET,
+        address = address,
+        "Looking up controller username from Cartridge API"
+    );
+
+    let client = reqwest::Client::new();
+    let request = LookupRequest {
+        addresses: vec![address.to_string()],
+    };
+
+    for attempt in 0..MAX_RETRIES {
+        match client
+            .post(CARTRIDGE_LOOKUP_URL)
+            .json(&request)
+            .send()
+            .await
+        {
+            Ok(response) => match response.json::<LookupResponse>().await {
+                Ok(lookup) => {
+                    // If we got any results, the address is a controller since we are only
+                    // looking up for one address.
+                    return Ok(lookup.results.first().map(|r| r.username.clone()));
+                }
+                Err(e) => {
+                    return Err(ControllerProcessorError::FetchMetadataError(format!(
+                        "Failed to parse controller lookup response: {}",
+                        e
+                    )));
+                }
+            },
+            Err(e) => {
+                if attempt < MAX_RETRIES - 1 {
+                    let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
+                    warn!(
+                        target: LOG_TARGET,
+                        attempt = attempt + 1,
+                        backoff_secs = backoff.as_secs(),
+                        error = ?e,
+                        "Failed to fetch controller lookup, retrying..."
+                    );
+                    sleep(backoff).await;
+                } else {
+                    return Err(ControllerProcessorError::FetchMetadataError(
+                        "Failed to fetch controller lookup".to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
+    Err(ControllerProcessorError::FetchMetadataError(
+        "Failed to fetch controller lookup after all retries".to_string(),
+    ))
+}
+
 /// Checks if the controller is a Cartridge controller.
-/// The checks here are purely based on the calldata structure, where the probability
+///
+/// We first check if the calldata matches any of the known patterns. The probability
 /// of having a random calldata passing those tests is very low.
 ///
-/// If it is not enough, we fetch the controller metadata and check the class hash against the known controller class hashes.
+/// If it is not enough, we query the Cartridge API to check if the address is a known controller.
 async fn is_cartridge_controller(
     event: &UdcContractDeployedEvent,
 ) -> Result<bool, ControllerProcessorError> {
-    let is_known_calldata = parse_controller_calldata_webauthn(&event.calldata).is_ok()
-        || parse_controller_calldata_eip191(&event.calldata).is_ok()
-        || parse_controller_calldata_starknet(&event.calldata).is_ok()
-        || parse_controller_calldata_external(&event.calldata).is_ok()
-        || parse_controller_calldata_siws(&event.calldata).is_ok();
-
     let username = parse_cairo_short_string(&event.salt).unwrap_or_default();
 
-    if is_known_calldata {
+    // First check if any of the known calldata patterns match
+    if parse_controller_calldata_webauthn(&event.calldata).is_ok() {
+        // To discard some invalid controllers, we check the username
+        // (it shouldn't be necessary in this case since the webauthn calldata contains a magic number).
         return Ok(is_valid_username(&username));
     }
 
-    // We can discard any event without a valid username.
+    if parse_controller_calldata_eip191(&event.calldata).is_ok() {
+        return Ok(is_valid_username(&username));
+    }
+
+    if parse_controller_calldata_starknet(&event.calldata).is_ok() {
+        return Ok(is_valid_username(&username));
+    }
+
+    if parse_controller_calldata_external(&event.calldata).is_ok() {
+        return Ok(is_valid_username(&username));
+    }
+
+    if parse_controller_calldata_siws(&event.calldata).is_ok() {
+        return Ok(is_valid_username(&username));
+    }
+
+    // We can discard the event if the username is not valid, even if some controllers are in
+    // a weird state where the username if actually invalid. Those will be discarded.
     if !is_valid_username(&username) {
         return Ok(false);
     }
 
-    // Since we narrowed down the list of possible controllers, we can check the class hash against the metadata
-    // and update them first to ensure we have the latest version.
-    update_controller_metadata().await?;
-
-    let metadata = CONTROLLER_METADATA.read().await;
-
-    // A controller is only valid if it has both a valid username AND a known class hash
-    Ok(metadata.is_controller_version_known(&event.class_hash))
+    // If we get here, we need to check with the Cartridge API to discard some false positives.
+    let address = format!("{:#064x}", event.address);
+    fetch_controller_username(&address)
+        .await
+        .map(|username| username.is_some())
 }
 
 /// Parses a calldata expected to be a Cartridge controller deployment calldata for WebAuthn (passkeys).
@@ -363,134 +412,15 @@ fn parse_controller_calldata_siws(calldata: &[Felt]) -> Result<(), ControllerPro
     Ok(())
 }
 
-/// Fetches the controller metadata from the Cartridge GitHub repository.
-async fn fetch_controller_metadata() -> Result<ControllerMetadata, ControllerProcessorError> {
-    const MAX_RETRIES: u32 = 3;
-    const INITIAL_BACKOFF: Duration = Duration::from_secs(2);
-
-    let client = reqwest::Client::new();
-
-    for attempt in 0..MAX_RETRIES {
-        match client.get(METADATA_URL).send().await {
-            Ok(response) => match response.json::<ControllerMetadata>().await {
-                Ok(metadata) => return Ok(metadata),
-                Err(e) => {
-                    if attempt < MAX_RETRIES - 1 {
-                        let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
-                        warn!(
-                            target: LOG_TARGET,
-                            attempt = attempt + 1,
-                            backoff_secs = backoff.as_secs(),
-                            error = ?e,
-                            "Failed to parse controller metadata, retrying..."
-                        );
-                        sleep(backoff).await;
-                    }
-                }
-            },
-            Err(e) => {
-                if attempt < MAX_RETRIES - 1 {
-                    let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
-                    warn!(
-                        target: LOG_TARGET,
-                        attempt = attempt + 1,
-                        backoff_secs = backoff.as_secs(),
-                        error = ?e,
-                        "Failed to fetch controller metadata, retrying..."
-                    );
-                    sleep(backoff).await;
-                }
-            }
-        }
-    }
-
-    Err(ControllerProcessorError::FetchMetadataError(
-        "Failed to fetch controller metadata after all retries".to_string(),
-    ))
-}
-
-/// Checks if the controller metadata needs initialization.
-pub async fn needs_initialization() -> bool {
-    let is_initialized = *IS_INITIALIZED.read().await;
-    if is_initialized {
-        return false;
-    }
-
-    let metadata = CONTROLLER_METADATA.read().await;
-    metadata.is_empty()
-}
-
-/// Initializes the controller metadata by fetching it from the Cartridge GitHub repository.
-/// This should be called once at startup.
-pub async fn init_controller_metadata() -> Result<(), ControllerProcessorError> {
-    // Check if already initialized
-    if !needs_initialization().await {
-        return Ok(());
-    }
-
-    match fetch_controller_metadata().await {
-        Ok(new_metadata) => {
-            let mut metadata = CONTROLLER_METADATA.write().await;
-            *metadata = new_metadata;
-            let mut is_initialized = IS_INITIALIZED.write().await;
-            *is_initialized = true;
-            info!(target: LOG_TARGET, "Initialized controller metadata");
-            Ok(())
-        }
-        Err(e) => {
-            error!(target: LOG_TARGET, error = ?e, "Failed to initialize controller metadata");
-            Err(e)
-        }
-    }
-}
-
-/// Updates the controller metadata by fetching fresh data from the Cartridge GitHub repository.
-pub async fn update_controller_metadata() -> Result<(), ControllerProcessorError> {
-    // Ensure we're initialized first
-    if needs_initialization().await {
-        init_controller_metadata().await?;
-    }
-
-    match fetch_controller_metadata().await {
-        Ok(new_metadata) => {
-            let mut metadata = CONTROLLER_METADATA.write().await;
-            *metadata = new_metadata;
-            info!(target: LOG_TARGET, "Updated controller metadata");
-            Ok(())
-        }
-        Err(e) => {
-            warn!(target: LOG_TARGET, error = ?e, "Failed to refresh controller metadata");
-            Err(e)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use starknet::macros::felt;
 
-    async fn setup_test_metadata() {
-        // Fetch real metadata for testing
-        match fetch_controller_metadata().await {
-            Ok(metadata) => {
-                let mut metadata_guard = CONTROLLER_METADATA.write().await;
-                *metadata_guard = metadata;
-                let mut is_initialized = IS_INITIALIZED.write().await;
-                *is_initialized = true;
-            }
-            Err(e) => {
-                panic!("Failed to fetch controller metadata for tests: {}", e);
-            }
-        }
-    }
-
     /// Tests the parsing of a calldata that is a Cartridge controller deployment calldata with WebAuthn.
     /// Taken from mainnet: <https://voyager.online/event/678075_19_0>
     #[tokio::test]
     async fn test_parse_cartridge_controller_calldata_webauthn() {
-        setup_test_metadata().await;
-
         let event = Event {
             keys: vec![felt!(
                 "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
@@ -548,8 +478,6 @@ mod tests {
     /// Taken from mainnet: <https://voyager.online/event/1364488_7_182>
     #[tokio::test]
     async fn test_parse_cartridge_controller_invalid_salt() {
-        setup_test_metadata().await;
-
         let event = Event {
             keys: vec![felt!(
                 "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
@@ -607,8 +535,6 @@ mod tests {
     /// Taken from mainnet: <https://voyager.online/event/1464416_90_0>
     #[tokio::test]
     async fn test_parse_cartridge_controller_calldata_eip191() {
-        setup_test_metadata().await;
-
         let event = Event {
             keys: vec![felt!(
                 "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
@@ -643,8 +569,6 @@ mod tests {
     /// Taken from sepolia: <https://sepolia.voyager.online/event/56083_1_0>
     #[tokio::test]
     async fn test_parse_cartridge_controller_calldata_false_positive() {
-        setup_test_metadata().await;
-
         let event = Event {
             keys: vec![felt!(
                 "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
@@ -674,19 +598,21 @@ mod tests {
         assert!(!is_cartridge_controller(&udc_event).await.unwrap());
     }
 
-    /// Tests the metadata fetching functionality
+    /// Tests the controller lookup functionality.
     #[tokio::test]
-    async fn test_fetch_controller_metadata() {
-        let metadata = fetch_controller_metadata().await.unwrap();
+    async fn test_fetch_controller_username() {
+        // Test with a known controller address.
+        let known_address = "0x048E13Ef7AB79637afd38a4B022862a7e6F3fd934f194C435D7e7b17bAC06715";
+        assert!(fetch_controller_username(known_address)
+            .await
+            .unwrap()
+            .is_some());
 
-        // Verify the metadata structure
-        assert!(!metadata.controllers.is_empty());
-        assert!(!metadata.latest_version.is_empty());
-        assert!(!metadata.versions.is_empty());
-
-        // Verify that we can find a known controller version
-        let known_class_hash =
-            felt!("0x743c83c41ce99ad470aa308823f417b2141e02e04571f5c0004e743556e7faf");
-        assert!(metadata.is_controller_version_known(&known_class_hash));
+        // Test with a non-controller address.
+        let unknown_address = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+        assert!(fetch_controller_username(unknown_address)
+            .await
+            .unwrap()
+            .is_none());
     }
 }
