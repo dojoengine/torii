@@ -161,19 +161,17 @@ where
             }
         };
 
+        let address = format!("{:#064x}", udc_event.address);
+
         info!(
             target: LOG_TARGET,
             username = %username,
-            address = %format!("{:#064x}", udc_event.address),
+            address = %address,
             "Controller deployed."
         );
 
-        db.add_controller(
-            &username,
-            &format!("{:#064x}", udc_event.address),
-            block_timestamp,
-        )
-        .await?;
+        db.add_controller(&username, &address, block_timestamp)
+            .await?;
 
         Ok(())
     }
