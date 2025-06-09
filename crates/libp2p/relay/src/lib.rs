@@ -2,11 +2,9 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::net::Ipv4Addr;
 use std::path::Path;
-use std::str::FromStr;
 use std::time::Duration;
 use std::{fs, io};
 
-use chrono::Utc;
 use events::BehaviourEvent;
 use futures::StreamExt;
 use libp2p::core::multiaddr::Protocol;
@@ -20,15 +18,12 @@ use libp2p::{
 };
 use libp2p_webrtc as webrtc;
 use rand::thread_rng;
-use starknet::core::types::Felt;
 use starknet::providers::Provider;
 use starknet_core::types::TypedData;
-use starknet_crypto::poseidon_hash_many;
 use torii_libp2p_types::Message;
 use torii_messaging::{
-    get_identity_from_ty, set_entity, ty_keys, ty_model_id, validate_message, validate_signature,
+    validate_and_set_entity,
 };
-use torii_sqlite::utils::felts_to_sql_string;
 use torii_sqlite::Sql;
 use tracing::{info, trace, warn};
 use webrtc::tokio::Certificate;
@@ -256,149 +251,27 @@ impl<P: Provider + Sync> Relay<P> {
                                 }
                             };
 
-                            let typed_data =
-                                serde_json::from_str::<TypedData>(&data.message).unwrap();
-                            let ty = match validate_message(&self.db, &typed_data).await {
-                                Ok(parsed_message) => parsed_message,
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        error = ?e,
-                                        "Validating message."
-                                    );
-                                    continue;
-                                }
-                            };
-
                             info!(
                                 target: LOG_TARGET,
                                 message_id = %message_id,
                                 peer_id = %peer_id,
-                                data = ?data,
                                 "Received message."
                             );
 
-                            // retrieve entity identity from db
-                            let mut pool = match self.db.pool.acquire().await {
-                                Ok(pool) => pool,
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        error = ?e,
-                                        "Acquiring pool."
-                                    );
-                                    continue;
-                                }
-                            };
-
-                            let keys = match ty_keys(&ty) {
-                                Ok(keys) => keys,
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        error = ?e,
-                                        "Retrieving message model keys."
-                                    );
-                                    continue;
-                                }
-                            };
-                            let keys_str = felts_to_sql_string(&keys);
-                            let entity_id = poseidon_hash_many(&keys);
-                            let model_id = ty_model_id(&ty).unwrap();
-
-                            // select only identity field, if doesn't exist, empty string
-                            let query = format!(
-                                "SELECT identity FROM [{}] WHERE internal_id = ?",
-                                ty.name()
-                            );
-                            let entity_identity: Option<String> = match sqlx::query_scalar(&query)
-                                .bind(format!("{:#x}", entity_id))
-                                .fetch_optional(&mut *pool)
-                                .await
-                            {
-                                Ok(entity_identity) => entity_identity,
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        error = ?e,
-                                        "Fetching entity."
-                                    );
-                                    continue;
-                                }
-                            };
-
-                            let entity_identity = match entity_identity {
-                                Some(identity) => match Felt::from_str(&identity) {
-                                    Ok(identity) => identity,
-                                    Err(e) => {
-                                        warn!(
-                                            target: LOG_TARGET,
-                                            error = ?e,
-                                            "Parsing identity."
-                                        );
-                                        continue;
-                                    }
-                                },
-                                _ => match get_identity_from_ty(&ty) {
-                                    Ok(identity) => identity,
-                                    Err(e) => {
-                                        warn!(
-                                            target: LOG_TARGET,
-                                            error = ?e,
-                                            "Getting identity from message."
-                                        );
-                                        continue;
-                                    }
-                                },
-                            };
-
-                            // TODO: have a nonce in model to check
-                            // against entity nonce and message nonce
-                            // to prevent replay attacks.
-
-                            // Verify the signature
-                            if !match validate_signature(
-                                &self.provider,
-                                entity_identity,
+                            let typed_data =
+                                serde_json::from_str::<TypedData>(&data.message).unwrap();
+                            if let Err(e) = validate_and_set_entity(
+                                &mut self.db,
                                 &typed_data,
                                 &data.signature,
-                            )
-                            .await
-                            {
-                                Ok(res) => res,
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        error = ?e,
-                                        "Verifying signature."
-                                    );
-                                    continue;
-                                }
-                            } {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    message_id = %message_id,
-                                    peer_id = %peer_id,
-                                    "Invalid signature."
-                                );
-                                continue;
-                            }
-
-                            if let Err(e) = set_entity(
-                                &mut self.db,
-                                ty.clone(),
-                                &message_id.to_string(),
-                                Utc::now().timestamp() as u64,
-                                entity_id,
-                                model_id,
-                                &keys_str,
+                                &self.provider,
                             )
                             .await
                             {
                                 warn!(
                                     target: LOG_TARGET,
                                     error = ?e,
-                                    "Setting message."
+                                    "Validating and setting message."
                                 );
                                 continue;
                             }

@@ -5,73 +5,53 @@ use starknet::core::types::Felt;
 use torii_sqlite::executor::QueryMessage;
 use torii_sqlite::Sql;
 
-use crate::error::MessageError;
+use crate::error::MessagingError;
 
-#[derive(thiserror::Error, Debug)]
-pub enum EntityError {
-    #[error(transparent)]
-    MessageError(#[from] MessageError),
 
-    #[error(transparent)]
-    SqliteError(#[from] torii_sqlite::error::Error),
-
-    #[error(transparent)]
-    AnyhowError(#[from] anyhow::Error),
-
-    #[error(transparent)]
-    SendError(#[from] tokio::sync::mpsc::error::SendError<QueryMessage>),
-}
-
-pub fn ty_keys(ty: &Ty) -> Result<Vec<Felt>, EntityError> {
+pub fn ty_keys(ty: &Ty) -> Result<Vec<Felt>, MessagingError> {
     if let Ty::Struct(s) = &ty {
         let mut keys = Vec::new();
         for m in s.keys() {
             keys.extend(
                 m.serialize().map_err(|e| {
-                    EntityError::MessageError(MessageError::SerializeModelKeyError(e))
+                    MessagingError::SerializeModelKeyError(e)
                 })?,
             );
         }
         Ok(keys)
     } else {
-        Err(EntityError::MessageError(MessageError::InvalidType(
+        Err(MessagingError::InvalidType(
             "Message should be a struct".to_string(),
-        )))
+        ))
     }
 }
 
-pub fn ty_model_id(ty: &Ty) -> Result<Felt, EntityError> {
+pub fn ty_model_id(ty: &Ty) -> Result<Felt, MessagingError> {
     let namespaced_name = ty.name();
 
     if !is_valid_tag(&namespaced_name) {
-        return Err(EntityError::MessageError(MessageError::InvalidModelTag(
-            namespaced_name,
-        )));
+        return Err(MessagingError::InvalidModelTag(namespaced_name));
     }
 
     let selector = compute_selector_from_tag(&namespaced_name);
     Ok(selector)
 }
 
-pub fn get_identity_from_ty(ty: &Ty) -> Result<Felt, EntityError> {
+pub fn get_identity_from_ty(ty: &Ty) -> Result<Felt, MessagingError> {
     let identity = ty
         .as_struct()
-        .ok_or_else(|| EntityError::MessageError(MessageError::MessageNotStruct))?
+        .ok_or_else(|| MessagingError::MessageNotStruct)?
         .get("identity")
         .ok_or_else(|| {
-            EntityError::MessageError(MessageError::FieldNotFound("identity".to_string()))
+            MessagingError::FieldNotFound("identity".to_string())
         })?
         .as_primitive()
         .ok_or_else(|| {
-            EntityError::MessageError(MessageError::InvalidType(
-                "Identity should be a primitive".to_string(),
-            ))
+            MessagingError::InvalidType("Identity should be a primitive".to_string())
         })?
         .as_contract_address()
         .ok_or_else(|| {
-            EntityError::MessageError(MessageError::InvalidType(
-                "Identity should be a contract address".to_string(),
-            ))
+            MessagingError::InvalidType("Identity should be a contract address".to_string())
         })?;
     Ok(identity)
 }
@@ -80,21 +60,25 @@ pub fn get_identity_from_ty(ty: &Ty) -> Result<Felt, EntityError> {
 pub async fn set_entity(
     db: &mut Sql,
     ty: Ty,
-    message_id: &str,
     block_timestamp: u64,
     entity_id: Felt,
     model_id: Felt,
     keys: &str,
-) -> Result<(), EntityError> {
+) -> Result<(), MessagingError> {
+    let event_id = format!("{:#064x}", block_timestamp);
+
     db.set_entity(
         ty,
-        message_id,
+        &event_id,
         block_timestamp,
         entity_id,
         model_id,
         Some(keys),
     )
-    .await?;
-    db.executor.send(QueryMessage::execute())?;
+    .await
+    .map_err(|e| MessagingError::SqliteError(e.into()))?;
+    db.executor
+        .send(QueryMessage::execute())
+        .map_err(|e| MessagingError::SqliteError(torii_sqlite::error::Error::Executor(e.into())))?;
     Ok(())
 }

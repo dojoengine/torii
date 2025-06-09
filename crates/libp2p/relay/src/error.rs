@@ -6,7 +6,6 @@ use libp2p::noise;
 use starknet::providers::ProviderError;
 use starknet_core::types::typed_data::TypedDataError;
 use thiserror::Error;
-use torii_messaging::MessageError;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -45,13 +44,7 @@ pub enum Error {
     ProviderError(#[from] ProviderError),
 
     #[error(transparent)]
-    MessageError(#[from] MessageError),
-
-    #[error(transparent)]
-    ValidationError(#[from] torii_messaging::validation::ValidationError),
-
-    #[error(transparent)]
-    EntityError(#[from] torii_messaging::entity::EntityError),
+    Messaging(#[from] torii_messaging::MessagingError),
 
     #[error(transparent)]
     TypedDataError(#[from] TypedDataError),

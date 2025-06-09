@@ -4,7 +4,7 @@ use starknet_core::types::FromStrError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum MessageError {
+pub enum MessagingError {
     #[error("Invalid type: {0}")]
     InvalidType(String),
 
@@ -34,4 +34,16 @@ pub enum MessageError {
 
     #[error(transparent)]
     EnumError(#[from] EnumError),
+
+    #[error(transparent)]
+    SqliteError(#[from] torii_sqlite::error::Error),
+
+    #[error(transparent)]
+    ProviderError(#[from] starknet::providers::ProviderError),
+
+    #[error(transparent)]
+    TypedDataError(#[from] starknet_core::types::typed_data::TypedDataError),
+
+    #[error("Invalid signature")]
+    InvalidSignature,
 }
