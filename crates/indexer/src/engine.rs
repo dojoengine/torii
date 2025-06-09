@@ -9,6 +9,7 @@ use bitflags::bitflags;
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
 use futures_util::future::try_join_all;
+use hashlink::lru_cache::Entry;
 use hashlink::LinkedHashMap;
 use starknet::core::types::requests::{
     GetBlockWithTxHashesRequest, GetEventsRequest, GetTransactionByHashRequest,
@@ -259,8 +260,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         latest_block_number: u64,
     ) -> Result<FetchRangeResult, FetchError> {
         let mut events = vec![];
+        let mut cursors = cursors.clone();
+        let mut blocks = BTreeMap::new();
+        let mut block_numbers = HashSet::new();
+        let mut num_transactions = HashMap::new();
 
-        // Create initial batch requests for all contracts
+        // Step 1: Create initial batch requests for events from all contracts
         let mut event_requests = Vec::new();
         for (contract_address, cursor) in cursors.iter() {
             let from = cursor
@@ -270,8 +275,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
-                // this is static. we always want to fetch to a block tag.
-                // the `to` in the range filter is used within the pre processing of the results
                 to_block: Some(BlockId::Tag(
                     if self.config.flags.contains(IndexingFlags::PENDING_BLOCKS) {
                         BlockTag::Pending
@@ -298,90 +301,30 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             ));
         }
 
-        // Recursively fetch all events using batch requests
-        let mut cursors = cursors.clone();
+        // Step 2: Fetch all events recursively
         events.extend(
             self.fetch_events(event_requests, &mut cursors, latest_block_number)
                 .await?,
         );
 
-        // Process events to get unique blocks and transactions
-        let mut blocks = BTreeMap::new();
-        let mut block_numbers = HashSet::new();
-        let mut num_transactions = HashMap::new();
-
-        for event in events {
+        // Step 3: Collect unique block numbers from events and cursors
+        for event in &events {
             let block_number = match event.block_number {
                 Some(block_number) => block_number,
-                // If we don't have a block number, this must be a pending block event
-                None => latest_block_number + 1,
+                None => latest_block_number + 1, // Pending block
             };
-
             block_numbers.insert(block_number);
-
-            blocks
-                .entry(block_number)
-                .or_insert(FetchRangeBlock {
-                    timestamp: 0,
-                    transactions: LinkedHashMap::new(),
-                })
-                .transactions
-                .entry(event.transaction_hash)
-                .or_insert_with(|| {
-                    // increment the transaction count for the contract
-                    let entry = num_transactions.entry(event.from_address).or_insert(0);
-                    *entry += 1;
-
-                    FetchRangeTransaction {
-                        transaction: None,
-                        events: vec![],
-                    }
-                })
-                .events
-                .push(event);
         }
-
-        for (_, cursor) in cursors.iter_mut() {
+        for (_, cursor) in cursors.iter() {
             if let Some(head) = cursor.head {
                 block_numbers.insert(head);
             }
         }
 
-        // If transactions indexing flag is enabled, we should batch request all
-        // of our recolted transactions
-        if self.config.flags.contains(IndexingFlags::TRANSACTIONS) && !blocks.is_empty() {
-            let mut transaction_requests = Vec::with_capacity(blocks.len());
-            let mut block_numbers = Vec::with_capacity(blocks.len());
-            for (block_number, block) in &blocks {
-                for (transaction_hash, _) in &block.transactions {
-                    transaction_requests.push(ProviderRequestData::GetTransactionByHash(
-                        GetTransactionByHashRequest {
-                            transaction_hash: *transaction_hash,
-                        },
-                    ));
-                    block_numbers.push(*block_number);
-                }
-            }
-
-            let transaction_results = self.chunked_batch_requests(&transaction_requests).await?;
-
-            for (block_number, result) in block_numbers.into_iter().zip(transaction_results) {
-                match result {
-                    ProviderResponseData::GetTransactionByHash(transaction) => {
-                        blocks.entry(block_number).and_modify(|block| {
-                            block.transactions.entry(*transaction.transaction_hash())
-                                .and_modify(|tx| tx.transaction = Some(transaction));
-                        });
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        }
-
-        // Batch request block timestamps
-        let mut timestamp_requests = Vec::new();
+        // Step 4: Fetch block data (timestamps and transaction hashes)
+        let mut block_requests = Vec::new();
         for block_number in &block_numbers {
-            timestamp_requests.push(ProviderRequestData::GetBlockWithTxHashes(
+            block_requests.push(ProviderRequestData::GetBlockWithTxHashes(
                 GetBlockWithTxHashesRequest {
                     block_id: match block_number.cmp(&latest_block_number) {
                         Ordering::Greater => BlockId::Tag(BlockTag::Pending),
@@ -392,27 +335,108 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             ));
         }
 
-        // Execute timestamp requests in batch
-        if !timestamp_requests.is_empty() {
-            let timestamp_results = self.chunked_batch_requests(&timestamp_requests).await?;
-
-            // Process timestamp results
-            for (block_number, result) in block_numbers.iter().zip(timestamp_results) {
+        // Step 5: Execute block requests in batch and initialize blocks with transaction order
+        if !block_requests.is_empty() {
+            let block_results = self.chunked_batch_requests(&block_requests).await?;
+            for (block_number, result) in block_numbers.iter().zip(block_results) {
                 match result {
                     ProviderResponseData::GetBlockWithTxHashes(block) => {
-                        let timestamp = match block {
-                            MaybePendingBlockWithTxHashes::Block(block) => block.timestamp,
-                            MaybePendingBlockWithTxHashes::PendingBlock(block) => block.timestamp,
+                        let (timestamp, tx_hashes) = match block {
+                            MaybePendingBlockWithTxHashes::Block(block) => {
+                                (block.timestamp, block.transactions)
+                            }
+                            MaybePendingBlockWithTxHashes::PendingBlock(block) => {
+                                (block.timestamp, block.transactions)
+                            }
                         };
-                        blocks.entry(*block_number).and_modify(|block| {
-                            block.timestamp = timestamp;
-                        });
+                        // Initialize block with transactions in the order provided by the block
+                        let mut transactions = LinkedHashMap::new();
+                        for tx_hash in tx_hashes {
+                            transactions.insert(
+                                tx_hash,
+                                FetchRangeTransaction {
+                                    transaction: None,
+                                    events: vec![],
+                                },
+                            );
+                        }
+                        blocks.insert(
+                            *block_number,
+                            FetchRangeBlock {
+                                timestamp,
+                                transactions,
+                            },
+                        );
                     }
                     _ => unreachable!(),
                 }
             }
         }
 
+        // Step 6: Assign events to their respective blocks and transactions
+        for event in events {
+            let block_number = match event.block_number {
+                Some(block_number) => block_number,
+                None => latest_block_number + 1, // Pending block
+            };
+
+            let block = blocks.get_mut(&block_number).expect("Block not found");
+            match block.transactions.entry(event.transaction_hash) {
+                Entry::Occupied(mut tx) => {
+                    // Increment transaction count for the contract
+                    let entry = num_transactions.entry(event.from_address).or_insert(0);
+                    *entry += 1;
+                    // Add event to the transaction
+                    tx.get_mut().events.push(event);
+                }
+                Entry::Vacant(tx) => {
+                    let address = event.from_address;
+                    tx.insert(FetchRangeTransaction {
+                        transaction: None,
+                        events: vec![event],
+                    });
+
+                    // Increment transaction count for the contract
+                    let entry = num_transactions.entry(address).or_insert(0);
+                    *entry += 1;
+                }
+            }
+        }
+
+        // Step 7: Fetch transaction details if enabled
+        if self.config.flags.contains(IndexingFlags::TRANSACTIONS) && !blocks.is_empty() {
+            let mut transaction_requests = Vec::new();
+            let mut block_numbers_for_tx = Vec::new();
+            for (block_number, block) in &blocks {
+                for (transaction_hash, _) in &block.transactions {
+                    transaction_requests.push(ProviderRequestData::GetTransactionByHash(
+                        GetTransactionByHashRequest {
+                            transaction_hash: *transaction_hash,
+                        },
+                    ));
+                    block_numbers_for_tx.push(*block_number);
+                }
+            }
+
+            let transaction_results = self.chunked_batch_requests(&transaction_requests).await?;
+            for (block_number, result) in block_numbers_for_tx.into_iter().zip(transaction_results)
+            {
+                match result {
+                    ProviderResponseData::GetTransactionByHash(transaction) => {
+                        if let Some(block) = blocks.get_mut(&block_number) {
+                            if let Some(tx) =
+                                block.transactions.get_mut(transaction.transaction_hash())
+                            {
+                                tx.transaction = Some(transaction);
+                            }
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+
+        // Step 8: Update cursor timestamps
         for (_, cursor) in cursors.iter_mut() {
             if let Some(head) = cursor.head {
                 if let Some(block) = blocks.get(&head) {
@@ -421,7 +445,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             }
         }
 
-        trace!(target: LOG_TARGET, "Blocks: {}", &blocks.len());
+        trace!(target: LOG_TARGET, "Blocks: {}", blocks.len());
 
         Ok(FetchRangeResult {
             blocks,
@@ -595,8 +619,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
             // Process block
             if !processed_blocks.contains(&block_number) {
-                self.process_block(*block_number, block.timestamp)
-                    .await?;
+                self.process_block(*block_number, block.timestamp).await?;
                 processed_blocks.insert(block_number);
             }
         }
