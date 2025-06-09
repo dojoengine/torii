@@ -59,7 +59,16 @@ use torii_proto::proto::types::member_value::ValueType;
 use torii_proto::proto::types::LogicalOperator;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
-    PublishMessageRequest, PublishMessageResponse, RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest, RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse, SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest, SubscribeTokensResponse, UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest, WorldMetadataResponse
+    PublishMessageRequest, PublishMessageResponse, RetrieveControllersRequest,
+    RetrieveControllersResponse, RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest,
+    RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
+    RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, UpdateEventMessagesSubscriptionRequest,
+    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
+    WorldMetadataResponse,
 };
 use torii_proto::proto::{self};
 use torii_proto::ComparisonOperator;
@@ -1805,9 +1814,15 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
     ) -> Result<Response<PublishMessageResponse>, Status> {
         let PublishMessageRequest { signature, message } = request.into_inner();
 
-        let signature = signature.iter().map(|s| Felt::from_bytes_be_slice(s)).collect::<Vec<_>>();
-        let typed_data = serde_json::from_str::<TypedData>(&message).map_err(|_| Status::invalid_argument("Invalid message"))?;
-        let entity_id = validate_and_set_entity(&self.sql, &typed_data, &signature, &self.provider).await.map_err(|e| Status::internal(e.to_string()))?;
+        let signature = signature
+            .iter()
+            .map(|s| Felt::from_bytes_be_slice(s))
+            .collect::<Vec<_>>();
+        let typed_data = serde_json::from_str::<TypedData>(&message)
+            .map_err(|_| Status::invalid_argument("Invalid message"))?;
+        let entity_id = validate_and_set_entity(&self.sql, &typed_data, &signature, &self.provider)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(PublishMessageResponse {
             entity_id: entity_id.to_bytes_be().to_vec(),

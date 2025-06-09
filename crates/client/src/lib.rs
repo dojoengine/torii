@@ -18,7 +18,7 @@ use torii_proto::proto::world::{
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Controller, Event, EventQuery, KeysClause, Message, Page, Query, Token, TokenBalance
+    Clause, Controller, Event, EventQuery, KeysClause, Message, Page, Query, Token, TokenBalance,
 };
 
 use crate::error::Error;

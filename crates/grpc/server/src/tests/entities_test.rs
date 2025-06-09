@@ -147,7 +147,13 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     db.execute().await.unwrap();
 
     let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let grpc = DojoWorld::new(db, provider.clone(), world_address, model_cache, GrpcConfig::default());
+    let grpc = DojoWorld::new(
+        db,
+        provider.clone(),
+        world_address,
+        model_cache,
+        GrpcConfig::default(),
+    );
 
     let entities = grpc
         .query_by_keys(
