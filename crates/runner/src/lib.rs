@@ -311,7 +311,8 @@ impl Runner {
         let shutdown_rx = shutdown_tx.subscribe();
         let (grpc_addr, grpc_server) = torii_grpc_server::new(
             shutdown_rx,
-            &readonly_pool,
+            db.clone(),
+            provider.clone(),
             world_address,
             model_cache,
             GrpcConfig {

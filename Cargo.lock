@@ -11193,7 +11193,6 @@ dependencies = [
  "tokio",
  "torii-grpc-client",
  "torii-libp2p-client",
- "torii-libp2p-types",
  "torii-proto",
  "url",
 ]
@@ -11307,6 +11306,7 @@ dependencies = [
  "tonic-reflection",
  "tonic-web",
  "torii-indexer",
+ "torii-messaging",
  "torii-processors",
  "torii-proto",
  "torii-sqlite",
@@ -11379,7 +11379,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.63",
  "tokio",
- "torii-libp2p-types",
+ "torii-proto",
  "tracing",
  "tracing-subscriber",
  "tracing-wasm",
@@ -11413,19 +11413,11 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.63",
  "tokio",
- "torii-libp2p-types",
  "torii-messaging",
+ "torii-proto",
  "torii-sqlite",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "torii-libp2p-types"
-version = "1.5.7-preview.0"
-dependencies = [
- "serde",
- "starknet 0.12.0",
 ]
 
 [[package]]

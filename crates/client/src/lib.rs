@@ -12,14 +12,13 @@ use torii_grpc_client::{
     TokenUpdateStreaming, WorldClient,
 };
 use torii_libp2p_client::{EventLoop, RelayClient};
-use torii_libp2p_types::Message;
 use torii_proto::proto::world::{
     RetrieveControllersResponse, RetrieveEntitiesResponse, RetrieveEventsResponse,
     RetrieveTokenBalancesResponse, RetrieveTokenCollectionsResponse, RetrieveTokensResponse,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Controller, Event, EventQuery, KeysClause, Page, Query, Token, TokenBalance,
+    Clause, Controller, Event, EventQuery, KeysClause, Message, Page, Query, Token, TokenBalance
 };
 
 use crate::error::Error;

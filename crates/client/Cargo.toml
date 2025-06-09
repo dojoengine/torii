@@ -23,5 +23,4 @@ tokio = { version = "1.32.0", features = [ "sync" ], default-features = false }
 torii-grpc-client = { workspace = true }
 torii-proto = { workspace = true }
 torii-libp2p-client = { workspace = true }
-torii-libp2p-types = { workspace = true }
 url.workspace = true

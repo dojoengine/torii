@@ -52,7 +52,7 @@ pub fn get_identity_from_ty(ty: &Ty) -> Result<Felt, MessagingError> {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn set_entity(
-    db: &mut Sql,
+    db: &Sql,
     ty: Ty,
     block_timestamp: u64,
     entity_id: Felt,
