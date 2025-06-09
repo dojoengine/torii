@@ -55,6 +55,12 @@ pub struct EngineConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct FetchRangeBlock {
+    pub timestamp: u64,
+    pub transactions: LinkedHashMap<Felt, FetchRangeTransaction>,
+}
+
+#[derive(Debug, Clone)]
 pub struct FetchRangeTransaction {
     // this is Some if the transactions indexing flag
     // is enabled
@@ -64,10 +70,8 @@ pub struct FetchRangeTransaction {
 
 #[derive(Debug, Clone)]
 pub struct FetchRangeResult {
-    // block_number -> (transaction_hash -> events)
-    pub transactions: BTreeMap<u64, LinkedHashMap<Felt, FetchRangeTransaction>>,
-    // block_number -> block_timestamp
-    pub blocks: BTreeMap<u64, u64>,
+    // block_number -> block and transactions
+    pub blocks: BTreeMap<u64, FetchRangeBlock>,
     // contract_address -> transaction count
     pub num_transactions: HashMap<Felt, u64>,
     // new updated cursors
@@ -303,7 +307,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // Process events to get unique blocks and transactions
         let mut blocks = BTreeMap::new();
-        let mut transactions = BTreeMap::new();
         let mut block_numbers = HashSet::new();
         let mut num_transactions = HashMap::new();
 
@@ -316,9 +319,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
             block_numbers.insert(block_number);
 
-            transactions
+            blocks
                 .entry(block_number)
-                .or_insert(LinkedHashMap::new())
+                .or_insert(FetchRangeBlock {
+                    timestamp: 0,
+                    transactions: LinkedHashMap::new(),
+                })
+                .transactions
                 .entry(event.transaction_hash)
                 .or_insert_with(|| {
                     // increment the transaction count for the contract
@@ -342,11 +349,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // If transactions indexing flag is enabled, we should batch request all
         // of our recolted transactions
-        if self.config.flags.contains(IndexingFlags::TRANSACTIONS) && !transactions.is_empty() {
-            let mut transaction_requests = Vec::with_capacity(transactions.len());
-            let mut block_numbers = Vec::with_capacity(transactions.len());
-            for (block_number, transactions) in &transactions {
-                for (transaction_hash, _) in transactions {
+        if self.config.flags.contains(IndexingFlags::TRANSACTIONS) && !blocks.is_empty() {
+            let mut transaction_requests = Vec::with_capacity(blocks.len());
+            let mut block_numbers = Vec::with_capacity(blocks.len());
+            for (block_number, block) in &blocks {
+                for (transaction_hash, _) in &block.transactions {
                     transaction_requests.push(ProviderRequestData::GetTransactionByHash(
                         GetTransactionByHashRequest {
                             transaction_hash: *transaction_hash,
@@ -361,8 +368,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             for (block_number, result) in block_numbers.into_iter().zip(transaction_results) {
                 match result {
                     ProviderResponseData::GetTransactionByHash(transaction) => {
-                        transactions.entry(block_number).and_modify(|txns| {
-                            txns.entry(*transaction.transaction_hash())
+                        blocks.entry(block_number).and_modify(|block| {
+                            block.transactions.entry(*transaction.transaction_hash())
                                 .and_modify(|tx| tx.transaction = Some(transaction));
                         });
                     }
@@ -397,7 +404,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             MaybePendingBlockWithTxHashes::Block(block) => block.timestamp,
                             MaybePendingBlockWithTxHashes::PendingBlock(block) => block.timestamp,
                         };
-                        blocks.insert(*block_number, timestamp);
+                        blocks.entry(*block_number).and_modify(|block| {
+                            block.timestamp = timestamp;
+                        });
                     }
                     _ => unreachable!(),
                 }
@@ -406,17 +415,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         for (_, cursor) in cursors.iter_mut() {
             if let Some(head) = cursor.head {
-                if let Some(timestamp) = blocks.get(&head) {
-                    cursor.last_block_timestamp = Some(*timestamp);
+                if let Some(block) = blocks.get(&head) {
+                    cursor.last_block_timestamp = Some(block.timestamp);
                 }
             }
         }
 
-        trace!(target: LOG_TARGET, "Transactions: {}", &transactions.len());
         trace!(target: LOG_TARGET, "Blocks: {}", &blocks.len());
 
         Ok(FetchRangeResult {
-            transactions,
             blocks,
             num_transactions,
             cursors,
@@ -572,15 +579,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let mut processed_blocks = HashSet::new();
 
         // Process all transactions in the chunk
-        for (block_number, transactions) in &range.transactions {
-            for (transaction_hash, tx) in transactions {
+        for (block_number, block) in &range.blocks {
+            for (transaction_hash, tx) in &block.transactions {
                 trace!(target: LOG_TARGET, "Processing transaction hash: {:#x}", transaction_hash);
 
                 self.process_transaction_with_events(
                     *transaction_hash,
                     tx.events.as_slice(),
                     *block_number,
-                    range.blocks[block_number],
+                    block.timestamp,
                     &tx.transaction,
                 )
                 .await?;
@@ -588,7 +595,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
             // Process block
             if !processed_blocks.contains(&block_number) {
-                self.process_block(*block_number, range.blocks[block_number])
+                self.process_block(*block_number, block.timestamp)
                     .await?;
                 processed_blocks.insert(block_number);
             }
