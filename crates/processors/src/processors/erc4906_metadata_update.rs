@@ -11,7 +11,7 @@ use tracing::debug;
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig, IndexingMode};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc4906_metadata_update";
 #[derive(Default, Debug)]
@@ -44,6 +44,13 @@ where
         let mut hasher = DefaultHasher::new();
         event.from_address.hash(&mut hasher);
         vec![hasher.finish()]
+    }
+
+    // We can dedup singular metadata updates. To only keep the latest one.
+    fn indexing_mode(&self, event: &Event, _config: &EventProcessorConfig) -> IndexingMode {
+        let mut hasher = DefaultHasher::new();
+        event.keys[0].hash(&mut hasher);
+        IndexingMode::Latest(hasher.finish())
     }
 
     async fn process(
