@@ -60,6 +60,9 @@ service World {
 
     // Retrieve tokens collections
     rpc RetrieveTokenCollections (RetrieveTokenCollectionsRequest) returns (RetrieveTokenCollectionsResponse);
+
+    // Publish a torii offchain message
+    rpc PublishMessage (PublishMessageRequest) returns (PublishMessageResponse);
 }
 
 message RetrieveControllersRequest {
@@ -261,4 +264,13 @@ message SubscribeEventsRequest {
 
 message SubscribeEventsResponse {
     types.Event event = 1;
+}
+
+message PublishMessageRequest {
+    repeated bytes signature = 1;
+    string message = 2;
+}
+
+message PublishMessageResponse {
+    bytes entity_id = 1;
 }

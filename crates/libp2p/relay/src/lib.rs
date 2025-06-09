@@ -20,7 +20,7 @@ use libp2p_webrtc as webrtc;
 use rand::thread_rng;
 use starknet::providers::Provider;
 use starknet_core::types::TypedData;
-use torii_libp2p_types::Message;
+use torii_proto::Message;
 use torii_messaging::validate_and_set_entity;
 use torii_sqlite::Sql;
 use tracing::{info, trace, warn};

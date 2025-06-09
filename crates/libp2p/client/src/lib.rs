@@ -15,7 +15,7 @@ pub mod error;
 mod events;
 
 use crate::error::Error;
-use torii_libp2p_types::Message;
+use torii_proto::Message;
 
 use crate::events::BehaviourEvent;
 

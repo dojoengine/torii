@@ -26,9 +26,9 @@ starknet-core = { workspace = true }
 chrono = { workspace = true }
 libp2p = { git = "https://github.com/libp2p/rust-libp2p", features = [ "dns", "ed25519", "gossipsub", "identify", "macros", "noise", "ping", "quic", "relay", "tcp", "tokio", "websocket", "yamux" ], rev = "cc3271f" }
 libp2p-webrtc = { git = "https://github.com/libp2p/rust-libp2p", features = [ "pem", "tokio" ], rev = "cc3271f" }
-torii-libp2p-types = { workspace = true }
 torii-messaging = { workspace = true }
 crypto-bigint = { workspace = true }
+torii-proto = { workspace = true }
 
 [dev-dependencies]
 indexmap.workspace = true
