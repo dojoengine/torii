@@ -6,38 +6,38 @@
 //! The challenge here is that controller has different constructor calldata depending on the
 //! authentication method used, and no magic value for all the authentication methods.
 //!
-//! The current implementation, to avoid fetching the controllers class hashes each time to ensure the
-//! data are up to date (which is very costly), we only check the calldata structure.
-//!
 //! The checks here are purely based on the calldata structure, where the probability
 //! of having a random calldata passing those tests is very low.
 //!
-//! Each authentication method has a different calldata structure, but they all finish by the guardian
-//! data, or `0x1` if no guardian data is present.
-//!
-//! If it is not enough, we should add a fetch of the controller class hashes for additional checks.
+//! If it is not enough, we query the Cartridge API to check if the address is a known controller
+//! (this operation is costly, so we only do it if the calldata structure is not enough).
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use cainome_cairo_serde::CairoSerde;
 use dojo_world::contracts::world::WorldContractReader;
 use lazy_static::lazy_static;
+use reqwest;
+use serde::{Deserialize, Serialize};
 use starknet::core::types::Event;
 use starknet::core::utils::parse_cairo_short_string;
 use starknet::macros::felt;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use thiserror::Error;
+use tokio::time::sleep;
 use torii_sqlite::Sql;
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::controller";
+const CARTRIDGE_LOOKUP_URL: &str = "https://api.cartridge.gg/lookup";
 
 #[derive(Default, Debug)]
 pub struct ControllerProcessor;
@@ -52,6 +52,8 @@ pub enum ControllerProcessorError {
     CartridgeMagicMismatch,
     #[error("Invalid Cartridge Encoding")]
     InvalidCartridgeEncoding,
+    #[error("Failed to fetch metadata")]
+    FetchMetadataError(String),
 }
 
 #[derive(cainome_cairo_serde_derive::CairoSerde, Debug)]
@@ -92,6 +94,22 @@ lazy_static! {
     ];
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct LookupRequest {
+    addresses: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LookupResponse {
+    results: Vec<LookupResult>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LookupResult {
+    username: String,
+    addresses: Vec<String>,
+}
+
 #[async_trait]
 impl<P> EventProcessor<P> for ControllerProcessor
 where
@@ -125,7 +143,7 @@ where
     ) -> Result<(), Error> {
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0)?;
 
-        if !is_cartridge_controller(&udc_event) {
+        if !is_cartridge_controller(&udc_event).await? {
             return Ok(());
         }
 
@@ -143,51 +161,138 @@ where
             }
         };
 
+        let address = format!("{:#064x}", udc_event.address);
+
         info!(
             target: LOG_TARGET,
             username = %username,
-            address = %format!("{:#x}", udc_event.address),
+            address = %address,
             "Controller deployed."
         );
 
-        db.add_controller(
-            &username,
-            &format!("{:#x}", udc_event.address),
-            block_timestamp,
-        )
-        .await?;
+        db.add_controller(&username, &address, block_timestamp)
+            .await?;
 
         Ok(())
     }
 }
 
+/// Validates that a username only contains letters, numbers, and hyphens
+fn is_valid_username(username: &str) -> bool {
+    if username.is_empty() {
+        return false;
+    }
+    username.chars().all(|c| c.is_alphanumeric() || c == '-')
+}
+
+/// Fetches controller information from the Cartridge API.
+async fn fetch_controller_username(
+    address: &str,
+) -> Result<Option<String>, ControllerProcessorError> {
+    const MAX_RETRIES: u32 = 3;
+    const INITIAL_BACKOFF: Duration = Duration::from_secs(2);
+
+    debug!(
+        target: LOG_TARGET,
+        address = address,
+        "Looking up controller username from Cartridge API"
+    );
+
+    let client = reqwest::Client::new();
+    let request = LookupRequest {
+        addresses: vec![address.to_string()],
+    };
+
+    for attempt in 0..MAX_RETRIES {
+        match client
+            .post(CARTRIDGE_LOOKUP_URL)
+            .json(&request)
+            .send()
+            .await
+        {
+            Ok(response) => match response.json::<LookupResponse>().await {
+                Ok(lookup) => {
+                    // If we got any results, the address is a controller since we are only
+                    // looking up for one address.
+                    return Ok(lookup.results.first().map(|r| r.username.clone()));
+                }
+                Err(e) => {
+                    return Err(ControllerProcessorError::FetchMetadataError(format!(
+                        "Failed to parse controller lookup response: {}",
+                        e
+                    )));
+                }
+            },
+            Err(e) => {
+                if attempt < MAX_RETRIES - 1 {
+                    let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
+                    warn!(
+                        target: LOG_TARGET,
+                        attempt = attempt + 1,
+                        backoff_secs = backoff.as_secs(),
+                        error = ?e,
+                        "Failed to fetch controller lookup, retrying..."
+                    );
+                    sleep(backoff).await;
+                } else {
+                    return Err(ControllerProcessorError::FetchMetadataError(
+                        "Failed to fetch controller lookup".to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
+    Err(ControllerProcessorError::FetchMetadataError(
+        "Failed to fetch controller lookup after all retries".to_string(),
+    ))
+}
+
 /// Checks if the controller is a Cartridge controller.
-/// The checks here are purely based on the calldata structure, where the probability
+///
+/// We first check if the calldata matches any of the known patterns. The probability
 /// of having a random calldata passing those tests is very low.
 ///
-/// If it is not enough, we should add a fetch of the controller class hashes for additional checks.
-fn is_cartridge_controller(event: &UdcContractDeployedEvent) -> bool {
+/// If it is not enough, we query the Cartridge API to check if the address is a known controller.
+async fn is_cartridge_controller(
+    event: &UdcContractDeployedEvent,
+) -> Result<bool, ControllerProcessorError> {
+    let username = parse_cairo_short_string(&event.salt).unwrap_or_default();
+
+    // First check if any of the known calldata patterns match
     if parse_controller_calldata_webauthn(&event.calldata).is_ok() {
-        return true;
+        // To discard some invalid controllers, we check the username
+        // (it shouldn't be necessary in this case since the webauthn calldata contains a magic number).
+        return Ok(is_valid_username(&username));
     }
 
     if parse_controller_calldata_eip191(&event.calldata).is_ok() {
-        return true;
+        return Ok(is_valid_username(&username));
     }
 
     if parse_controller_calldata_starknet(&event.calldata).is_ok() {
-        return true;
+        return Ok(is_valid_username(&username));
     }
 
     if parse_controller_calldata_external(&event.calldata).is_ok() {
-        return true;
+        return Ok(is_valid_username(&username));
     }
 
     if parse_controller_calldata_siws(&event.calldata).is_ok() {
-        return true;
+        return Ok(is_valid_username(&username));
     }
 
-    false
+    // We can discard the event if the username is not valid, even if some controllers are in
+    // a weird state where the username if actually invalid. Those will be discarded.
+    if !is_valid_username(&username) {
+        return Ok(false);
+    }
+
+    // If we get here, we need to check with the Cartridge API to discard some false positives.
+    let address = format!("{:#064x}", event.address);
+    fetch_controller_username(&address)
+        .await
+        .map(|username| username.is_some())
 }
 
 /// Parses a calldata expected to be a Cartridge controller deployment calldata for WebAuthn (passkeys).
@@ -308,11 +413,12 @@ fn parse_controller_calldata_siws(calldata: &[Felt]) -> Result<(), ControllerPro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use starknet::macros::felt;
 
     /// Tests the parsing of a calldata that is a Cartridge controller deployment calldata with WebAuthn.
     /// Taken from mainnet: <https://voyager.online/event/678075_19_0>
-    #[test]
-    fn test_parse_cartridge_controller_calldata_webauthn() {
+    #[tokio::test]
+    async fn test_parse_cartridge_controller_calldata_webauthn() {
         let event = Event {
             keys: vec![felt!(
                 "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
@@ -362,14 +468,14 @@ mod tests {
 
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
 
-        assert!(is_cartridge_controller(&udc_event));
+        assert!(is_cartridge_controller(&udc_event).await.unwrap());
         assert_eq!(parse_cairo_short_string(&udc_event.salt).unwrap(), "glihm");
     }
 
     /// Tests the parsing of a calldata for a Cartridge controller that has invalid salt.
     /// Taken from mainnet: <https://voyager.online/event/1364488_7_182>
-    #[test]
-    fn test_parse_cartridge_controller_invalid_salt() {
+    #[tokio::test]
+    async fn test_parse_cartridge_controller_invalid_salt() {
         let event = Event {
             keys: vec![felt!(
                 "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
@@ -419,14 +525,14 @@ mod tests {
 
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
 
-        assert!(is_cartridge_controller(&udc_event));
+        assert!(!is_cartridge_controller(&udc_event).await.unwrap());
         assert!(parse_cairo_short_string(&udc_event.salt).is_err());
     }
 
     /// Tests the parsing of a calldata that is a Cartridge controller deployment calldata with EIP191.
     /// Taken from mainnet: <https://voyager.online/event/1464416_90_0>
-    #[test]
-    fn test_parse_cartridge_controller_calldata_eip191() {
+    #[tokio::test]
+    async fn test_parse_cartridge_controller_calldata_eip191() {
         let event = Event {
             keys: vec![felt!(
                 "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
@@ -450,10 +556,61 @@ mod tests {
 
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
 
-        assert!(is_cartridge_controller(&udc_event));
+        assert!(is_cartridge_controller(&udc_event).await.unwrap());
         assert_eq!(
             parse_cairo_short_string(&udc_event.salt).unwrap(),
             "glihm-discord"
         );
+    }
+
+    /// Tests the parsing of a calldata that is a false positive (not a Cartridge controller, but similar calldata structure).
+    /// Taken from sepolia: <https://sepolia.voyager.online/event/56083_1_0>
+    #[tokio::test]
+    async fn test_parse_cartridge_controller_calldata_false_positive() {
+        let event = Event {
+            keys: vec![felt!(
+                "0x26b160f10156dea0639bec90696772c640b9706a47f5b8c52ea1abe5858b34d"
+            )],
+            data: vec![
+                felt!("0x4369f9e67071787d6df4170d3c02743516479d876c2a9d0cc3da3f67f044dc2"),
+                felt!("0x2f7cc642ce3db18dc24ec5b8df5f8fd306e10786d68316de6aaf9941f81eeca"),
+                felt!("0x1"),
+                felt!("0x3a4981ca2c6de58d229cf3e2ca3a35135bad75b9f9ee4c3b6cbfc26ce3c2a4c"),
+                felt!("0x7"),
+                felt!("0x1"),
+                felt!("0x5"),
+                felt!("0x12470f7aba85c8b81d63137dd5925d6ee114952b"),
+                felt!("0x109b4a318a4f5ddcbca6349b45f881b4137deafb"),
+                felt!("0x1ea62d73edf8ac05dfcea1a34b9796e937a29eff"),
+                felt!("0x2c59617248994d12816ee1fa77ce0a64eeb456bf"),
+                felt!("0x83cba8c619fb629b81a65c2e67fe15cf3e3c9747"),
+                felt!("0x718b425c79dd2d9b6f91d4735e11652281f00add994897dabda8b824cbae88"),
+            ],
+            from_address: felt!(
+                "0x041a78e741e5af2fec34b695679bc6891742439f7afb8484ecd7766661ad02bf"
+            ),
+        };
+
+        let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0).unwrap();
+
+        assert!(!is_cartridge_controller(&udc_event).await.unwrap());
+    }
+
+    /// Tests the controller lookup functionality.
+    #[tokio::test]
+    async fn test_fetch_controller_username() {
+        // Test with a known controller address.
+        let known_address = "0x048E13Ef7AB79637afd38a4B022862a7e6F3fd934f194C435D7e7b17bAC06715";
+        assert!(fetch_controller_username(known_address)
+            .await
+            .unwrap()
+            .is_some());
+
+        // Test with a non-controller address.
+        let unknown_address = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+        assert!(fetch_controller_username(unknown_address)
+            .await
+            .unwrap()
+            .is_none());
     }
 }

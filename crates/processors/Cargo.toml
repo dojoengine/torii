@@ -26,3 +26,5 @@ torii-task-network.workspace = true
 thiserror.workspace = true
 ipfs-api-backend-hyper.workspace = true
 hashlink.workspace = true
+serde.workspace = true
+reqwest.workspace = true
