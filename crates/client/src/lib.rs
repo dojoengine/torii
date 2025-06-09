@@ -1,17 +1,13 @@
 pub mod error;
 
-use std::sync::Arc;
-
 use crypto_bigint::U256;
 use dojo_types::WorldMetadata;
-use futures::lock::Mutex;
 use starknet::core::types::Felt;
 use tokio::sync::RwLock;
 use torii_grpc_client::{
     EntityUpdateStreaming, EventUpdateStreaming, IndexerUpdateStreaming, TokenBalanceStreaming,
     TokenUpdateStreaming, WorldClient,
 };
-use torii_libp2p_client::{EventLoop, RelayClient};
 use torii_proto::proto::world::{
     RetrieveControllersResponse, RetrieveEntitiesResponse, RetrieveEventsResponse,
     RetrieveTokenBalancesResponse, RetrieveTokenCollectionsResponse, RetrieveTokensResponse,
@@ -28,37 +24,24 @@ use crate::error::Error;
 pub struct Client {
     /// The grpc client.
     inner: RwLock<WorldClient>,
-    /// Relay client.
-    relay_client: RelayClient,
 }
 
 impl Client {
     /// Returns a initialized [Client].
-    pub async fn new(torii_url: String, relay_url: String, world: Felt) -> Result<Self, Error> {
+    pub async fn new(torii_url: String, world: Felt) -> Result<Self, Error> {
         let grpc_client = WorldClient::new(torii_url, world).await?;
-        let relay_client = RelayClient::new(relay_url)?;
 
         Ok(Self {
             inner: RwLock::new(grpc_client),
-            relay_client,
         })
     }
 
-    /// Starts the relay client event loop.
-    /// This is a blocking call. Spawn this on a separate task.
-    pub fn relay_runner(&self) -> Arc<Mutex<EventLoop>> {
-        self.relay_client.event_loop.clone()
-    }
-
-    /// Publishes a message to a topic.
-    /// Returns the message id.
-    pub async fn publish_message(&self, message: Message) -> Result<Vec<u8>, Error> {
-        self.relay_client
-            .command_sender
-            .publish(message)
-            .await
-            .map_err(Error::RelayClient)
-            .map(|m| m.0)
+    /// Publishes an offchain message to the world.
+    /// Returns the entity id of the offchain message.
+    pub async fn publish_message(&self, message: Message) -> Result<Felt, Error> {
+        let mut grpc_client = self.inner.write().await;
+        let entity_id = grpc_client.publish_message(message).await?;
+        Ok(entity_id)
     }
 
     /// Returns a read lock on the World metadata that the client is connected to.
