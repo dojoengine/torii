@@ -40,7 +40,7 @@ where
         hasher.finish()
     }
 
-    // Maybe dont need to depend on all of token ids. 
+    // Maybe dont need to depend on all of token ids.
     // fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
     //     let mut dependencies = Vec::new();
     //     let from_token_id = U256Cainome::cairo_deserialize(&event.keys, 1).unwrap();
