@@ -7,15 +7,13 @@ use torii_sqlite::Sql;
 
 use crate::error::MessagingError;
 
-
 pub fn ty_keys(ty: &Ty) -> Result<Vec<Felt>, MessagingError> {
     if let Ty::Struct(s) = &ty {
         let mut keys = Vec::new();
         for m in s.keys() {
             keys.extend(
-                m.serialize().map_err(|e| {
-                    MessagingError::SerializeModelKeyError(e)
-                })?,
+                m.serialize()
+                    .map_err(|e| MessagingError::SerializeModelKeyError(e))?,
             );
         }
         Ok(keys)
@@ -42,13 +40,9 @@ pub fn get_identity_from_ty(ty: &Ty) -> Result<Felt, MessagingError> {
         .as_struct()
         .ok_or_else(|| MessagingError::MessageNotStruct)?
         .get("identity")
-        .ok_or_else(|| {
-            MessagingError::FieldNotFound("identity".to_string())
-        })?
+        .ok_or_else(|| MessagingError::FieldNotFound("identity".to_string()))?
         .as_primitive()
-        .ok_or_else(|| {
-            MessagingError::InvalidType("Identity should be a primitive".to_string())
-        })?
+        .ok_or_else(|| MessagingError::InvalidType("Identity should be a primitive".to_string()))?
         .as_contract_address()
         .ok_or_else(|| {
             MessagingError::InvalidType("Identity should be a contract address".to_string())

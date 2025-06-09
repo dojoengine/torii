@@ -124,14 +124,7 @@ pub async fn validate_and_set_entity<P: Provider + Sync>(
     // to prevent replay attacks.
 
     // Verify the signature
-    if !match validate_signature(
-        provider,
-        entity_identity,
-        &message,
-        signature,
-    )
-    .await
-    {
+    if !match validate_signature(provider, entity_identity, &message, signature).await {
         Ok(res) => res,
         Err(e) => {
             warn!(
