@@ -216,7 +216,10 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         .connect_with(options1)
         .await
         .unwrap();
-    sqlx::migrate!("../../migrations").run(&pool1).await.unwrap();
+    sqlx::migrate!("../../migrations")
+        .run(&pool1)
+        .await
+        .unwrap();
 
     // Setup second relay server database
     let tempfile2 = NamedTempFile::new().unwrap();
@@ -232,7 +235,10 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         .connect_with(options2)
         .await
         .unwrap();
-    sqlx::migrate!("../../migrations").run(&pool2).await.unwrap();
+    sqlx::migrate!("../../migrations")
+        .run(&pool2)
+        .await
+        .unwrap();
 
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
     let account_data = sequencer.account_data(0);
@@ -442,11 +448,12 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     // Verify the entity was created on the first server
     assert!(!entity_id.is_empty());
 
-    let entity_exists_server1: bool = sqlx::query_scalar("SELECT COUNT(*) > 0 FROM entities WHERE id = ?")
-        .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
-        .fetch_one(&pool1)
-        .await
-        .unwrap();
+    let entity_exists_server1: bool =
+        sqlx::query_scalar("SELECT COUNT(*) > 0 FROM entities WHERE id = ?")
+            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
+            .fetch_one(&pool1)
+            .await
+            .unwrap();
 
     assert!(
         entity_exists_server1,
@@ -457,11 +464,12 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     sleep(Duration::from_secs(3)).await;
 
     // Verify the message was received and stored by the second server
-    let entity_exists_server2: bool = sqlx::query_scalar("SELECT COUNT(*) > 0 FROM entities WHERE id = ?")
-        .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
-        .fetch_one(&pool2)
-        .await
-        .unwrap();
+    let entity_exists_server2: bool =
+        sqlx::query_scalar("SELECT COUNT(*) > 0 FROM entities WHERE id = ?")
+            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
+            .fetch_one(&pool2)
+            .await
+            .unwrap();
 
     assert!(
         entity_exists_server2,
@@ -469,16 +477,18 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     );
 
     // Additionally verify the message content matches
-    let message_content: Option<String> = sqlx::query_scalar(
-        "SELECT data FROM entities WHERE id = ? LIMIT 1"
-    )
-    .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
-    .fetch_optional(&pool2)
-    .await
-    .unwrap();
+    let message_content: Option<String> =
+        sqlx::query_scalar("SELECT data FROM entities WHERE id = ? LIMIT 1")
+            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
+            .fetch_optional(&pool2)
+            .await
+            .unwrap();
 
-    assert!(message_content.is_some(), "Message content should exist in second server");
-    
+    assert!(
+        message_content.is_some(),
+        "Message content should exist in second server"
+    );
+
     let message_data: serde_json::Value = serde_json::from_str(&message_content.unwrap()).unwrap();
     assert_eq!(
         message_data["message"].as_str().unwrap(),
