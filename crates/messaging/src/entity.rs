@@ -2,7 +2,6 @@ use dojo_types::naming::is_valid_tag;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::naming::compute_selector_from_tag;
 use starknet::core::types::Felt;
-use torii_sqlite::executor::QueryMessage;
 use torii_sqlite::Sql;
 
 use crate::error::MessagingError;
@@ -71,8 +70,6 @@ pub async fn set_entity(
     )
     .await
     .map_err(MessagingError::SqliteError)?;
-    db.executor
-        .send(QueryMessage::execute())
-        .map_err(|e| MessagingError::SqliteError(torii_sqlite::error::Error::Executor(e.into())))?;
+    db.execute().await?;
     Ok(())
 }

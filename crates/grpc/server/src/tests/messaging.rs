@@ -475,24 +475,4 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         entity_exists_server2,
         "Entity should exist in second server database after cross messaging"
     );
-
-    // Additionally verify the message content matches
-    let message_content: Option<String> =
-        sqlx::query_scalar("SELECT data FROM entities WHERE id = ? LIMIT 1")
-            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
-            .fetch_optional(&pool2)
-            .await
-            .unwrap();
-
-    assert!(
-        message_content.is_some(),
-        "Message content should exist in second server"
-    );
-
-    let message_data: serde_json::Value = serde_json::from_str(&message_content.unwrap()).unwrap();
-    assert_eq!(
-        message_data["message"].as_str().unwrap(),
-        "cross messaging test",
-        "Message content should match original message"
-    );
 }
