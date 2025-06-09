@@ -11137,6 +11137,7 @@ dependencies = [
  "futures-util",
  "http 0.2.12",
  "hyper 0.14.30",
+ "indexmap 2.7.1",
  "katana-runner",
  "num-traits 0.2.19",
  "num_cpus",
@@ -11165,6 +11166,7 @@ dependencies = [
  "torii-processors",
  "torii-proto",
  "torii-sqlite",
+ "torii-typed-data",
  "tower",
  "tower-http",
  "tracing",
@@ -11481,6 +11483,21 @@ dependencies = [
  "tokio",
  "torii-adigraphmap",
  "tracing",
+]
+
+[[package]]
+name = "torii-typed-data"
+version = "1.5.7-preview.0"
+dependencies = [
+ "cainome",
+ "crypto-bigint",
+ "dojo-types 1.5.0-alpha.2",
+ "indexmap 2.7.1",
+ "serde",
+ "serde_json",
+ "starknet 0.12.0",
+ "starknet-crypto 0.7.4",
+ "thiserror 1.0.63",
 ]
 
 [[package]]
