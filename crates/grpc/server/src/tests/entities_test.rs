@@ -152,6 +152,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         provider.clone(),
         world_address,
         model_cache,
+        None,
         GrpcConfig::default(),
     );
 

@@ -34,6 +34,7 @@ use subscriptions::indexer::IndexerManager;
 use subscriptions::token::TokenManager;
 use subscriptions::token_balance::TokenBalanceManager;
 use tokio::net::TcpListener;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::codec::CompressionEncoding;
 use tonic::transport::Server;
@@ -71,7 +72,7 @@ use torii_proto::proto::world::{
     WorldMetadataResponse,
 };
 use torii_proto::proto::{self};
-use torii_proto::ComparisonOperator;
+use torii_proto::{ComparisonOperator, Message};
 
 use anyhow::Error;
 
@@ -93,6 +94,7 @@ pub struct DojoWorld<P: Provider + Sync> {
     provider: Arc<P>,
     world_address: Felt,
     model_cache: Arc<ModelCache>,
+    cross_messaging_tx: Option<UnboundedSender<Message>>,
     entity_manager: Arc<EntityManager>,
     event_message_manager: Arc<EventMessageManager>,
     event_manager: Arc<EventManager>,
@@ -108,6 +110,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         provider: Arc<P>,
         world_address: Felt,
         model_cache: Arc<ModelCache>,
+        cross_messaging_tx: Option<UnboundedSender<Message>>,
         config: GrpcConfig,
     ) -> Self {
         let entity_manager = Arc::new(EntityManager::new(config.subscription_buffer_size));
@@ -148,6 +151,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             provider,
             world_address,
             model_cache,
+            cross_messaging_tx,
             entity_manager,
             event_message_manager,
             event_manager,
@@ -1824,6 +1828,12 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
+        let message = Message { signature, message };
+        if let Some(tx) = &self.cross_messaging_tx {
+            tx.send(message)
+                .map_err(|e| Status::internal(e.to_string()))?;
+        }
+
         Ok(Response::new(PublishMessageResponse {
             entity_id: entity_id.to_bytes_be().to_vec(),
         }))
@@ -1865,6 +1875,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     provider: Arc<P>,
     world_address: Felt,
     model_cache: Arc<ModelCache>,
+    cross_messaging_tx: UnboundedSender<Message>,
     config: GrpcConfig,
 ) -> Result<
     (
@@ -1881,7 +1892,14 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
         .build()
         .unwrap();
 
-    let world = DojoWorld::new(sql, provider, world_address, model_cache, config);
+    let world = DojoWorld::new(
+        sql,
+        provider,
+        world_address,
+        model_cache,
+        Some(cross_messaging_tx),
+        config,
+    );
     let server = WorldServer::new(world)
         .accept_compressed(CompressionEncoding::Gzip)
         .send_compressed(CompressionEncoding::Gzip);
