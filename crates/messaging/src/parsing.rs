@@ -32,13 +32,10 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
                     parse_value_to_ty(value, &mut member.ty)?;
                 }
             }
-            // U256 is an object with two u128 fields
-            // low and high
             Ty::Primitive(Primitive::U256(u256)) => {
                 let mut low = Ty::Primitive(Primitive::U128(None));
                 let mut high = Ty::Primitive(Primitive::U128(None));
 
-                // parse the low and high fields
                 parse_value_to_ty(&object.fields["low"], &mut low)?;
                 parse_value_to_ty(&object.fields["high"], &mut high)?;
 
@@ -51,9 +48,6 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
 
                 *u256 = Some(U256::from_be_slice(&bytes));
             }
-            // an enum is a SNIP-12 compliant object with a single key
-            // where the K is the variant name
-            // and the value is the variant value
             Ty::Enum(enum_) => {
                 let (option_name, value) = object
                     .fields
@@ -85,10 +79,8 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
             Ty::Array(array) => {
                 let inner_type = array[0].clone();
 
-                // clear the array, which contains the inner type
                 array.clear();
 
-                // parse each value to the inner type
                 for value in &values.elements {
                     let mut ty = inner_type.clone();
                     parse_value_to_ty(value, &mut ty)?;
@@ -96,7 +88,6 @@ pub fn parse_value_to_ty(value: &Value, ty: &mut Ty) -> Result<(), Error> {
                 }
             }
             Ty::Tuple(tuple) => {
-                // our array values need to match the length of the tuple
                 if tuple.len() != values.elements.len() {
                     return Err(Error::InvalidTupleLength);
                 }

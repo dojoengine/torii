@@ -7,9 +7,6 @@ use std::time::Duration;
 use std::{fs, io};
 
 use chrono::Utc;
-use dojo_types::naming::is_valid_tag;
-use dojo_types::schema::Ty;
-use dojo_world::contracts::naming::compute_selector_from_tag;
 use events::BehaviourEvent;
 use futures::StreamExt;
 use libp2p::core::multiaddr::Protocol;
@@ -23,13 +20,14 @@ use libp2p::{
 };
 use libp2p_webrtc as webrtc;
 use rand::thread_rng;
-use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
-use starknet::core::utils::get_selector_from_name;
+use starknet::core::types::Felt;
 use starknet::providers::Provider;
-use starknet_core::types::typed_data::TypeReference;
 use starknet_core::types::TypedData;
 use starknet_crypto::poseidon_hash_many;
-use torii_sqlite::executor::QueryMessage;
+use torii_libp2p_types::Message;
+use torii_messaging::{
+    get_identity_from_ty, set_entity, ty_keys, ty_model_id, validate_message, validate_signature,
+};
 use torii_sqlite::utils::felts_to_sql_string;
 use torii_sqlite::Sql;
 use tracing::{info, trace, warn};
@@ -38,11 +36,8 @@ use webrtc::tokio::Certificate;
 mod constants;
 pub mod error;
 mod events;
-mod mapping;
 
-use crate::error::{Error, MessageError};
-use crate::mapping::parse_value_to_ty;
-use torii_libp2p_types::Message;
+use crate::error::Error;
 
 pub(crate) const LOG_TARGET: &str = "torii::relay::server";
 
@@ -518,81 +513,6 @@ impl<P: Provider + Sync> Relay<P> {
     }
 }
 
-async fn validate_signature<P: Provider + Sync>(
-    provider: &P,
-    entity_identity: Felt,
-    message: &TypedData,
-    signature: &[Felt],
-) -> Result<bool, Error> {
-    let message_hash = message.message_hash(entity_identity)?;
-
-    let mut calldata = vec![message_hash, Felt::from(signature.len())];
-    calldata.extend(signature);
-    provider
-        .call(
-            FunctionCall {
-                contract_address: entity_identity,
-                entry_point_selector: get_selector_from_name("is_valid_signature").unwrap(),
-                calldata,
-            },
-            BlockId::Tag(BlockTag::Pending),
-        )
-        .await
-        .map_err(Error::ProviderError)
-        .map(|res| res[0] != Felt::ZERO)
-}
-
-fn ty_keys(ty: &Ty) -> Result<Vec<Felt>, Error> {
-    if let Ty::Struct(s) = &ty {
-        let mut keys = Vec::new();
-        for m in s.keys() {
-            keys.extend(
-                m.serialize()
-                    .map_err(|e| Error::MessageError(MessageError::SerializeModelKeyError(e)))?,
-            );
-        }
-        Ok(keys)
-    } else {
-        Err(Error::MessageError(MessageError::InvalidType(
-            "Message should be a struct".to_string(),
-        )))
-    }
-}
-
-fn ty_model_id(ty: &Ty) -> Result<Felt, Error> {
-    let namespaced_name = ty.name();
-
-    if !is_valid_tag(&namespaced_name) {
-        return Err(Error::MessageError(MessageError::InvalidModelTag(
-            namespaced_name,
-        )));
-    }
-
-    let selector = compute_selector_from_tag(&namespaced_name);
-    Ok(selector)
-}
-
-// Validates the message model
-// and returns the identity and signature
-async fn validate_message(db: &Sql, message: &TypedData) -> Result<Ty, Error> {
-    let tag = message.primary_type().signature_ref_repr();
-    if !is_valid_tag(&tag) {
-        return Err(Error::MessageError(MessageError::InvalidModelTag(tag)));
-    }
-
-    let selector = compute_selector_from_tag(&tag);
-
-    let mut ty = db
-        .model(selector)
-        .await
-        .map_err(|e| Error::MessageError(MessageError::ModelNotFound(e.to_string())))?
-        .schema;
-
-    parse_value_to_ty(message.message(), &mut ty)?;
-
-    Ok(ty)
-}
-
 fn read_or_create_identity(path: &Path) -> anyhow::Result<identity::Keypair> {
     if path.exists() {
         let bytes = fs::read(path)?;
@@ -626,50 +546,6 @@ fn read_or_create_certificate(path: &Path) -> anyhow::Result<Certificate> {
     info!(target: LOG_TARGET, path = %path.display(), "Generated new certificate.");
 
     Ok(cert)
-}
-
-fn get_identity_from_ty(ty: &Ty) -> Result<Felt, Error> {
-    let identity = ty
-        .as_struct()
-        .ok_or_else(|| Error::MessageError(MessageError::MessageNotStruct))?
-        .get("identity")
-        .ok_or_else(|| Error::MessageError(MessageError::FieldNotFound("identity".to_string())))?
-        .as_primitive()
-        .ok_or_else(|| {
-            Error::MessageError(MessageError::InvalidType(
-                "Identity should be a primitive".to_string(),
-            ))
-        })?
-        .as_contract_address()
-        .ok_or_else(|| {
-            Error::MessageError(MessageError::InvalidType(
-                "Identity should be a contract address".to_string(),
-            ))
-        })?;
-    Ok(identity)
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn set_entity(
-    db: &mut Sql,
-    ty: Ty,
-    message_id: &str,
-    block_timestamp: u64,
-    entity_id: Felt,
-    model_id: Felt,
-    keys: &str,
-) -> anyhow::Result<()> {
-    db.set_entity(
-        ty,
-        message_id,
-        block_timestamp,
-        entity_id,
-        model_id,
-        Some(keys),
-    )
-    .await?;
-    db.executor.send(QueryMessage::execute())?;
-    Ok(())
 }
 
 #[cfg(test)]
