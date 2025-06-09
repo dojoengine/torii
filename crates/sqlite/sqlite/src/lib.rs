@@ -306,7 +306,7 @@ impl Sql {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn set_entity(
-        &mut self,
+        &self,
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
@@ -640,7 +640,7 @@ impl Sql {
     }
 
     fn set_entity_model(
-        &mut self,
+        &self,
         model_name: &str,
         event_id: &str,
         entity_id: &str,

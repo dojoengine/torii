@@ -51,7 +51,6 @@ torii-proto = { path = "crates/proto" }
 torii-indexer = { path = "crates/indexer" }
 torii-libp2p-client = { path = "crates/libp2p/client" }
 torii-libp2p-relay = { path = "crates/libp2p/relay" }
-torii-libp2p-types = { path = "crates/libp2p/types" }
 torii-messaging = { path = "crates/messaging" }
 torii-runner = { path = "crates/runner" }
 torii-server = { path = "crates/server" }

@@ -20,8 +20,10 @@ use libp2p_webrtc as webrtc;
 use rand::thread_rng;
 use starknet::providers::Provider;
 use starknet_core::types::TypedData;
-use torii_libp2p_types::Message;
+use tokio::select;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use torii_messaging::validate_and_set_entity;
+use torii_proto::Message;
 use torii_sqlite::Sql;
 use tracing::{info, trace, warn};
 use webrtc::tokio::Certificate;
@@ -49,6 +51,7 @@ pub struct Relay<P: Provider + Sync> {
     swarm: Swarm<Behaviour>,
     db: Sql,
     provider: Box<P>,
+    cross_messaging_rx: UnboundedReceiver<Message>,
 }
 
 impl<P: Provider + Sync> Relay<P> {
@@ -60,7 +63,7 @@ impl<P: Provider + Sync> Relay<P> {
         port_websocket: u16,
         local_key_path: Option<String>,
         cert_path: Option<String>,
-    ) -> Result<Self, Error> {
+    ) -> Result<(Self, UnboundedSender<Message>), Error> {
         Self::new_with_peers(
             pool,
             provider,
@@ -83,7 +86,8 @@ impl<P: Provider + Sync> Relay<P> {
         local_key_path: Option<String>,
         cert_path: Option<String>,
         peers: Vec<String>,
-    ) -> Result<Self, Error> {
+    ) -> Result<(Self, UnboundedSender<Message>), Error> {
+        let (tx, rx) = unbounded_channel::<Message>();
         let local_key = if let Some(path) = local_key_path {
             let path = Path::new(&path);
             read_or_create_identity(path).map_err(Error::ReadIdentityError)?
@@ -213,171 +217,191 @@ impl<P: Provider + Sync> Relay<P> {
             .subscribe(&IdentTopic::new(constants::PEERS_MESSAGING_TOPIC))
             .unwrap();
 
-        Ok(Self {
-            swarm,
-            db: pool,
-            provider: Box::new(provider),
-        })
+        Ok((
+            Self {
+                swarm,
+                db: pool,
+                provider: Box::new(provider),
+                cross_messaging_rx: rx,
+            },
+            tx,
+        ))
     }
 
     pub async fn run(&mut self) {
         loop {
-            match self.swarm.next().await.expect("Infinite Stream.") {
-                SwarmEvent::Behaviour(event) => {
-                    match &event {
-                        BehaviourEvent::Gossipsub(gossipsub::Event::Message {
-                            propagation_source: peer_id,
-                            message_id,
-                            message,
-                        }) => {
-                            // Ignore our own messages
-                            if peer_id == self.swarm.local_peer_id() {
-                                continue;
-                            }
+            select! {
+                Some(message) = self.cross_messaging_rx.recv() => {
+                    match self.swarm.behaviour_mut().gossipsub.publish(
+                        IdentTopic::new(constants::MESSAGING_TOPIC),
+                        serde_json::to_string(&message).unwrap(),
+                    ).map_err(Error::PublishError) {
+                        Ok(_) => info!(target: LOG_TARGET, "Forwarded message to peers."),
+                        Err(Error::PublishError(
+                            PublishError::NoPeersSubscribedToTopic,
+                        )) => {}
+                        Err(e) => warn!(target: LOG_TARGET, error = ?e, "Publishing message to peers."),
+                    }
+                }
+                Some(event) = self.swarm.next() => {
+                    match event {
+                    SwarmEvent::Behaviour(event) => {
+                        match &event {
+                            BehaviourEvent::Gossipsub(gossipsub::Event::Message {
+                                propagation_source: peer_id,
+                                message_id,
+                                message,
+                            }) => {
+                                // Ignore our own messages
+                                if peer_id == self.swarm.local_peer_id() {
+                                    continue;
+                                }
 
-                            // Deserialize typed data.
-                            // We shouldn't panic here
-                            let data = match serde_json::from_slice::<Message>(&message.data) {
-                                Ok(message) => message,
-                                Err(e) => {
+                                // Deserialize typed data.
+                                // We shouldn't panic here
+                                let data = match serde_json::from_slice::<Message>(&message.data) {
+                                    Ok(message) => message,
+                                    Err(e) => {
+                                        warn!(
+                                            target: LOG_TARGET,
+                                            error = ?e,
+                                            "Deserializing message."
+                                        );
+                                        continue;
+                                    }
+                                };
+
+                                info!(
+                                    target: LOG_TARGET,
+                                    message_id = %message_id,
+                                    peer_id = %peer_id,
+                                    "Received message."
+                                );
+
+                                let typed_data =
+                                    serde_json::from_str::<TypedData>(&data.message).unwrap();
+                                if let Err(e) = validate_and_set_entity(
+                                    &self.db,
+                                    &typed_data,
+                                    &data.signature,
+                                    &self.provider,
+                                )
+                                .await
+                                {
                                     warn!(
                                         target: LOG_TARGET,
                                         error = ?e,
-                                        "Deserializing message."
+                                        "Validating and setting message."
                                     );
                                     continue;
                                 }
-                            };
 
-                            info!(
-                                target: LOG_TARGET,
-                                message_id = %message_id,
-                                peer_id = %peer_id,
-                                "Received message."
-                            );
-
-                            let typed_data =
-                                serde_json::from_str::<TypedData>(&data.message).unwrap();
-                            if let Err(e) = validate_and_set_entity(
-                                &mut self.db,
-                                &typed_data,
-                                &data.signature,
-                                &self.provider,
-                            )
-                            .await
-                            {
-                                warn!(
+                                info!(
                                     target: LOG_TARGET,
-                                    error = ?e,
-                                    "Validating and setting message."
+                                    message_id = %message_id,
+                                    peer_id = %peer_id,
+                                    "Message verified and set."
                                 );
-                                continue;
+
+                                // We only want to publish messages from our clients. Not from our peers
+                                // otherwise recursion hell :<
+                                if message.topic != IdentTopic::new(constants::MESSAGING_TOPIC).hash() {
+                                    continue;
+                                }
+
+                                // Publish message to all peers if there are any
+                                match self
+                                    .swarm
+                                    .behaviour_mut()
+                                    .gossipsub
+                                    .publish(
+                                        IdentTopic::new(constants::PEERS_MESSAGING_TOPIC),
+                                        serde_json::to_string(&data).unwrap(),
+                                    )
+                                    .map_err(Error::PublishError)
+                                {
+                                    Ok(_) => info!(
+                                        target: LOG_TARGET,
+                                        "Forwarded message to peers."
+                                    ),
+                                    Err(Error::PublishError(
+                                        PublishError::NoPeersSubscribedToTopic,
+                                    )) => {}
+                                    Err(e) => warn!(
+                                        target: LOG_TARGET,
+                                        error = ?e,
+                                        "Publishing message to peers."
+                                    ),
+                                }
                             }
-
-                            info!(
-                                target: LOG_TARGET,
-                                message_id = %message_id,
-                                peer_id = %peer_id,
-                                "Message verified and set."
-                            );
-
-                            // We only want to publish messages from our clients. Not from our peers
-                            // otherwise recursion hell :<
-                            if message.topic != IdentTopic::new(constants::MESSAGING_TOPIC).hash() {
-                                continue;
-                            }
-
-                            // Publish message to all peers if there are any
-                            match self
-                                .swarm
-                                .behaviour_mut()
-                                .gossipsub
-                                .publish(
-                                    IdentTopic::new(constants::PEERS_MESSAGING_TOPIC),
-                                    serde_json::to_string(&data).unwrap(),
-                                )
-                                .map_err(Error::PublishError)
-                            {
-                                Ok(_) => info!(
+                            BehaviourEvent::Gossipsub(gossipsub::Event::Subscribed {
+                                peer_id,
+                                topic,
+                            }) => {
+                                info!(
                                     target: LOG_TARGET,
-                                    "Forwarded message to peers."
-                                ),
-                                Err(Error::PublishError(
-                                    PublishError::NoPeersSubscribedToTopic,
-                                )) => {}
-                                Err(e) => warn!(
+                                    peer_id = %peer_id,
+                                    topic = %topic,
+                                    "Subscribed to topic."
+                                );
+                            }
+                            BehaviourEvent::Gossipsub(gossipsub::Event::Unsubscribed {
+                                peer_id,
+                                topic,
+                            }) => {
+                                info!(
                                     target: LOG_TARGET,
-                                    error = ?e,
-                                    "Publishing message to peers."
-                                ),
+                                    peer_id = %peer_id,
+                                    topic = %topic,
+                                    "Unsubscribed from topic."
+                                );
                             }
-                        }
-                        BehaviourEvent::Gossipsub(gossipsub::Event::Subscribed {
-                            peer_id,
-                            topic,
-                        }) => {
-                            info!(
-                                target: LOG_TARGET,
-                                peer_id = %peer_id,
-                                topic = %topic,
-                                "Subscribed to topic."
-                            );
-                        }
-                        BehaviourEvent::Gossipsub(gossipsub::Event::Unsubscribed {
-                            peer_id,
-                            topic,
-                        }) => {
-                            info!(
-                                target: LOG_TARGET,
-                                peer_id = %peer_id,
-                                topic = %topic,
-                                "Unsubscribed from topic."
-                            );
-                        }
-                        BehaviourEvent::Identify(identify::Event::Received {
-                            connection_id,
-                            info: identify::Info { observed_addr, .. },
-                            peer_id,
-                        }) => {
-                            info!(
-                                target: LOG_TARGET,
-                                connection_id = %connection_id,
-                                peer_id = %peer_id,
-                                observed_addr = %observed_addr,
-                                "Received identify event."
-                            );
-                            self.swarm.add_external_address(observed_addr.clone());
-                        }
-                        BehaviourEvent::Ping(ping::Event { peer, result, .. }) => {
-                            trace!(
-                                target: LOG_TARGET,
-                                peer_id = %peer,
-                                result = ?result,
-                                "Received ping event."
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    let mut is_localhost = false;
-                    for protocol in address.iter() {
-                        if let Protocol::Ip4(ip) = protocol {
-                            if ip == Ipv4Addr::new(127, 0, 0, 1) {
-                                is_localhost = true;
-                                break;
+                            BehaviourEvent::Identify(identify::Event::Received {
+                                connection_id,
+                                info: identify::Info { observed_addr, .. },
+                                peer_id,
+                            }) => {
+                                info!(
+                                    target: LOG_TARGET,
+                                    connection_id = %connection_id,
+                                    peer_id = %peer_id,
+                                    observed_addr = %observed_addr,
+                                    "Received identify event."
+                                );
+                                self.swarm.add_external_address(observed_addr.clone());
                             }
+                            BehaviourEvent::Ping(ping::Event { peer, result, .. }) => {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    peer_id = %peer,
+                                    result = ?result,
+                                    "Received ping event."
+                                );
+                            }
+                            _ => {}
                         }
                     }
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        let mut is_localhost = false;
+                        for protocol in address.iter() {
+                            if let Protocol::Ip4(ip) = protocol {
+                                if ip == Ipv4Addr::new(127, 0, 0, 1) {
+                                    is_localhost = true;
+                                    break;
+                                }
+                            }
+                        }
 
-                    // To declutter logs, we only log listen addresses that are localhost
-                    if !is_localhost {
-                        continue;
+                        // To declutter logs, we only log listen addresses that are localhost
+                        if !is_localhost {
+                            continue;
+                        }
+                        info!(target: LOG_TARGET, address = %address, "Serving libp2p Relay.");
                     }
-                    info!(target: LOG_TARGET, address = %address, "Serving libp2p Relay.");
-                }
-                event => {
-                    trace!(target: LOG_TARGET, event = ?event, "Unhandled event.");
+                    event => {
+                        trace!(target: LOG_TARGET, event = ?event, "Unhandled event.");
+                    }
+                    }
                 }
             }
         }

@@ -19,11 +19,11 @@ pub use validation::{validate_message, validate_signature};
 pub const LOG_TARGET: &str = "torii::messaging";
 
 pub async fn validate_and_set_entity<P: Provider + Sync>(
-    db: &mut Sql,
+    db: &Sql,
     message: &TypedData,
     signature: &[Felt],
     provider: &P,
-) -> Result<(), MessagingError> {
+) -> Result<Felt, MessagingError> {
     let ty = match validate_message(db, message).await {
         Ok(parsed_message) => parsed_message,
         Err(e) => {
@@ -169,5 +169,5 @@ pub async fn validate_and_set_entity<P: Provider + Sync>(
         "Message verified and set."
     );
 
-    Ok(())
+    Ok(entity_id)
 }

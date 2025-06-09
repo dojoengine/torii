@@ -309,17 +309,6 @@ impl Runner {
         );
 
         let shutdown_rx = shutdown_tx.subscribe();
-        let (grpc_addr, grpc_server) = torii_grpc_server::new(
-            shutdown_rx,
-            &readonly_pool,
-            world_address,
-            model_cache,
-            GrpcConfig {
-                subscription_buffer_size: self.args.grpc.subscription_buffer_size,
-            },
-        )
-        .await?;
-
         let temp_dir = TempDir::new()?;
         let artifacts_path = self
             .args
@@ -337,8 +326,8 @@ impl Runner {
         )
         .await?;
 
-        let mut libp2p_relay_server = Relay::new_with_peers(
-            db,
+        let (mut libp2p_relay_server, cross_messaging_tx) = Relay::new_with_peers(
+            db.clone(),
             provider.clone(),
             self.args.relay.port,
             self.args.relay.webrtc_port,
@@ -348,6 +337,19 @@ impl Runner {
             self.args.relay.peers,
         )
         .expect("Failed to start libp2p relay server");
+
+        let (grpc_addr, grpc_server) = torii_grpc_server::new(
+            shutdown_rx,
+            db.clone(),
+            provider.clone(),
+            world_address,
+            model_cache,
+            cross_messaging_tx,
+            GrpcConfig {
+                subscription_buffer_size: self.args.grpc.subscription_buffer_size,
+            },
+        )
+        .await?;
 
         let addr = SocketAddr::new(self.args.server.http_addr, self.args.server.http_port);
 

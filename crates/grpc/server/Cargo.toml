@@ -16,6 +16,7 @@ starknet-crypto.workspace = true
 thiserror.workspace = true
 torii-sqlite = { workspace = true }
 torii-proto = { workspace = true, features = ["server"] }
+torii-messaging = { workspace = true }
 
 crypto-bigint.workspace = true
 serde.workspace = true
@@ -54,6 +55,9 @@ tempfile.workspace = true
 sozo-scarbext.workspace = true
 torii-indexer.workspace = true
 torii-processors = { workspace = true }
+torii-typed-data = { workspace = true }
+torii-libp2p-relay = { workspace = true }
+indexmap.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

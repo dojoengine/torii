@@ -48,6 +48,13 @@ pub enum PaginationDirection {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct Message {
+    pub signature: Vec<Felt>,
+    // The raw TypedData. Should be deserializable to a TypedData struct.
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Pagination {
     pub cursor: Option<String>,
     pub limit: u32,

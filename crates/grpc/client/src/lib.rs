@@ -18,20 +18,21 @@ use tonic::transport::Endpoint;
 
 use torii_proto::error::ProtoError;
 use torii_proto::proto::world::{
-    world_client, RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEntitiesRequest,
-    RetrieveEntitiesResponse, RetrieveEventMessagesRequest, RetrieveEventsRequest,
-    RetrieveEventsResponse, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
-    RetrieveTokenCollectionsRequest, RetrieveTokenCollectionsResponse, RetrieveTokensRequest,
-    RetrieveTokensResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
-    SubscribeEventMessagesRequest, SubscribeEventsRequest, SubscribeEventsResponse,
-    SubscribeIndexerRequest, SubscribeIndexerResponse, SubscribeTokenBalancesRequest,
-    SubscribeTokenBalancesResponse, SubscribeTokensRequest, SubscribeTokensResponse,
-    UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
-    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
+    world_client, PublishMessageRequest, RetrieveControllersRequest, RetrieveControllersResponse,
+    RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventMessagesRequest,
+    RetrieveEventsRequest, RetrieveEventsResponse, RetrieveTokenBalancesRequest,
+    RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
+    RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsRequest, SubscribeEventsResponse, SubscribeIndexerRequest,
+    SubscribeIndexerResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
+    SubscribeTokensRequest, SubscribeTokensResponse, UpdateEntitiesSubscriptionRequest,
+    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
+    UpdateTokenSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Event, EventQuery, IndexerUpdate, KeysClause, Query, Token, TokenBalance,
+    Clause, Event, EventQuery, IndexerUpdate, KeysClause, Message, Query, Token, TokenBalance,
 };
 
 pub use torii_proto as types;
@@ -512,6 +513,21 @@ impl WorldClient {
             .await
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())
+    }
+
+    pub async fn publish_message(&mut self, message: Message) -> Result<Felt, Error> {
+        self.inner
+            .publish_message(PublishMessageRequest {
+                message: message.message,
+                signature: message
+                    .signature
+                    .into_iter()
+                    .map(|s| s.to_bytes_be().to_vec())
+                    .collect(),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| Felt::from_bytes_be_slice(&res.into_inner().entity_id))
     }
 }
 
