@@ -56,6 +56,7 @@ sozo-scarbext.workspace = true
 torii-indexer.workspace = true
 torii-processors = { workspace = true }
 torii-typed-data = { workspace = true }
+torii-libp2p-relay = { workspace = true }
 indexmap.workspace = true
 
 [build-dependencies]
