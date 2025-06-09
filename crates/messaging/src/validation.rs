@@ -8,30 +8,15 @@ use starknet_core::types::typed_data::TypeReference;
 use starknet_core::types::TypedData;
 use torii_sqlite::Sql;
 
-use crate::error::MessageError;
+use crate::error::MessagingError;
 use crate::parsing::parse_value_to_ty;
-
-#[derive(thiserror::Error, Debug)]
-pub enum ValidationError {
-    #[error(transparent)]
-    MessageError(#[from] MessageError),
-
-    #[error(transparent)]
-    ProviderError(#[from] starknet::providers::ProviderError),
-
-    #[error(transparent)]
-    TypedDataError(#[from] starknet_core::types::typed_data::TypedDataError),
-
-    #[error(transparent)]
-    SqliteError(#[from] torii_sqlite::error::Error),
-}
 
 pub async fn validate_signature<P: Provider + Sync>(
     provider: &P,
     entity_identity: Felt,
     message: &TypedData,
     signature: &[Felt],
-) -> Result<bool, ValidationError> {
+) -> Result<bool, MessagingError> {
     let message_hash = message.message_hash(entity_identity)?;
 
     let mut calldata = vec![message_hash, Felt::from(signature.len())];
@@ -46,16 +31,14 @@ pub async fn validate_signature<P: Provider + Sync>(
             BlockId::Tag(BlockTag::Pending),
         )
         .await
-        .map_err(ValidationError::ProviderError)
+        .map_err(MessagingError::ProviderError)
         .map(|res| res[0] != Felt::ZERO)
 }
 
-pub async fn validate_message(db: &Sql, message: &TypedData) -> Result<Ty, ValidationError> {
+pub async fn validate_message(db: &Sql, message: &TypedData) -> Result<Ty, MessagingError> {
     let tag = message.primary_type().signature_ref_repr();
     if !is_valid_tag(&tag) {
-        return Err(ValidationError::MessageError(
-            MessageError::InvalidModelTag(tag),
-        ));
+        return Err(MessagingError::InvalidModelTag(tag));
     }
 
     let selector = compute_selector_from_tag(&tag);
@@ -63,7 +46,7 @@ pub async fn validate_message(db: &Sql, message: &TypedData) -> Result<Ty, Valid
     let mut ty = db
         .model(selector)
         .await
-        .map_err(|e| ValidationError::MessageError(MessageError::ModelNotFound(e.to_string())))?
+        .map_err(|e| MessagingError::ModelNotFound(e.to_string()))?
         .schema;
 
     parse_value_to_ty(message.message(), &mut ty)?;

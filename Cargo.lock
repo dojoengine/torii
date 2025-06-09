@@ -11449,12 +11449,14 @@ dependencies = [
  "dojo-world",
  "serde",
  "serde_json",
+ "sqlx",
  "starknet 0.12.0",
  "starknet-core 0.12.3",
  "starknet-crypto 0.7.4",
  "thiserror 1.0.63",
  "tokio",
  "torii-sqlite",
+ "tracing",
 ]
 
 [[package]]

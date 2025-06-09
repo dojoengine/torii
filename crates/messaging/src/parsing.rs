@@ -5,7 +5,7 @@ use dojo_types::{primitive::Primitive, schema::Ty};
 use starknet_core::types::typed_data::Value;
 use starknet_crypto::Felt;
 
-use crate::error::MessageError as Error;
+use crate::error::MessagingError as Error;
 
 macro_rules! from_str {
     ($string:expr, $type:ty) => {
