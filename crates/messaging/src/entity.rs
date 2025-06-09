@@ -13,7 +13,7 @@ pub fn ty_keys(ty: &Ty) -> Result<Vec<Felt>, MessagingError> {
         for m in s.keys() {
             keys.extend(
                 m.serialize()
-                    .map_err(|e| MessagingError::SerializeModelKeyError(e))?,
+                    .map_err(MessagingError::SerializeModelKeyError)?,
             );
         }
         Ok(keys)
@@ -70,7 +70,7 @@ pub async fn set_entity(
         Some(keys),
     )
     .await
-    .map_err(|e| MessagingError::SqliteError(e.into()))?;
+    .map_err(MessagingError::SqliteError)?;
     db.executor
         .send(QueryMessage::execute())
         .map_err(|e| MessagingError::SqliteError(torii_sqlite::error::Error::Executor(e.into())))?;
