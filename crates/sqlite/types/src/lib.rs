@@ -149,6 +149,17 @@ pub struct Token {
 
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct TokenCollection {
+    pub contract_address: String,
+    pub name: String,
+    pub symbol: String,
+    pub decimals: u8,
+    pub count: u32,
+    pub metadata: String,
+}
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct OptimisticTokenBalance {
     pub id: String,
     pub balance: String,
@@ -218,12 +229,11 @@ impl std::fmt::Display for ContractType {
 #[derive(FromRow, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ContractCursor {
-    pub head: i64,
-    pub tps: i64,
-    pub last_block_timestamp: i64,
+    pub head: Option<i64>,
+    pub tps: Option<i64>,
+    pub last_block_timestamp: Option<i64>,
     pub contract_address: String,
-    pub last_pending_block_tx: Option<String>,
-    pub last_pending_block_contract_tx: Option<String>,
+    pub last_pending_block_event_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

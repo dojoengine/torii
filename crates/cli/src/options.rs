@@ -22,8 +22,11 @@ pub const DEFAULT_MAX_CONCURRENT_TASKS: usize = 100;
 pub const DEFAULT_RELAY_PORT: u16 = 9090;
 pub const DEFAULT_RELAY_WEBRTC_PORT: u16 = 9091;
 pub const DEFAULT_RELAY_WEBSOCKET_PORT: u16 = 9092;
+pub const DEFAULT_GRPC_SUBSCRIPTION_BUFFER_SIZE: usize = 256;
 
 pub const DEFAULT_ERC_MAX_METADATA_TASKS: usize = 10;
+pub const DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT: u64 = 1000;
+pub const DEFAULT_DATABASE_BUSY_TIMEOUT: u64 = 60_000;
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
@@ -394,6 +397,23 @@ pub struct SqlOptions {
         help = "A directory containing custom migrations to run."
     )]
     pub migrations: Option<PathBuf>,
+
+    /// The pages interval to autocheckpoint.
+    #[arg(
+        long = "sql.wal_autocheckpoint",
+        default_value_t = DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT,
+        help = "The pages interval to autocheckpoint."
+    )]
+    pub wal_autocheckpoint: u64,
+
+    /// The timeout before the database is considered busy.
+    #[arg(
+        long = "sql.busy_timeout",
+        default_value_t = DEFAULT_DATABASE_BUSY_TIMEOUT,
+        help = "The timeout before the database is considered busy. Helpful in situations where \
+                the database is locked for a long time."
+    )]
+    pub busy_timeout: u64,
 }
 
 impl Default for SqlOptions {
@@ -404,6 +424,8 @@ impl Default for SqlOptions {
             historical: vec![],
             page_size: DEFAULT_DATABASE_PAGE_SIZE,
             cache_size: DEFAULT_DATABASE_CACHE_SIZE,
+            wal_autocheckpoint: DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT,
+            busy_timeout: DEFAULT_DATABASE_BUSY_TIMEOUT,
             hooks: vec![],
             migrations: None,
         }
@@ -445,6 +467,19 @@ pub struct RunnerOptions {
         help = "Check if contracts are deployed before starting torii."
     )]
     pub check_contracts: bool,
+}
+
+#[derive(Default, Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
+#[serde(default)]
+#[command(next_help_heading = "GRPC options")]
+pub struct GrpcOptions {
+    /// The buffer size for the subscription channel.
+    #[arg(
+        long = "grpc.subscription_buffer_size",
+        default_value_t = DEFAULT_GRPC_SUBSCRIPTION_BUFFER_SIZE,
+        help = "The buffer size for the subscription channel."
+    )]
+    pub subscription_buffer_size: usize,
 }
 
 // Parses clap cli argument which is expected to be in the format:

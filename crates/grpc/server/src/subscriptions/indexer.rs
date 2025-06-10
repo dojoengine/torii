@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use rand::Rng;
 use sqlx::{Pool, Sqlite};
@@ -12,7 +12,6 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use tokio::sync::RwLock;
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::ContractCursor as ContractUpdated;
@@ -32,17 +31,25 @@ pub struct IndexerSubscriber {
 
 #[derive(Debug, Default)]
 pub struct IndexerManager {
-    subscribers: RwLock<HashMap<usize, IndexerSubscriber>>,
+    subscribers: DashMap<usize, IndexerSubscriber>,
+    subscription_buffer_size: usize,
 }
 
 impl IndexerManager {
+    pub fn new(subscription_buffer_size: usize) -> Self {
+        Self {
+            subscribers: DashMap::new(),
+            subscription_buffer_size,
+        }
+    }
+
     pub async fn add_subscriber(
         &self,
         pool: &Pool<Sqlite>,
         contract_address: Felt,
     ) -> Result<Receiver<Result<SubscribeIndexerResponse, tonic::Status>>, Error> {
         let id = rand::thread_rng().gen::<usize>();
-        let (sender, receiver) = channel(1);
+        let (sender, receiver) = channel(self.subscription_buffer_size);
 
         let mut statement = "SELECT * FROM contracts".to_string();
 
@@ -60,14 +67,14 @@ impl IndexerManager {
         for contract in contracts {
             let _ = sender
                 .send(Ok(SubscribeIndexerResponse {
-                    head: contract.head,
-                    tps: contract.tps,
-                    last_block_timestamp: contract.last_block_timestamp,
+                    head: contract.head.unwrap(),
+                    tps: contract.tps.unwrap(),
+                    last_block_timestamp: contract.last_block_timestamp.unwrap(),
                     contract_address: contract_address.to_bytes_be().to_vec(),
                 }))
                 .await;
         }
-        self.subscribers.write().await.insert(
+        self.subscribers.insert(
             id,
             IndexerSubscriber {
                 contract_address,
@@ -79,7 +86,7 @@ impl IndexerManager {
     }
 
     pub(super) async fn remove_subscriber(&self, id: usize) {
-        self.subscribers.write().await.remove(&id);
+        self.subscribers.remove(&id);
     }
 }
 
@@ -109,7 +116,7 @@ impl Service {
     ) {
         while let Some(update) = update_receiver.recv().await {
             if let Err(e) = Self::process_update(&subs, &update).await {
-                error!(target = LOG_TARGET, error = %e, "Processing indexer update.");
+                error!(target = LOG_TARGET, error = ?e, "Processing indexer update.");
             }
         }
     }
@@ -122,20 +129,35 @@ impl Service {
         let contract_address =
             Felt::from_str(&update.contract_address).map_err(ParseError::FromStr)?;
 
-        for (idx, sub) in subs.subscribers.read().await.iter() {
+        for sub in subs.subscribers.iter() {
+            let idx = sub.key();
+            let sub = sub.value();
+
             if sub.contract_address != Felt::ZERO && sub.contract_address != contract_address {
                 continue;
             }
 
             let resp = SubscribeIndexerResponse {
-                head: update.head,
-                tps: update.tps,
-                last_block_timestamp: update.last_block_timestamp,
+                head: update.head.unwrap(),
+                tps: update.tps.unwrap(),
+                last_block_timestamp: update.last_block_timestamp.unwrap(),
                 contract_address: contract_address.to_bytes_be().to_vec(),
             };
 
-            if sub.sender.send(Ok(resp)).await.is_err() {
-                closed_stream.push(*idx);
+            // Use try_send to avoid blocking on slow subscribers
+            match sub.sender.try_send(Ok(resp)) {
+                Ok(_) => {
+                    // Message sent successfully
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    // Channel is full, subscriber is too slow - disconnect them
+                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
+                    closed_stream.push(*idx);
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    // Channel is closed, subscriber has disconnected
+                    closed_stream.push(*idx);
+                }
             }
         }
 
@@ -156,7 +178,7 @@ impl Future for Service {
 
         while let Poll::Ready(Some(update)) = this.simple_broker.poll_next_unpin(cx) {
             if let Err(e) = this.update_sender.send(update) {
-                error!(target = LOG_TARGET, error = %e, "Sending indexer update to processor.");
+                error!(target = LOG_TARGET, error = ?e, "Sending indexer update to processor.");
             }
         }
 

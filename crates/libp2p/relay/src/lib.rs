@@ -2,14 +2,9 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::net::Ipv4Addr;
 use std::path::Path;
-use std::str::FromStr;
 use std::time::Duration;
 use std::{fs, io};
 
-use chrono::Utc;
-use dojo_types::naming::is_valid_tag;
-use dojo_types::schema::Ty;
-use dojo_world::contracts::naming::compute_selector_from_tag;
 use events::BehaviourEvent;
 use futures::StreamExt;
 use libp2p::core::multiaddr::Protocol;
@@ -23,12 +18,12 @@ use libp2p::{
 };
 use libp2p_webrtc as webrtc;
 use rand::thread_rng;
-use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
-use starknet::core::utils::get_selector_from_name;
 use starknet::providers::Provider;
-use starknet_crypto::poseidon_hash_many;
-use torii_sqlite::executor::QueryMessage;
-use torii_sqlite::utils::felts_to_sql_string;
+use starknet_core::types::TypedData;
+use tokio::select;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use torii_messaging::validate_and_set_entity;
+use torii_proto::Message;
 use torii_sqlite::Sql;
 use tracing::{info, trace, warn};
 use webrtc::tokio::Certificate;
@@ -38,8 +33,6 @@ pub mod error;
 mod events;
 
 use crate::error::Error;
-use torii_libp2p_types::Message;
-use torii_typed_data::typed_data::{parse_value_to_ty, PrimitiveType, TypedData};
 
 pub(crate) const LOG_TARGET: &str = "torii::relay::server";
 
@@ -58,6 +51,7 @@ pub struct Relay<P: Provider + Sync> {
     swarm: Swarm<Behaviour>,
     db: Sql,
     provider: Box<P>,
+    cross_messaging_rx: UnboundedReceiver<Message>,
 }
 
 impl<P: Provider + Sync> Relay<P> {
@@ -69,7 +63,7 @@ impl<P: Provider + Sync> Relay<P> {
         port_websocket: u16,
         local_key_path: Option<String>,
         cert_path: Option<String>,
-    ) -> Result<Self, Error> {
+    ) -> Result<(Self, UnboundedSender<Message>), Error> {
         Self::new_with_peers(
             pool,
             provider,
@@ -92,7 +86,8 @@ impl<P: Provider + Sync> Relay<P> {
         local_key_path: Option<String>,
         cert_path: Option<String>,
         peers: Vec<String>,
-    ) -> Result<Self, Error> {
+    ) -> Result<(Self, UnboundedSender<Message>), Error> {
+        let (tx, rx) = unbounded_channel::<Message>();
         let local_key = if let Some(path) = local_key_path {
             let path = Path::new(&path);
             read_or_create_identity(path).map_err(Error::ReadIdentityError)?
@@ -222,374 +217,195 @@ impl<P: Provider + Sync> Relay<P> {
             .subscribe(&IdentTopic::new(constants::PEERS_MESSAGING_TOPIC))
             .unwrap();
 
-        Ok(Self {
-            swarm,
-            db: pool,
-            provider: Box::new(provider),
-        })
+        Ok((
+            Self {
+                swarm,
+                db: pool,
+                provider: Box::new(provider),
+                cross_messaging_rx: rx,
+            },
+            tx,
+        ))
     }
 
     pub async fn run(&mut self) {
         loop {
-            match self.swarm.next().await.expect("Infinite Stream.") {
-                SwarmEvent::Behaviour(event) => {
-                    match &event {
-                        BehaviourEvent::Gossipsub(gossipsub::Event::Message {
-                            propagation_source: peer_id,
-                            message_id,
-                            message,
-                        }) => {
-                            // Ignore our own messages
-                            if peer_id == self.swarm.local_peer_id() {
-                                continue;
-                            }
-
-                            // Deserialize typed data.
-                            // We shouldn't panic here
-                            let data = match serde_json::from_slice::<Message>(&message.data) {
-                                Ok(message) => message,
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        error = %e,
-                                        "Deserializing message."
-                                    );
+            select! {
+                Some(message) = self.cross_messaging_rx.recv() => {
+                    match self.swarm.behaviour_mut().gossipsub.publish(
+                        IdentTopic::new(constants::MESSAGING_TOPIC),
+                        serde_json::to_string(&message).unwrap(),
+                    ).map_err(Error::PublishError) {
+                        Ok(_) => info!(target: LOG_TARGET, "Forwarded message to peers."),
+                        Err(Error::PublishError(
+                            PublishError::NoPeersSubscribedToTopic,
+                        )) => {}
+                        Err(e) => warn!(target: LOG_TARGET, error = ?e, "Publishing message to peers."),
+                    }
+                }
+                Some(event) = self.swarm.next() => {
+                    match event {
+                    SwarmEvent::Behaviour(event) => {
+                        match &event {
+                            BehaviourEvent::Gossipsub(gossipsub::Event::Message {
+                                propagation_source: peer_id,
+                                message_id,
+                                message,
+                            }) => {
+                                // Ignore our own messages
+                                if peer_id == self.swarm.local_peer_id() {
                                     continue;
                                 }
-                            };
 
-                            let ty = match validate_message(&self.db, &data.message).await {
-                                Ok(parsed_message) => parsed_message,
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        error = %e,
-                                        "Validating message."
-                                    );
-                                    continue;
-                                }
-                            };
-
-                            info!(
-                                target: LOG_TARGET,
-                                message_id = %message_id,
-                                peer_id = %peer_id,
-                                data = ?data,
-                                "Received message."
-                            );
-
-                            // retrieve entity identity from db
-                            let mut pool = match self.db.pool.acquire().await {
-                                Ok(pool) => pool,
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        error = %e,
-                                        "Acquiring pool."
-                                    );
-                                    continue;
-                                }
-                            };
-
-                            let keys = match ty_keys(&ty) {
-                                Ok(keys) => keys,
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        error = %e,
-                                        "Retrieving message model keys."
-                                    );
-                                    continue;
-                                }
-                            };
-                            let keys_str = felts_to_sql_string(&keys);
-                            let entity_id = poseidon_hash_many(&keys);
-                            let model_id = ty_model_id(&ty).unwrap();
-
-                            // select only identity field, if doesn't exist, empty string
-                            let query = format!(
-                                "SELECT identity FROM [{}] WHERE internal_id = ?",
-                                ty.name()
-                            );
-                            let entity_identity: Option<String> = match sqlx::query_scalar(&query)
-                                .bind(format!("{:#x}", entity_id))
-                                .fetch_optional(&mut *pool)
-                                .await
-                            {
-                                Ok(entity_identity) => entity_identity,
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        error = %e,
-                                        "Fetching entity."
-                                    );
-                                    continue;
-                                }
-                            };
-
-                            let entity_identity = match entity_identity {
-                                Some(identity) => match Felt::from_str(&identity) {
-                                    Ok(identity) => identity,
+                                // Deserialize typed data.
+                                // We shouldn't panic here
+                                let data = match serde_json::from_slice::<Message>(&message.data) {
+                                    Ok(message) => message,
                                     Err(e) => {
                                         warn!(
                                             target: LOG_TARGET,
-                                            error = %e,
-                                            "Parsing identity."
+                                            error = ?e,
+                                            "Deserializing message."
                                         );
                                         continue;
                                     }
-                                },
-                                _ => match get_identity_from_ty(&ty) {
-                                    Ok(identity) => identity,
-                                    Err(e) => {
-                                        warn!(
-                                            target: LOG_TARGET,
-                                            error = %e,
-                                            "Getting identity from message."
-                                        );
-                                        continue;
-                                    }
-                                },
-                            };
+                                };
 
-                            // TODO: have a nonce in model to check
-                            // against entity nonce and message nonce
-                            // to prevent replay attacks.
-
-                            // Verify the signature
-                            if !match validate_signature(
-                                &self.provider,
-                                entity_identity,
-                                &data.message,
-                                &data.signature,
-                            )
-                            .await
-                            {
-                                Ok(res) => res,
-                                Err(e) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        error = %e,
-                                        "Verifying signature."
-                                    );
-                                    continue;
-                                }
-                            } {
-                                warn!(
+                                info!(
                                     target: LOG_TARGET,
                                     message_id = %message_id,
                                     peer_id = %peer_id,
-                                    "Invalid signature."
+                                    "Received message."
                                 );
-                                continue;
-                            }
 
-                            if let Err(e) = set_entity(
-                                &mut self.db,
-                                ty.clone(),
-                                &message_id.to_string(),
-                                Utc::now().timestamp() as u64,
-                                entity_id,
-                                model_id,
-                                &keys_str,
-                            )
-                            .await
-                            {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    error = %e,
-                                    "Setting message."
-                                );
-                                continue;
-                            }
-
-                            info!(
-                                target: LOG_TARGET,
-                                message_id = %message_id,
-                                peer_id = %peer_id,
-                                "Message verified and set."
-                            );
-
-                            // We only want to publish messages from our clients. Not from our peers
-                            // otherwise recursion hell :<
-                            if message.topic != IdentTopic::new(constants::MESSAGING_TOPIC).hash() {
-                                continue;
-                            }
-
-                            // Publish message to all peers if there are any
-                            match self
-                                .swarm
-                                .behaviour_mut()
-                                .gossipsub
-                                .publish(
-                                    IdentTopic::new(constants::PEERS_MESSAGING_TOPIC),
-                                    serde_json::to_string(&data).unwrap(),
+                                let typed_data =
+                                    serde_json::from_str::<TypedData>(&data.message).unwrap();
+                                if let Err(e) = validate_and_set_entity(
+                                    &self.db,
+                                    &typed_data,
+                                    &data.signature,
+                                    &self.provider,
                                 )
-                                .map_err(Error::PublishError)
-                            {
-                                Ok(_) => info!(
-                                    target: LOG_TARGET,
-                                    "Forwarded message to peers."
-                                ),
-                                Err(Error::PublishError(
-                                    PublishError::NoPeersSubscribedToTopic,
-                                )) => {}
-                                Err(e) => warn!(
-                                    target: LOG_TARGET,
-                                    error = %e,
-                                    "Publishing message to peers."
-                                ),
-                            }
-                        }
-                        BehaviourEvent::Gossipsub(gossipsub::Event::Subscribed {
-                            peer_id,
-                            topic,
-                        }) => {
-                            info!(
-                                target: LOG_TARGET,
-                                peer_id = %peer_id,
-                                topic = %topic,
-                                "Subscribed to topic."
-                            );
-                        }
-                        BehaviourEvent::Gossipsub(gossipsub::Event::Unsubscribed {
-                            peer_id,
-                            topic,
-                        }) => {
-                            info!(
-                                target: LOG_TARGET,
-                                peer_id = %peer_id,
-                                topic = %topic,
-                                "Unsubscribed from topic."
-                            );
-                        }
-                        BehaviourEvent::Identify(identify::Event::Received {
-                            connection_id,
-                            info: identify::Info { observed_addr, .. },
-                            peer_id,
-                        }) => {
-                            info!(
-                                target: LOG_TARGET,
-                                connection_id = %connection_id,
-                                peer_id = %peer_id,
-                                observed_addr = %observed_addr,
-                                "Received identify event."
-                            );
-                            self.swarm.add_external_address(observed_addr.clone());
-                        }
-                        BehaviourEvent::Ping(ping::Event { peer, result, .. }) => {
-                            trace!(
-                                target: LOG_TARGET,
-                                peer_id = %peer,
-                                result = ?result,
-                                "Received ping event."
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    let mut is_localhost = false;
-                    for protocol in address.iter() {
-                        if let Protocol::Ip4(ip) = protocol {
-                            if ip == Ipv4Addr::new(127, 0, 0, 1) {
-                                is_localhost = true;
-                                break;
-                            }
-                        }
-                    }
+                                .await
+                                {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        error = ?e,
+                                        "Validating and setting message."
+                                    );
+                                    continue;
+                                }
 
-                    // To declutter logs, we only log listen addresses that are localhost
-                    if !is_localhost {
-                        continue;
+                                info!(
+                                    target: LOG_TARGET,
+                                    message_id = %message_id,
+                                    peer_id = %peer_id,
+                                    "Message verified and set."
+                                );
+
+                                // We only want to publish messages from our clients. Not from our peers
+                                // otherwise recursion hell :<
+                                if message.topic != IdentTopic::new(constants::MESSAGING_TOPIC).hash() {
+                                    continue;
+                                }
+
+                                // Publish message to all peers if there are any
+                                match self
+                                    .swarm
+                                    .behaviour_mut()
+                                    .gossipsub
+                                    .publish(
+                                        IdentTopic::new(constants::PEERS_MESSAGING_TOPIC),
+                                        serde_json::to_string(&data).unwrap(),
+                                    )
+                                    .map_err(Error::PublishError)
+                                {
+                                    Ok(_) => info!(
+                                        target: LOG_TARGET,
+                                        "Forwarded message to peers."
+                                    ),
+                                    Err(Error::PublishError(
+                                        PublishError::NoPeersSubscribedToTopic,
+                                    )) => {}
+                                    Err(e) => warn!(
+                                        target: LOG_TARGET,
+                                        error = ?e,
+                                        "Publishing message to peers."
+                                    ),
+                                }
+                            }
+                            BehaviourEvent::Gossipsub(gossipsub::Event::Subscribed {
+                                peer_id,
+                                topic,
+                            }) => {
+                                info!(
+                                    target: LOG_TARGET,
+                                    peer_id = %peer_id,
+                                    topic = %topic,
+                                    "Subscribed to topic."
+                                );
+                            }
+                            BehaviourEvent::Gossipsub(gossipsub::Event::Unsubscribed {
+                                peer_id,
+                                topic,
+                            }) => {
+                                info!(
+                                    target: LOG_TARGET,
+                                    peer_id = %peer_id,
+                                    topic = %topic,
+                                    "Unsubscribed from topic."
+                                );
+                            }
+                            BehaviourEvent::Identify(identify::Event::Received {
+                                connection_id,
+                                info: identify::Info { observed_addr, .. },
+                                peer_id,
+                            }) => {
+                                info!(
+                                    target: LOG_TARGET,
+                                    connection_id = %connection_id,
+                                    peer_id = %peer_id,
+                                    observed_addr = %observed_addr,
+                                    "Received identify event."
+                                );
+                                self.swarm.add_external_address(observed_addr.clone());
+                            }
+                            BehaviourEvent::Ping(ping::Event { peer, result, .. }) => {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    peer_id = %peer,
+                                    result = ?result,
+                                    "Received ping event."
+                                );
+                            }
+                            _ => {}
+                        }
                     }
-                    info!(target: LOG_TARGET, address = %address, "Serving libp2p Relay.");
-                }
-                event => {
-                    trace!(target: LOG_TARGET, event = ?event, "Unhandled event.");
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        let mut is_localhost = false;
+                        for protocol in address.iter() {
+                            if let Protocol::Ip4(ip) = protocol {
+                                if ip == Ipv4Addr::new(127, 0, 0, 1) {
+                                    is_localhost = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // To declutter logs, we only log listen addresses that are localhost
+                        if !is_localhost {
+                            continue;
+                        }
+                        info!(target: LOG_TARGET, address = %address, "Serving libp2p Relay.");
+                    }
+                    event => {
+                        trace!(target: LOG_TARGET, event = ?event, "Unhandled event.");
+                    }
+                    }
                 }
             }
         }
     }
-}
-
-async fn validate_signature<P: Provider + Sync>(
-    provider: &P,
-    entity_identity: Felt,
-    message: &TypedData,
-    signature: &[Felt],
-) -> Result<bool, Error> {
-    let message_hash = message.encode(entity_identity)?;
-
-    let mut calldata = vec![message_hash, Felt::from(signature.len())];
-    calldata.extend(signature);
-    provider
-        .call(
-            FunctionCall {
-                contract_address: entity_identity,
-                entry_point_selector: get_selector_from_name("is_valid_signature").unwrap(),
-                calldata,
-            },
-            BlockId::Tag(BlockTag::Pending),
-        )
-        .await
-        .map_err(Error::ProviderError)
-        .map(|res| res[0] != Felt::ZERO)
-}
-
-fn ty_keys(ty: &Ty) -> Result<Vec<Felt>, Error> {
-    if let Ty::Struct(s) = &ty {
-        let mut keys = Vec::new();
-        for m in s.keys() {
-            keys.extend(m.serialize().map_err(|_| {
-                Error::InvalidMessageError("Failed to serialize model key".to_string())
-            })?);
-        }
-        Ok(keys)
-    } else {
-        Err(Error::InvalidMessageError(
-            "Entity is not a struct".to_string(),
-        ))
-    }
-}
-
-fn ty_model_id(ty: &Ty) -> Result<Felt, Error> {
-    let namespaced_name = ty.name();
-
-    if !is_valid_tag(&namespaced_name) {
-        return Err(Error::InvalidMessageError(format!(
-            "Invalid message model (invalid tag): {}",
-            namespaced_name
-        )));
-    }
-
-    let selector = compute_selector_from_tag(&namespaced_name);
-    Ok(selector)
-}
-
-// Validates the message model
-// and returns the identity and signature
-async fn validate_message(db: &Sql, message: &TypedData) -> Result<Ty, Error> {
-    if !is_valid_tag(&message.primary_type) {
-        return Err(Error::InvalidMessageError(format!(
-            "Invalid message model (invalid tag): {}",
-            message.primary_type
-        )));
-    }
-
-    let selector = compute_selector_from_tag(&message.primary_type);
-
-    let mut ty = db
-        .model(selector)
-        .await
-        .map_err(|e| {
-            Error::InvalidMessageError(format!("Model {} not found: {}", message.primary_type, e))
-        })?
-        .schema;
-
-    parse_value_to_ty(&PrimitiveType::Object(message.message.clone()), &mut ty)?;
-
-    Ok(ty)
 }
 
 fn read_or_create_identity(path: &Path) -> anyhow::Result<identity::Keypair> {
@@ -625,44 +441,6 @@ fn read_or_create_certificate(path: &Path) -> anyhow::Result<Certificate> {
     info!(target: LOG_TARGET, path = %path.display(), "Generated new certificate.");
 
     Ok(cert)
-}
-
-fn get_identity_from_ty(ty: &Ty) -> Result<Felt, Error> {
-    let identity = ty
-        .as_struct()
-        .ok_or_else(|| Error::InvalidMessageError("Message is not a struct".to_string()))?
-        .get("identity")
-        .ok_or_else(|| Error::InvalidMessageError("No field identity".to_string()))?
-        .as_primitive()
-        .ok_or_else(|| Error::InvalidMessageError("Identity is not a primitive".to_string()))?
-        .as_contract_address()
-        .ok_or_else(|| {
-            Error::InvalidMessageError("Identity is not a contract address".to_string())
-        })?;
-    Ok(identity)
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn set_entity(
-    db: &mut Sql,
-    ty: Ty,
-    message_id: &str,
-    block_timestamp: u64,
-    entity_id: Felt,
-    model_id: Felt,
-    keys: &str,
-) -> anyhow::Result<()> {
-    db.set_entity(
-        ty,
-        message_id,
-        block_timestamp,
-        entity_id,
-        model_id,
-        Some(keys),
-    )
-    .await?;
-    db.executor.send(QueryMessage::execute())?;
-    Ok(())
 }
 
 #[cfg(test)]

@@ -1,7 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-use anyhow::{Context, Error, Result};
 use async_trait::async_trait;
 use dojo_types::schema::{Struct, Ty};
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
@@ -12,8 +11,10 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
+use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
+use crate::{IndexingMode, Result};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_update_member";
 
@@ -48,6 +49,20 @@ where
         vec![hasher.finish()] // Return the dependency on the register_model task
     }
 
+    fn indexing_mode(&self, event: &Event, config: &EventProcessorConfig) -> IndexingMode {
+        let model_id = event.keys[1];
+        let is_historical = config.is_historical(&model_id);
+        if is_historical {
+            IndexingMode::Historical
+        } else {
+            let mut hasher = DefaultHasher::new();
+            event.keys[0].hash(&mut hasher); // event id
+                                             // we need the memebr selector to make sure we dont miss some other member updates
+            event.keys[3].hash(&mut hasher); // member selector.
+            IndexingMode::Latest(hasher.finish())
+        }
+    }
+
     async fn process(
         &self,
         _world: Arc<WorldContractReader<P>>,
@@ -57,7 +72,7 @@ where
         event_id: &str,
         event: &Event,
         config: &EventProcessorConfig,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
@@ -89,11 +104,7 @@ where
                 return Ok(());
             }
             Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Failed to retrieve model with selector {:#x}: {}",
-                    event.selector,
-                    e
-                ));
+                return Err(e.into());
             }
         };
 
@@ -108,7 +119,10 @@ where
                 get_selector_from_name(&c.name).expect("invalid selector for member name")
                     == member_selector
             })
-            .context("member not found")?
+            .ok_or(Error::ModelMemberNotFound(format!(
+                "{:#x}",
+                member_selector
+            )))?
             .clone();
 
         info!(

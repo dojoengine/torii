@@ -1,7 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-use anyhow::Error;
 use async_trait::async_trait;
 use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
 use dojo_world::contracts::world::WorldContractReader;
@@ -11,6 +10,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::debug;
 
+use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 
@@ -40,25 +40,25 @@ where
         hasher.finish()
     }
 
-    // we should depend on all of our range of token ids
-    fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
-        let mut dependencies = Vec::new();
-        let from_token_id = U256Cainome::cairo_deserialize(&event.keys, 1).unwrap();
-        let mut from_token_id = U256::from_words(from_token_id.low, from_token_id.high);
+    // Maybe dont need to depend on all of token ids.
+    // fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
+    //     let mut dependencies = Vec::new();
+    //     let from_token_id = U256Cainome::cairo_deserialize(&event.keys, 1).unwrap();
+    //     let mut from_token_id = U256::from_words(from_token_id.low, from_token_id.high);
 
-        let to_token_id = U256Cainome::cairo_deserialize(&event.keys, 3).unwrap();
-        let to_token_id = U256::from_words(to_token_id.low, to_token_id.high);
+    //     let to_token_id = U256Cainome::cairo_deserialize(&event.keys, 3).unwrap();
+    //     let to_token_id = U256::from_words(to_token_id.low, to_token_id.high);
 
-        while from_token_id <= to_token_id {
-            let mut hasher = DefaultHasher::new();
-            event.from_address.hash(&mut hasher);
-            from_token_id.hash(&mut hasher);
-            dependencies.push(hasher.finish());
-            from_token_id += U256::from(1u8);
-        }
+    //     while from_token_id <= to_token_id {
+    //         let mut hasher = DefaultHasher::new();
+    //         event.from_address.hash(&mut hasher);
+    //         from_token_id.hash(&mut hasher);
+    //         dependencies.push(hasher.finish());
+    //         from_token_id += U256::from(1u8);
+    //     }
 
-        dependencies
-    }
+    //     dependencies
+    // }
 
     async fn process(
         &self,

@@ -57,6 +57,12 @@ service World {
 
     // Retrieve controllers
     rpc RetrieveControllers (RetrieveControllersRequest) returns (RetrieveControllersResponse);
+
+    // Retrieve tokens collections
+    rpc RetrieveTokenCollections (RetrieveTokenCollectionsRequest) returns (RetrieveTokenCollectionsResponse);
+
+    // Publish a torii offchain message
+    rpc PublishMessage (PublishMessageRequest) returns (PublishMessageResponse);
 }
 
 message RetrieveControllersRequest {
@@ -161,6 +167,26 @@ message RetrieveTokenBalancesResponse {
     repeated types.TokenBalance balances = 2;
 }
 
+// A request to retrieve token collections 
+message RetrieveTokenCollectionsRequest {
+    // The account addresses to retrieve balances for
+    repeated bytes account_addresses = 1;
+    // The list of token contract addresses to retrieve balances for
+    repeated bytes contract_addresses = 2;
+    // The list of token IDs to retrieve balances for
+    repeated bytes token_ids = 3;
+    // The number of token balances to retrieve
+    uint32 limit = 4;
+    // The cursor to start the query from
+    string cursor = 6;
+}
+
+// A response containing token balances
+message RetrieveTokenCollectionsResponse {
+    string next_cursor = 1;
+    repeated types.TokenCollection tokens = 2;
+}
+
 // A request to subscribe to indexer updates.
 message SubscribeIndexerRequest {
     bytes contract_address = 1;
@@ -238,4 +264,13 @@ message SubscribeEventsRequest {
 
 message SubscribeEventsResponse {
     types.Event event = 1;
+}
+
+message PublishMessageRequest {
+    repeated bytes signature = 1;
+    string message = 2;
+}
+
+message PublishMessageResponse {
+    bytes entity_id = 1;
 }

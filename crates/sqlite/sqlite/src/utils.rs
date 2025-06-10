@@ -3,7 +3,6 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::str::FromStr;
 use std::time::Duration;
 
-use anyhow::Result;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{DateTime, Utc};
@@ -26,6 +25,7 @@ use crate::constants::{
 };
 use crate::error::{Error, ParseError};
 use crate::model::map_row_to_ty;
+use crate::error::HttpError;
 
 fn process_event_field(data: &str) -> Result<Vec<Felt>, Error> {
     Ok(data
@@ -183,6 +183,26 @@ pub fn sql_string_to_felts(sql_string: &str) -> Vec<Felt> {
         .collect()
 }
 
+pub fn format_event_id(block_number: u64, transaction_hash: &Felt, event_idx: u64) -> String {
+    format!(
+        "{:#064x}:{:#x}:{:#04x}",
+        block_number, transaction_hash, event_idx
+    )
+}
+
+type BlockNumber = u64;
+type TransactionHash = Felt;
+type EventIdx = u64;
+
+pub fn parse_event_id(event_id: &str) -> (BlockNumber, TransactionHash, EventIdx) {
+    let parts: Vec<&str> = event_id.split(':').collect();
+    (
+        u64::from_str_radix(parts[0].trim_start_matches("0x"), 16).unwrap(),
+        Felt::from_str(parts[1]).unwrap(),
+        u64::from_str_radix(parts[2].trim_start_matches("0x"), 16).unwrap(),
+    )
+}
+
 /// Sanitizes a JSON string by escaping unescaped double quotes within string values.
 pub fn sanitize_json_string(s: &str) -> String {
     let mut result = String::new();
@@ -261,7 +281,7 @@ static IPFS_CLIENT: Lazy<IpfsClient> = Lazy::new(|| {
 const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
 
 /// Fetch content from HTTP URL with retries
-pub async fn fetch_content_from_http(url: &str) -> Result<Bytes> {
+pub async fn fetch_content_from_http(url: &str) -> Result<Bytes, HttpError> {
     let mut retries = 0;
     let mut backoff = INITIAL_BACKOFF;
 
@@ -269,18 +289,18 @@ pub async fn fetch_content_from_http(url: &str) -> Result<Bytes> {
         match HTTP_CLIENT.get(url).send().await {
             Ok(response) => {
                 if !response.status().is_success() {
-                    return Err(anyhow::anyhow!(
-                        "HTTP request failed with status: {}",
-                        response.status()
+                    return Err(HttpError::StatusCode(
+                        response.status(),
+                        response.text().await.unwrap_or_default(),
                     ));
                 }
-                return response.bytes().await.map_err(Into::into);
+                return response.bytes().await.map_err(HttpError::Reqwest);
             }
             Err(e) => {
                 if retries >= REQ_MAX_RETRIES {
-                    return Err(anyhow::anyhow!("HTTP request failed: {}", e));
+                    return Err(HttpError::Reqwest(e));
                 }
-                debug!(error = %e, retry = retries, "Request failed, retrying after backoff");
+                debug!(error = ?e, retry = retries, "Request failed, retrying after backoff");
                 tokio::time::sleep(backoff).await;
                 retries += 1;
                 backoff *= 2;
@@ -290,7 +310,7 @@ pub async fn fetch_content_from_http(url: &str) -> Result<Bytes> {
 }
 
 /// Fetch content from IPFS with retries
-pub async fn fetch_content_from_ipfs(cid: &str) -> Result<Bytes> {
+pub async fn fetch_content_from_ipfs(cid: &str) -> Result<Bytes, ipfs_api_backend_hyper::Error> {
     let mut retries = 0;
     let mut backoff = INITIAL_BACKOFF;
 
@@ -304,9 +324,9 @@ pub async fn fetch_content_from_ipfs(cid: &str) -> Result<Bytes> {
             Ok(stream) => return Ok(Bytes::from(stream)),
             Err(e) => {
                 if retries >= REQ_MAX_RETRIES {
-                    return Err(anyhow::anyhow!("IPFS request failed: {}", e));
+                    return Err(e);
                 }
-                debug!(error = %e, retry = retries, "Request failed, retrying after backoff");
+                debug!(error = ?e, retry = retries, "Request failed, retrying after backoff");
                 tokio::time::sleep(backoff).await;
                 retries += 1;
                 backoff *= 2;

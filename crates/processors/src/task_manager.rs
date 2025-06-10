@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use anyhow::Result;
 use dojo_world::contracts::WorldContractReader;
+use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
 use torii_sqlite::types::ContractType;
@@ -9,8 +9,9 @@ use torii_sqlite::Sql;
 use torii_task_network::TaskNetwork;
 use tracing::{debug, error};
 
+use crate::error::Error;
 use crate::processors::Processors;
-use crate::EventProcessorConfig;
+use crate::{EventKey, EventProcessorConfig, IndexingMode};
 
 const LOG_TARGET: &str = "torii::indexer::task_manager";
 
@@ -19,6 +20,7 @@ pub type TaskPriority = usize;
 
 #[derive(Debug, Clone)]
 pub struct ParallelizedEvent {
+    pub indexing_mode: IndexingMode,
     pub contract_type: ContractType,
     pub block_number: u64,
     pub block_timestamp: u64,
@@ -26,9 +28,10 @@ pub struct ParallelizedEvent {
     pub event: Event,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct TaskData {
     events: Vec<ParallelizedEvent>,
+    latest_only_events: LinkedHashMap<EventKey, ParallelizedEvent>,
 }
 
 #[allow(missing_debug_implementations)]
@@ -62,22 +65,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         task_identifier: TaskId,
         parallelized_event: ParallelizedEvent,
     ) {
-        if let Some(task_data) = self.task_network.get_mut(&task_identifier) {
-            task_data.events.push(parallelized_event);
-        } else {
-            let task_data = TaskData {
-                events: vec![parallelized_event],
-            };
-
-            if let Err(e) = self.task_network.add_task(task_identifier, task_data) {
-                error!(
-                    target: LOG_TARGET,
-                    error = %e,
-                    task_id = %task_identifier,
-                    "Failed to add task to network."
-                );
-            }
-        }
+        self.add_parallelized_event_with_dependencies(task_identifier, vec![], parallelized_event);
     }
 
     pub fn add_parallelized_event_with_dependencies(
@@ -87,10 +75,29 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         parallelized_event: ParallelizedEvent,
     ) {
         if let Some(task_data) = self.task_network.get_mut(&task_identifier) {
-            task_data.events.push(parallelized_event);
+            match parallelized_event.indexing_mode {
+                IndexingMode::Latest(event_key) => {
+                    task_data
+                        .latest_only_events
+                        .insert(event_key, parallelized_event);
+                }
+                IndexingMode::Historical => {
+                    task_data.events.push(parallelized_event);
+                }
+            }
         } else {
-            let task_data = TaskData {
-                events: vec![parallelized_event.clone()],
+            let task_data = match parallelized_event.indexing_mode {
+                IndexingMode::Latest(event_key) => TaskData {
+                    latest_only_events: LinkedHashMap::from_iter(vec![(
+                        event_key,
+                        parallelized_event.clone(),
+                    )]),
+                    ..Default::default()
+                },
+                IndexingMode::Historical => TaskData {
+                    events: vec![parallelized_event.clone()],
+                    ..Default::default()
+                },
             };
 
             if let Err(e) = self.task_network.add_task_with_dependencies(
@@ -100,7 +107,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             ) {
                 error!(
                     target: LOG_TARGET,
-                    error = %e,
+                    error = ?e,
                     task_id = %task_identifier,
                     dependencies = ?dependencies,
                     parallelized_event = ?parallelized_event,
@@ -110,7 +117,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         }
     }
 
-    pub async fn process_tasks(&mut self) -> Result<()> {
+    pub async fn process_tasks(&mut self) -> Result<(), Error> {
         if self.task_network.is_empty() {
             return Ok(());
         }
@@ -137,18 +144,24 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         block_number,
                         block_timestamp,
                         event_id,
-                    } in task_data.events
+                        ..
+                    } in task_data
+                        .events
+                        .iter()
+                        .chain(task_data.latest_only_events.values())
                     {
-                        let contract_processors = processors.get_event_processors(contract_type);
+                        let contract_processors = processors.get_event_processors(*contract_type);
                         if let Some(processors) = contract_processors.get(&event.keys[0]) {
                             let processor = processors
                                 .iter()
-                                .find(|p| p.validate(&event))
+                                .find(|p| p.validate(event))
                                 .expect("Must find at least one processor for the event");
 
                             debug!(
                                 target: LOG_TARGET,
                                 event_name = processor.event_key(),
+                                event_id = %event_id,
+                                block_number = %block_number,
                                 task_id = %task_id,
                                 "Processing parallelized event."
                             );
@@ -157,10 +170,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 .process(
                                     world.clone(),
                                     &mut local_db,
-                                    block_number,
-                                    block_timestamp,
-                                    &event_id,
-                                    &event,
+                                    *block_number,
+                                    *block_timestamp,
+                                    event_id,
+                                    event,
                                     &event_processor_config,
                                 )
                                 .await
@@ -168,7 +181,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 error!(
                                     target: LOG_TARGET,
                                     event_name = processor.event_key(),
-                                    error = %e,
+                                    error = ?e,
                                     task_id = %task_id,
                                     "Processing parallelized event."
                                 );
@@ -177,10 +190,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                         }
                     }
 
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, Error>(())
                 }
             })
             .await
-            .map_err(|e| anyhow::anyhow!("Task network error: {}", e))
+            .map_err(Error::TaskNetworkError)?;
+
+        Ok(())
+    }
+
+    pub fn clear_tasks(&mut self) {
+        self.task_network.clear();
     }
 }

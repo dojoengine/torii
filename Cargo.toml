@@ -5,6 +5,7 @@ members = [
 	"bin/torii",
 	"crates/cli",
 	"crates/client",
+	"crates/messaging",
 	"crates/server",
  	"crates/sqlite/types",
 	"xtask/generate-test-db",
@@ -16,7 +17,7 @@ edition = "2021"
 license = "Apache-2.0"
 license-file = "LICENSE"
 repository = "https://github.com/dojoengine/torii"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 
 [profile.performance]
 codegen-units = 1
@@ -31,6 +32,7 @@ inherits = "release"
 [workspace.dependencies]
 cainome = { version = "0.5.0", features = [ "abigen-rs" ] }
 cainome-cairo-serde = { version = "0.1.0" }
+cainome-cairo-serde-derive = { version = "0.1.0" }
 
 dojo-utils = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
 dojo-types = { git = "https://github.com/dojoengine/dojo", rev = "4145801" }
@@ -49,7 +51,7 @@ torii-proto = { path = "crates/proto" }
 torii-indexer = { path = "crates/indexer" }
 torii-libp2p-client = { path = "crates/libp2p/client" }
 torii-libp2p-relay = { path = "crates/libp2p/relay" }
-torii-libp2p-types = { path = "crates/libp2p/types" }
+torii-messaging = { path = "crates/messaging" }
 torii-runner = { path = "crates/runner" }
 torii-server = { path = "crates/server" }
 torii-sqlite = { path = "crates/sqlite/sqlite" }
@@ -178,6 +180,7 @@ pprof = { version = "0.13.0", features = [ "criterion", "flamegraph" ] }
 # Slot integration. Dojo don't need to manually include `account_sdk` as dependency as `slot` already re-exports it.
 slot = { git = "https://github.com/cartridge-gg/slot", rev = "1298a30" }
 
+starknet-core = "0.12.3"
 starknet = "0.12.0"
 starknet-crypto = "0.7.1"
 starknet-types-core = { version = "0.1.7", features = [ "arbitrary", "hash" ] }
@@ -188,3 +191,5 @@ bitvec = "1.0.1"
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", default-features = false }
+
+dashmap = "6.1.0"

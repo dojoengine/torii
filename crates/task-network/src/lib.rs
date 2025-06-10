@@ -38,9 +38,7 @@ where
     }
 
     pub fn add_task(&mut self, task_id: K, task: T) -> Result<()> {
-        self.tasks
-            .add_node(task_id, task)
-            .map_err(TaskNetworkError::GraphError)?;
+        self.add_task_with_dependencies(task_id, task, vec![])?;
         Ok(())
     }
 
@@ -76,11 +74,12 @@ where
             .map_err(TaskNetworkError::GraphError)
     }
 
-    pub async fn process_tasks<F, Fut, O>(&mut self, task_handler: F) -> Result<()>
+    pub async fn process_tasks<F, Fut, O, E>(&mut self, task_handler: F) -> Result<()>
     where
         F: Fn(K, T) -> Fut + Clone + Send + Sync + 'static,
-        Fut: Future<Output = anyhow::Result<O>> + Send,
+        Fut: Future<Output = std::result::Result<O, E>> + Send,
         O: Send,
+        E: std::error::Error + Send + Sync + 'static,
     {
         if self.tasks.is_empty() {
             return Ok(());
@@ -123,12 +122,12 @@ where
                         Err(e) => {
                             error!(
                                 target: LOG_TARGET,
-                                error = %e,
+                                error = ?e,
                                 task_id = ?task_id,
                                 level = level_idx,
                                 "Error processing task."
                             );
-                            Err(e)
+                            Err(TaskNetworkError::TaskError(Box::new(e)))
                         }
                     }
                 }));
@@ -138,7 +137,7 @@ where
                 .await
                 .map_err(TaskNetworkError::JoinError)?;
             for result in results {
-                result.map_err(TaskNetworkError::TaskError)?;
+                result?;
             }
         }
 
@@ -157,6 +156,10 @@ where
 
     pub fn get_mut(&mut self, task_id: &K) -> Option<&mut T> {
         self.tasks.get_mut(task_id)
+    }
+
+    pub fn clear(&mut self) {
+        self.tasks.clear();
     }
 }
 
@@ -180,7 +183,7 @@ mod tests {
                 async move {
                     let mut locked_results = results.lock().await;
                     locked_results.push((id, task));
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, std::io::Error>(())
                 }
             })
             .await
@@ -215,7 +218,7 @@ mod tests {
                 async move {
                     let mut locked = executed.lock().await;
                     locked.push(id);
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, std::io::Error>(())
                 }
             })
             .await
@@ -246,7 +249,7 @@ mod tests {
                 async move {
                     let mut locked = executed.lock().await;
                     locked.push(id);
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, std::io::Error>(())
                 }
             })
             .await
@@ -311,7 +314,7 @@ mod tests {
                         }
                     }
 
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, std::io::Error>(())
                 }
             })
             .await
@@ -362,7 +365,7 @@ mod tests {
                 async move {
                     let mut locked = executed.lock().await;
                     locked.push(id);
-                    Ok::<_, anyhow::Error>(())
+                    Ok::<_, std::io::Error>(())
                 }
             })
             .await

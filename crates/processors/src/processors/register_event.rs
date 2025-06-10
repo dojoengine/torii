@@ -1,7 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-use anyhow::{Error, Ok, Result};
 use async_trait::async_trait;
 use dojo_types::naming::compute_selector_from_names;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
@@ -12,6 +11,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
+use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 

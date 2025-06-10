@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
 use torii_sqlite::Sql;
 
+use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 

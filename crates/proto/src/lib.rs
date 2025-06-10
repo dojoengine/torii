@@ -46,6 +46,13 @@ pub enum PaginationDirection {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct Message {
+    pub signature: Vec<Felt>,
+    // The raw TypedData. Should be deserializable to a TypedData struct.
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Pagination {
     pub cursor: Option<String>,
     pub limit: Option<u32>,
@@ -126,6 +133,60 @@ impl TryFrom<proto::types::Token> for Token {
             decimals: value.decimals as u8,
             metadata: String::from_utf8(value.metadata).map_err(ProtoError::FromUtf8)?,
         })
+    }
+}
+impl TryFrom<proto::types::TokenCollection> for Token {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::TokenCollection) -> Result<Self, Self::Error> {
+        Ok(Self {
+            token_id: U256::ZERO,
+            contract_address: Felt::from_bytes_be_slice(&value.contract_address),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u8,
+            metadata: String::from_utf8(value.metadata).map_err(ProtoError::FromUtf8)?,
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct TokenCollection {
+    pub contract_address: Felt,
+    pub name: String,
+    pub symbol: String,
+    pub decimals: u8,
+    pub count: u32,
+    pub metadata: String,
+}
+
+impl TryFrom<proto::types::TokenCollection> for TokenCollection {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::TokenCollection) -> Result<Self, Self::Error> {
+        Ok(Self {
+            contract_address: Felt::from_bytes_be_slice(&value.contract_address),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u8,
+            count: value.count,
+            metadata: String::from_utf8(value.metadata).map_err(ProtoError::FromUtf8)?,
+        })
+    }
+}
+
+#[cfg(feature = "server")]
+impl From<torii_sqlite_types::TokenCollection> for proto::types::TokenCollection {
+    fn from(value: torii_sqlite_types::TokenCollection) -> Self {
+        Self {
+            contract_address: Felt::from_str(&value.contract_address)
+                .unwrap()
+                .to_bytes_be()
+                .to_vec(),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u32,
+            count: value.count,
+            metadata: value.metadata.as_bytes().to_vec(),
+        }
     }
 }
 

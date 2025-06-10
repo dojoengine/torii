@@ -4,8 +4,8 @@ use std::io;
 use libp2p::gossipsub::{PublishError, SubscriptionError};
 use libp2p::noise;
 use starknet::providers::ProviderError;
+use starknet_core::types::typed_data::TypedDataError;
 use thiserror::Error;
-use torii_typed_data::error::Error as TypedDataError;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -40,15 +40,12 @@ pub enum Error {
     #[error("Failed to read certificate: {0}")]
     ReadCertificateError(anyhow::Error),
 
-    #[error("Invalid type provided: {0}")]
-    InvalidTypeError(String),
-
     #[error(transparent)]
     ProviderError(#[from] ProviderError),
 
     #[error(transparent)]
-    TypedDataError(#[from] TypedDataError),
+    Messaging(#[from] torii_messaging::MessagingError),
 
-    #[error("Invalid message provided: {0}")]
-    InvalidMessageError(String),
+    #[error(transparent)]
+    TypedDataError(#[from] TypedDataError),
 }

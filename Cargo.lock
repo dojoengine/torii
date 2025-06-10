@@ -637,7 +637,7 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-lite 2.3.0",
- "gloo-timers 0.3.0",
+ "gloo-timers",
  "kv-log-macro",
  "log",
  "memchr",
@@ -2172,16 +2172,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "console_error_panic_hook"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
-dependencies = [
- "cfg-if",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "const-fnv1a-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2480,7 +2470,7 @@ dependencies = [
  "hashbrown 0.14.5",
  "lock_api",
  "once_cell",
- "parking_lot_core 0.9.10",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -2494,7 +2484,7 @@ dependencies = [
  "hashbrown 0.14.5",
  "lock_api",
  "once_cell",
- "parking_lot_core 0.9.10",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -3429,7 +3419,7 @@ checksum = "1d930c203dd0b6ff06e0201a4a2fe9149b43c684fd4420555b26d21b1a02956f"
 dependencies = [
  "futures-core",
  "lock_api",
- "parking_lot 0.12.3",
+ "parking_lot",
 ]
 
 [[package]]
@@ -3505,10 +3495,6 @@ name = "futures-timer"
 version = "3.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f288b0a4f20f9a56b5d1da57e2227c661b7b16168e2f72365f57b63326e29b24"
-dependencies = [
- "gloo-timers 0.2.6",
- "send_wrapper 0.4.0",
-]
 
 [[package]]
 name = "futures-util"
@@ -3678,7 +3664,7 @@ dependencies = [
  "gix-worktree-state",
  "gix-worktree-stream",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "regex",
  "signal-hook",
  "smallvec",
@@ -3909,7 +3895,7 @@ dependencies = [
  "gix-utils",
  "libc",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "prodash",
  "sha1_smol",
  "thiserror 1.0.63",
@@ -3978,7 +3964,7 @@ checksum = "7ddf80e16f3c19ac06ce415a38b8591993d3f73aede049cb561becb5b3a8e242"
 dependencies = [
  "gix-hash",
  "hashbrown 0.14.5",
- "parking_lot 0.12.3",
+ "parking_lot",
 ]
 
 [[package]]
@@ -4095,7 +4081,7 @@ dependencies = [
  "gix-pack",
  "gix-path",
  "gix-quote",
- "parking_lot 0.12.3",
+ "parking_lot",
  "tempfile",
  "thiserror 1.0.63",
 ]
@@ -4167,7 +4153,7 @@ checksum = "74fde865cdb46b30d8dad1293385d9bcf998d3a39cbf41bee67d0dab026fe6b1"
 dependencies = [
  "gix-command",
  "gix-config-value",
- "parking_lot 0.12.3",
+ "parking_lot",
  "rustix 0.38.37",
  "thiserror 1.0.63",
 ]
@@ -4309,7 +4295,7 @@ dependencies = [
  "gix-fs",
  "libc",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "signal-hook",
  "signal-hook-registry",
  "tempfile",
@@ -4426,7 +4412,7 @@ dependencies = [
  "gix-object",
  "gix-path",
  "gix-traverse",
- "parking_lot 0.12.3",
+ "parking_lot",
  "thiserror 1.0.63",
 ]
 
@@ -4458,18 +4444,6 @@ dependencies = [
  "bitflags 2.6.0",
  "ignore",
  "walkdir",
-]
-
-[[package]]
-name = "gloo-timers"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b995a66bb87bebce9a0f4a95aed01daca4872c050bfcb21653361c03bc35e5c"
-dependencies = [
- "futures-channel",
- "futures-core",
- "js-sys",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -4683,7 +4657,7 @@ dependencies = [
  "ipnet",
  "once_cell",
  "rand 0.9.1",
- "socket2 0.5.7",
+ "socket2 0.5.10",
  "thiserror 2.0.11",
  "tinyvec",
  "tokio",
@@ -4703,7 +4677,7 @@ dependencies = [
  "ipconfig",
  "moka",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "rand 0.9.1",
  "resolv-conf",
  "smallvec",
@@ -4853,7 +4827,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.5.7",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -4862,9 +4836,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.4.1"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50dfd22e0e76d0f662d429a5f80fcaf3855009297eab6a0a9f8543834744ba05"
+checksum = "cc2b571658e38e0c01b1fdca3bbbe93c00d3d71693ff2770043f8c29bc7d6f80"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -4942,7 +4916,7 @@ checksum = "08afdbb5c31130e3034af566421053ab03787c640246a446327f550d11bcb333"
 dependencies = [
  "futures-util",
  "http 1.1.0",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "log",
  "rustls 0.23.13",
@@ -4993,20 +4967,21 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.8"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da62f120a8a37763efb0cf8fdf264b884c7b8b9ac8660b900c8661030c00e6ba"
+checksum = "b1c293b6b3d21eca78250dc7dbebd6b9210ec5530e038cbfe0661b5c47ab06e8"
 dependencies = [
  "bytes",
  "futures-channel",
+ "futures-core",
  "futures-util",
  "http 1.1.0",
  "http-body 1.0.1",
- "hyper 1.4.1",
+ "hyper 1.6.0",
+ "libc",
  "pin-project-lite",
- "socket2 0.5.7",
+ "socket2 0.5.10",
  "tokio",
- "tower",
  "tower-service",
  "tracing",
 ]
@@ -5246,7 +5221,7 @@ dependencies = [
  "futures",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "log",
  "rand 0.9.1",
@@ -5502,7 +5477,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b58db92f96b720de98181bbbe63c831e87005ab460c1bf306eb2622b4707997f"
 dependencies = [
- "socket2 0.5.7",
+ "socket2 0.5.10",
  "widestring",
  "windows-sys 0.48.0",
  "winreg",
@@ -5964,7 +5939,7 @@ dependencies = [
  "multiaddr 0.18.1",
  "multihash 0.19.1",
  "multistream-select",
- "parking_lot 0.12.3",
+ "parking_lot",
  "pin-project",
  "quick-protobuf",
  "rand 0.8.5",
@@ -5985,7 +5960,7 @@ dependencies = [
  "hickory-resolver",
  "libp2p-core",
  "libp2p-identity",
- "parking_lot 0.12.3",
+ "parking_lot",
  "smallvec",
  "tracing",
 ]
@@ -6071,7 +6046,7 @@ dependencies = [
  "libp2p-swarm",
  "rand 0.8.5",
  "smallvec",
- "socket2 0.5.7",
+ "socket2 0.5.10",
  "tokio",
  "tracing",
 ]
@@ -6146,7 +6121,7 @@ dependencies = [
  "rand 0.8.5",
  "ring 0.17.14",
  "rustls 0.23.13",
- "socket2 0.5.7",
+ "socket2 0.5.10",
  "thiserror 2.0.11",
  "tokio",
  "tracing",
@@ -6184,7 +6159,6 @@ dependencies = [
  "fnv",
  "futures",
  "futures-timer",
- "getrandom 0.2.15",
  "libp2p-core",
  "libp2p-identity",
  "libp2p-swarm-derive",
@@ -6194,7 +6168,6 @@ dependencies = [
  "smallvec",
  "tokio",
  "tracing",
- "wasm-bindgen-futures",
  "web-time",
 ]
 
@@ -6218,7 +6191,7 @@ dependencies = [
  "if-watch",
  "libc",
  "libp2p-core",
- "socket2 0.5.7",
+ "socket2 0.5.10",
  "tokio",
  "tracing",
 ]
@@ -6302,27 +6275,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libp2p-webrtc-websys"
-version = "0.4.0"
-source = "git+https://github.com/libp2p/rust-libp2p?rev=cc3271f#cc3271f2b26c472a12776c01b35568863388b5aa"
-dependencies = [
- "bytes",
- "futures",
- "getrandom 0.2.15",
- "hex",
- "js-sys",
- "libp2p-core",
- "libp2p-identity",
- "libp2p-webrtc-utils",
- "send_wrapper 0.6.0",
- "thiserror 2.0.11",
- "tracing",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
 name = "libp2p-websocket"
 version = "0.45.1"
 source = "git+https://github.com/libp2p/rust-libp2p?rev=cc3271f#cc3271f2b26c472a12776c01b35568863388b5aa"
@@ -6332,7 +6284,7 @@ dependencies = [
  "futures-rustls",
  "libp2p-core",
  "libp2p-identity",
- "parking_lot 0.12.3",
+ "parking_lot",
  "pin-project-lite",
  "rw-stream-sink",
  "soketto",
@@ -6340,42 +6292,6 @@ dependencies = [
  "tracing",
  "url",
  "webpki-roots 0.26.6",
-]
-
-[[package]]
-name = "libp2p-websocket-websys"
-version = "0.5.0"
-source = "git+https://github.com/libp2p/rust-libp2p?rev=cc3271f#cc3271f2b26c472a12776c01b35568863388b5aa"
-dependencies = [
- "bytes",
- "futures",
- "js-sys",
- "libp2p-core",
- "send_wrapper 0.6.0",
- "thiserror 2.0.11",
- "tracing",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
-name = "libp2p-webtransport-websys"
-version = "0.5.1"
-source = "git+https://github.com/libp2p/rust-libp2p?rev=cc3271f#cc3271f2b26c472a12776c01b35568863388b5aa"
-dependencies = [
- "futures",
- "js-sys",
- "libp2p-core",
- "libp2p-identity",
- "libp2p-noise",
- "multiaddr 0.18.1",
- "multihash 0.19.1",
- "send_wrapper 0.6.0",
- "thiserror 2.0.11",
- "tracing",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]
@@ -6411,7 +6327,7 @@ checksum = "c0ff37bd590ca25063e35af745c343cb7a0271906fb7b37e4813e8f79f00268d"
 dependencies = [
  "bitflags 2.6.0",
  "libc",
- "redox_syscall 0.5.4",
+ "redox_syscall",
 ]
 
 [[package]]
@@ -6655,7 +6571,7 @@ checksum = "b4f0c8427b39666bf970460908b213ec09b3b350f20c0c2eabcbba51704a08e6"
 dependencies = [
  "base64 0.22.1",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-rustls 0.27.3",
  "hyper-util",
  "indexmap 2.7.1",
@@ -6716,16 +6632,6 @@ checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
 dependencies = [
  "mime",
  "unicase",
-]
-
-[[package]]
-name = "minicov"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c71e683cd655513b99affab7d317deb690528255a0d5f717f1024093c12b169"
-dependencies = [
- "cc",
- "walkdir",
 ]
 
 [[package]]
@@ -6791,7 +6697,7 @@ dependencies = [
  "crossbeam-epoch",
  "crossbeam-utils",
  "loom",
- "parking_lot 0.12.3",
+ "parking_lot",
  "portable-atomic",
  "rustc_version",
  "smallvec",
@@ -7480,37 +7386,12 @@ checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
 
 [[package]]
 name = "parking_lot"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
-dependencies = [
- "instant",
- "lock_api",
- "parking_lot_core 0.8.6",
-]
-
-[[package]]
-name = "parking_lot"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bf18183cf54e8d6059647fc3063646a1801cf30896933ec2311622cc4b9a27"
 dependencies = [
  "lock_api",
- "parking_lot_core 0.9.10",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60a2cfe6f0ad2bfc16aefa463b497d5c7a5ecd44a23efa72aa342d90177356dc"
-dependencies = [
- "cfg-if",
- "instant",
- "libc",
- "redox_syscall 0.2.16",
- "smallvec",
- "winapi",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -7521,7 +7402,7 @@ checksum = "1e401f977ab385c9e4e3ab30627d6f26d00e2c73eef317493c4ec6d468726cf8"
 dependencies = [
  "cfg-if",
  "libc",
- "redox_syscall 0.5.4",
+ "redox_syscall",
  "smallvec",
  "windows-targets 0.52.6",
 ]
@@ -8040,7 +7921,7 @@ checksum = "cf41c1a7c32ed72abe5082fb19505b969095c12da9f5732a4bc9878757fd087c"
 dependencies = [
  "dtoa",
  "itoa",
- "parking_lot 0.12.3",
+ "parking_lot",
  "prometheus-client-derive-encode",
 ]
 
@@ -8245,7 +8126,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.0.0",
  "rustls 0.23.13",
- "socket2 0.5.7",
+ "socket2 0.5.10",
  "thiserror 2.0.11",
  "tokio",
  "tracing",
@@ -8280,7 +8161,7 @@ checksum = "4fe68c2e9e1a1234e218683dbdf9f9dfcb094113c5ac2b938dfcb9bab4c4140b"
 dependencies = [
  "libc",
  "once_cell",
- "socket2 0.5.7",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.59.0",
 ]
@@ -8490,15 +8371,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea0a72cd7140de9fc3e318823b883abf819c20d478ec89ce880466dc2ef263c6"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "redox_syscall"
-version = "0.2.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
-dependencies = [
- "bitflags 1.3.2",
 ]
 
 [[package]]
@@ -8791,7 +8663,7 @@ dependencies = [
  "indexmap 2.7.1",
  "lock_api",
  "oorandom",
- "parking_lot 0.12.3",
+ "parking_lot",
  "rust-analyzer-salsa-macros",
  "rustc-hash 1.1.0",
  "smallvec",
@@ -9378,21 +9250,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "send_wrapper"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f638d531eccd6e23b980caf34876660d38e265409d8e99b397ab71eb3612fad0"
-
-[[package]]
-name = "send_wrapper"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
-dependencies = [
- "futures-core",
-]
-
-[[package]]
 name = "serde"
 version = "1.0.217"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9549,7 +9406,7 @@ dependencies = [
  "futures",
  "lazy_static",
  "log",
- "parking_lot 0.12.3",
+ "parking_lot",
  "serial_test_derive",
 ]
 
@@ -9735,9 +9592,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.5.7"
+version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce305eb0b4296696835b71df73eb912e0f1ffd2556a501fcede6e0c50349191c"
+checksum = "e22376abed350d73dd1cd119b57ffccad95b4e585a7cda43e286245ce23c0678"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
@@ -10075,7 +9932,7 @@ checksum = "6f0c9ac3809cc7630784e8c8565fa3013af819d83c97aa2720d566016d439011"
 dependencies = [
  "starknet-accounts 0.11.0",
  "starknet-contract 0.11.0",
- "starknet-core",
+ "starknet-core 0.12.3",
  "starknet-crypto 0.7.4",
  "starknet-macros",
  "starknet-providers",
@@ -10090,7 +9947,7 @@ checksum = "bc9b221c99a1ea1d65fb130e5b0dbaa6d362698430232902ebeb2a898a1ab531"
 dependencies = [
  "starknet-accounts 0.12.0",
  "starknet-contract 0.12.0",
- "starknet-core",
+ "starknet-core 0.12.3",
  "starknet-core-derive",
  "starknet-crypto 0.7.4",
  "starknet-macros",
@@ -10106,7 +9963,7 @@ checksum = "0ee27ded58ade61da410fccafd57ed5429b0e79a9d62a4ae8b65818cb9d6f400"
 dependencies = [
  "async-trait",
  "auto_impl",
- "starknet-core",
+ "starknet-core 0.12.3",
  "starknet-crypto 0.7.4",
  "starknet-providers",
  "starknet-signers",
@@ -10121,7 +9978,7 @@ checksum = "b3fc4364f5684e4a5dcb100847a9ea023deae3815f45526721a6fa94ab595651"
 dependencies = [
  "async-trait",
  "auto_impl",
- "starknet-core",
+ "starknet-core 0.12.3",
  "starknet-crypto 0.7.4",
  "starknet-providers",
  "starknet-signers",
@@ -10138,7 +9995,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "starknet-accounts 0.11.0",
- "starknet-core",
+ "starknet-core 0.12.3",
  "starknet-providers",
  "thiserror 1.0.63",
 ]
@@ -10153,16 +10010,39 @@ dependencies = [
  "serde_json",
  "serde_with",
  "starknet-accounts 0.12.0",
- "starknet-core",
+ "starknet-core 0.12.3",
  "starknet-providers",
  "thiserror 1.0.63",
 ]
 
 [[package]]
 name = "starknet-core"
-version = "0.12.1"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37abf0af45a3b866dd108880ace9949ae7830f6830adb8963024302ae9e82c24"
+checksum = "977ce5d61089de1f4e425ad033162154a0da2cf000f0ed100484ebcbc54b6ff4"
+dependencies = [
+ "base64 0.21.7",
+ "crypto-bigint",
+ "flate2",
+ "foldhash",
+ "hex",
+ "indexmap 2.7.1",
+ "num-traits 0.2.19",
+ "serde",
+ "serde_json",
+ "serde_json_pythonic",
+ "serde_with",
+ "sha3",
+ "starknet-core-derive",
+ "starknet-crypto 0.7.4",
+ "starknet-types-core",
+]
+
+[[package]]
+name = "starknet-core"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc2091a08ebfc65c5a6b8bd2c66e32780739854b813af0b4348b6dbf3a887865"
 dependencies = [
  "base64 0.21.7",
  "crypto-bigint",
@@ -10274,11 +10154,11 @@ dependencies = [
 
 [[package]]
 name = "starknet-macros"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8986a940af916fc0a034f4e42c6ba76d94f1e97216d75447693dfd7aefaf3ef2"
+checksum = "00dd27bb42d53bd7948a32d4a88c04e799bfcc011b87448756bb0643e6ec0e6d"
 dependencies = [
- "starknet-core",
+ "starknet-core 0.14.0",
  "syn 2.0.90",
 ]
 
@@ -10298,7 +10178,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
- "starknet-core",
+ "starknet-core 0.12.3",
  "thiserror 1.0.63",
  "url",
 ]
@@ -10315,7 +10195,7 @@ dependencies = [
  "eth-keystore",
  "getrandom 0.2.15",
  "rand 0.8.5",
- "starknet-core",
+ "starknet-core 0.12.3",
  "starknet-crypto 0.7.4",
  "thiserror 1.0.63",
 ]
@@ -10355,7 +10235,7 @@ checksum = "f91138e76242f575eb1d3b38b4f1362f10d3a43f47d182a5b359af488a02293b"
 dependencies = [
  "new_debug_unreachable",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "phf_shared",
  "precomputed-hash",
 ]
@@ -10791,10 +10671,10 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
- "parking_lot 0.12.3",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
- "socket2 0.5.7",
+ "socket2 0.5.10",
  "tokio-macros",
  "windows-sys 0.52.0",
 ]
@@ -11107,7 +10987,7 @@ dependencies = [
 
 [[package]]
 name = "torii"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "clap",
@@ -11123,7 +11003,7 @@ dependencies = [
 
 [[package]]
 name = "torii-adigraphmap"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "futures-util",
  "petgraph 0.6.5",
@@ -11134,7 +11014,7 @@ dependencies = [
 
 [[package]]
 name = "torii-cli"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -11151,7 +11031,7 @@ dependencies = [
 
 [[package]]
 name = "torii-client"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "async-trait",
  "crypto-bigint",
@@ -11160,7 +11040,7 @@ dependencies = [
  "futures",
  "futures-util",
  "num-traits 0.2.19",
- "parking_lot 0.12.3",
+ "parking_lot",
  "serde",
  "serde_json",
  "starknet 0.12.0",
@@ -11168,15 +11048,13 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "torii-grpc-client",
- "torii-libp2p-client",
- "torii-libp2p-types",
  "torii-proto",
  "url",
 ]
 
 [[package]]
 name = "torii-graphql"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -11218,7 +11096,7 @@ dependencies = [
 
 [[package]]
 name = "torii-grpc-client"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "crypto-bigint",
  "dojo-types 1.5.0-alpha.2",
@@ -11243,13 +11121,14 @@ dependencies = [
 
 [[package]]
 name = "torii-grpc-server"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
  "cainome",
  "camino",
  "crypto-bigint",
+ "dashmap 6.1.0",
  "dojo-test-utils",
  "dojo-types 1.5.0-alpha.2",
  "dojo-utils",
@@ -11258,8 +11137,10 @@ dependencies = [
  "futures-util",
  "http 0.2.12",
  "hyper 0.14.30",
+ "indexmap 2.7.1",
  "katana-runner",
  "num-traits 0.2.19",
+ "num_cpus",
  "rand 0.8.5",
  "rayon",
  "scarb",
@@ -11281,9 +11162,12 @@ dependencies = [
  "tonic-reflection",
  "tonic-web",
  "torii-indexer",
+ "torii-libp2p-relay",
+ "torii-messaging",
  "torii-processors",
  "torii-proto",
  "torii-sqlite",
+ "torii-typed-data",
  "tower",
  "tower-http",
  "tracing",
@@ -11291,7 +11175,7 @@ dependencies = [
 
 [[package]]
 name = "torii-indexer"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -11334,42 +11218,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "torii-libp2p-client"
-version = "1.5.4-preview.0"
-dependencies = [
- "anyhow",
- "futures",
- "indexmap 2.7.1",
- "katana-runner",
- "libp2p",
- "libp2p-webrtc",
- "libp2p-webrtc-websys",
- "libp2p-websocket-websys",
- "libp2p-webtransport-websys",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "starknet 0.12.0",
- "tempfile",
- "thiserror 1.0.63",
- "tokio",
- "torii-libp2p-types",
- "torii-typed-data",
- "tracing",
- "tracing-subscriber",
- "tracing-wasm",
- "wasm-bindgen-futures",
- "wasm-bindgen-test",
- "wasm-timer",
- "web-sys",
-]
-
-[[package]]
 name = "torii-libp2p-relay"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "chrono",
+ "crypto-bigint",
  "dojo-types 1.5.0-alpha.2",
  "dojo-world",
  "futures",
@@ -11382,29 +11236,21 @@ dependencies = [
  "serde_json",
  "sqlx",
  "starknet 0.12.0",
+ "starknet-core 0.12.3",
  "starknet-crypto 0.7.4",
  "tempfile",
  "thiserror 1.0.63",
  "tokio",
- "torii-libp2p-types",
+ "torii-messaging",
+ "torii-proto",
  "torii-sqlite",
- "torii-typed-data",
  "tracing",
  "tracing-subscriber",
 ]
 
 [[package]]
-name = "torii-libp2p-types"
-version = "1.5.4-preview.0"
-dependencies = [
- "serde",
- "starknet 0.12.0",
- "torii-typed-data",
-]
-
-[[package]]
 name = "torii-mcp"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "serde",
  "serde_json",
@@ -11414,21 +11260,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "torii-messaging"
+version = "1.5.7"
+dependencies = [
+ "anyhow",
+ "crypto-bigint",
+ "dojo-types 1.5.0-alpha.2",
+ "dojo-world",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "starknet 0.12.0",
+ "starknet-core 0.12.3",
+ "starknet-crypto 0.7.4",
+ "thiserror 1.0.63",
+ "tokio",
+ "torii-sqlite",
+ "tracing",
+]
+
+[[package]]
 name = "torii-processors"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.21.7",
  "cainome",
  "cainome-cairo-serde",
+ "cainome-cairo-serde-derive",
  "dojo-types 1.5.0-alpha.2",
  "dojo-world",
  "futures-util",
+ "hashlink",
+ "ipfs-api-backend-hyper",
  "lazy_static",
+ "reqwest",
+ "serde",
  "serde_json",
  "starknet 0.12.0",
  "starknet-crypto 0.7.4",
+ "thiserror 1.0.63",
  "tokio",
  "torii-sqlite",
  "torii-task-network",
@@ -11437,7 +11309,7 @@ dependencies = [
 
 [[package]]
 name = "torii-proto"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "crypto-bigint",
  "dojo-types 1.5.0-alpha.2",
@@ -11458,7 +11330,7 @@ dependencies = [
 
 [[package]]
 name = "torii-runner"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -11511,7 +11383,7 @@ dependencies = [
 
 [[package]]
 name = "torii-server"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -11549,7 +11421,7 @@ dependencies = [
 
 [[package]]
 name = "torii-sqlite"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -11558,6 +11430,7 @@ dependencies = [
  "cainome",
  "chrono",
  "crypto-bigint",
+ "dashmap 6.1.0",
  "data-url",
  "dojo-test-utils",
  "dojo-types 1.5.0-alpha.2",
@@ -11592,7 +11465,7 @@ dependencies = [
 
 [[package]]
 name = "torii-sqlite-types"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "chrono",
@@ -11606,7 +11479,7 @@ dependencies = [
 
 [[package]]
 name = "torii-task-network"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -11618,7 +11491,7 @@ dependencies = [
 
 [[package]]
 name = "torii-typed-data"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "cainome",
  "crypto-bigint",
@@ -11766,17 +11639,6 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
-]
-
-[[package]]
-name = "tracing-wasm"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4575c663a174420fa2d78f4108ff68f65bf2fbb7dd89f33749b6e826b3626e07"
-dependencies = [
- "tracing",
- "tracing-subscriber",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -12369,32 +12231,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasm-bindgen-test"
-version = "0.3.43"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68497a05fb21143a08a7d24fc81763384a3072ee43c44e86aad1744d6adef9d9"
-dependencies = [
- "console_error_panic_hook",
- "js-sys",
- "minicov",
- "scoped-tls",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-test-macro",
-]
-
-[[package]]
-name = "wasm-bindgen-test-macro"
-version = "0.3.43"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b8220be1fa9e4c889b30fd207d4906657e7e90b12e0e6b0c8b8d8709f5de021"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.90",
-]
-
-[[package]]
 name = "wasm-streams"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12402,21 +12238,6 @@ checksum = "b65dc4c90b63b118468cf747d8bf3566c1913ef60be765b5730ead9e0a3ba129"
 dependencies = [
  "futures-util",
  "js-sys",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
-name = "wasm-timer"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be0ecb0db480561e9a7642b5d3e4187c128914e58aa84330b9493e3eb68c5e7f"
-dependencies = [
- "futures",
- "js-sys",
- "parking_lot 0.11.2",
- "pin-utils",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -12614,7 +12435,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6dfe9686c6c9c51428da4de415cb6ca2dc0591ce2b63212e23fd9cccf0e316b"
 dependencies = [
  "log",
- "socket2 0.5.7",
+ "socket2 0.5.10",
  "thiserror 1.0.63",
  "tokio",
  "webrtc-util",
@@ -12731,7 +12552,7 @@ version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "372d5b87f58ec45c384ba03563b03544dc5fadc3983e434b286913f5b4a9bb6d"
 dependencies = [
- "redox_syscall 0.5.4",
+ "redox_syscall",
  "wasite",
 ]
 
@@ -13267,7 +13088,7 @@ checksum = "9d422e8e38ec76e2f06ee439ccc765e9c6a9638b9e7c9f2e8255e4d41e8bd852"
 
 [[package]]
 name = "xtask-generate-test-db"
-version = "1.5.4-preview.0"
+version = "1.5.7"
 dependencies = [
  "anyhow",
  "dojo-test-utils",
@@ -13297,7 +13118,7 @@ dependencies = [
  "futures",
  "log",
  "nohash-hasher",
- "parking_lot 0.12.3",
+ "parking_lot",
  "pin-project",
  "rand 0.8.5",
  "static_assertions",
@@ -13312,7 +13133,7 @@ dependencies = [
  "futures",
  "log",
  "nohash-hasher",
- "parking_lot 0.12.3",
+ "parking_lot",
  "pin-project",
  "rand 0.8.5",
  "static_assertions",

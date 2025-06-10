@@ -18,20 +18,21 @@ use tonic::transport::Endpoint;
 
 use torii_proto::error::ProtoError;
 use torii_proto::proto::world::{
-    world_client, RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEntitiesRequest,
-    RetrieveEntitiesResponse, RetrieveEventMessagesRequest, RetrieveEventsRequest,
-    RetrieveEventsResponse, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
-    RetrieveTokensRequest, RetrieveTokensResponse, SubscribeEntitiesRequest,
-    SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsRequest,
-    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
-    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, UpdateEntitiesSubscriptionRequest,
+    world_client, PublishMessageRequest, RetrieveControllersRequest, RetrieveControllersResponse,
+    RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventMessagesRequest,
+    RetrieveEventsRequest, RetrieveEventsResponse, RetrieveTokenBalancesRequest,
+    RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
+    RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsRequest, SubscribeEventsResponse, SubscribeIndexerRequest,
+    SubscribeIndexerResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
+    SubscribeTokensRequest, SubscribeTokensResponse, UpdateEntitiesSubscriptionRequest,
     UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
     UpdateTokenSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Event, EventQuery, IndexerUpdate, KeysClause, Query, Token, TokenBalance,
+    Clause, Event, EventQuery, IndexerUpdate, KeysClause, Message, Query, Token, TokenBalance,
 };
 
 pub use torii_proto as types;
@@ -243,6 +244,35 @@ impl WorldClient {
             .map(|res| res.into_inner())
     }
 
+    pub async fn retrieve_token_collections(
+        &mut self,
+        account_addresses: Vec<Felt>,
+        contract_addresses: Vec<Felt>,
+        token_ids: Vec<U256>,
+        limit: Option<u32>,
+        cursor: Option<String>,
+    ) -> Result<RetrieveTokenCollectionsResponse, Error> {
+        self.inner
+            .retrieve_token_collections(RetrieveTokenCollectionsRequest {
+                account_addresses: account_addresses
+                    .into_iter()
+                    .map(|a| a.to_bytes_be().to_vec())
+                    .collect(),
+                contract_addresses: contract_addresses
+                    .into_iter()
+                    .map(|c| c.to_bytes_be().to_vec())
+                    .collect(),
+                token_ids: token_ids
+                    .into_iter()
+                    .map(|id| id.to_be_bytes().to_vec())
+                    .collect(),
+                limit: limit.unwrap_or_default(),
+                cursor: cursor.unwrap_or_default(),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
+    }
     pub async fn retrieve_entities(
         &mut self,
         query: Query,
@@ -319,21 +349,13 @@ impl WorldClient {
             .map(|res| res.into_inner())?;
 
         Ok(EntityUpdateStreaming(stream.map_ok(Box::new(|res| {
-            res.entity.map_or(
-                (
-                    res.subscription_id,
-                    Entity {
-                        hashed_keys: Felt::ZERO,
-                        models: vec![],
-                    },
-                ),
-                |entity| {
+            res.entity
+                .map_or((res.subscription_id, Entity::default()), |entity| {
                     (
                         res.subscription_id,
                         entity.try_into().expect("must able to serialize"),
                     )
-                },
-            )
+                })
         }))))
     }
 
@@ -368,21 +390,13 @@ impl WorldClient {
             .map(|res| res.into_inner())?;
 
         Ok(EntityUpdateStreaming(stream.map_ok(Box::new(|res| {
-            res.entity.map_or(
-                (
-                    res.subscription_id,
-                    Entity {
-                        hashed_keys: Felt::ZERO,
-                        models: vec![],
-                    },
-                ),
-                |entity| {
+            res.entity
+                .map_or((res.subscription_id, Entity::default()), |entity| {
                     (
                         res.subscription_id,
                         entity.try_into().expect("must able to serialize"),
                     )
-                },
-            )
+                })
         }))))
     }
 
@@ -499,6 +513,21 @@ impl WorldClient {
             .await
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())
+    }
+
+    pub async fn publish_message(&mut self, message: Message) -> Result<Felt, Error> {
+        self.inner
+            .publish_message(PublishMessageRequest {
+                message: message.message,
+                signature: message
+                    .signature
+                    .into_iter()
+                    .map(|s| s.to_bytes_be().to_vec())
+                    .collect(),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| Felt::from_bytes_be_slice(&res.into_inner().entity_id))
     }
 }
 

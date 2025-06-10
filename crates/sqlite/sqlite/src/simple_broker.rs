@@ -1,16 +1,15 @@
 use std::any::{Any, TypeId};
-use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::Mutex;
 use std::task::{Context, Poll};
 
+use dashmap::DashMap;
 use futures_channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use futures_util::{Stream, StreamExt};
 use once_cell::sync::Lazy;
 use slab::Slab;
 
-static SUBSCRIBERS: Lazy<Mutex<HashMap<TypeId, Box<dyn Any + Send>>>> = Lazy::new(Default::default);
+static SUBSCRIBERS: Lazy<DashMap<TypeId, Box<dyn Any + Send + Sync>>> = Lazy::new(Default::default);
 
 #[derive(Debug)]
 pub struct Senders<T>(pub Slab<UnboundedSender<T>>);
@@ -22,8 +21,7 @@ where
     T: Sync + Send + Clone + 'static,
     F: FnOnce(&mut Senders<T>) -> R,
 {
-    let mut map = SUBSCRIBERS.lock().unwrap();
-    let senders = map
+    let mut senders = SUBSCRIBERS
         .entry(TypeId::of::<Senders<T>>())
         .or_insert_with(|| Box::new(Senders::<T>(Default::default())));
     f(senders.downcast_mut::<Senders<T>>().unwrap())

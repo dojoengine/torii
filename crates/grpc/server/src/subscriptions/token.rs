@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -6,13 +6,13 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crypto_bigint::{Encoding, U256};
+use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use rand::Rng;
 use starknet_crypto::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use tokio::sync::RwLock;
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::OptimisticToken;
@@ -37,17 +37,25 @@ pub struct TokenSubscriber {
 
 #[derive(Debug, Default)]
 pub struct TokenManager {
-    subscribers: RwLock<HashMap<u64, TokenSubscriber>>,
+    subscribers: DashMap<u64, TokenSubscriber>,
+    subscription_buffer_size: usize,
 }
 
 impl TokenManager {
+    pub fn new(subscription_buffer_size: usize) -> Self {
+        Self {
+            subscribers: DashMap::new(),
+            subscription_buffer_size,
+        }
+    }
+
     pub async fn add_subscriber(
         &self,
         contract_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
     ) -> Result<Receiver<Result<SubscribeTokensResponse, tonic::Status>>, Error> {
         let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(1);
+        let (sender, receiver) = channel(self.subscription_buffer_size);
 
         // Send initial empty response
         let _ = sender
@@ -57,7 +65,7 @@ impl TokenManager {
             }))
             .await;
 
-        self.subscribers.write().await.insert(
+        self.subscribers.insert(
             subscription_id,
             TokenSubscriber {
                 contract_addresses: contract_addresses.into_iter().collect(),
@@ -75,27 +83,14 @@ impl TokenManager {
         contract_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
     ) {
-        let sender = {
-            let subscribers = self.subscribers.read().await;
-            if let Some(subscriber) = subscribers.get(&id) {
-                subscriber.sender.clone()
-            } else {
-                return; // Subscriber not found, exit early
-            }
-        };
-
-        self.subscribers.write().await.insert(
-            id,
-            TokenSubscriber {
-                contract_addresses: contract_addresses.into_iter().collect(),
-                token_ids: token_ids.into_iter().collect(),
-                sender,
-            },
-        );
+        if let Some(mut subscriber) = self.subscribers.get_mut(&id) {
+            subscriber.contract_addresses = contract_addresses.into_iter().collect();
+            subscriber.token_ids = token_ids.into_iter().collect();
+        }
     }
 
     pub(super) async fn remove_subscriber(&self, id: u64) {
-        self.subscribers.write().await.remove(&id);
+        self.subscribers.remove(&id);
     }
 }
 
@@ -125,7 +120,7 @@ impl Service {
     ) {
         while let Some(token) = token_receiver.recv().await {
             if let Err(e) = Self::process_token_update(&subs, &token).await {
-                error!(target = LOG_TARGET, error = %e, "Processing token update.");
+                error!(target = LOG_TARGET, error = ?e, "Processing token update.");
             }
         }
     }
@@ -139,7 +134,10 @@ impl Service {
             Felt::from_str(&token.contract_address).map_err(ParseError::FromStr)?;
         let token_id = U256::from_be_hex(token.token_id.trim_start_matches("0x"));
 
-        for (idx, sub) in subs.subscribers.read().await.iter() {
+        for sub in subs.subscribers.iter() {
+            let idx = sub.key();
+            let sub = sub.value();
+
             // Skip if contract address filter doesn't match
             if !sub.contract_addresses.is_empty()
                 && !sub.contract_addresses.contains(&contract_address)
@@ -164,8 +162,20 @@ impl Service {
                 }),
             };
 
-            if sub.sender.send(Ok(resp)).await.is_err() {
-                closed_stream.push(*idx);
+            // Use try_send to avoid blocking on slow subscribers
+            match sub.sender.try_send(Ok(resp)) {
+                Ok(_) => {
+                    // Message sent successfully
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    // Channel is full, subscriber is too slow - disconnect them
+                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
+                    closed_stream.push(*idx);
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    // Channel is closed, subscriber has disconnected
+                    closed_stream.push(*idx);
+                }
             }
         }
 
@@ -186,7 +196,7 @@ impl Future for Service {
 
         while let Poll::Ready(Some(token)) = this.simple_broker.poll_next_unpin(cx) {
             if let Err(e) = this.token_sender.send(token) {
-                error!(target = LOG_TARGET, error = %e, "Sending token update to processor.");
+                error!(target = LOG_TARGET, error = ?e, "Sending token update to processor.");
             }
         }
 

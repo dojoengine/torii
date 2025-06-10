@@ -1,7 +1,6 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use cainome::cairo_serde::CairoSerde;
 use starknet::core::types::{BlockId, BlockTag, FunctionCall, U256};
 use starknet::core::utils::get_selector_from_name;
@@ -11,6 +10,7 @@ use tracing::{debug, warn};
 
 use super::{ApplyBalanceDiffQuery, BrokerMessage, Executor};
 use crate::constants::{SQL_FELT_DELIMITER, TOKEN_BALANCE_TABLE};
+use crate::error::Error;
 use crate::executor::LOG_TARGET;
 use crate::simple_broker::SimpleBroker;
 use crate::types::{OptimisticTokenBalance, TokenBalance};
@@ -46,7 +46,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         &mut self,
         apply_balance_diff: ApplyBalanceDiffQuery,
         provider: Arc<P>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let erc_cache = apply_balance_diff.erc_cache;
         for (id_str, balance) in erc_cache.iter() {
             let id = id_str.split(SQL_FELT_DELIMITER).collect::<Vec<&str>>();
@@ -58,12 +58,23 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     let mid = token_id.split(":").collect::<Vec<&str>>();
                     let contract_address = mid[0];
 
+                    let cursor = apply_balance_diff
+                        .cursors
+                        .get(&Felt::from_str(contract_address).unwrap())
+                        .unwrap();
+                    let block_id = if cursor.last_pending_block_event_id.is_some() {
+                        BlockId::Tag(BlockTag::Pending)
+                    } else {
+                        BlockId::Number(cursor.head.unwrap())
+                    };
+
                     self.apply_balance_diff_helper(
                         id_str,
                         account_address,
                         contract_address,
                         token_id,
                         balance,
+                        block_id,
                         Arc::clone(&provider),
                     )
                     .await?;
@@ -74,12 +85,23 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     let contract_address = id[1];
                     let token_id = id[1];
 
+                    let cursor = apply_balance_diff
+                        .cursors
+                        .get(&Felt::from_str(contract_address).unwrap())
+                        .unwrap();
+                    let block_id = if cursor.last_pending_block_event_id.is_some() {
+                        BlockId::Tag(BlockTag::Pending)
+                    } else {
+                        BlockId::Number(cursor.head.unwrap())
+                    };
+
                     self.apply_balance_diff_helper(
                         id_str,
                         account_address,
                         contract_address,
                         token_id,
                         balance,
+                        block_id,
                         Arc::clone(&provider),
                     )
                     .await?;
@@ -99,8 +121,9 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         contract_address: &str,
         token_id: &str,
         balance_diff: &I256,
+        block_id: BlockId,
         provider: Arc<P>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         let tx = &mut self.transaction;
         let balance: Option<(String,)> = sqlx::query_as(&format!(
             "SELECT balance FROM {TOKEN_BALANCE_TABLE} WHERE id = ?"
@@ -121,17 +144,30 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 // emit transfer events properly so they are broken. For those cases
                 // we manually fetch the balance of the address using RPC
 
-                let current_balance = provider
+                let current_balance = if let Ok(current_balance) = provider
                     .call(
                         FunctionCall {
                             contract_address: Felt::from_str(contract_address).unwrap(),
-                            entry_point_selector: get_selector_from_name("balanceOf").unwrap(),
+                            entry_point_selector: get_selector_from_name("balance_of").unwrap(),
                             calldata: vec![Felt::from_str(account_address).unwrap()],
                         },
-                        BlockId::Tag(BlockTag::Pending),
+                        block_id,
                     )
                     .await
-                    .with_context(|| format!("Failed to fetch balance for id: {}", id))?;
+                {
+                    current_balance
+                } else {
+                    provider
+                        .call(
+                            FunctionCall {
+                                contract_address: Felt::from_str(contract_address).unwrap(),
+                                entry_point_selector: get_selector_from_name("balanceOf").unwrap(),
+                                calldata: vec![Felt::from_str(account_address).unwrap()],
+                            },
+                            block_id,
+                        )
+                        .await?
+                };
 
                 let current_balance =
                     cainome::cairo_serde::U256::cairo_deserialize(&current_balance, 0).unwrap();
@@ -152,8 +188,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
 
         // write the new balance to the database
         let token_balance: TokenBalance = sqlx::query_as(&format!(
-            "INSERT OR REPLACE INTO {TOKEN_BALANCE_TABLE} (id, contract_address, account_address, \
-             token_id, balance) VALUES (?, ?, ?, ?, ?) RETURNING *",
+            "INSERT INTO {TOKEN_BALANCE_TABLE} (id, contract_address, account_address, \
+             token_id, balance) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET balance = EXCLUDED.balance RETURNING *",
         ))
         .bind(id)
         .bind(contract_address)

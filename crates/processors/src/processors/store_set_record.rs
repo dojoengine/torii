@@ -1,7 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
 use async_trait::async_trait;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::world::WorldContractReader;
@@ -11,8 +10,9 @@ use torii_sqlite::utils::felts_to_sql_string;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
+use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig, IndexingMode};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_set_record";
 
@@ -43,6 +43,18 @@ where
         let mut hasher = DefaultHasher::new();
         event.keys[1].hash(&mut hasher); // Use the model selector to create a unique ID
         vec![hasher.finish()] // Return the dependency on the register_model task
+    }
+
+    fn indexing_mode(&self, event: &Event, config: &EventProcessorConfig) -> IndexingMode {
+        let model_id = event.keys[1];
+        let is_historical = config.is_historical(&model_id);
+        if is_historical {
+            IndexingMode::Historical
+        } else {
+            let mut hasher = DefaultHasher::new();
+            event.keys[0].hash(&mut hasher);
+            IndexingMode::Latest(hasher.finish())
+        }
     }
 
     async fn process(
@@ -82,11 +94,7 @@ where
                 return Ok(());
             }
             Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Failed to retrieve model with selector {:#x}: {}",
-                    event.selector,
-                    e
-                ));
+                return Err(e.into());
             }
         };
 

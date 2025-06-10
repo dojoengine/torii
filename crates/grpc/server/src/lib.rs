@@ -26,25 +26,31 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use sqlx::prelude::FromRow;
 use sqlx::sqlite::SqliteRow;
 use sqlx::types::chrono::{DateTime, Utc};
-use sqlx::{Pool, Row, Sqlite};
-use starknet::core::types::Felt;
+use sqlx::Row;
+use starknet::core::types::{Felt, TypedData};
+use starknet::providers::Provider;
 use subscriptions::event::EventManager;
 use subscriptions::indexer::IndexerManager;
 use subscriptions::token::TokenManager;
 use subscriptions::token_balance::TokenBalanceManager;
 use tokio::net::TcpListener;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::codec::CompressionEncoding;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
+use torii_messaging::validate_and_set_entity;
 use torii_proto::error::ProtoError;
 use torii_sqlite::cache::ModelCache;
 use torii_sqlite::constants::SQL_DEFAULT_LIMIT;
 use torii_sqlite::error::{ParseError, QueryError};
 use torii_sqlite::model::{decode_cursor, encode_cursor, fetch_entities, map_row_to_ty};
-use torii_sqlite::types::{Page, Pagination, PaginationDirection, Token, TokenBalance};
+use torii_sqlite::types::{
+    Page, Pagination, PaginationDirection, Token, TokenBalance, TokenCollection,
+};
 use torii_sqlite::utils::u256_to_sql_string;
+use torii_sqlite::Sql;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use self::subscriptions::entity::EntityManager;
@@ -54,17 +60,19 @@ use torii_proto::proto::types::member_value::ValueType;
 use torii_proto::proto::types::LogicalOperator;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
-    RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEventMessagesRequest,
-    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokensRequest,
-    RetrieveTokensResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
-    SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeIndexerRequest,
-    SubscribeIndexerResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokensRequest, SubscribeTokensResponse, UpdateEventMessagesSubscriptionRequest,
+    PublishMessageRequest, PublishMessageResponse, RetrieveControllersRequest,
+    RetrieveControllersResponse, RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest,
+    RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
+    RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, UpdateEventMessagesSubscriptionRequest,
     UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
     WorldMetadataResponse,
 };
 use torii_proto::proto::{self};
-use torii_proto::ComparisonOperator;
+use torii_proto::{ComparisonOperator, Message};
 
 use anyhow::Error;
 
@@ -81,26 +89,38 @@ pub(crate) static EVENT_MESSAGES_ENTITY_RELATION_COLUMN: &str = "internal_event_
 pub(crate) static EVENT_MESSAGES_HISTORICAL_TABLE: &str = "event_messages_historical";
 
 #[derive(Debug, Clone)]
-pub struct DojoWorld {
-    pool: Pool<Sqlite>,
+pub struct DojoWorld<P: Provider + Sync> {
+    sql: Sql,
+    provider: Arc<P>,
     world_address: Felt,
     model_cache: Arc<ModelCache>,
+    cross_messaging_tx: Option<UnboundedSender<Message>>,
     entity_manager: Arc<EntityManager>,
     event_message_manager: Arc<EventMessageManager>,
     event_manager: Arc<EventManager>,
     indexer_manager: Arc<IndexerManager>,
     token_balance_manager: Arc<TokenBalanceManager>,
     token_manager: Arc<TokenManager>,
+    _config: GrpcConfig,
 }
 
-impl DojoWorld {
-    pub fn new(pool: Pool<Sqlite>, world_address: Felt, model_cache: Arc<ModelCache>) -> Self {
-        let entity_manager = Arc::new(EntityManager::default());
-        let event_message_manager = Arc::new(EventMessageManager::default());
-        let event_manager = Arc::new(EventManager::default());
-        let indexer_manager = Arc::new(IndexerManager::default());
-        let token_balance_manager = Arc::new(TokenBalanceManager::default());
-        let token_manager = Arc::new(TokenManager::default());
+impl<P: Provider + Sync> DojoWorld<P> {
+    pub fn new(
+        sql: Sql,
+        provider: Arc<P>,
+        world_address: Felt,
+        model_cache: Arc<ModelCache>,
+        cross_messaging_tx: Option<UnboundedSender<Message>>,
+        config: GrpcConfig,
+    ) -> Self {
+        let entity_manager = Arc::new(EntityManager::new(config.subscription_buffer_size));
+        let event_message_manager =
+            Arc::new(EventMessageManager::new(config.subscription_buffer_size));
+        let event_manager = Arc::new(EventManager::new(config.subscription_buffer_size));
+        let indexer_manager = Arc::new(IndexerManager::new(config.subscription_buffer_size));
+        let token_balance_manager =
+            Arc::new(TokenBalanceManager::new(config.subscription_buffer_size));
+        let token_manager = Arc::new(TokenManager::new(config.subscription_buffer_size));
 
         tokio::task::spawn(subscriptions::entity::Service::new(Arc::clone(
             &entity_manager,
@@ -127,20 +147,23 @@ impl DojoWorld {
         )));
 
         Self {
-            pool,
+            sql,
+            provider,
             world_address,
             model_cache,
+            cross_messaging_tx,
             entity_manager,
             event_message_manager,
             event_manager,
             indexer_manager,
             token_balance_manager,
             token_manager,
+            _config: config,
         }
     }
 }
 
-impl DojoWorld {
+impl<P: Provider + Sync> DojoWorld<P> {
     pub async fn world(&self) -> Result<proto::types::WorldMetadata, Error> {
         let models = self.model_cache.models(&[]).await?.iter().map(|m| {
             proto::types::ModelMetadata {
@@ -255,7 +278,7 @@ impl DojoWorld {
         query = query.bind(query_limit);
 
         let db_entities: Vec<(String, String, String, String, String)> =
-            query.fetch_all(&self.pool).await?;
+            query.fetch_all(&self.sql.pool).await?;
 
         let has_more = db_entities.len() == query_limit as usize;
         let results_to_take = if has_more {
@@ -372,7 +395,7 @@ impl DojoWorld {
         }
 
         let page = fetch_entities(
-            &self.pool,
+            &self.sql.pool,
             &schemas,
             table,
             model_relation_table,
@@ -422,15 +445,15 @@ impl DojoWorld {
 
         let mut bind_values = vec![keys_pattern];
         let where_clause = if model_selectors.is_empty() {
-            format!("{table}.keys REGEXP ?")
+            format!("({table}.keys REGEXP ?)")
         } else {
             let model_selectors_len = model_selectors.len();
             bind_values.extend(model_selectors.clone());
             bind_values.extend(model_selectors);
 
             format!(
-                "({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
-                 {model_relation_table}.model_id NOT IN ({})",
+                "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
+                 {model_relation_table}.model_id NOT IN ({}))",
                 vec!["?"; model_selectors_len].join(", "),
                 vec!["?"; model_selectors_len].join(", "),
             )
@@ -468,7 +491,7 @@ impl DojoWorld {
         }
 
         let page = fetch_entities(
-            &self.pool,
+            &self.sql.pool,
             &schemas,
             table,
             model_relation_table,
@@ -559,7 +582,7 @@ impl DojoWorld {
             compute_selector_from_names(namespace, model)
         );
         let models_str: Option<String> = sqlx::query_scalar(&models_query)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&self.sql.pool)
             .await?;
         if models_str.is_none() {
             return Ok(Page {
@@ -604,7 +627,7 @@ impl DojoWorld {
         );
 
         let page = fetch_entities(
-            &self.pool,
+            &self.sql.pool,
             &schemas,
             table,
             model_relation_table,
@@ -659,7 +682,7 @@ impl DojoWorld {
             .join(" OR ");
 
         let page = fetch_entities(
-            &self.pool,
+            &self.sql.pool,
             &schemas,
             table,
             model_relation_table,
@@ -750,7 +773,7 @@ impl DojoWorld {
             query = query.bind(value);
         }
 
-        let mut tokens: Vec<Token> = query.fetch_all(&self.pool).await?;
+        let mut tokens: Vec<Token> = query.fetch_all(&self.sql.pool).await?;
         let next_cursor = if tokens.len() > limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) as usize {
             encode_cursor(&tokens.pop().unwrap().id)?
         } else {
@@ -814,7 +837,7 @@ impl DojoWorld {
             query = query.bind(value);
         }
 
-        let mut balances: Vec<TokenBalance> = query.fetch_all(&self.pool).await?;
+        let mut balances: Vec<TokenBalance> = query.fetch_all(&self.sql.pool).await?;
         let next_cursor = if balances.len() > limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) as usize {
             encode_cursor(&balances.pop().unwrap().id)?
         } else {
@@ -827,6 +850,70 @@ impl DojoWorld {
             .collect();
         Ok(RetrieveTokenBalancesResponse {
             balances,
+            next_cursor,
+        })
+    }
+
+    async fn retrieve_token_collections(
+        &self,
+        account_addresses: Vec<Felt>,
+        contract_addresses: Vec<Felt>,
+        token_ids: Vec<U256>,
+        limit: Option<u32>,
+        cursor: Option<String>,
+    ) -> Result<RetrieveTokenCollectionsResponse, Error> {
+        let mut query =
+            "SELECT t.contract_address as contract_address, t.name as name, t.symbol as symbol, t.decimals as decimals, t.metadata as metadata, count(t.contract_address) as count FROM tokens t".to_owned();
+
+        let mut bind_values = Vec::new();
+        let mut conditions = Vec::new();
+
+        if !account_addresses.is_empty() {
+            query += "  JOIN token_balances tb ON tb.token_id = CONCAT(t.contract_address, ':', t.token_id)";
+
+            let placeholders = vec!["?"; account_addresses.len()].join(", ");
+            conditions.push(format!("tb.account_address IN ({})", placeholders));
+            bind_values.extend(account_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+
+        if !contract_addresses.is_empty() {
+            let placeholders = vec!["?"; contract_addresses.len()].join(", ");
+            conditions.push(format!("t.contract_address IN ({})", placeholders));
+            bind_values.extend(contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+        if !token_ids.is_empty() {
+            let placeholders = vec!["?"; token_ids.len()].join(", ");
+            conditions.push(format!("t.token_id IN ({})", placeholders));
+            bind_values.extend(token_ids.iter().map(|id| u256_to_sql_string(&(*id).into())));
+        }
+
+        if let Some(cursor) = cursor {
+            bind_values.push(decode_cursor(&cursor)?);
+            conditions.push("t.id >= ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            query += &format!(" WHERE {}", conditions.join(" AND "));
+        }
+
+        query += " GROUP BY t.contract_address ORDER BY t.id LIMIT ?";
+        bind_values.push((limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) + 1).to_string());
+
+        let mut query = sqlx::query_as(&query);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+
+        let mut tokens: Vec<TokenCollection> = query.fetch_all(&self.sql.pool).await?;
+        let next_cursor = if tokens.len() > limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) as usize {
+            encode_cursor(&tokens.pop().unwrap().contract_address)?
+        } else {
+            String::new()
+        };
+
+        let tokens = tokens.iter().map(|token| token.clone().into()).collect();
+        Ok(RetrieveTokenCollectionsResponse {
+            tokens,
             next_cursor,
         })
     }
@@ -970,7 +1057,7 @@ impl DojoWorld {
             row_events = row_events.bind(value);
         }
         let mut row_events: Vec<(String, String, String, String)> =
-            row_events.fetch_all(&self.pool).await?;
+            row_events.fetch_all(&self.sql.pool).await?;
 
         let next_cursor = if row_events.len() > (limit - 1) as usize {
             encode_cursor(&row_events.pop().unwrap().0)?
@@ -1013,7 +1100,7 @@ impl DojoWorld {
             db_query = db_query.bind(format!("{:#x}", address));
         }
 
-        let rows = db_query.fetch_all(&self.pool).await?;
+        let rows = db_query.fetch_all(&self.sql.pool).await?;
 
         let controllers = rows
             .into_iter()
@@ -1069,8 +1156,8 @@ fn build_composite_clause(
                     // Add bind value placeholders for each model selector
                     let placeholders = vec!["?"; model_selectors.len()].join(", ");
                     where_clauses.push(format!(
-                        "({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
-                         {model_relation_table}.model_id NOT IN ({})",
+                        "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
+                         {model_relation_table}.model_id NOT IN ({}))",
                         placeholders, placeholders
                     ));
                     // Add each model selector twice (once for IN and once for NOT IN)
@@ -1156,7 +1243,7 @@ type SubscribeTokensResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokensResponse, Status>> + Send>>;
 
 #[tonic::async_trait]
-impl proto::world::world_server::World for DojoWorld {
+impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for DojoWorld<P> {
     type SubscribeEntitiesStream = SubscribeEntitiesResponseStream;
     type SubscribeEventMessagesStream = SubscribeEntitiesResponseStream;
     type SubscribeEventsStream = SubscribeEventsResponseStream;
@@ -1295,6 +1382,48 @@ impl proto::world::world_server::World for DojoWorld {
         Ok(Response::new(tokens))
     }
 
+    async fn retrieve_token_collections(
+        &self,
+        request: Request<RetrieveTokenCollectionsRequest>,
+    ) -> Result<Response<RetrieveTokenCollectionsResponse>, Status> {
+        let RetrieveTokenCollectionsRequest {
+            account_addresses,
+            contract_addresses,
+            token_ids,
+            limit,
+            cursor,
+        } = request.into_inner();
+
+        let account_addresses = account_addresses
+            .iter()
+            .map(|address| Felt::from_bytes_be_slice(address))
+            .collect::<Vec<_>>();
+        let contract_addresses = contract_addresses
+            .iter()
+            .map(|address| Felt::from_bytes_be_slice(address))
+            .collect::<Vec<_>>();
+        let token_ids = token_ids
+            .iter()
+            .map(|id| crypto_bigint::U256::from_be_slice(id))
+            .collect::<Vec<_>>();
+
+        let tokens = self
+            .retrieve_token_collections(
+                account_addresses,
+                contract_addresses,
+                token_ids,
+                if limit > 0 { Some(limit) } else { None },
+                if !cursor.is_empty() {
+                    Some(cursor)
+                } else {
+                    None
+                },
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(Response::new(tokens))
+    }
+
     async fn subscribe_tokens(
         &self,
         request: Request<SubscribeTokensRequest>,
@@ -1394,7 +1523,7 @@ impl proto::world::world_server::World for DojoWorld {
         let SubscribeIndexerRequest { contract_address } = request.into_inner();
         let rx = self
             .indexer_manager
-            .add_subscriber(&self.pool, Felt::from_bytes_be_slice(&contract_address))
+            .add_subscriber(&self.sql.pool, Felt::from_bytes_be_slice(&contract_address))
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(
@@ -1562,6 +1691,33 @@ impl proto::world::world_server::World for DojoWorld {
             Box::pin(ReceiverStream::new(rx)) as Self::SubscribeEventsStream
         ))
     }
+
+    async fn publish_message(
+        &self,
+        request: Request<PublishMessageRequest>,
+    ) -> Result<Response<PublishMessageResponse>, Status> {
+        let PublishMessageRequest { signature, message } = request.into_inner();
+
+        let signature = signature
+            .iter()
+            .map(|s| Felt::from_bytes_be_slice(s))
+            .collect::<Vec<_>>();
+        let typed_data = serde_json::from_str::<TypedData>(&message)
+            .map_err(|_| Status::invalid_argument("Invalid message"))?;
+        let entity_id = validate_and_set_entity(&self.sql, &typed_data, &signature, &self.provider)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let message = Message { signature, message };
+        if let Some(tx) = &self.cross_messaging_tx {
+            tx.send(message)
+                .map_err(|e| Status::internal(e.to_string()))?;
+        }
+
+        Ok(Response::new(PublishMessageResponse {
+            entity_id: entity_id.to_bytes_be().to_vec(),
+        }))
+    }
 }
 
 const DEFAULT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
@@ -1580,11 +1736,27 @@ const DEFAULT_ALLOW_HEADERS: [&str; 6] = [
     "grpc-encoding",
 ];
 
-pub async fn new(
+#[derive(Clone, Debug)]
+pub struct GrpcConfig {
+    pub subscription_buffer_size: usize,
+}
+
+impl Default for GrpcConfig {
+    fn default() -> Self {
+        Self {
+            subscription_buffer_size: 1000,
+        }
+    }
+}
+
+pub async fn new<P: Provider + Sync + Send + 'static>(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
-    pool: &Pool<Sqlite>,
+    sql: Sql,
+    provider: Arc<P>,
     world_address: Felt,
     model_cache: Arc<ModelCache>,
+    cross_messaging_tx: UnboundedSender<Message>,
+    config: GrpcConfig,
 ) -> Result<
     (
         SocketAddr,
@@ -1600,7 +1772,14 @@ pub async fn new(
         .build()
         .unwrap();
 
-    let world = DojoWorld::new(pool.clone(), world_address, model_cache);
+    let world = DojoWorld::new(
+        sql,
+        provider,
+        world_address,
+        model_cache,
+        Some(cross_messaging_tx),
+        config,
+    );
     let server = WorldServer::new(world)
         .accept_compressed(CompressionEncoding::Gzip)
         .send_compressed(CompressionEncoding::Gzip);

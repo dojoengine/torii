@@ -11,6 +11,7 @@
 //!   for more info.
 
 use std::cmp;
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::str::FromStr;
@@ -20,6 +21,7 @@ use std::time::Duration;
 use camino::Utf8PathBuf;
 use constants::UDC_ADDRESS;
 use dojo_metrics::exporters::prometheus::PrometheusRecorder;
+use dojo_types::naming::compute_selector_from_tag;
 use dojo_world::contracts::world::WorldContractReader;
 use futures::future::join_all;
 use sqlx::sqlite::{
@@ -36,6 +38,7 @@ use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
 use torii_cli::ToriiArgs;
+use torii_grpc_server::GrpcConfig;
 use torii_indexer::engine::{Engine, EngineConfig, IndexingFlags};
 use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
@@ -154,7 +157,7 @@ impl Runner {
                 if let Err(e) =
                     stream_snapshot_into_file(&snapshot_url, &database_path, &client).await
                 {
-                    error!(target: LOG_TARGET, error = %e, "Failed to download snapshot.");
+                    error!(target: LOG_TARGET, error = ?e, "Failed to download snapshot.");
                     // Decide if we should exit or continue with a fresh DB
                     // For now, let's exit as the user explicitly requested a snapshot.
                     return Err(e);
@@ -184,6 +187,11 @@ impl Runner {
         options = options.optimize_on_close(true, None);
         options = options.pragma("cache_size", self.args.sql.cache_size.to_string());
         options = options.pragma("page_size", self.args.sql.page_size.to_string());
+        options = options.pragma(
+            "wal_autocheckpoint",
+            self.args.sql.wal_autocheckpoint.to_string(),
+        );
+        options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
 
         let pool = SqlitePoolOptions::new()
             .min_connections(1)
@@ -241,6 +249,14 @@ impl Runner {
             );
         }
 
+        let historical_models = self
+            .args
+            .sql
+            .historical
+            .clone()
+            .into_iter()
+            .map(|tag| compute_selector_from_tag(&tag))
+            .collect::<HashSet<_>>();
         let db = Sql::new_with_config(
             pool.clone(),
             sender.clone(),
@@ -249,7 +265,7 @@ impl Runner {
             SqlConfig {
                 all_model_indices: self.args.sql.all_model_indices,
                 model_indices: self.args.sql.model_indices.clone(),
-                historical_models: self.args.sql.historical.clone().into_iter().collect(),
+                historical_models: historical_models.clone(),
                 hooks: self.args.sql.hooks.clone(),
                 max_metadata_tasks: self.args.erc.max_metadata_tasks,
             },
@@ -284,6 +300,7 @@ impl Runner {
                 event_processor_config: EventProcessorConfig {
                     strict_model_reader: self.args.indexing.strict_model_reader,
                     namespaces: self.args.indexing.namespaces.into_iter().collect(),
+                    historical_models,
                 },
                 world_block: self.args.indexing.world_block,
             },
@@ -292,9 +309,6 @@ impl Runner {
         );
 
         let shutdown_rx = shutdown_tx.subscribe();
-        let (grpc_addr, grpc_server) =
-            torii_grpc_server::new(shutdown_rx, &readonly_pool, world_address, model_cache).await?;
-
         let temp_dir = TempDir::new()?;
         let artifacts_path = self
             .args
@@ -312,8 +326,8 @@ impl Runner {
         )
         .await?;
 
-        let mut libp2p_relay_server = Relay::new_with_peers(
-            db,
+        let (mut libp2p_relay_server, cross_messaging_tx) = Relay::new_with_peers(
+            db.clone(),
             provider.clone(),
             self.args.relay.port,
             self.args.relay.webrtc_port,
@@ -323,6 +337,19 @@ impl Runner {
             self.args.relay.peers,
         )
         .expect("Failed to start libp2p relay server");
+
+        let (grpc_addr, grpc_server) = torii_grpc_server::new(
+            shutdown_rx,
+            db.clone(),
+            provider.clone(),
+            world_address,
+            model_cache,
+            cross_messaging_tx,
+            GrpcConfig {
+                subscription_buffer_size: self.args.grpc.subscription_buffer_size,
+            },
+        )
+        .await?;
 
         let addr = SocketAddr::new(self.args.server.http_addr, self.args.server.http_port);
 
@@ -363,7 +390,7 @@ impl Runner {
 
         if self.args.runner.explorer {
             if let Err(e) = webbrowser::open(&explorer_url) {
-                error!(target: LOG_TARGET, error = %e, "Opening World Explorer in the browser.");
+                error!(target: LOG_TARGET, error = ?e, "Opening World Explorer in the browser.");
             }
         }
 
