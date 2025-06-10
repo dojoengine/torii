@@ -173,23 +173,6 @@ impl TryFrom<proto::types::TokenCollection> for TokenCollection {
     }
 }
 
-#[cfg(feature = "server")]
-impl From<torii_sqlite_types::TokenCollection> for proto::types::TokenCollection {
-    fn from(value: torii_sqlite_types::TokenCollection) -> Self {
-        Self {
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            name: value.name,
-            symbol: value.symbol,
-            decimals: value.decimals as u32,
-            count: value.count,
-            metadata: value.metadata.as_bytes().to_vec(),
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct TokenBalance {
     pub balance: U256,

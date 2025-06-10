@@ -5,7 +5,7 @@ use async_graphql::{Name, Result, Value};
 use tokio_stream::{Stream, StreamExt};
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::simple_broker::SimpleBroker;
-use torii_sqlite::types::Event;
+use torii_sqlite::types::{Event, Table};
 
 use super::inputs::keys_input::{keys_argument, parse_keys_argument};
 use super::{resolve_many, BasicObject, ResolvableObject, TypeMapping};
@@ -33,7 +33,7 @@ impl BasicObject for EventObject {
 impl ResolvableObject for EventObject {
     fn resolvers(&self) -> Vec<Field> {
         let mut resolve_many = resolve_many(
-            EVENT_TABLE,
+            Table::Events,
             ID_COLUMN,
             self.name().1,
             self.type_name(),

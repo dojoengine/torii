@@ -158,6 +158,20 @@ pub struct TokenCollection {
     pub metadata: String,
 }
 
+
+impl From<TokenCollection> for torii_proto::TokenCollection {
+    fn from(value: TokenCollection) -> Self {
+        Self {
+            contract_address: Felt::from_str(&value.contract_address).unwrap(),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u8,
+            count: value.count,
+            metadata: value.metadata,
+        }
+    }
+}
+
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OptimisticTokenBalance {
@@ -333,6 +347,63 @@ impl From<TokenBalance> for torii_proto::TokenBalance {
             } else {
                 U256::ZERO
             },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum EntityType {
+    Entity,
+    EventMessage
+}
+
+impl EntityType {
+    pub fn relation_table(&self) -> &str {
+        match self {
+            EntityType::Entity => "entity_model",
+            EntityType::EventMessage => "event_model",
+        }
+    }
+
+    pub fn relation_column(&self) -> &str {
+        match self {
+            EntityType::Entity => "entity_id",
+            EntityType::EventMessage => "event_message_id",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Table {
+    Entities,
+    EntitiesHistorical,
+    EventMessages,
+    EventMessagesHistorical,
+    Models,
+    Events,
+    Tokens,
+    TokenBalances,
+    Contracts,
+    Controllers,
+    Transactions,
+    Metadata
+}
+
+impl std::fmt::Display for Table {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Table::Entities => write!(f, "entities"),
+            Table::EntitiesHistorical => write!(f, "entities_historical"),
+            Table::EventMessages => write!(f, "event_messages"),
+            Table::EventMessagesHistorical => write!(f, "event_messages_historical"),
+            Table::Models => write!(f, "models"),
+            Table::Events => write!(f, "events"),
+            Table::Tokens => write!(f, "tokens"),
+            Table::TokenBalances => write!(f, "token_balances"),
+            Table::Contracts => write!(f, "contracts"),
+            Table::Controllers => write!(f, "controllers"),
+            Table::Transactions => write!(f, "transactions"),
+            Table::Metadata => write!(f, "metadata"),
         }
     }
 }

@@ -8,12 +8,12 @@ use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
 use tokio_stream::StreamExt;
 use torii_sqlite::simple_broker::SimpleBroker;
-use torii_sqlite::types::Entity;
+use torii_sqlite::types::{Entity, Table};
 
 use super::inputs::keys_input::keys_argument;
 use super::{BasicObject, ResolvableObject, TypeMapping, ValueMapping};
 use crate::constants::{
-    DATETIME_FORMAT, ENTITY_NAMES, ENTITY_TABLE, ENTITY_TYPE_NAME, EVENT_ID_COLUMN, ID_COLUMN,
+    DATETIME_FORMAT, ENTITY_NAMES, ENTITY_TYPE_NAME, EVENT_ID_COLUMN, ID_COLUMN,
 };
 use crate::mapping::ENTITY_TYPE_MAPPING;
 use crate::object::{resolve_many, resolve_one};
@@ -43,7 +43,7 @@ impl BasicObject for EntityObject {
 impl ResolvableObject for EntityObject {
     fn resolvers(&self) -> Vec<Field> {
         let resolve_one = resolve_one(
-            ENTITY_TABLE,
+            Table::Entities,
             ID_COLUMN,
             self.name().0,
             self.type_name(),
@@ -51,7 +51,7 @@ impl ResolvableObject for EntityObject {
         );
 
         let mut resolve_many = resolve_many(
-            ENTITY_TABLE,
+            Table::Entities,
             EVENT_ID_COLUMN,
             self.name().1,
             self.type_name(),

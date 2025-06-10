@@ -14,6 +14,7 @@ use dojo_world::contracts::abigen::model::Layout;
 use dojo_world::contracts::naming::compute_selector_from_names;
 use error::{Error, ParseError};
 use executor::{EntityQuery, StoreTransactionQuery};
+use rayon::iter::IntoParallelRefIterator;
 use sqlx::{Pool, Sqlite};
 use starknet::core::types::{Event, Felt};
 use starknet_crypto::poseidon_hash_many;
@@ -1231,7 +1232,7 @@ impl Sql {
         };
 
         let events = row_events
-            .iter()
+            .par_iter()
             .map(|(_, keys, data, transaction_hash)| {
                 map_row_to_event(&(keys, data, transaction_hash))
             })

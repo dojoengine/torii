@@ -1,7 +1,8 @@
 use async_graphql::dynamic::Field;
+use torii_sqlite::types::Table;
 
 use super::{BasicObject, ResolvableObject, TypeMapping};
-use crate::constants::{CONTROLLER_NAMES, CONTROLLER_TABLE, CONTROLLER_TYPE_NAME, ID_COLUMN};
+use crate::constants::{CONTROLLER_NAMES, CONTROLLER_TYPE_NAME, ID_COLUMN};
 use crate::mapping::CONTROLLER_MAPPING;
 use crate::object::{resolve_many, resolve_one};
 
@@ -25,7 +26,7 @@ impl BasicObject for ControllerObject {
 impl ResolvableObject for ControllerObject {
     fn resolvers(&self) -> Vec<Field> {
         let resolve_one = resolve_one(
-            CONTROLLER_TABLE,
+            Table::Controllers,
             ID_COLUMN,
             self.name().0,
             self.type_name(),
@@ -33,7 +34,7 @@ impl ResolvableObject for ControllerObject {
         );
 
         let resolve_many = resolve_many(
-            CONTROLLER_TABLE,
+            Table::Controllers,
             ID_COLUMN,
             self.name().1,
             self.type_name(),

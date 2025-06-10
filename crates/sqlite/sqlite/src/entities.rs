@@ -1,11 +1,13 @@
 use std::collections::HashSet;
 use std::str::FromStr;
 
+use dojo_types::naming::compute_selector_from_tag;
 use dojo_types::schema::Ty;
 use futures_util::future::try_join_all;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use starknet_crypto::Felt;
 use torii_proto::schema::Entity;
+use torii_sqlite_types::EntityType;
 
 use crate::cursor::{build_cursor_conditions, build_cursor_values, decode_cursor, encode_cursor};
 use crate::utils::{build_query, combine_where_clauses, map_row_to_entity};
@@ -113,7 +115,7 @@ impl Sql {
                 Ok(decompressed_str.split('/').map(|s| s.to_string()).collect())
             })
             .transpose()
-            .map_err(|e: Error| Error::QueryError(QueryError::InvalidCursor(e.to_string())))?;
+            .map_err(|e: Error| Error::Query(QueryError::InvalidCursor(e.to_string())))?;
 
         // Build cursor conditions
         let (cursor_conditions, cursor_binds) =
@@ -338,28 +340,21 @@ impl Sql {
     pub async fn query_entities(
         &self,
         table: &str,
-        model_relation_table: &str,
-        entity_relation_column: &str,
-        query: &torii_proto::proto::types::Query,
+        entity_type: EntityType,
+        query: &torii_proto::Query,
         model_cache: &crate::cache::ModelCache,
     ) -> Result<Page<Entity>, Error> {
-        use torii_proto::proto::types::clause::ClauseType;
-        use torii_proto::proto::types::LogicalOperator;
-        use torii_proto::proto::types::member_value::ValueType;
-        use torii_proto::ComparisonOperator;
-        use dojo_types::primitive::Primitive;
-        use dojo_types::naming::{compute_selector_from_tag, compute_selector_from_names};
-        use std::str::FromStr;
-
-        let pagination = query.pagination.clone().ok_or(QueryError::MissingParam("pagination".into()))?;
-        let pagination: Pagination = pagination.into();
         let no_hashed_keys = query.no_hashed_keys;
         let models = query.models.clone();
+        let pagination = query.pagination;
 
         // Helper for model selectors
         let model_selectors = models.iter().map(|m| compute_selector_from_tag(m)).collect::<Vec<_>>();
         let schemas = model_cache.models(&model_selectors).await?.iter().map(|m| m.schema.clone()).collect::<Vec<_>>();
         let having_clause = model_selectors.iter().map(|model| format!("INSTR(model_ids, '{:#x}') > 0", model)).collect::<Vec<_>>().join(" OR ");
+
+        let model_relation_table = entity_type.relation_table();
+        let entity_relation_column = entity_type.relation_column();
 
         let page = match &query.clause {
             None => {
@@ -367,7 +362,7 @@ impl Sql {
                 if table.ends_with("_historical") {
                     self.fetch_historical_entities(
                         table,
-                        model_relation_table,
+                        &entity_type.relation_table(),
                         "",
                         &having_clause,
                         vec![],
@@ -377,8 +372,8 @@ impl Sql {
                     self.entities(
                         &schemas,
                         table,
-                        model_relation_table,
-                        entity_relation_column,
+                        entity_type.relation_table(),
+                        entity_type.relation_column(),
                         None,
                         if !having_clause.is_empty() { Some(&having_clause) } else { None },
                         pagination,
@@ -387,17 +382,16 @@ impl Sql {
                 }
             }
             Some(clause) => {
-                let clause_type = clause.clause_type.as_ref().ok_or(QueryError::MissingParam("clause_type".into()))?;
-                match clause_type {
-                    ClauseType::HashedKeys(hashed_keys) => {
-                        let where_clause = if !hashed_keys.hashed_keys.is_empty() {
-                            let ids = hashed_keys.hashed_keys.iter().map(|_| format!("{table}.id = ?")).collect::<Vec<_>>();
+                match clause {
+                    torii_proto::Clause::HashedKeys(hashed_keys) => {
+                        let where_clause = if !hashed_keys.is_empty() {
+                            let ids = hashed_keys.iter().map(|_| format!("{table}.id = ?")).collect::<Vec<_>>();
                             ids.join(" OR ")
                         } else {
                             String::new()
                         };
-                        let bind_values = hashed_keys.hashed_keys.iter().map(|key| format!("{:#x}", Felt::from_bytes_be_slice(key))).collect::<Vec<_>>();
-                        if table.ends_with("_historical") {
+                        let bind_values = hashed_keys.iter().map(|key| format!("{:#x}", key)).collect::<Vec<_>>();
+                        if  {
                             self.fetch_historical_entities(
                                 table,
                                 model_relation_table,

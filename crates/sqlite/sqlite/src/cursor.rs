@@ -25,7 +25,7 @@ pub(crate) fn build_cursor_conditions(
             pagination.order_by.len() + 1
         };
         if values.len() != expected_len {
-            return Err(Error::QueryError(QueryError::InvalidCursor(
+            return Err(Error::Query(QueryError::InvalidCursor(
                 "Invalid cursor values length".to_string(),
             )));
         }
@@ -95,13 +95,13 @@ pub(crate) fn build_cursor_values(
 pub(crate) fn encode_cursor(value: &str) -> Result<String, Error> {
     let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
     encoder.write_all(value.as_bytes()).map_err(|e| {
-        Error::QueryError(QueryError::InvalidCursor(format!(
+        Error::Query(QueryError::InvalidCursor(format!(
             "Cursor compression error: {}",
             e
         )))
     })?;
     let compressed_bytes = encoder.finish().map_err(|e| {
-        Error::QueryError(QueryError::InvalidCursor(format!(
+        Error::Query(QueryError::InvalidCursor(format!(
             "Cursor compression finish error: {}",
             e
         )))
@@ -113,7 +113,7 @@ pub(crate) fn encode_cursor(value: &str) -> Result<String, Error> {
 /// Decodes a Base64 (no padding) string and then decompresses it using Deflate.
 pub(crate) fn decode_cursor(encoded_cursor: &str) -> Result<String, Error> {
     let compressed_cursor_bytes = BASE64_URL_SAFE_NO_PAD.decode(encoded_cursor).map_err(|e| {
-        Error::QueryError(QueryError::InvalidCursor(format!(
+        Error::Query(QueryError::InvalidCursor(format!(
             "Base64 decode error: {}",
             e
         )))
@@ -122,7 +122,7 @@ pub(crate) fn decode_cursor(encoded_cursor: &str) -> Result<String, Error> {
     let mut decoder = DeflateDecoder::new(&compressed_cursor_bytes[..]);
     let mut decompressed_str = String::new();
     decoder.read_to_string(&mut decompressed_str).map_err(|e| {
-        Error::QueryError(QueryError::InvalidCursor(format!(
+        Error::Query(QueryError::InvalidCursor(format!(
             "Decompression error: {}",
             e
         )))
