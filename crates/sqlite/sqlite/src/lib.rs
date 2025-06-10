@@ -576,6 +576,10 @@ impl Sql {
         self.model_cache.model(&selector).await
     }
 
+    pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, Error> {
+        self.model_cache.models(selectors).await
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn store_transaction(
         &mut self,

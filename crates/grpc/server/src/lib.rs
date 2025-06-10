@@ -109,7 +109,6 @@ impl<P: Provider + Sync> DojoWorld<P> {
         sql: Sql,
         provider: Arc<P>,
         world_address: Felt,
-        model_cache: Arc<ModelCache>,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
         config: GrpcConfig,
     ) -> Self {
@@ -165,7 +164,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
 
 impl<P: Provider + Sync> DojoWorld<P> {
     pub async fn world(&self) -> Result<proto::types::WorldMetadata, Error> {
-        let models = self.model_cache.models(&[]).await?.iter().map(|m| {
+        let models = self.sql.models(&[]).await?.iter().map(|m| {
             proto::types::ModelMetadata {
                 namespace: m.namespace.clone(),
                 name: m.name.clone(),
@@ -1754,7 +1753,6 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     sql: Sql,
     provider: Arc<P>,
     world_address: Felt,
-    model_cache: Arc<ModelCache>,
     cross_messaging_tx: UnboundedSender<Message>,
     config: GrpcConfig,
 ) -> Result<
@@ -1776,7 +1774,6 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
         sql,
         provider,
         world_address,
-        model_cache,
         Some(cross_messaging_tx),
         config,
     );
