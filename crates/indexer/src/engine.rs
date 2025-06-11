@@ -25,7 +25,7 @@ use tokio::time::{sleep, Instant};
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
-use torii_sqlite::utils::{format_event_id, parse_event_id};
+use torii_sqlite::utils::{format_event_id, format_pending_event_id, parse_event_id};
 use torii_sqlite::{Cursor, Sql};
 use tracing::{debug, error, info, trace};
 
@@ -274,7 +274,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             let from = cursor
                 .head
                 .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
-            let to = from + self.config.blocks_chunk_size;
+            let to = (from + self.config.blocks_chunk_size).min(latest_block_number);
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
@@ -306,7 +306,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // Step 2: Fetch all events recursively
         events.extend(
-            self.fetch_events(event_requests, &mut cursors, latest_block_number)
+            self.fetch_events(event_requests, &mut cursors)
                 .await?,
         );
 
@@ -486,7 +486,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         &self,
         initial_requests: Vec<(Felt, u64, ProviderRequestData)>,
         cursors: &mut HashMap<Felt, Cursor>,
-        latest_block_number: u64,
     ) -> Result<Vec<EmittedEvent>, FetchError> {
         let mut all_events = Vec::new();
         let mut current_requests = initial_requests;
@@ -520,7 +519,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 let mut event_idx = 0;
                 let mut last_pending_block_event_id_tmp =
                     old_cursor.last_pending_block_event_id.clone();
-                let mut last_block_number = None;
+
+                let mut last_validated_block_number = None;
+                let mut last_block_number: Option<BlockId> = None;
                 let mut is_pending = false;
 
                 match result {
@@ -528,13 +529,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         // Process events for this page, only including events up to our target
                         // block
                         for event in events_page.events.clone() {
-                            let block_number = match event.block_number {
-                                Some(block_number) => block_number,
+                            let block_id = match event.block_number {
+                                Some(block_number) => {
+                                    last_validated_block_number = Some(block_number);
+                                    BlockId::Number(block_number)
+                                },
                                 // If we don't have a block number, this must be a pending block event
-                                None => latest_block_number + 1,
+                                None => BlockId::Tag(BlockTag::Pending),
                             };
 
-                            last_block_number = Some(block_number);
+                            last_block_number = Some(block_id);
                             is_pending = event.block_number.is_none();
 
                             if previous_contract_tx != Some(event.transaction_hash) {
@@ -542,7 +546,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 previous_contract_tx = Some(event.transaction_hash);
                             }
                             let event_id =
-                                format_event_id(block_number, &event.transaction_hash, event_idx);
+                                format_pending_event_id(&event.transaction_hash, event_idx);
                             event_idx += 1;
 
                             // Then we skip all transactions until we reach the last pending
@@ -550,10 +554,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             if let Some(last_pending_block_event_id) =
                                 last_pending_block_event_id_tmp.clone()
                             {
-                                let (cursor_block_number, _, _) =
-                                    parse_event_id(&last_pending_block_event_id);
                                 if event_id != last_pending_block_event_id
-                                    && cursor_block_number == block_number
                                 {
                                     continue;
                                 }
@@ -565,10 +566,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             if let Some(last_contract_tx) =
                                 old_cursor.last_pending_block_event_id.take()
                             {
-                                let (cursor_block_number, _, _) = parse_event_id(&last_contract_tx);
-                                if event_id == last_contract_tx
-                                    && cursor_block_number == block_number
-                                {
+                                if event_id == last_contract_tx {
                                     continue;
                                 }
                                 new_cursor.last_pending_block_event_id = None;
@@ -584,10 +582,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         // Add continuation request to next_requests instead of recursing
                         // We only fetch next events if;
                         // - we have a continuation token
-                        // - we have a last block number (which means we have processed atleast one event)
-                        // - the last block number is less than the to block
+                        // - we have a last block id (which means we have processed atleast one event)
+                        // - the last block id, if it is not pending, is less than the to block
                         if events_page.continuation_token.is_some()
-                            && (last_block_number.is_none() || last_block_number.unwrap() < to)
+                            && (last_block_number.is_none() || matches!(last_block_number.unwrap(), BlockId::Number(n) if n < to))
                         {
                             debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Adding continuation request for contract.");
                             if let ProviderRequestData::GetEvents(mut next_request) =
@@ -602,8 +600,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 ));
                             }
                         } else {
-                            let new_head = to.max(last_block_number.unwrap_or(0));
-                            let new_head = new_head.min(latest_block_number);
+                            let new_head = to.max(last_validated_block_number.unwrap_or(0));
                             // We only reset the last pending block contract tx if we are not
                             // processing pending events anymore. It can happen that during a short lapse,
                             // we can have some pending events while the latest block number has been incremented.
