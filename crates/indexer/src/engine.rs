@@ -279,7 +279,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
                 to_block: Some(BlockId::Tag(
-                    if self.config.flags.contains(IndexingFlags::PENDING_BLOCKS) && from > latest_block_number {
+                    if self.config.flags.contains(IndexingFlags::PENDING_BLOCKS)
+                        && from > latest_block_number
+                    {
                         BlockTag::Pending
                     } else {
                         BlockTag::Latest
@@ -533,7 +535,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 Some(block_number) => {
                                     last_validated_block_number = Some(block_number);
                                     block_number
-                                },
+                                }
                                 // If we don't have a block number, this must be a pending block event
                                 None => latest_block_number + 1,
                             };
@@ -607,7 +609,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             }
                         } else {
                             let new_head = to.max(last_block_number.unwrap_or(0));
-                            let new_head = new_head.min(last_validated_block_number.unwrap_or(latest_block_number));
+                            let new_head = new_head
+                                .min(last_validated_block_number.unwrap_or(latest_block_number));
                             // We only reset the last pending block contract tx if we are not
                             // processing pending events anymore. It can happen that during a short lapse,
                             // we can have some pending events while the latest block number has been incremented.
