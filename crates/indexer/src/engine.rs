@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
@@ -56,9 +56,10 @@ pub struct EngineConfig {
 
 #[derive(Debug, Clone)]
 pub struct FetchRangeBlock {
-    // For validated blocks, this is the block hash
-    // For pending blocks, this is the parent hash
-    pub hash: Felt,
+    // For pending blocks, this is None.
+    // We check the parent hash of the pending block to the latest block
+    // to see if we need to re fetch the pending block.
+    pub block_hash: Option<Felt>,
     pub timestamp: u64,
     pub transactions: LinkedHashMap<Felt, FetchRangeTransaction>,
 }
@@ -264,7 +265,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let mut events = vec![];
         let mut cursors = cursors.clone();
         let mut blocks = BTreeMap::new();
-        let mut block_numbers = HashSet::from([latest_block_number]);
+        let mut block_numbers = BTreeSet::from([latest_block_number]);
         let mut num_transactions = HashMap::new();
 
         // Step 1: Create initial batch requests for events from all contracts
@@ -343,12 +344,29 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             for (block_number, result) in block_numbers.iter().zip(block_results) {
                 match result {
                     ProviderResponseData::GetBlockWithTxHashes(block) => {
-                        let (timestamp, tx_hashes, hash) = match block {
+                        let (timestamp, tx_hashes, block_hash) = match block {
                             MaybePendingBlockWithTxHashes::Block(block) => {
-                                (block.timestamp, block.transactions, block.block_hash)
+                                (block.timestamp, block.transactions, Some(block.block_hash))
                             }
                             MaybePendingBlockWithTxHashes::PendingBlock(block) => {
-                                (block.timestamp, block.transactions, block.parent_hash)
+                                let latest_block: &FetchRangeBlock = blocks.get(&latest_block_number).unwrap();
+                                if block.parent_hash != latest_block.block_hash.unwrap() {
+                                    // if the parent hash is not the same as the previous block,
+                                    // we need to re fetch the pending block with a specific block number
+                                    // re fetch the pending block with a specific block number
+                                    let block = self
+                                        .provider
+                                        .get_block_with_tx_hashes(BlockId::Number(*block_number))
+                                        .await?;
+                                    match block {
+                                        MaybePendingBlockWithTxHashes::Block(block) => {
+                                            (block.timestamp, block.transactions, Some(block.block_hash))
+                                        }
+                                        _ => unreachable!(),
+                                    }
+                                } else {
+                                    (block.timestamp, block.transactions, None)
+                                }
                             }
                         };
                         // Initialize block with transactions in the order provided by the block
@@ -365,46 +383,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         blocks.insert(
                             *block_number,
                             FetchRangeBlock {
-                                hash,
+                                block_hash,
                                 timestamp,
                                 transactions,
                             },
                         );
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        }
-
-        // We need to make sure that our pending block hash has the correct parent hash
-        // of the latest block.
-        if let Some(pending_block) = blocks.get(&(latest_block_number + 1)) {
-            if pending_block.hash != blocks.get(&latest_block_number).unwrap().hash {
-                // re fetch the pending block with a specific block number
-                let block = self
-                    .provider
-                    .get_block_with_tx_hashes(BlockId::Number(latest_block_number + 1))
-                    .await?;
-                match block {
-                    MaybePendingBlockWithTxHashes::Block(block) => {
-                        let new_pending_block = FetchRangeBlock {
-                            hash: block.block_hash,
-                            timestamp: block.timestamp,
-                            transactions: block
-                                .transactions
-                                .iter()
-                                .map(|tx_hash| {
-                                    (
-                                        *tx_hash,
-                                        FetchRangeTransaction {
-                                            transaction: None,
-                                            events: vec![],
-                                        },
-                                    )
-                                })
-                                .collect(),
-                        };
-                        blocks.insert(latest_block_number + 1, new_pending_block);
                     }
                     _ => unreachable!(),
                 }
