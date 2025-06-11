@@ -265,7 +265,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let mut events = vec![];
         let mut cursors = cursors.clone();
         let mut blocks = BTreeMap::new();
-        let mut block_numbers = BTreeSet::from([latest_block_number]);
+        let mut block_numbers = BTreeSet::new();
         let mut num_transactions = HashMap::new();
 
         // Step 1: Create initial batch requests for events from all contracts
@@ -354,12 +354,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 if block.parent_hash != latest_block.block_hash.unwrap() {
                                     // if the parent hash is not the same as the previous block,
                                     // we need to re fetch the pending block with a specific block number
-                                    // re fetch the pending block with a specific block number
                                     let block = self
                                         .provider
                                         .get_block_with_tx_hashes(BlockId::Number(*block_number))
                                         .await?;
                                     match block {
+                                        // we assume that our pending block has now been validated.
                                         MaybePendingBlockWithTxHashes::Block(block) => (
                                             block.timestamp,
                                             block.transactions,
