@@ -72,6 +72,15 @@ pub fn format_event_id(block_number: u64, transaction_hash: &Felt, event_idx: u6
     )
 }
 
+pub fn format_pending_event_id(transaction_hash: &Felt, event_idx: u64) -> String {
+    format!("{:#x}:{:#04x}", transaction_hash, event_idx)
+}
+
+pub fn parse_pending_event_id(event_id: &str) -> (TransactionHash, EventIdx) {
+    let parts: Vec<&str> = event_id.split(':').collect();
+    (Felt::from_str(parts[0]).unwrap(), u64::from_str_radix(parts[1].trim_start_matches("0x"), 16).unwrap())
+}
+
 type BlockNumber = u64;
 type TransactionHash = Felt;
 type EventIdx = u64;

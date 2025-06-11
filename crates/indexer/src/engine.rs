@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -25,7 +26,7 @@ use tokio::time::{sleep, Instant};
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
-use torii_sqlite::utils::{format_event_id, parse_event_id};
+use torii_sqlite::utils::{format_event_id, format_pending_event_id, parse_event_id};
 use torii_sqlite::{Cursor, Sql};
 use tracing::{debug, error, info, trace};
 
@@ -113,6 +114,29 @@ impl Default for EngineConfig {
 struct UnprocessedEvent {
     keys: Vec<String>,
     data: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlockIdentifier {
+    Validated(u64),
+    Pending,
+}
+
+impl Ord for BlockIdentifier {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (BlockIdentifier::Validated(a), BlockIdentifier::Validated(b)) => a.cmp(b),
+            (BlockIdentifier::Pending, BlockIdentifier::Validated(_)) => Ordering::Greater,
+            (BlockIdentifier::Validated(_), BlockIdentifier::Pending) => Ordering::Less,
+            (BlockIdentifier::Pending, BlockIdentifier::Pending) => Ordering::Equal,
+        }
+    }
+}
+
+impl PartialOrd for BlockIdentifier {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
@@ -265,7 +289,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let mut events = vec![];
         let mut cursors = cursors.clone();
         let mut blocks = BTreeMap::new();
-        let mut block_numbers = BTreeSet::new();
         let mut num_transactions = HashMap::new();
 
         // Step 1: Create initial batch requests for events from all contracts
@@ -274,7 +297,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             let from = cursor
                 .head
                 .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
-            let to = from + self.config.blocks_chunk_size;
+            let to = (from + self.config.blocks_chunk_size).min(latest_block_number);
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
@@ -306,33 +329,33 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // Step 2: Fetch all events recursively
         events.extend(
-            self.fetch_events(event_requests, &mut cursors, latest_block_number)
+            self.fetch_events(event_requests, &mut cursors)
                 .await?,
         );
 
         // Step 3: Collect unique block numbers from events and cursors
+        let mut block_ids = BTreeSet::new();
         for event in &events {
-            let block_number = match event.block_number {
-                Some(block_number) => block_number,
-                None => latest_block_number + 1, // Pending block
+            let id = match event.block_number {
+                Some(block_number) => BlockIdentifier::Validated(block_number),
+                None => BlockIdentifier::Pending,
             };
-            block_numbers.insert(block_number);
+            block_ids.insert(id);
         }
         for (_, cursor) in cursors.iter() {
             if let Some(head) = cursor.head {
-                block_numbers.insert(head);
+                block_ids.insert(BlockIdentifier::Validated(head));
             }
         }
 
         // Step 4: Fetch block data (timestamps and transaction hashes)
         let mut block_requests = Vec::new();
-        for block_number in &block_numbers {
+        for block_id in &block_ids {
             block_requests.push(ProviderRequestData::GetBlockWithTxHashes(
                 GetBlockWithTxHashesRequest {
-                    block_id: if *block_number > latest_block_number {
-                        BlockId::Tag(BlockTag::Pending)
-                    } else {
-                        BlockId::Number(*block_number)
+                    block_id: match block_id {
+                        BlockIdentifier::Validated(block_number) => BlockId::Number(*block_number),
+                        BlockIdentifier::Pending => BlockId::Tag(BlockTag::Pending),
                     },
                 },
             ));
@@ -341,54 +364,55 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Step 5: Execute block requests in batch and initialize blocks with transaction order
         if !block_requests.is_empty() {
             let block_results = self.chunked_batch_requests(&block_requests).await?;
-            for (block_number, result) in block_numbers.iter().zip(block_results) {
+            for (block_id, result) in block_ids.iter().zip(block_results) {
                 match result {
                     ProviderResponseData::GetBlockWithTxHashes(block) => {
-                        let (timestamp, tx_hashes, block_hash) = match block {
+                    let (timestamp, block_hash) = match block {
                             MaybePendingBlockWithTxHashes::Block(block) => {
-                                (block.timestamp, block.transactions, Some(block.block_hash))
+                                (block.timestamp, Some(block.block_hash))
                             }
                             MaybePendingBlockWithTxHashes::PendingBlock(block) => {
                                 let latest_block: &FetchRangeBlock =
-                                    blocks.get(&latest_block_number).unwrap();
+                                    blocks.get(&BlockIdentifier::Validated(latest_block_number)).unwrap();
                                 if block.parent_hash != latest_block.block_hash.unwrap() {
                                     // if the parent hash is not the same as the previous block,
                                     // we need to re fetch the pending block with a specific block number
                                     let block = self
                                         .provider
-                                        .get_block_with_tx_hashes(BlockId::Number(*block_number))
+                                        .get_block_with_tx_hashes(BlockId::Tag(BlockTag::Latest))
                                         .await?;
                                     match block {
                                         // we assume that our pending block has now been validated.
-                                        MaybePendingBlockWithTxHashes::Block(block) => (
-                                            block.timestamp,
-                                            block.transactions,
-                                            Some(block.block_hash),
-                                        ),
+                                        MaybePendingBlockWithTxHashes::Block(block) => {
+                                            blocks.insert(
+                                                BlockIdentifier::Validated(block.block_number),
+                                                FetchRangeBlock {
+                                                    block_hash: Some(block.block_hash),
+                                                    timestamp: block.timestamp,
+                                                    transactions: block.transactions.into_iter().map(|tx| (tx, FetchRangeTransaction {
+                                                        transaction: None,
+                                                        events: vec![],
+                                                    })).collect(),
+                                                },
+                                            );
+                                        }
                                         _ => unreachable!(),
                                     }
-                                } else {
-                                    (block.timestamp, block.transactions, None)
                                 }
+
+                                (block.timestamp, None)
                             }
                         };
-                        // Initialize block with transactions in the order provided by the block
-                        let mut transactions = LinkedHashMap::new();
-                        for tx_hash in tx_hashes {
-                            transactions.insert(
-                                tx_hash,
-                                FetchRangeTransaction {
-                                    transaction: None,
-                                    events: vec![],
-                                },
-                            );
-                        }
+                        
                         blocks.insert(
-                            *block_number,
+                            *block_id,
                             FetchRangeBlock {
                                 block_hash,
                                 timestamp,
-                                transactions,
+                                transactions: block.transactions().iter().map(|tx| (*tx, FetchRangeTransaction {
+                                    transaction: None,
+                                    events: vec![],
+                                })).collect(),
                             },
                         );
                     }
@@ -404,7 +428,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 None => latest_block_number + 1, // Pending block
             };
 
-            let block = blocks.get_mut(&block_number).expect("Block not found");
+            let block = validated_blocks.get_mut(&block_number).expect("Block not found");
             match block.transactions.entry(event.transaction_hash) {
                 Entry::Occupied(mut tx) => {
                     // Increment transaction count for the contract
@@ -486,7 +510,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         &self,
         initial_requests: Vec<(Felt, u64, ProviderRequestData)>,
         cursors: &mut HashMap<Felt, Cursor>,
-        latest_block_number: u64,
     ) -> Result<Vec<EmittedEvent>, FetchError> {
         let mut all_events = Vec::new();
         let mut current_requests = initial_requests;
@@ -520,7 +543,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 let mut event_idx = 0;
                 let mut last_pending_block_event_id_tmp =
                     old_cursor.last_pending_block_event_id.clone();
-                let mut last_block_number = None;
+
+                let mut last_validated_block_number = None;
+                let mut last_block_number: Option<BlockId> = None;
                 let mut is_pending = false;
 
                 match result {
@@ -528,13 +553,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         // Process events for this page, only including events up to our target
                         // block
                         for event in events_page.events.clone() {
-                            let block_number = match event.block_number {
-                                Some(block_number) => block_number,
+                            let block_id = match event.block_number {
+                                Some(block_number) => {
+                                    last_validated_block_number = Some(block_number);
+                                    BlockId::Number(block_number)
+                                },
                                 // If we don't have a block number, this must be a pending block event
-                                None => latest_block_number + 1,
+                                None => BlockId::Tag(BlockTag::Pending),
                             };
 
-                            last_block_number = Some(block_number);
+                            last_block_number = Some(block_id);
                             is_pending = event.block_number.is_none();
 
                             if previous_contract_tx != Some(event.transaction_hash) {
@@ -542,7 +570,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 previous_contract_tx = Some(event.transaction_hash);
                             }
                             let event_id =
-                                format_event_id(block_number, &event.transaction_hash, event_idx);
+                                format_pending_event_id(&event.transaction_hash, event_idx);
                             event_idx += 1;
 
                             // Then we skip all transactions until we reach the last pending
@@ -550,10 +578,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             if let Some(last_pending_block_event_id) =
                                 last_pending_block_event_id_tmp.clone()
                             {
-                                let (cursor_block_number, _, _) =
-                                    parse_event_id(&last_pending_block_event_id);
                                 if event_id != last_pending_block_event_id
-                                    && cursor_block_number == block_number
                                 {
                                     continue;
                                 }
@@ -565,10 +590,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             if let Some(last_contract_tx) =
                                 old_cursor.last_pending_block_event_id.take()
                             {
-                                let (cursor_block_number, _, _) = parse_event_id(&last_contract_tx);
-                                if event_id == last_contract_tx
-                                    && cursor_block_number == block_number
-                                {
+                                if event_id == last_contract_tx {
                                     continue;
                                 }
                                 new_cursor.last_pending_block_event_id = None;
@@ -584,10 +606,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         // Add continuation request to next_requests instead of recursing
                         // We only fetch next events if;
                         // - we have a continuation token
-                        // - we have a last block number (which means we have processed atleast one event)
-                        // - the last block number is less than the to block
+                        // - we have a last block id (which means we have processed atleast one event)
+                        // - the last block id, if it is not pending, is less than the to block
                         if events_page.continuation_token.is_some()
-                            && (last_block_number.is_none() || last_block_number.unwrap() < to)
+                            && (last_block_number.is_none() || matches!(last_block_number.unwrap(), BlockId::Number(n) if n < to))
                         {
                             debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Adding continuation request for contract.");
                             if let ProviderRequestData::GetEvents(mut next_request) =
@@ -602,8 +624,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 ));
                             }
                         } else {
-                            let new_head = to.max(last_block_number.unwrap_or(0));
-                            let new_head = new_head.min(latest_block_number);
+                            let new_head = to.max(last_validated_block_number.unwrap_or(0));
                             // We only reset the last pending block contract tx if we are not
                             // processing pending events anymore. It can happen that during a short lapse,
                             // we can have some pending events while the latest block number has been incremented.
