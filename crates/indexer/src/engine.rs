@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -326,10 +325,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for block_number in &block_numbers {
             block_requests.push(ProviderRequestData::GetBlockWithTxHashes(
                 GetBlockWithTxHashesRequest {
-                    block_id: match block_number.cmp(&latest_block_number) {
-                        Ordering::Greater => BlockId::Tag(BlockTag::Pending),
-                        Ordering::Equal => BlockId::Tag(BlockTag::Latest),
-                        Ordering::Less => BlockId::Number(*block_number),
+                    block_id: if *block_number > latest_block_number {
+                        BlockId::Tag(BlockTag::Pending)
+                    } else {
+                        BlockId::Number(*block_number)
                     },
                 },
             ));
