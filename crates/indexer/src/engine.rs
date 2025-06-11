@@ -279,7 +279,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
                 to_block: Some(BlockId::Tag(
-                    if self.config.flags.contains(IndexingFlags::PENDING_BLOCKS) && from == latest_block_number {
+                    if self.config.flags.contains(IndexingFlags::PENDING_BLOCKS) && from > latest_block_number {
                         BlockTag::Pending
                     } else {
                         BlockTag::Latest
