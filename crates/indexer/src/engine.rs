@@ -381,21 +381,28 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         if let Some(pending_block) = blocks.get(&(latest_block_number + 1)) {
             if pending_block.hash != blocks.get(&latest_block_number).unwrap().hash {
                 // re fetch the pending block with a specific block number
-                let block = self.provider.get_block_with_tx_hashes(BlockId::Number(latest_block_number + 1)).await?;
+                let block = self
+                    .provider
+                    .get_block_with_tx_hashes(BlockId::Number(latest_block_number + 1))
+                    .await?;
                 match block {
                     MaybePendingBlockWithTxHashes::Block(block) => {
-                        let new_pending_block = FetchRangeBlock { 
+                        let new_pending_block = FetchRangeBlock {
                             hash: block.block_hash,
                             timestamp: block.timestamp,
-                            transactions: block.transactions.iter().map(|tx_hash| {
-                                (
-                                    *tx_hash,
-                                    FetchRangeTransaction {
-                                        transaction: None,
-                                        events: vec![],
-                                    }
-                                )
-                            }).collect(),
+                            transactions: block
+                                .transactions
+                                .iter()
+                                .map(|tx_hash| {
+                                    (
+                                        *tx_hash,
+                                        FetchRangeTransaction {
+                                            transaction: None,
+                                            events: vec![],
+                                        },
+                                    )
+                                })
+                                .collect(),
                         };
                         blocks.insert(latest_block_number + 1, new_pending_block);
                     }
