@@ -349,7 +349,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 (block.timestamp, block.transactions, Some(block.block_hash))
                             }
                             MaybePendingBlockWithTxHashes::PendingBlock(block) => {
-                                let latest_block: &FetchRangeBlock = blocks.get(&latest_block_number).unwrap();
+                                let latest_block: &FetchRangeBlock =
+                                    blocks.get(&latest_block_number).unwrap();
                                 if block.parent_hash != latest_block.block_hash.unwrap() {
                                     // if the parent hash is not the same as the previous block,
                                     // we need to re fetch the pending block with a specific block number
@@ -359,9 +360,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                         .get_block_with_tx_hashes(BlockId::Number(*block_number))
                                         .await?;
                                     match block {
-                                        MaybePendingBlockWithTxHashes::Block(block) => {
-                                            (block.timestamp, block.transactions, Some(block.block_hash))
-                                        }
+                                        MaybePendingBlockWithTxHashes::Block(block) => (
+                                            block.timestamp,
+                                            block.transactions,
+                                            Some(block.block_hash),
+                                        ),
                                         _ => unreachable!(),
                                     }
                                 } else {
