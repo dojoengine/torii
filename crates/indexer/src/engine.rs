@@ -7,7 +7,7 @@ use std::time::Duration;
 use bitflags::bitflags;
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
-use futures_util::future::{pending, try_join_all};
+use futures_util::future::try_join_all;
 use hashlink::lru_cache::Entry;
 use hashlink::LinkedHashMap;
 use starknet::core::types::requests::{
