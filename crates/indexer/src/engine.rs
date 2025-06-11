@@ -408,7 +408,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             let mut transaction_requests = Vec::new();
             let mut block_numbers_for_tx = Vec::new();
             for (block_number, block) in &blocks {
-                for (transaction_hash, _) in &block.transactions {
+                for (transaction_hash, tx) in &block.transactions {
+                    if tx.events.is_empty() {
+                        continue;
+                    }
+
                     transaction_requests.push(ProviderRequestData::GetTransactionByHash(
                         GetTransactionByHashRequest {
                             transaction_hash: *transaction_hash,
