@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -113,6 +114,29 @@ impl Default for EngineConfig {
 struct UnprocessedEvent {
     keys: Vec<String>,
     data: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlockIdentifier {
+    Validated(u64),
+    Pending,
+}
+
+impl Ord for BlockIdentifier {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (BlockIdentifier::Validated(a), BlockIdentifier::Validated(b)) => a.cmp(b),
+            (BlockIdentifier::Pending, BlockIdentifier::Validated(_)) => Ordering::Greater,
+            (BlockIdentifier::Validated(_), BlockIdentifier::Pending) => Ordering::Less,
+            (BlockIdentifier::Pending, BlockIdentifier::Pending) => Ordering::Equal,
+        }
+    }
+}
+
+impl PartialOrd for BlockIdentifier {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
@@ -265,7 +289,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let mut events = vec![];
         let mut cursors = cursors.clone();
         let mut blocks = BTreeMap::new();
-        let mut block_numbers = BTreeSet::new();
         let mut num_transactions = HashMap::new();
 
         // Step 1: Create initial batch requests for events from all contracts
@@ -311,28 +334,28 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         );
 
         // Step 3: Collect unique block numbers from events and cursors
+        let mut block_ids = BTreeSet::new();
         for event in &events {
-            let block_number = match event.block_number {
-                Some(block_number) => block_number,
-                None => latest_block_number + 1, // Pending block
+            let id = match event.block_number {
+                Some(block_number) => BlockIdentifier::Validated(block_number),
+                None => BlockIdentifier::Pending,
             };
-            block_numbers.insert(block_number);
+            block_ids.insert(id);
         }
         for (_, cursor) in cursors.iter() {
             if let Some(head) = cursor.head {
-                block_numbers.insert(head);
+                block_ids.insert(BlockIdentifier::Validated(head));
             }
         }
 
         // Step 4: Fetch block data (timestamps and transaction hashes)
         let mut block_requests = Vec::new();
-        for block_number in &block_numbers {
+        for block_id in &block_ids {
             block_requests.push(ProviderRequestData::GetBlockWithTxHashes(
                 GetBlockWithTxHashesRequest {
-                    block_id: if *block_number > latest_block_number {
-                        BlockId::Tag(BlockTag::Pending)
-                    } else {
-                        BlockId::Number(*block_number)
+                    block_id: match block_id {
+                        BlockIdentifier::Validated(block_number) => BlockId::Number(*block_number),
+                        BlockIdentifier::Pending => BlockId::Tag(BlockTag::Pending),
                     },
                 },
             ));
@@ -341,54 +364,55 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Step 5: Execute block requests in batch and initialize blocks with transaction order
         if !block_requests.is_empty() {
             let block_results = self.chunked_batch_requests(&block_requests).await?;
-            for (block_number, result) in block_numbers.iter().zip(block_results) {
+            for (block_id, result) in block_ids.iter().zip(block_results) {
                 match result {
                     ProviderResponseData::GetBlockWithTxHashes(block) => {
-                        let (timestamp, tx_hashes, block_hash) = match block {
+                    let (timestamp, block_hash) = match block {
                             MaybePendingBlockWithTxHashes::Block(block) => {
-                                (block.timestamp, block.transactions, Some(block.block_hash))
+                                (block.timestamp, Some(block.block_hash))
                             }
                             MaybePendingBlockWithTxHashes::PendingBlock(block) => {
                                 let latest_block: &FetchRangeBlock =
-                                    blocks.get(&latest_block_number).unwrap();
+                                    blocks.get(&BlockIdentifier::Validated(latest_block_number)).unwrap();
                                 if block.parent_hash != latest_block.block_hash.unwrap() {
                                     // if the parent hash is not the same as the previous block,
                                     // we need to re fetch the pending block with a specific block number
                                     let block = self
                                         .provider
-                                        .get_block_with_tx_hashes(BlockId::Number(*block_number))
+                                        .get_block_with_tx_hashes(BlockId::Tag(BlockTag::Latest))
                                         .await?;
                                     match block {
                                         // we assume that our pending block has now been validated.
-                                        MaybePendingBlockWithTxHashes::Block(block) => (
-                                            block.timestamp,
-                                            block.transactions,
-                                            Some(block.block_hash),
-                                        ),
+                                        MaybePendingBlockWithTxHashes::Block(block) => {
+                                            blocks.insert(
+                                                BlockIdentifier::Validated(block.block_number),
+                                                FetchRangeBlock {
+                                                    block_hash: Some(block.block_hash),
+                                                    timestamp: block.timestamp,
+                                                    transactions: block.transactions.into_iter().map(|tx| (tx, FetchRangeTransaction {
+                                                        transaction: None,
+                                                        events: vec![],
+                                                    })).collect(),
+                                                },
+                                            );
+                                        }
                                         _ => unreachable!(),
                                     }
-                                } else {
-                                    (block.timestamp, block.transactions, None)
                                 }
+
+                                (block.timestamp, None)
                             }
                         };
-                        // Initialize block with transactions in the order provided by the block
-                        let mut transactions = LinkedHashMap::new();
-                        for tx_hash in tx_hashes {
-                            transactions.insert(
-                                tx_hash,
-                                FetchRangeTransaction {
-                                    transaction: None,
-                                    events: vec![],
-                                },
-                            );
-                        }
+                        
                         blocks.insert(
-                            *block_number,
+                            *block_id,
                             FetchRangeBlock {
                                 block_hash,
                                 timestamp,
-                                transactions,
+                                transactions: block.transactions().iter().map(|tx| (*tx, FetchRangeTransaction {
+                                    transaction: None,
+                                    events: vec![],
+                                })).collect(),
                             },
                         );
                     }
@@ -404,7 +428,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 None => latest_block_number + 1, // Pending block
             };
 
-            let block = blocks.get_mut(&block_number).expect("Block not found");
+            let block = validated_blocks.get_mut(&block_number).expect("Block not found");
             match block.transactions.entry(event.transaction_hash) {
                 Entry::Occupied(mut tx) => {
                     // Increment transaction count for the contract
