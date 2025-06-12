@@ -16,10 +16,9 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
-use torii_sqlite_types::OptimisticToken;
+use torii_sqlite_types::{OptimisticToken, Table};
 use tracing::{debug, error, info, warn};
 
-use crate::constants::TOKENS_TABLE;
 use crate::error::ParseError;
 use crate::executor::error::{ExecutorError, ExecutorQueryError};
 use crate::simple_broker::SimpleBroker;
@@ -635,7 +634,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
             QueryType::RegisterNftToken(register_nft_token) => {
                 // Check if we already have the metadata for this contract
                 let res = sqlx::query_as::<_, (String, String)>(&format!(
-                    "SELECT name, symbol FROM {TOKENS_TABLE} WHERE contract_address = ? LIMIT 1"
+                    "SELECT name, symbol FROM {table} WHERE contract_address = ? LIMIT 1",
+                    table = Table::Tokens
                 ))
                 .bind(felt_to_sql_string(&register_nft_token.contract_address))
                 .fetch_one(&mut **tx)

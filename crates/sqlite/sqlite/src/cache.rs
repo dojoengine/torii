@@ -13,8 +13,8 @@ use starknet::core::utils::get_selector_from_name;
 use starknet::providers::{Provider, ProviderError};
 use starknet_crypto::Felt;
 use tokio::sync::{Mutex, RwLock};
+use torii_sqlite_types::Table;
 
-use crate::constants::TOKENS_TABLE;
 use crate::error::{Error, ParseError};
 use crate::utils::I256;
 
@@ -118,8 +118,11 @@ impl ModelCache {
             layout,
             schema,
         ): (String, String, String, String, u32, u32, String, String) = sqlx::query_as(
-            "SELECT namespace, name, class_hash, contract_address, packed_size, unpacked_size, \
-             layout, schema FROM models WHERE id = ?",
+            &format!(
+                "SELECT namespace, name, class_hash, contract_address, packed_size, unpacked_size, \
+                 layout, schema FROM {table} WHERE id = ?",
+                table = Table::Models
+            ),
         )
         .bind(format!("{:#x}", selector))
         .fetch_one(&self.pool)
@@ -178,7 +181,7 @@ impl LocalCache {
     pub async fn new(pool: Pool<Sqlite>) -> Self {
         // read existing token_id's from balances table and cache them
         let token_id_registry: Vec<String> =
-            sqlx::query_scalar(&format!("SELECT id FROM {TOKENS_TABLE}"))
+            sqlx::query_scalar(&format!("SELECT id FROM {table}", table = Table::Tokens))
                 .fetch_all(&pool)
                 .await
                 .expect("Should be able to read token_id's from blances table");

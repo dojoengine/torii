@@ -109,7 +109,6 @@ impl<P: Provider + Sync> DojoWorld<P> {
         sql: Sql,
         provider: Arc<P>,
         world_address: Felt,
-        model_cache: Arc<ModelCache>,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
         config: GrpcConfig,
     ) -> Self {
@@ -165,54 +164,22 @@ impl<P: Provider + Sync> DojoWorld<P> {
 
 impl<P: Provider + Sync> DojoWorld<P> {
     pub async fn world(&self) -> Result<proto::types::WorldMetadata, Error> {
-        let world_address = sqlx::query_scalar(&format!(
-            "SELECT contract_address FROM contracts WHERE id = '{:#x}'",
-            self.world_address
-        ))
-        .fetch_one(&self.sql.pool)
-        .await?;
-
-        #[derive(FromRow)]
-        struct ModelDb {
-            id: String,
-            namespace: String,
-            name: String,
-            class_hash: String,
-            contract_address: String,
-            packed_size: u32,
-            unpacked_size: u32,
-            layout: String,
-        }
-
-        let models: Vec<ModelDb> = sqlx::query_as(
-            "SELECT id, namespace, name, class_hash, contract_address, packed_size, \
-             unpacked_size, layout FROM models",
-        )
-        .fetch_all(&self.sql.pool)
-        .await?;
-
-        let mut models_metadata = Vec::with_capacity(models.len());
-        for model in models {
-            let schema = self
-                .model_cache
-                .model(&Felt::from_str(&model.id).map_err(ParseError::FromStr)?)
-                .await?
-                .schema;
-            models_metadata.push(proto::types::ModelMetadata {
-                namespace: model.namespace,
-                name: model.name,
-                class_hash: model.class_hash,
-                contract_address: model.contract_address,
-                packed_size: model.packed_size,
-                unpacked_size: model.unpacked_size,
-                layout: model.layout.as_bytes().to_vec(),
-                schema: serde_json::to_vec(&schema).unwrap(),
-            });
-        }
+        let models = self.sql.models(&[]).await?.iter().map(|m| {
+            proto::types::ModelMetadata {
+                namespace: m.namespace.clone(),
+                name: m.name.clone(),
+                class_hash: format!("{:#x}", m.class_hash),
+                contract_address: format!("{:#x}", m.contract_address),
+                packed_size: m.packed_size,
+                unpacked_size: m.unpacked_size,
+                layout: serde_json::to_vec(&m.layout).unwrap(),
+                schema: serde_json::to_vec(&m.schema).unwrap(),
+            }
+        }).collect::<Vec<_>>();
 
         Ok(proto::types::WorldMetadata {
-            world_address,
-            models: models_metadata,
+            world_address: format!("{:#x}", self.world_address),
+            models,
         })
     }
 
@@ -1041,200 +1008,6 @@ impl<P: Provider + Sync> DojoWorld<P> {
             next_cursor: page.next_cursor.unwrap_or_default(),
         })
     }
-
-    async fn retrieve_events(
-        &self,
-        query: &proto::types::EventQuery,
-    ) -> Result<proto::world::RetrieveEventsResponse, Error> {
-        let limit = if query.limit > 0 {
-            query.limit + 1
-        } else {
-            SQL_DEFAULT_LIMIT as u32 + 1
-        };
-
-        let mut bind_values = Vec::new();
-        let mut conditions = Vec::new();
-
-        let keys_pattern = if let Some(keys_clause) = &query.keys {
-            build_keys_pattern(keys_clause)?
-        } else {
-            String::new()
-        };
-
-        if !keys_pattern.is_empty() {
-            conditions.push("keys REGEXP ?");
-            bind_values.push(keys_pattern);
-        }
-
-        if !query.cursor.is_empty() {
-            conditions.push("id >= ?");
-            bind_values.push(decode_cursor(&query.cursor)?);
-        }
-
-        let mut events_query = r#"
-            SELECT id, keys, data, transaction_hash
-            FROM events
-        "#
-        .to_string();
-
-        if !conditions.is_empty() {
-            events_query = format!("{} WHERE {}", events_query, conditions.join(" AND "));
-        }
-
-        events_query = format!("{} ORDER BY id LIMIT ?", events_query);
-        bind_values.push(limit.to_string());
-
-        let mut row_events = sqlx::query_as(&events_query);
-        for value in &bind_values {
-            row_events = row_events.bind(value);
-        }
-        let mut row_events: Vec<(String, String, String, String)> =
-            row_events.fetch_all(&self.sql.pool).await?;
-
-        let next_cursor = if row_events.len() > (limit - 1) as usize {
-            encode_cursor(&row_events.pop().unwrap().0)?
-        } else {
-            String::new()
-        };
-
-        let events = row_events
-            .iter()
-            .map(|(_, keys, data, transaction_hash)| {
-                map_row_to_event(&(keys, data, transaction_hash))
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        Ok(RetrieveEventsResponse {
-            events,
-            next_cursor,
-        })
-    }
-
-    async fn retrieve_controllers(
-        &self,
-        contract_addresses: Vec<Felt>,
-    ) -> Result<proto::world::RetrieveControllersResponse, Error> {
-        let query = if contract_addresses.is_empty() {
-            "SELECT address, username, deployed_at FROM controllers".to_string()
-        } else {
-            format!(
-                "SELECT address, username, deployed_at FROM controllers WHERE address IN ({})",
-                contract_addresses
-                    .iter()
-                    .map(|_| "?".to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        };
-
-        let mut db_query = sqlx::query_as::<_, (String, String, DateTime<Utc>)>(&query);
-        for address in &contract_addresses {
-            db_query = db_query.bind(format!("{:#x}", address));
-        }
-
-        let rows = db_query.fetch_all(&self.sql.pool).await?;
-
-        let controllers = rows
-            .into_iter()
-            .map(
-                |(address, username, deployed_at)| proto::types::Controller {
-                    address: address.parse::<Felt>().unwrap().to_bytes_be().to_vec(),
-                    username,
-                    deployed_at_timestamp: deployed_at.timestamp() as u64,
-                },
-            )
-            .collect();
-
-        Ok(RetrieveControllersResponse { controllers })
-    }
-}
-
-fn process_event_field(data: &str) -> Result<Vec<Vec<u8>>, Error> {
-    Ok(data
-        .trim_end_matches('/')
-        .split('/')
-        .filter(|&d| !d.is_empty())
-        .map(|d| {
-            Felt::from_str(d)
-                .map_err(ParseError::FromStr)
-                .map(|f| f.to_bytes_be().to_vec())
-        })
-        .collect::<Result<Vec<_>, _>>()?)
-}
-
-fn map_row_to_event(row: &(&str, &str, &str)) -> Result<proto::types::Event, Error> {
-    let keys = process_event_field(row.0)?;
-    let data = process_event_field(row.1)?;
-    let transaction_hash = Felt::from_str(row.2)
-        .map_err(ParseError::FromStr)?
-        .to_bytes_be()
-        .to_vec();
-
-    Ok(proto::types::Event {
-        keys,
-        data,
-        transaction_hash,
-    })
-}
-
-fn map_row_to_entity(
-    row: &SqliteRow,
-    schemas: &[Ty],
-    dont_include_hashed_keys: bool,
-) -> Result<proto::types::Entity, Error> {
-    let hashed_keys = Felt::from_str(&row.get::<String, _>("id")).map_err(ParseError::FromStr)?;
-    let model_ids = row
-        .get::<String, _>("model_ids")
-        .split(',')
-        .map(|id| Felt::from_str(id).map_err(ParseError::FromStr))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let models = schemas
-        .iter()
-        .filter(|schema| model_ids.contains(&compute_selector_from_tag(&schema.name())))
-        .map(|schema| {
-            let mut ty = schema.clone();
-            map_row_to_ty("", &schema.name(), &mut ty, row)?;
-            Ok(ty.as_struct().unwrap().clone().into())
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
-
-    Ok(proto::types::Entity {
-        hashed_keys: if !dont_include_hashed_keys {
-            hashed_keys.to_bytes_be().to_vec()
-        } else {
-            vec![]
-        },
-        models,
-    })
-}
-
-// this builds a sql safe regex pattern to match against for keys
-fn build_keys_pattern(clause: &proto::types::KeysClause) -> Result<String, Error> {
-    const KEY_PATTERN: &str = "0x[0-9a-fA-F]+";
-
-    let keys = if clause.keys.is_empty() {
-        vec![KEY_PATTERN.to_string()]
-    } else {
-        clause
-            .keys
-            .iter()
-            .map(|bytes| {
-                if bytes.is_empty() {
-                    return Ok(KEY_PATTERN.to_string());
-                }
-                Ok(format!("{:#x}", Felt::from_bytes_be_slice(bytes)))
-            })
-            .collect::<Result<Vec<_>, Error>>()?
-    };
-    let mut keys_pattern = format!("^{}", keys.join("/"));
-
-    if clause.pattern_matching == proto::types::PatternMatching::VariableLen as i32 {
-        keys_pattern += &format!("(/{})*", KEY_PATTERN);
-    }
-    keys_pattern += "/$";
-
-    Ok(keys_pattern)
 }
 
 // builds a composite clause for a query
@@ -1874,7 +1647,6 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     sql: Sql,
     provider: Arc<P>,
     world_address: Felt,
-    model_cache: Arc<ModelCache>,
     cross_messaging_tx: UnboundedSender<Message>,
     config: GrpcConfig,
 ) -> Result<
@@ -1896,7 +1668,6 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
         sql,
         provider,
         world_address,
-        model_cache,
         Some(cross_messaging_tx),
         config,
     );

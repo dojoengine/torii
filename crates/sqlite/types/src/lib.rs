@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
+use crypto_bigint::U256;
 use dojo_types::schema::Ty;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -157,6 +158,20 @@ pub struct TokenCollection {
     pub metadata: String,
 }
 
+
+impl From<TokenCollection> for torii_proto::TokenCollection {
+    fn from(value: TokenCollection) -> Self {
+        Self {
+            contract_address: Felt::from_str(&value.contract_address).unwrap(),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u8,
+            count: value.count,
+            metadata: value.metadata,
+        }
+    }
+}
+
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OptimisticTokenBalance {
@@ -299,35 +314,96 @@ pub enum HookEvent {
     ModelDeleted { model_tag: String },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Page<T> {
-    pub items: Vec<T>,
-    pub next_cursor: Option<String>,
+impl From<Token> for torii_proto::Token {
+    fn from(value: Token) -> Self {
+        Self {
+            token_id: if value.token_id.is_empty() {
+                U256::ZERO
+            } else {
+                U256::from_be_hex(value.token_id.trim_start_matches("0x"))
+            },
+            contract_address: Felt::from_str(&value.contract_address)
+                .unwrap(),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u8,
+            metadata: value.metadata,
+        }
+    }
+}
+
+impl From<TokenBalance> for torii_proto::TokenBalance {
+    fn from(value: TokenBalance) -> Self {
+        let id = value.token_id.split(':').collect::<Vec<&str>>();
+
+        Self {
+            balance: U256::from_be_hex(value.balance.trim_start_matches("0x")),
+            account_address: Felt::from_str(&value.account_address)
+                .unwrap(),
+            contract_address: Felt::from_str(&value.contract_address)
+                .unwrap(),
+            token_id: if id.len() == 2 {
+                U256::from_be_hex(id[1].trim_start_matches("0x"))
+            } else {
+                U256::ZERO
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum PaginationDirection {
-    Forward,
-    Backward,
+pub enum EntityType {
+    Entity,
+    EventMessage
+}
+
+impl EntityType {
+    pub fn relation_table(&self) -> &str {
+        match self {
+            EntityType::Entity => "entity_model",
+            EntityType::EventMessage => "event_model",
+        }
+    }
+
+    pub fn relation_column(&self) -> &str {
+        match self {
+            EntityType::Entity => "entity_id",
+            EntityType::EventMessage => "event_message_id",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Pagination {
-    pub cursor: Option<String>,
-    pub limit: Option<u32>,
-    pub direction: PaginationDirection,
-    pub order_by: Vec<OrderBy>,
+pub enum Table {
+    Entities,
+    EntitiesHistorical,
+    EventMessages,
+    EventMessagesHistorical,
+    Models,
+    Events,
+    Tokens,
+    TokenBalances,
+    Contracts,
+    Controllers,
+    Transactions,
+    Metadata
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum OrderDirection {
-    Asc,
-    Desc,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct OrderBy {
-    pub model: String,
-    pub member: String,
-    pub direction: OrderDirection,
+impl std::fmt::Display for Table {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Table::Entities => write!(f, "entities"),
+            Table::EntitiesHistorical => write!(f, "entities_historical"),
+            Table::EventMessages => write!(f, "event_messages"),
+            Table::EventMessagesHistorical => write!(f, "event_messages_historical"),
+            Table::Models => write!(f, "models"),
+            Table::Events => write!(f, "events"),
+            Table::Tokens => write!(f, "tokens"),
+            Table::TokenBalances => write!(f, "token_balances"),
+            Table::Contracts => write!(f, "contracts"),
+            Table::Controllers => write!(f, "controllers"),
+            Table::Transactions => write!(f, "transactions"),
+            Table::Metadata => write!(f, "metadata"),
+        }
+    }
 }

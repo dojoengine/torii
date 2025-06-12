@@ -3,16 +3,6 @@ pub const DATETIME_FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
 pub const DEFAULT_LIMIT: u64 = 10;
 pub const BOOLEAN_TRUE: i64 = 1;
 
-pub const ENTITY_TABLE: &str = "entities";
-pub const EVENT_TABLE: &str = "events";
-pub const EVENT_MESSAGE_TABLE: &str = "event_messages";
-pub const MODEL_TABLE: &str = "models";
-pub const TRANSACTION_TABLE: &str = "transactions";
-pub const TRANSACTION_CALLS_TABLE: &str = "transaction_calls";
-pub const TOKEN_TRANSFER_TABLE: &str = "token_transfers";
-pub const METADATA_TABLE: &str = "metadata";
-pub const CONTROLLER_TABLE: &str = "controllers";
-
 pub const ID_COLUMN: &str = "id";
 pub const EVENT_ID_COLUMN: &str = "event_id";
 pub const ENTITY_ID_COLUMN: &str = "internal_entity_id";

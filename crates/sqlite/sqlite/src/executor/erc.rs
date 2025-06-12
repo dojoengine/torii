@@ -6,10 +6,11 @@ use starknet::core::types::{BlockId, BlockTag, FunctionCall, U256};
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
+use torii_sqlite_types::Table;
 use tracing::{debug, warn};
 
 use super::{ApplyBalanceDiffQuery, BrokerMessage, Executor};
-use crate::constants::{SQL_FELT_DELIMITER, TOKEN_BALANCE_TABLE};
+use crate::constants::SQL_FELT_DELIMITER;
 use crate::error::Error;
 use crate::executor::LOG_TARGET;
 use crate::simple_broker::SimpleBroker;
@@ -126,7 +127,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     ) -> Result<(), Error> {
         let tx = &mut self.transaction;
         let balance: Option<(String,)> = sqlx::query_as(&format!(
-            "SELECT balance FROM {TOKEN_BALANCE_TABLE} WHERE id = ?"
+            "SELECT balance FROM {table} WHERE id = ?",
+            table = Table::TokenBalances
         ))
         .bind(id)
         .fetch_optional(&mut **tx)
@@ -188,8 +190,9 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
 
         // write the new balance to the database
         let token_balance: TokenBalance = sqlx::query_as(&format!(
-            "INSERT INTO {TOKEN_BALANCE_TABLE} (id, contract_address, account_address, \
+            "INSERT INTO {table} (id, contract_address, account_address, \
              token_id, balance) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET balance = EXCLUDED.balance RETURNING *",
+            table = Table::TokenBalances
         ))
         .bind(id)
         .bind(contract_address)

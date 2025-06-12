@@ -6,10 +6,13 @@ use std::time::Duration;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{DateTime, Utc};
+use dojo_types::naming::compute_selector_from_tag;
+use dojo_types::schema::Ty;
 use futures_util::TryStreamExt;
 use ipfs_api_backend_hyper::{IpfsApi, IpfsClient, TryFromUri};
 use once_cell::sync::Lazy;
 use reqwest::Client;
+use sqlx::sqlite::SqliteRow;
 use sqlx::{Column, Row, TypeInfo};
 use starknet::core::types::U256;
 use starknet_crypto::Felt;
@@ -20,7 +23,122 @@ use crate::constants::{
     IPFS_CLIENT_PASSWORD, IPFS_CLIENT_URL, IPFS_CLIENT_USERNAME, REQ_MAX_RETRIES,
     SQL_FELT_DELIMITER,
 };
+use crate::error::{Error, ParseError};
+use crate::model::map_row_to_ty;
 use crate::error::HttpError;
+
+fn process_event_field(data: &str) -> Result<Vec<Felt>, Error> {
+    Ok(data
+        .trim_end_matches('/')
+        .split('/')
+        .filter(|&d| !d.is_empty())
+        .map(|d| Felt::from_str(d).map_err(ParseError::FromStr))
+        .collect::<Result<Vec<Felt>, _>>()?)
+}
+
+pub(crate) fn map_row_to_event(row: &(&str, &str, &str)) -> Result<torii_proto::Event, Error> {
+    let keys = process_event_field(row.0)?;
+    let data = process_event_field(row.1)?;
+    let transaction_hash = Felt::from_str(row.2).map_err(ParseError::FromStr)?;
+
+    Ok(torii_proto::Event {
+        keys,
+        data,
+        transaction_hash,
+    })
+}
+
+// this builds a sql safe regex pattern to match against for keys
+pub(crate) fn build_keys_pattern(clause: &torii_proto::KeysClause) -> Result<String, Error> {
+    const KEY_PATTERN: &str = "0x[0-9a-fA-F]+";
+
+    let keys = if clause.keys.is_empty() {
+        vec![KEY_PATTERN.to_string()]
+    } else {
+        clause
+            .keys
+            .iter()
+            .map(|key| {
+                if let Some(key) = key {
+                    Ok(format!("{:#x}", key))
+                } else {
+                    Ok(KEY_PATTERN.to_string())
+                }
+            })
+            .collect::<Result<Vec<_>, Error>>()?
+    };
+    let mut keys_pattern = format!("^{}", keys.join("/"));
+
+    if clause.pattern_matching == torii_proto::PatternMatching::VariableLen {
+        keys_pattern += &format!("(/{})*", KEY_PATTERN);
+    }
+    keys_pattern += "/$";
+
+    Ok(keys_pattern)
+}
+
+pub(crate) fn map_row_to_entity(
+    row: &SqliteRow,
+    schemas: &[Ty],
+) -> Result<torii_proto::schema::Entity, Error> {
+    let hashed_keys = Felt::from_str(&row.get::<String, _>("id")).map_err(ParseError::FromStr)?;
+    let model_ids = row
+        .get::<String, _>("model_ids")
+        .split(',')
+        .map(|id| Felt::from_str(id).map_err(ParseError::FromStr))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let models = schemas
+        .iter()
+        .filter(|schema| model_ids.contains(&compute_selector_from_tag(&schema.name())))
+        .map(|schema| {
+            let mut ty = schema.clone();
+            map_row_to_ty("", &schema.name(), &mut ty, row)?;
+            Ok(ty.as_struct().unwrap().clone().into())
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    Ok(torii_proto::schema::Entity {
+        hashed_keys,
+        models,
+    })
+}
+
+pub(crate) fn combine_where_clauses(base: Option<&str>, cursor_conditions: &[String]) -> String {
+    let mut parts = Vec::new();
+    if let Some(base_where) = base {
+        parts.push(base_where.to_string());
+    }
+    parts.extend(cursor_conditions.iter().cloned());
+    parts.join(" AND ")
+}
+
+pub(crate) fn build_query(
+    selections: &[String],
+    table_name: &str,
+    joins: &[String],
+    where_clause: &str,
+    having_clause: Option<&str>,
+    order_clause: &str,
+) -> String {
+    let mut query = format!(
+        "SELECT {} FROM [{}] {}",
+        selections.join(", "),
+        table_name,
+        joins.join(" ")
+    );
+    if !where_clause.is_empty() {
+        query.push_str(&format!(" WHERE {}", where_clause));
+    }
+
+    query.push_str(&format!(" GROUP BY {}.id", table_name));
+
+    if let Some(having) = having_clause {
+        query.push_str(&format!(" HAVING {}", having));
+    }
+    query.push_str(&format!(" ORDER BY {} LIMIT ?", order_clause));
+    query
+}
 
 pub fn must_utc_datetime_from_timestamp(timestamp: u64) -> DateTime<Utc> {
     let naive_dt = DateTime::from_timestamp(timestamp as i64, 0)

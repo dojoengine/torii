@@ -343,7 +343,6 @@ impl Runner {
             db.clone(),
             provider.clone(),
             world_address,
-            model_cache,
             cross_messaging_tx,
             GrpcConfig {
                 subscription_buffer_size: self.args.grpc.subscription_buffer_size,

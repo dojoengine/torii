@@ -24,8 +24,6 @@ use core::fmt;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-#[cfg(feature = "server")]
-use crypto_bigint::Encoding;
 use crypto_bigint::U256;
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::Ty;
@@ -57,7 +55,7 @@ pub struct Message {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Pagination {
     pub cursor: Option<String>,
-    pub limit: u32,
+    pub limit: Option<u32>,
     pub direction: PaginationDirection,
     pub order_by: Vec<OrderBy>,
 }
@@ -66,7 +64,7 @@ impl From<Pagination> for proto::types::Pagination {
     fn from(value: Pagination) -> Self {
         Self {
             cursor: value.cursor.unwrap_or_default(),
-            limit: value.limit,
+            limit: value.limit.unwrap_or_default(),
             direction: value.direction as i32,
             order_by: value.order_by.into_iter().map(|o| o.into()).collect(),
         }
@@ -81,41 +79,17 @@ impl From<proto::types::Pagination> for Pagination {
             } else {
                 Some(value.cursor)
             },
-            limit: value.limit,
-            direction: match value.direction {
-                0 => PaginationDirection::Forward,
-                1 => PaginationDirection::Backward,
-                _ => unreachable!(),
-            },
-            order_by: value.order_by.into_iter().map(|o| o.into()).collect(),
-        }
-    }
-}
-
-#[cfg(feature = "server")]
-impl From<proto::types::Pagination> for torii_sqlite_types::Pagination {
-    fn from(value: proto::types::Pagination) -> Self {
-        torii_sqlite_types::Pagination {
-            cursor: if value.cursor.is_empty() {
-                None
-            } else {
-                Some(value.cursor)
-            },
             limit: if value.limit == 0 {
                 None
             } else {
                 Some(value.limit)
             },
             direction: match value.direction {
-                0 => torii_sqlite_types::PaginationDirection::Forward,
-                1 => torii_sqlite_types::PaginationDirection::Backward,
+                0 => PaginationDirection::Forward,
+                1 => PaginationDirection::Backward,
                 _ => unreachable!(),
             },
-            order_by: value
-                .order_by
-                .into_iter()
-                .map(|order_by| order_by.into())
-                .collect(),
+            order_by: value.order_by.into_iter().map(|o| o.into()).collect(),
         }
     }
 }
@@ -175,29 +149,6 @@ impl TryFrom<proto::types::TokenCollection> for Token {
     }
 }
 
-#[cfg(feature = "server")]
-impl From<torii_sqlite_types::Token> for proto::types::Token {
-    fn from(value: torii_sqlite_types::Token) -> Self {
-        Self {
-            token_id: if value.token_id.is_empty() {
-                U256::ZERO.to_be_bytes().to_vec()
-            } else {
-                U256::from_be_hex(value.token_id.trim_start_matches("0x"))
-                    .to_be_bytes()
-                    .to_vec()
-            },
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            name: value.name,
-            symbol: value.symbol,
-            decimals: value.decimals as u32,
-            metadata: value.metadata.as_bytes().to_vec(),
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct TokenCollection {
     pub contract_address: Felt,
@@ -222,23 +173,6 @@ impl TryFrom<proto::types::TokenCollection> for TokenCollection {
     }
 }
 
-#[cfg(feature = "server")]
-impl From<torii_sqlite_types::TokenCollection> for proto::types::TokenCollection {
-    fn from(value: torii_sqlite_types::TokenCollection) -> Self {
-        Self {
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            name: value.name,
-            symbol: value.symbol,
-            decimals: value.decimals as u32,
-            count: value.count,
-            metadata: value.metadata.as_bytes().to_vec(),
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct TokenBalance {
     pub balance: U256,
@@ -259,33 +193,6 @@ impl TryFrom<proto::types::TokenBalance> for TokenBalance {
     }
 }
 
-#[cfg(feature = "server")]
-impl From<torii_sqlite_types::TokenBalance> for proto::types::TokenBalance {
-    fn from(value: torii_sqlite_types::TokenBalance) -> Self {
-        let id = value.token_id.split(':').collect::<Vec<&str>>();
-
-        Self {
-            balance: U256::from_be_hex(value.balance.trim_start_matches("0x"))
-                .to_be_bytes()
-                .to_vec(),
-            account_address: Felt::from_str(&value.account_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            token_id: if id.len() == 2 {
-                U256::from_be_hex(id[1].trim_start_matches("0x"))
-                    .to_be_bytes()
-                    .to_vec()
-            } else {
-                U256::ZERO.to_be_bytes().to_vec()
-            },
-        }
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct IndexerUpdate {
@@ -331,21 +238,6 @@ impl From<proto::types::OrderBy> for OrderBy {
             direction: match value.direction {
                 0 => OrderDirection::Asc,
                 1 => OrderDirection::Desc,
-                _ => unreachable!(),
-            },
-        }
-    }
-}
-
-#[cfg(feature = "server")]
-impl From<proto::types::OrderBy> for torii_sqlite_types::OrderBy {
-    fn from(value: proto::types::OrderBy) -> Self {
-        torii_sqlite_types::OrderBy {
-            model: value.model,
-            member: value.member,
-            direction: match value.direction {
-                0 => torii_sqlite_types::OrderDirection::Asc,
-                1 => torii_sqlite_types::OrderDirection::Desc,
                 _ => unreachable!(),
             },
         }
@@ -793,7 +685,7 @@ impl From<proto::types::Event> for Event {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct EventQuery {
-    pub keys: KeysClause,
+    pub keys: Option<KeysClause>,
     pub limit: u32,
     pub cursor: Option<String>,
 }
@@ -801,7 +693,7 @@ pub struct EventQuery {
 impl From<EventQuery> for proto::types::EventQuery {
     fn from(value: EventQuery) -> Self {
         Self {
-            keys: Some(value.keys.into()),
+            keys: value.keys.map(|k| k.into()),
             limit: value.limit,
             cursor: value.cursor.unwrap_or_default(),
         }
