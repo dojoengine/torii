@@ -14,8 +14,7 @@ use starknet::core::types::requests::{
     GetBlockWithTxHashesRequest, GetEventsRequest, GetTransactionByHashRequest,
 };
 use starknet::core::types::{
-    BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
-    MaybePendingBlockWithTxHashes, ResultPageRequest, Transaction,
+    BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage, MaybePendingBlockWithTxHashes, ResultPageRequest, Transaction
 };
 use starknet::macros::selector;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
@@ -251,7 +250,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         let instant = Instant::now();
         // Fetch all events from 'from' to our blocks chunk size
-        let range = self.fetch_range(cursors, latest_block.block_number).await?;
+        let range = self.fetch_range(cursors, latest_block).await?;
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
         Ok(range)
@@ -260,7 +259,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     pub async fn fetch_range(
         &self,
         cursors: &HashMap<Felt, Cursor>,
-        latest_block_number: u64,
+        latest_block: BlockHashAndNumber,
     ) -> Result<FetchRangeResult, FetchError> {
         let mut events = vec![];
         let mut cursors = cursors.clone();
@@ -280,7 +279,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 from_block: Some(BlockId::Number(from)),
                 to_block: Some(BlockId::Tag(
                     if self.config.flags.contains(IndexingFlags::PENDING_BLOCKS)
-                        && from > latest_block_number
+                        && from > latest_block.block_number
                     {
                         BlockTag::Pending
                     } else {
@@ -308,7 +307,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // Step 2: Fetch all events recursively
         events.extend(
-            self.fetch_events(event_requests, &mut cursors, latest_block_number)
+            self.fetch_events(event_requests, &mut cursors, latest_block.block_number)
                 .await?,
         );
 
@@ -316,7 +315,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for event in &events {
             let block_number = match event.block_number {
                 Some(block_number) => block_number,
-                None => latest_block_number + 1, // Pending block
+                None => latest_block.block_number + 1, // Pending block
             };
             block_numbers.insert(block_number);
         }
@@ -331,7 +330,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for block_number in &block_numbers {
             block_requests.push(ProviderRequestData::GetBlockWithTxHashes(
                 GetBlockWithTxHashesRequest {
-                    block_id: if *block_number > latest_block_number {
+                    block_id: if *block_number > latest_block.block_number {
                         BlockId::Tag(BlockTag::Pending)
                     } else {
                         BlockId::Number(*block_number)
@@ -351,9 +350,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 (block.timestamp, block.transactions, Some(block.block_hash))
                             }
                             MaybePendingBlockWithTxHashes::PendingBlock(block) => {
-                                let latest_block: &FetchRangeBlock =
-                                    blocks.get(&latest_block_number).unwrap();
-                                if block.parent_hash != latest_block.block_hash.unwrap() {
+                                if block.parent_hash != latest_block.block_hash {
                                     // if the parent hash is not the same as the previous block,
                                     // we need to re fetch the pending block with a specific block number
                                     let block = self
@@ -403,7 +400,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for event in events {
             let block_number = match event.block_number {
                 Some(block_number) => block_number,
-                None => latest_block_number + 1, // Pending block
+                None => latest_block.block_number + 1, // Pending block
             };
 
             let block = blocks.get_mut(&block_number).expect("Block not found");
