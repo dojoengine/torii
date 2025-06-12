@@ -224,7 +224,7 @@ async fn fetch_controller_username(
                 }
             },
             Err(e) => {
-                if attempt < MAX_RETRIES - 1 {
+                if attempt < MAX_RETRIES {
                     let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
                     warn!(
                         target: LOG_TARGET,
