@@ -7,7 +7,7 @@ use std::time::Duration;
 use bitflags::bitflags;
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
-use futures_util::future::try_join_all;
+use futures_util::future::join_all;
 use hashlink::lru_cache::Entry;
 use hashlink::LinkedHashMap;
 use starknet::core::types::requests::{
@@ -27,7 +27,7 @@ use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::utils::{format_event_id, parse_event_id};
 use torii_sqlite::{Cursor, Sql};
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::constants::LOG_TARGET;
 use crate::error::{Error, FetchError, ProcessError};
@@ -884,25 +884,53 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             return Ok(Vec::new());
         }
 
+        const MAX_RETRIES: u32 = 3;
+        const INITIAL_BACKOFF: Duration = Duration::from_secs(2);
+
         let mut futures = Vec::new();
         for chunk in requests.chunks(self.config.batch_chunk_size) {
             futures.push(async move { self.provider.batch_requests(chunk).await });
         }
 
-        let results_of_chunks: Vec<Vec<ProviderResponseData>> = try_join_all(futures)
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    error = ?e,
-                    total_requests = requests.len(),
-                    batch_chunk_size = self.config.batch_chunk_size,
-                    "One or more batch requests failed during chunked execution. This could be due to the provider being overloaded. You can try reducing the batch chunk size."
-                );
-                e
-            })?;
+        let results = join_all(futures).await;
 
-        let flattened_results = results_of_chunks.into_iter().flatten().collect();
+        let mut flattened_results = Vec::new();
+        for result in &results {
+            for attempt in 0..MAX_RETRIES {
+                match result {
+                    Ok(results_of_chunks) => {
+                        flattened_results.extend(results_of_chunks.iter().cloned());
+                    }
+                    Err(e) => {
+                        if attempt < MAX_RETRIES - 1 {
+                            let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
+                            warn!(
+                                target: LOG_TARGET,
+                                attempt = attempt + 1,
+                                backoff_secs = backoff.as_secs(),
+                                error = ?e,
+                                total_requests = requests.len(),
+                                batch_chunk_size = self.config.batch_chunk_size,
+                                "Chunked batch request failed, retrying..."
+                            );
+                            sleep(backoff).await;
+                        } else {
+                            error!(
+                                target: LOG_TARGET,
+                                error = ?e,
+                                total_requests = requests.len(),
+                                batch_chunk_size = self.config.batch_chunk_size,
+                                "One or more batch requests failed during chunked execution after all retries. This could be due to the provider being overloaded. You can try reducing the batch chunk size."
+                            );
+                            return Err(FetchError::Anyhow(anyhow::anyhow!(
+                                "Batch request failed after all retries: {}",
+                                e
+                            )));
+                        }
+                    }
+                }
+            }
+        }
 
         Ok(flattened_results)
     }

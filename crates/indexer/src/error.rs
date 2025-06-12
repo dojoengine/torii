@@ -18,6 +18,8 @@ pub enum Error {
 pub enum FetchError {
     #[error(transparent)]
     Provider(#[from] starknet::providers::ProviderError),
+    #[error(transparent)]
+    Anyhow(#[from] anyhow::Error),
 }
 
 #[derive(Error, Debug)]
