@@ -27,7 +27,7 @@ use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::utils::{format_event_id, parse_event_id};
 use torii_sqlite::{Cursor, Sql};
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::constants::LOG_TARGET;
 use crate::error::{Error, FetchError, ProcessError};
@@ -884,26 +884,48 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             return Ok(Vec::new());
         }
 
+        const MAX_RETRIES: u32 = 3;
+        const INITIAL_BACKOFF: Duration = Duration::from_secs(2);
+
         let mut futures = Vec::new();
         for chunk in requests.chunks(self.config.batch_chunk_size) {
-            futures.push(async move { self.provider.batch_requests(chunk).await });
+            futures.push(async move {
+                let mut attempt = 0;
+                loop {
+                    match self.provider.batch_requests(chunk).await {
+                        Ok(results) => return Ok::<Vec<ProviderResponseData>, FetchError>(results),
+                        Err(e) => {
+                            if attempt < MAX_RETRIES {
+                                let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
+                                warn!(
+                                    target: LOG_TARGET,
+                                    attempt = attempt + 1,
+                                    backoff_secs = backoff.as_secs(),
+                                    error = ?e,
+                                    chunk_size = chunk.len(),
+                                    batch_chunk_size = self.config.batch_chunk_size,
+                                    "Retrying failed batch request for chunk."
+                                );
+                                sleep(backoff).await;
+                                attempt += 1;
+                            } else {
+                                error!(
+                                    target: LOG_TARGET,
+                                    error = ?e,
+                                    chunk_size = chunk.len(),
+                                    batch_chunk_size = self.config.batch_chunk_size,
+                                    "Chunk batch request failed after all retries. This could be due to the provider being overloaded. You can try reducing the batch chunk size."
+                                );
+                                return Err(FetchError::BatchRequest(Box::new(e.into())));
+                            }
+                        }
+                    }
+                }
+            });
         }
 
-        let results_of_chunks: Vec<Vec<ProviderResponseData>> = try_join_all(futures)
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    error = ?e,
-                    total_requests = requests.len(),
-                    batch_chunk_size = self.config.batch_chunk_size,
-                    "One or more batch requests failed during chunked execution. This could be due to the provider being overloaded. You can try reducing the batch chunk size."
-                );
-                e
-            })?;
-
+        let results_of_chunks = try_join_all(futures).await?;
         let flattened_results = results_of_chunks.into_iter().flatten().collect();
-
         Ok(flattened_results)
     }
 }
