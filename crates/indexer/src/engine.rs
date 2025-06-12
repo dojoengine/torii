@@ -83,6 +83,19 @@ pub struct FetchRangeResult {
     pub cursors: HashMap<Felt, Cursor>,
 }
 
+#[derive(Debug, Clone)]
+pub struct FetchPendingResult {
+    pub pending_block: Box<PendingBlockWithReceipts>,
+    pub last_pending_block_tx: Option<Felt>,
+    pub block_number: u64,
+}
+
+#[derive(Debug, Clone)]
+pub enum FetchResult {
+    Range(FetchRangeResult),
+    Pending(FetchPendingResult),
+}
+
 #[allow(missing_debug_implementations)]
 pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     world: Arc<WorldContractReader<P>>,
@@ -617,6 +630,37 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         Ok(all_events)
+    }
+
+    async fn fetch_pending(
+        &self,
+        block: BlockHashAndNumber,
+        last_pending_block_tx: Option<Felt>,
+    ) -> Result<Option<FetchPendingResult>> {
+        let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
+            .provider
+            .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
+            .await?
+        {
+            // if the parent hash is not the hash of the latest block that we fetched, then it means
+            // a new block got mined just after we fetched the latest block information
+            if block.block_hash != pending.parent_hash {
+                return Ok(None);
+            }
+
+            pending
+        } else {
+            // TODO: change this to unreachable once katana is updated to return PendingBlockWithTxs
+            // when BlockTag is Pending unreachable!("We requested pending block, so it
+            // must be pending");
+            return Ok(None);
+        };
+
+        Ok(Some(FetchPendingResult {
+            pending_block: Box::new(pending_block),
+            block_number: block.block_number + 1,
+            last_pending_block_tx,
+        }))
     }
 
     pub async fn process(&mut self, range: &FetchRangeResult) -> Result<(), ProcessError> {
