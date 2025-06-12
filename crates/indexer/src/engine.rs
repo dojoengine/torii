@@ -323,19 +323,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             let from = cursor
                 .head
                 .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
-            let to = from + self.config.blocks_chunk_size;
+            let to = (from + self.config.blocks_chunk_size).min(latest_block.block_number);
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
-                to_block: Some(BlockId::Tag(
-                    if self.config.flags.contains(IndexingFlags::PENDING_BLOCKS)
-                        && from > latest_block.block_number
-                    {
-                        BlockTag::Pending
-                    } else {
-                        BlockTag::Latest
-                    },
-                )),
+                to_block: Some(BlockId::Number(to)),
                 address: Some(*contract_address),
                 keys: None,
             };
