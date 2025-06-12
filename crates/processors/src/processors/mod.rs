@@ -20,6 +20,7 @@ use store_del_record::StoreDelRecordProcessor;
 use store_set_record::StoreSetRecordProcessor;
 use store_transaction::StoreTransactionProcessor;
 use store_update_member::StoreUpdateMemberProcessor;
+use store_update_members::StoreUpdateMembersProcessor;
 use store_update_record::StoreUpdateRecordProcessor;
 use torii_sqlite::types::ContractType;
 use upgrade_event::UpgradeEventProcessor;
@@ -45,6 +46,7 @@ mod store_del_record;
 mod store_set_record;
 mod store_transaction;
 mod store_update_member;
+mod store_update_members;
 mod store_update_record;
 mod upgrade_event;
 mod upgrade_model;
@@ -88,6 +90,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Processors<P> {
                     Box::new(StoreSetRecordProcessor),
                     Box::new(StoreDelRecordProcessor),
                     Box::new(StoreUpdateRecordProcessor),
+                    Box::new(StoreUpdateMembersProcessor),
                     Box::new(StoreUpdateMemberProcessor),
                     Box::new(MetadataUpdateProcessor),
                     Box::new(EventMessageProcessor),
