@@ -19,7 +19,7 @@ pub enum FetchError {
     #[error(transparent)]
     Provider(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
-    Anyhow(#[from] anyhow::Error),
+    BatchRequest(#[from] Box<FetchError>),
 }
 
 #[derive(Error, Debug)]
