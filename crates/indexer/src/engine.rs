@@ -344,7 +344,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // Step 2: Fetch all events recursively
         events.extend(
-            self.fetch_events(event_requests, &mut cursors, latest_block.block_number)
+            self.fetch_events(event_requests, &mut cursors)
                 .await?,
         );
 
@@ -352,7 +352,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for event in &events {
             let block_number = match event.block_number {
                 Some(block_number) => block_number,
-                None => latest_block.block_number + 1, // Pending block
+                None => unreachable!(), // Pending block
             };
             block_numbers.insert(block_number);
         }
@@ -521,7 +521,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     async fn fetch_events(
         &self,
         initial_requests: Vec<(Felt, u64, ProviderRequestData)>,
-        cursors: &HashMap<Felt, Cursor>,
+        cursors: &mut HashMap<Felt, Cursor>,
     ) -> Result<Vec<EmittedEvent>, FetchError> {
         let mut all_events = Vec::new();
         let mut current_requests = initial_requests;
@@ -557,15 +557,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         // Process events for this page, only including events up to our target
                         // block
                         for event in events_page.events.clone() {
-                            let block_number = match event.block_number {
-                                Some(block_number) => {
-                                    last_validated_block_number = Some(block_number);
-                                    block_number
-                                }
-                                // If we don't have a block number, this must be a pending block event
-                                None => latest_block_number + 1,
-                            };
-
                             // Then we skip all transactions until we reach the last pending
                             // processed transaction (if any)
                             if let Some(last_pending_block_tx) =
@@ -608,6 +599,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     ProviderRequestData::GetEvents(next_request),
                                 ));
                             }
+                        } else {
+                            // We have no more events to fetch, so we can update the cursor
+                            let new_cursor = cursors.get_mut(&contract_address).unwrap();
+                            if new_cursor.head != Some(to) {
+                                new_cursor.last_pending_block_tx = None;
+                            }
+                            new_cursor.head = Some(to);
                         }
                     }
                     _ => unreachable!(),
