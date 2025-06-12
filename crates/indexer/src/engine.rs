@@ -521,8 +521,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     async fn fetch_events(
         &self,
         initial_requests: Vec<(Felt, u64, ProviderRequestData)>,
-        cursors: &mut HashMap<Felt, Cursor>,
-        latest_block_number: u64,
+        cursors: &HashMap<Felt, Cursor>,
     ) -> Result<Vec<EmittedEvent>, FetchError> {
         let mut all_events = Vec::new();
         let mut current_requests = initial_requests;
@@ -550,15 +549,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 let contract_type = self.contracts.get(&contract_address).unwrap();
                 debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Pre-processing events for contract.");
 
-                let old_cursor = old_cursors.get_mut(&contract_address).unwrap();
-                let new_cursor = cursors.get_mut(&contract_address).unwrap();
-                let mut previous_contract_tx = None;
-                let mut event_idx = 0;
-                let mut last_pending_block_event_id_tmp =
-                    old_cursor.last_pending_block_event_id.clone();
-                let mut last_validated_block_number = None;
-                let mut last_block_number = None;
-                let mut is_pending = false;
+                let mut last_pending_block_tx_tmp =
+                    old_cursor.last_pending_block_tx.clone();
 
                 match result {
                     ProviderResponseData::GetEvents(events_page) => {
@@ -574,60 +566,35 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 None => latest_block_number + 1,
                             };
 
-                            last_block_number = Some(block_number);
-                            is_pending = event.block_number.is_none();
-
-                            if previous_contract_tx != Some(event.transaction_hash) {
-                                event_idx = 0;
-                                previous_contract_tx = Some(event.transaction_hash);
-                            }
-                            let event_id =
-                                format_event_id(block_number, &event.transaction_hash, event_idx);
-                            event_idx += 1;
-
                             // Then we skip all transactions until we reach the last pending
                             // processed transaction (if any)
-                            if let Some(last_pending_block_event_id) =
-                                last_pending_block_event_id_tmp.clone()
+                            if let Some(last_pending_block_tx) =
+                                last_pending_block_tx_tmp.clone()
                             {
-                                let (cursor_block_number, _, _) =
-                                    parse_event_id(&last_pending_block_event_id);
-                                if event_id != last_pending_block_event_id
-                                    && cursor_block_number == block_number
+                                if event.transaction_hash != last_pending_block_tx
                                 {
                                     continue;
                                 }
-                                last_pending_block_event_id_tmp = None;
+                                last_pending_block_tx_tmp = None;
                             }
 
                             // Skip the latest pending block transaction events
                             // * as we might have multiple events for the same transaction
-                            if let Some(last_contract_tx) =
-                                old_cursor.last_pending_block_event_id.take()
+                            if let Some(last_pending_block_tx) =
+                                last_pending_block_tx_tmp.clone()
                             {
-                                let (cursor_block_number, _, _) = parse_event_id(&last_contract_tx);
-                                if event_id == last_contract_tx
-                                    && cursor_block_number == block_number
+                                if event.transaction_hash != last_pending_block_tx
                                 {
                                     continue;
                                 }
-                                new_cursor.last_pending_block_event_id = None;
-                            }
-
-                            if is_pending {
-                                new_cursor.last_pending_block_event_id = Some(event_id.clone());
+                                last_pending_block_tx_tmp = None;
                             }
 
                             events.push(event);
                         }
 
                         // Add continuation request to next_requests instead of recursing
-                        // We only fetch next events if;
-                        // - we have a continuation token
-                        // - we have a last block number (which means we have processed atleast one event)
-                        // - the last block number is less than the to block
                         if events_page.continuation_token.is_some()
-                            && (last_block_number.is_none() || last_block_number.unwrap() < to)
                         {
                             debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Adding continuation request for contract.");
                             if let ProviderRequestData::GetEvents(mut next_request) =
@@ -641,20 +608,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     ProviderRequestData::GetEvents(next_request),
                                 ));
                             }
-                        } else {
-                            let new_head = to.max(last_block_number.unwrap_or(0));
-                            let new_head = new_head
-                                .min(last_validated_block_number.unwrap_or(latest_block_number));
-                            // We only reset the last pending block contract tx if we are not
-                            // processing pending events anymore. It can happen that during a short lapse,
-                            // we can have some pending events while the latest block number has been incremented.
-                            // So we want to make sure we don't reset the last pending block contract tx
-                            if new_cursor.head != Some(new_head) && !is_pending {
-                                new_cursor.last_pending_block_event_id = None;
-                            }
-                            new_cursor.head = Some(new_head);
-
-                            debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, head = new_cursor.head, last_pending_block_event_id = new_cursor.last_pending_block_event_id, "Fetched and pre-processed events for contract.");
                         }
                     }
                     _ => unreachable!(),
