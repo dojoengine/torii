@@ -232,7 +232,7 @@ pub struct ContractCursor {
     pub tps: Option<i64>,
     pub last_block_timestamp: Option<i64>,
     pub contract_address: String,
-    pub last_pending_block_event_id: Option<String>,
+    pub last_pending_block_tx: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

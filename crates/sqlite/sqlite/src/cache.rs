@@ -193,24 +193,23 @@ impl LocalCache {
     }
 
     pub async fn get_token_registration_lock(&self, token_id: &str) -> Option<Arc<Mutex<()>>> {
-        match self.token_id_registry.get(token_id) {
-            Some(entry) => match entry.value() {
+        let entry = self.token_id_registry.entry(token_id.to_string());
+        match entry {
+            dashmap::Entry::Occupied(mut occupied) => match occupied.get() {
                 TokenState::Registering(mutex) => Some(mutex.clone()),
                 TokenState::Registered => None,
                 TokenState::NotRegistered => {
-                    drop(entry);
-                    self.begin_token_registration(token_id)
+                    let mutex = Arc::new(Mutex::new(()));
+                    occupied.insert(TokenState::Registering(mutex.clone()));
+                    Some(mutex)
                 }
             },
-            None => self.begin_token_registration(token_id),
+            dashmap::Entry::Vacant(vacant) => {
+                let mutex = Arc::new(Mutex::new(()));
+                vacant.insert(TokenState::Registering(mutex.clone()));
+                Some(mutex)
+            }
         }
-    }
-
-    fn begin_token_registration(&self, token_id: &str) -> Option<Arc<Mutex<()>>> {
-        let mutex = Arc::new(Mutex::new(()));
-        self.token_id_registry
-            .insert(token_id.to_string(), TokenState::Registering(mutex.clone()));
-        Some(mutex)
     }
 
     pub async fn mark_token_registered(&self, token_id: &str) {
