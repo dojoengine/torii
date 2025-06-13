@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::AddAssign;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -375,7 +376,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Step 2: Fetch all events recursively
-        events.extend(self.fetch_events(event_requests, &mut cursors, latest_block.block_number).await?);
+        events.extend(
+            self.fetch_events(event_requests, &mut cursors, latest_block.block_number)
+                .await?,
+        );
 
         // Step 3: Collect unique block numbers from events and cursors
         for event in &events {
@@ -558,7 +562,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         for event in events_page.events.clone() {
                             if from == 0 {
                                 from = event.block_number.unwrap();
-                                to = (from + self.config.blocks_chunk_size).min(latest_block_number);
+                                to =
+                                    (from + self.config.blocks_chunk_size).min(latest_block_number);
                             }
 
                             if event.block_number.unwrap() > to {
@@ -566,7 +571,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 break;
                             }
 
-                            
                             // Then we skip all transactions until we reach the last pending
                             // processed transaction (if any)
                             if let Some(last_pending_block_tx) = last_pending_block_tx_tmp.clone() {
@@ -578,8 +582,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                             // Skip the latest pending block transaction events
                             // * as we might have multiple events for the same transaction
-                            if let Some(last_pending_block_tx) = cursor.last_pending_block_tx.clone() {
-                                if event.transaction_hash != last_pending_block_tx {
+                            if let Some(last_pending_block_tx) =
+                                cursor.last_pending_block_tx.clone()
+                            {
+                                if event.transaction_hash == last_pending_block_tx {
                                     continue;
                                 }
                                 cursor.last_pending_block_tx = None;
@@ -588,7 +594,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             events.push(event);
                         }
 
-                        // We have no more events to fetch, so we can update the cursor
                         let new_cursor = cursors.get_mut(&contract_address).unwrap();
                         if new_cursor.head != Some(to) {
                             new_cursor.last_pending_block_tx = None;
@@ -748,10 +753,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     continue;
                 }
 
-                num_transactions.entry(*contract_address).or_insert(0);
-                *num_transactions.get_mut(contract_address).unwrap() += 1;
+                num_transactions
+                    .entry(*contract_address)
+                    .or_insert(0)
+                    .add_assign(1);
 
-                transactions.entry(*contract_address).and_modify(|tx| {
+                transactions.entry(*tx_hash).and_modify(|tx| {
                     tx.events.extend(
                         t.receipt
                             .events()
@@ -761,6 +768,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             .collect::<Vec<_>>(),
                     );
                 });
+                cursor.last_pending_block_tx = Some(*tx_hash);
             }
         }
 
@@ -768,13 +776,17 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             timestamp,
             transactions,
             block_number,
-            cursors: cursors.clone(),
+            cursors: new_cursors,
             num_transactions,
         }))
     }
 
     pub async fn process_pending(&mut self, data: &FetchPendingResult) -> Result<(), ProcessError> {
         for (tx_hash, tx) in &data.transactions {
+            if tx.events.is_empty() {
+                continue;
+            }
+
             if let Err(e) = self
                 .process_transaction_with_events(
                     *tx_hash,
@@ -815,7 +827,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for (event_idx, event) in events.iter().enumerate() {
             // NOTE: erc* processors expect the event_id to be in this format to get
             // transaction_hash:
-            let event_id = format_event_id(block_number, &transaction_hash, &event.from_address, event_idx as u64);
+            let event_id = format_event_id(
+                block_number,
+                &transaction_hash,
+                &event.from_address,
+                event_idx as u64,
+            );
 
             let Some(&contract_type) = self.contracts.get(&event.from_address) else {
                 continue;
