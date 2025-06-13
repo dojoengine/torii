@@ -128,7 +128,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         shutdown_tx: Sender<()>,
         contracts: &[Contract],
     ) -> Self {
-        Self::new_with_controllers(world, db, provider, processors, config, shutdown_tx, contracts, None)
+        Self::new_with_controllers(
+            world,
+            db,
+            provider,
+            processors,
+            config,
+            shutdown_tx,
+            contracts,
+            None,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -230,8 +239,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     cached_data = None;
                                     // Sync controllers
                                     if let Some(controllers) = &self.controllers {
+                                        let instant = Instant::now();
+                                        debug!(target: LOG_TARGET, "Syncing controllers.");
                                         let num_controllers = controllers.sync().await.map_err(Error::ControllerSync)?;
-                                        info!(target: LOG_TARGET, num_controllers = num_controllers, "Synced controllers.");
+                                        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), num_controllers = num_controllers, "Synced controllers.");
+                                        if num_controllers > 0 {
+                                            info!(target: LOG_TARGET, num_controllers = num_controllers, "Synced controllers.");
+                                        }
                                     }
                                     self.db.execute().await?;
                                 },

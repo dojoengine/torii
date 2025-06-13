@@ -29,13 +29,13 @@ use torii_sqlite_types::{Contract, Hook, ModelIndices};
 
 pub mod cache;
 pub mod constants;
+pub mod controllers;
 pub mod erc;
 pub mod error;
 pub mod executor;
 pub mod model;
 pub mod simple_broker;
 pub mod utils;
-pub mod controllers;
 
 use cache::{LocalCache, Model, ModelCache};
 pub use torii_sqlite_types as types;
@@ -1136,7 +1136,7 @@ impl Sql {
         &self,
         username: &str,
         address: &str,
-        timestamp: DateTime<Utc>
+        timestamp: DateTime<Utc>,
     ) -> Result<(), Error> {
         let insert_controller = "
             INSERT INTO controllers (id, username, address, deployed_at)

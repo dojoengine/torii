@@ -171,8 +171,12 @@ where
             "Controller deployed."
         );
 
-        db.add_controller(&username, &address, must_utc_datetime_from_timestamp(block_timestamp))
-            .await?;
+        db.add_controller(
+            &username,
+            &address,
+            must_utc_datetime_from_timestamp(block_timestamp),
+        )
+        .await?;
 
         Ok(())
     }

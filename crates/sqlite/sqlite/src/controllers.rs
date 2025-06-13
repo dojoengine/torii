@@ -5,7 +5,6 @@ use tokio::sync::RwLock;
 
 use crate::{error::ControllerSyncError, Sql};
 
-
 pub struct ControllersSync {
     sql: Sql,
     cursor: RwLock<Option<DateTime<Utc>>>,
@@ -53,12 +52,16 @@ impl ControllersSync {
         .await
         .expect("Should be able to read cursor from controllers table");
 
-        Self { sql, cursor: RwLock::new(cursor) }
+        Self {
+            sql,
+            cursor: RwLock::new(cursor),
+        }
     }
 
     pub async fn sync(&self) -> Result<usize, ControllerSyncError> {
         // graphQL query to get the controllers api.cartridge.gg/graphql
-        let query = format!(r#"
+        let query = format!(
+            r#"
         query {{
           controllers(where:{{
             createdAtGT:"{}"
@@ -76,7 +79,9 @@ impl ControllersSync {
               }}
             }}
           }}
-        }}"#, self.cursor.read().await.unwrap_or_default().to_rfc3339());
+        }}"#,
+            self.cursor.read().await.unwrap_or_default().to_rfc3339()
+        );
 
         // send the query to the graphQL endpoint
         let response = reqwest::Client::new()
@@ -90,11 +95,23 @@ impl ControllersSync {
 
         let body: ControllersResponse = response.json().await?;
 
-        let controllers = body.data.controllers.edges.iter().map(|c| c.node.clone()).collect::<Vec<_>>();
+        let controllers = body
+            .data
+            .controllers
+            .edges
+            .iter()
+            .map(|c| c.node.clone())
+            .collect::<Vec<_>>();
         let num_controllers = controllers.len();
 
         for controller in controllers {
-            self.sql.add_controller(&controller.account.username, &controller.address, controller.created_at).await?;
+            self.sql
+                .add_controller(
+                    &controller.account.username,
+                    &controller.address,
+                    controller.created_at,
+                )
+                .await?;
             *self.cursor.write().await = Some(controller.created_at);
         }
 
