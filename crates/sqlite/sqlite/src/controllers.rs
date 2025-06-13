@@ -6,6 +6,7 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use starknet_crypto::Felt;
 use tokio::sync::RwLock;
+use tracing::warn;
 
 use crate::{error::ControllerSyncError, Sql};
 
@@ -59,6 +60,8 @@ impl ControllersSync {
         .fetch_optional(&sql.pool)
         .await
         .expect("Should be able to read cursor from controllers table");
+
+        dbg!(&cursor);
 
         Self {
             sql,
@@ -114,7 +117,18 @@ impl ControllersSync {
                 .await;
 
             match result {
-                Ok(resp) => break resp,
+                Ok(resp) if resp.status().is_success() => break resp,
+                Ok(resp) if attempts < MAX_RETRIES => {
+                    let error_text = resp.text().await?;
+                    warn!(error_text, "Error fetching controllers, retrying.");
+                    let backoff = INITIAL_BACKOFF * (1 << (attempts - 1));
+                    tokio::time::sleep(backoff).await;
+                    continue;
+                }
+                Ok(resp) => {
+                    let error_text = resp.text().await?;
+                    return Err(ControllerSyncError::ApiError(error_text));
+                }
                 Err(_) if attempts < MAX_RETRIES => {
                     let backoff = INITIAL_BACKOFF * (1 << (attempts - 1));
                     tokio::time::sleep(backoff).await;
@@ -123,11 +137,6 @@ impl ControllersSync {
                 Err(e) => return Err(ControllerSyncError::Reqwest(e)),
             }
         };
-
-        if !response.status().is_success() {
-            let error_text = response.text().await?;
-            return Err(ControllerSyncError::ApiError(error_text));
-        }
 
         let body: ControllersResponse = response.json().await?;
 
@@ -249,6 +258,7 @@ mod tests {
             .with_status(500)
             .with_header("content-type", "application/json")
             .with_body("Internal Server Error")
+            .expect(3)
             .create_async()
             .await;
 
@@ -294,5 +304,31 @@ mod tests {
             assert!(address.starts_with("0x"));
             assert!(address[2..].chars().all(|c| c.is_ascii_hexdigit()));
         }
+    }
+
+    #[tokio::test]
+    async fn test_fetch_controllers_api_empty_future() {
+        let (shutdown_tx, _) = broadcast::channel(1);
+        let sql = new_sql_test(shutdown_tx).await;
+
+        // Insert a controller in the future which should always yield an empty result.
+        let timestamp = chrono::Utc::now() + chrono::Duration::days(10);
+        sqlx::query(
+            "INSERT INTO controllers (id, username, address, deployed_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind("test_user")
+        .bind("test_user")
+        .bind("0x123")
+        .bind(timestamp.to_rfc3339())
+        .execute(&sql.pool)
+        .await
+        .unwrap();
+
+        let sync = ControllersSync::new(sql).await;
+
+        let result = sync.fetch_controllers().await;
+        assert!(result.is_ok());
+        let controllers = result.unwrap();
+        assert!(controllers.is_empty());
     }
 }

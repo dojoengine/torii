@@ -5,7 +5,9 @@ use crate::cache::ModelCache;
 use crate::executor::Executor;
 use crate::types::{Contract, ContractType};
 use crate::Sql;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::{
+    SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
+};
 use starknet::core::types::Felt;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::JsonRpcClient;
@@ -23,10 +25,22 @@ impl Sql {
     ) -> Self {
         let tempfile = NamedTempFile::new().unwrap();
         let path = tempfile.path().to_string_lossy();
-        let options = SqliteConnectOptions::from_str(&path)
+
+        let mut options = SqliteConnectOptions::from_str(&path)
             .unwrap()
             .create_if_missing(true)
             .with_regexp();
+
+        // Performance settings
+        options = options.auto_vacuum(SqliteAutoVacuum::None);
+        options = options.journal_mode(SqliteJournalMode::Wal);
+        options = options.synchronous(SqliteSynchronous::Normal);
+        options = options.optimize_on_close(true, None);
+        options = options.pragma("cache_size", "-500000");
+        options = options.pragma("page_size", "32768");
+        options = options.pragma("wal_autocheckpoint", "1000");
+        options = options.pragma("busy_timeout", "60000");
+
         let pool = SqlitePoolOptions::new()
             .min_connections(1)
             .idle_timeout(None)
@@ -37,10 +51,9 @@ impl Sql {
 
         sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
-        let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
-                .await
-                .unwrap();
+        let (mut executor, sender) = Executor::new(pool.clone(), shutdown_tx.clone(), provider)
+            .await
+            .unwrap();
 
         tokio::spawn(async move {
             executor.run().await.unwrap();
