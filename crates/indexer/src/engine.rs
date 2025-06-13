@@ -230,7 +230,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     cached_data = None;
                                     // Sync controllers
                                     if let Some(controllers) = &self.controllers {
-                                        controllers.sync().await.map_err(Error::ControllerSync)?;
+                                        let num_controllers = controllers.sync().await.map_err(Error::ControllerSync)?;
+                                        info!(target: LOG_TARGET, num_controllers = num_controllers, "Synced controllers.");
                                     }
                                     self.db.execute().await?;
                                 },

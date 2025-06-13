@@ -56,7 +56,7 @@ impl ControllersSync {
         Self { sql, cursor: RwLock::new(cursor) }
     }
 
-    pub async fn sync(&self) -> Result<(), ControllerSyncError> {
+    pub async fn sync(&self) -> Result<usize, ControllerSyncError> {
         // graphQL query to get the controllers api.cartridge.gg/graphql
         let query = format!(r#"
         query {{
@@ -91,12 +91,13 @@ impl ControllersSync {
         let body: ControllersResponse = response.json().await?;
 
         let controllers = body.data.controllers.edges.iter().map(|c| c.node.clone()).collect::<Vec<_>>();
+        let num_controllers = controllers.len();
 
         for controller in controllers {
             self.sql.add_controller(&controller.account.username, &controller.address, controller.created_at).await?;
             *self.cursor.write().await = Some(controller.created_at);
         }
 
-        Ok(())
+        Ok(num_controllers)
     }
 }
