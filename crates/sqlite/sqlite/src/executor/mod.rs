@@ -391,7 +391,13 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 }
             }
             QueryType::StoreTransaction(store_transaction) => {
-                let row = query.fetch_one(&mut **tx).await?;
+                // Our transaction has alraedy been added by another contract probably.
+                let row = if let Some(tx) = query.fetch_optional(&mut **tx).await? {
+                    tx
+                } else {
+                    return Ok(());
+                };
+
                 let mut transaction = Transaction::from_row(&row)?;
 
                 for contract_address in &store_transaction.contract_addresses {
