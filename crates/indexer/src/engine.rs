@@ -556,9 +556,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 let mut event_idx = 0;
                 let mut last_pending_block_event_id_tmp =
                     old_cursor.last_pending_block_event_id.clone();
-                let mut last_validated_block_number = None;
+                let mut last_completed_block_number = None;
                 let mut last_block_number = None;
                 let mut is_pending = false;
+                let mut deferred_events = Vec::new();
 
                 match result {
                     ProviderResponseData::GetEvents(events_page) => {
@@ -566,13 +567,17 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         // block
                         for event in events_page.events.clone() {
                             let block_number = match event.block_number {
-                                Some(block_number) => {
-                                    last_validated_block_number = Some(block_number);
-                                    block_number
-                                }
+                                Some(block_number) => block_number,
                                 // If we don't have a block number, this must be a pending block event
                                 None => latest_block_number + 1,
                             };
+
+                            if last_block_number.is_some()
+                                && block_number > last_block_number.unwrap()
+                            {
+                                last_completed_block_number = Some(last_block_number.unwrap());
+                                events.extend(deferred_events.drain(..));
+                            }
 
                             last_block_number = Some(block_number);
                             is_pending = event.block_number.is_none();
@@ -614,11 +619,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 new_cursor.last_pending_block_event_id = None;
                             }
 
+                            // For pending events, we dont want to wait for the block to be `completed`.
                             if is_pending {
                                 new_cursor.last_pending_block_event_id = Some(event_id.clone());
+                                events.push(event);
+                            } else {
+                                deferred_events.push(event);
                             }
-
-                            events.push(event);
                         }
 
                         // Add continuation request to next_requests instead of recursing
@@ -627,9 +634,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         // - we have a last block number (which means we have processed atleast one event)
                         // - the last block number is less than the to block
                         if events_page.continuation_token.is_some()
-                            && (last_block_number.is_none() || last_block_number.unwrap() < to)
+                            && (last_completed_block_number.is_none() || last_completed_block_number.unwrap() < to)
                         {
-                            debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Adding continuation request for contract.");
+                            debug!(target: LOG_TARGET, continuation_token = ?events_page.continuation_token, last_completed_block_number = ?last_completed_block_number, to = ?to, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Adding continuation request for contract.");
                             if let ProviderRequestData::GetEvents(mut next_request) =
                                 original_request
                             {
@@ -642,9 +649,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 ));
                             }
                         } else {
-                            let new_head = to.max(last_block_number.unwrap_or(0));
-                            let new_head = new_head
-                                .min(last_validated_block_number.unwrap_or(latest_block_number));
+                            let new_head = to.max(last_completed_block_number.unwrap_or(0));
+                            let new_head = new_head.min(latest_block_number);
                             // We only reset the last pending block contract tx if we are not
                             // processing pending events anymore. It can happen that during a short lapse,
                             // we can have some pending events while the latest block number has been incremented.
