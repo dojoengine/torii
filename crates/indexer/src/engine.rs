@@ -321,14 +321,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     }
 
     pub async fn process(&mut self, fetch_result: &FetchResult) -> Result<(), ProcessError> {
-        match fetch_result {
-            FetchResult { range, pending } => {
-                self.process_range(&range).await?;
-                if let Some(pending) = pending {
-                    self.process_pending(&pending).await?;
-                }
-            }
-        };
+        let FetchResult { range, pending } = fetch_result;
+
+        self.process_range(range).await?;
+        if let Some(pending) = pending {
+            self.process_pending(pending).await?;
+        }
 
         Ok(())
     }
@@ -552,7 +550,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Pre-processing events for contract.");
 
                 let cursor = cursors.get_mut(&contract_address).unwrap();
-                let mut last_pending_block_tx_tmp = cursor.last_pending_block_tx.clone();
+                let mut last_pending_block_tx_tmp = cursor.last_pending_block_tx;
                 let mut done = false;
 
                 match result {
@@ -573,7 +571,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                             // Then we skip all transactions until we reach the last pending
                             // processed transaction (if any)
-                            if let Some(last_pending_block_tx) = last_pending_block_tx_tmp.clone() {
+                            if let Some(last_pending_block_tx) = last_pending_block_tx_tmp {
                                 if event.transaction_hash != last_pending_block_tx {
                                     continue;
                                 }
@@ -582,9 +580,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                             // Skip the latest pending block transaction events
                             // * as we might have multiple events for the same transaction
-                            if let Some(last_pending_block_tx) =
-                                cursor.last_pending_block_tx.clone()
-                            {
+                            if let Some(last_pending_block_tx) = cursor.last_pending_block_tx {
                                 if event.transaction_hash == last_pending_block_tx {
                                     continue;
                                 }
@@ -731,7 +727,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
             cursor.last_block_timestamp = Some(timestamp);
 
-            let mut last_pending_block_tx_tmp = cursor.last_pending_block_tx.clone();
+            let mut last_pending_block_tx_tmp = cursor.last_pending_block_tx;
             for t in &pending_block.transactions {
                 let tx_hash = t.transaction.transaction_hash();
                 // Skip all transactions until we reach the last processed transaction
@@ -763,8 +759,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         t.receipt
                             .events()
                             .iter()
-                            .cloned()
                             .filter(|e| e.from_address == *contract_address)
+                            .cloned()
                             .collect::<Vec<_>>(),
                     );
                 });
@@ -854,7 +850,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 block_number,
                 block_timestamp,
                 &event_id,
-                &event,
+                event,
                 transaction_hash,
                 contract_type,
             )
