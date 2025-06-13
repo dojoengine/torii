@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use dojo_types::naming::get_tag;
 use dojo_types::primitive::SqlType;
 use dojo_types::schema::{Struct, Ty};
@@ -28,6 +29,7 @@ use torii_sqlite_types::{Contract, Hook, ModelIndices};
 
 pub mod cache;
 pub mod constants;
+pub mod controllers;
 pub mod erc;
 pub mod error;
 pub mod executor;
@@ -1131,10 +1133,10 @@ impl Sql {
     }
 
     pub async fn add_controller(
-        &mut self,
+        &self,
         username: &str,
         address: &str,
-        block_timestamp: u64,
+        timestamp: DateTime<Utc>,
     ) -> Result<(), Error> {
         let insert_controller = "
             INSERT INTO controllers (id, username, address, deployed_at)
@@ -1149,7 +1151,7 @@ impl Sql {
             Argument::String(username.to_string()),
             Argument::String(username.to_string()),
             Argument::String(address.to_string()),
-            Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
+            Argument::String(timestamp.to_rfc3339()),
         ];
 
         self.executor

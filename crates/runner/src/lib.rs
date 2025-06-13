@@ -19,7 +19,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use camino::Utf8PathBuf;
-use constants::UDC_ADDRESS;
 use dojo_metrics::exporters::prometheus::PrometheusRecorder;
 use dojo_types::naming::compute_selector_from_tag;
 use dojo_world::contracts::world::WorldContractReader;
@@ -44,6 +43,7 @@ use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
 use torii_sqlite::cache::ModelCache;
+use torii_sqlite::controllers::ControllersSync;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::{Contract, ContractType, Model};
@@ -89,13 +89,6 @@ impl Runner {
             address: world_address,
             r#type: ContractType::WORLD,
         });
-
-        if self.args.indexing.controllers {
-            self.args.indexing.contracts.push(Contract {
-                address: UDC_ADDRESS,
-                r#type: ContractType::UDC,
-            });
-        }
 
         // Setup cancellation for graceful shutdown
         let (shutdown_tx, _) = broadcast::channel(1);
@@ -285,7 +278,13 @@ impl Runner {
             flags.insert(IndexingFlags::PENDING_BLOCKS);
         }
 
-        let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new(
+        let controllers = if self.args.indexing.controllers {
+            Some(Arc::new(ControllersSync::new(db.clone()).await))
+        } else {
+            None
+        };
+
+        let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new_with_controllers(
             world,
             db.clone(),
             provider.clone(),
@@ -306,6 +305,7 @@ impl Runner {
             },
             shutdown_tx.clone(),
             &self.args.indexing.contracts,
+            controllers,
         );
 
         let shutdown_rx = shutdown_tx.subscribe();

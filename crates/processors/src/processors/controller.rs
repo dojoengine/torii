@@ -29,6 +29,7 @@ use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use thiserror::Error;
 use tokio::time::sleep;
+use torii_sqlite::utils::must_utc_datetime_from_timestamp;
 use torii_sqlite::Sql;
 use tracing::{debug, error, info, warn};
 
@@ -170,8 +171,12 @@ where
             "Controller deployed."
         );
 
-        db.add_controller(&username, &address, block_timestamp)
-            .await?;
+        db.add_controller(
+            &username,
+            &address,
+            must_utc_datetime_from_timestamp(block_timestamp),
+        )
+        .await?;
 
         Ok(())
     }

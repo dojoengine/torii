@@ -12,6 +12,8 @@ pub enum Error {
     ProviderError(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
     AnyhowError(#[from] anyhow::Error),
+    #[error(transparent)]
+    ControllerSync(#[from] torii_sqlite::error::ControllerSyncError),
 }
 
 #[derive(Error, Debug)]
