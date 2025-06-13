@@ -365,7 +365,9 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         }
                     };
 
-                    cursor.last_pending_block_tx = new_cursor.last_pending_block_tx.map(|tx| format!("{:#x}", tx));
+                    cursor.last_pending_block_tx = new_cursor
+                        .last_pending_block_tx
+                        .map(|tx| format!("{:#x}", tx));
                     cursor.tps = Some(new_tps.try_into().expect("does't fit in i64"));
                     cursor.last_block_timestamp =
                         Some(new_timestamp.try_into().expect("doesn't fit in i64"));

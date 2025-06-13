@@ -182,9 +182,10 @@ impl Sql {
         for c in cursors {
             let contract_address = Felt::from_str(&c.contract_address)
                 .map_err(|e| Error::Parse(ParseError::FromStr(e)))?;
-            let last_pending_block_tx = c.last_pending_block_tx.map(|tx| {
-                Felt::from_str(&tx).map_err(|e| Error::Parse(ParseError::FromStr(e)))
-            }).transpose()?;
+            let last_pending_block_tx = c
+                .last_pending_block_tx
+                .map(|tx| Felt::from_str(&tx).map_err(|e| Error::Parse(ParseError::FromStr(e))))
+                .transpose()?;
             let cursor = Cursor {
                 last_pending_block_tx,
                 head: c.head.map(|h| h as u64),
