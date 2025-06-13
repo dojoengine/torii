@@ -105,3 +105,11 @@ pub enum QueryError {
     #[error("Invalid cursor: {0}")]
     InvalidCursor(String),
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum ControllerSyncError {
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
+    #[error(transparent)]
+    Sql(#[from] crate::error::Error),
+}

@@ -24,6 +24,7 @@ use tokio::sync::broadcast::Sender;
 use tokio::time::{sleep, Instant};
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_sqlite::cache::ContractClassCache;
+use torii_sqlite::controllers::ControllersSync;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::utils::{format_event_id, parse_event_id};
 use torii_sqlite::{Cursor, Sql};
@@ -93,6 +94,7 @@ pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     task_manager: TaskManager<P>,
     contracts: Arc<HashMap<Felt, ContractType>>,
     contract_class_cache: Arc<ContractClassCache<P>>,
+    controllers: Option<Arc<ControllersSync>>,
 }
 
 impl Default for EngineConfig {
@@ -126,6 +128,20 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         shutdown_tx: Sender<()>,
         contracts: &[Contract],
     ) -> Self {
+        Self::new_with_controllers(world, db, provider, processors, config, shutdown_tx, contracts, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_controllers(
+        world: WorldContractReader<P>,
+        db: Sql,
+        provider: P,
+        processors: Processors<P>,
+        config: EngineConfig,
+        shutdown_tx: Sender<()>,
+        contracts: &[Contract],
+        controllers: Option<Arc<ControllersSync>>,
+    ) -> Self {
         let contracts = Arc::new(
             contracts
                 .iter()
@@ -154,6 +170,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 event_processor_config,
             ),
             contract_class_cache: Arc::new(ContractClassCache::new(provider)),
+            controllers,
         }
     }
 
@@ -211,6 +228,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     }
                                     // Reset the cached data
                                     cached_data = None;
+                                    // Sync controllers
+                                    if let Some(controllers) = &self.controllers {
+                                        controllers.sync().await?;
+                                    }
                                     self.db.execute().await?;
                                 },
                                 Err(e) => {
