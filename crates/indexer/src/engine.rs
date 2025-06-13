@@ -213,7 +213,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let mut processing_erroring_out = false;
         // The last fetch result & cursors, in case the processing fails, but not fetching.
         // Thus we can retry the processing with the same data instead of fetching again.
-        let mut cached_data: Option<Arc<FetchRangeResult>> = None;
+        let mut cached_data: Option<Arc<FetchResult>> = None;
 
         loop {
             tokio::select! {
@@ -296,7 +296,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     pub async fn fetch(
         &mut self,
         cursors: &mut HashMap<Felt, Cursor>,
-    ) -> Result<FetchRangeResult, FetchError> {
+    ) -> Result<FetchResult, FetchError> {
         let latest_block = self.provider.block_hash_and_number().await?;
 
         let instant = Instant::now();
@@ -304,14 +304,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let range = self.fetch_range(cursors, latest_block).await?;
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
-        Ok(range)
+        Ok(FetchResult::Range(range))
     }
 
-    pub async fn process(&mut self, fetch_result: FetchResult) -> Result<()> {
+    pub async fn process(&mut self, fetch_result: &FetchResult) -> Result<(), ProcessError> {
         match fetch_result {
-            FetchDataResult::Range(range) => self.process_range(range).await?,
-            FetchDataResult::Pending(data) => self.process_pending(data).await?,
-            FetchDataResult::None => {}
+            FetchResult::Range(range) => self.process_range(range).await?,
+            FetchResult::Pending(data) => self.process_pending(&data).await?,
         };
 
         Ok(())
@@ -399,27 +398,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             MaybePendingBlockWithTxHashes::Block(block) => {
                                 (block.timestamp, block.transactions, Some(block.block_hash))
                             }
-                            MaybePendingBlockWithTxHashes::PendingBlock(block) => {
-                                if block.parent_hash != latest_block.block_hash {
-                                    // if the parent hash is not the same as the previous block,
-                                    // we need to re fetch the pending block with a specific block number
-                                    let block = self
-                                        .provider
-                                        .get_block_with_tx_hashes(BlockId::Number(*block_number))
-                                        .await?;
-                                    match block {
-                                        // we assume that our pending block has now been validated.
-                                        MaybePendingBlockWithTxHashes::Block(block) => (
-                                            block.timestamp,
-                                            block.transactions,
-                                            Some(block.block_hash),
-                                        ),
-                                        _ => unreachable!(),
-                                    }
-                                } else {
-                                    (block.timestamp, block.transactions, None)
-                                }
-                            }
+                            _ => unreachable!(),
                         };
                         // Initialize block with transactions in the order provided by the block
                         let mut transactions = LinkedHashMap::new();
@@ -562,6 +541,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 let contract_type = self.contracts.get(&contract_address).unwrap();
                 debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Pre-processing events for contract.");
 
+                let old_cursor = old_cursors.get_mut(&contract_address).unwrap();
                 let mut last_pending_block_tx_tmp = old_cursor.last_pending_block_tx.clone();
 
                 match result {
@@ -677,7 +657,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         &self,
         block: BlockHashAndNumber,
         cursors: &HashMap<Felt, Cursor>,
-    ) -> Result<Option<FetchPendingResult>> {
+    ) -> Result<Option<FetchPendingResult>, Error> {
         let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
             .provider
             .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
@@ -698,13 +678,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         };
 
         Ok(Some(FetchPendingResult {
-            pending_block: Box::new(pending_block),
+            pending_block,
             block_number: block.block_number + 1,
             cursors: cursors.clone(),
         }))
     }
 
-    pub async fn process_pending(&mut self, data: FetchPendingResult) -> Result<()> {
+    pub async fn process_pending(&mut self, data: &FetchPendingResult) -> Result<(), Error> {
         // Skip transactions that have been processed already
         // Our cursor is the last processed transaction
 
@@ -715,6 +695,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for t in data.pending_block.transactions {
             let transaction_hash = t.transaction.transaction_hash();
 
+            if data.cursors.iter()
             for (contract_address, cursor) in &data.cursors {
                 // Skip all transactions until we reach the last processed transaction
                 if let Some(tx) = cursor.last_pending_block_tx {
@@ -736,6 +717,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             if t.receipt.execution_result().status() == TransactionExecutionStatus::Reverted {
                 continue;
             }
+
+            let events = t.receipt.events();
+            // Only keep events for our contracts that have a cursor
 
             if let Err(e) = self
                 .process_transaction_with_events(
