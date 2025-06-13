@@ -61,8 +61,6 @@ impl ControllersSync {
         .await
         .expect("Should be able to read cursor from controllers table");
 
-        dbg!(&cursor);
-
         Self {
             sql,
             cursor: RwLock::new(cursor),
@@ -166,7 +164,6 @@ impl ControllersSync {
                 )
                 .await;
 
-            dbg!(&e);
             e?;
 
             *self.cursor.write().await = Some(controller.created_at);
