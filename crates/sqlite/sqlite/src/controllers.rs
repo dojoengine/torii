@@ -1,13 +1,14 @@
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
+use tokio::sync::RwLock;
 
 use crate::{error::ControllerSyncError, Sql};
 
 
 pub struct ControllersSync {
     sql: Sql,
-    cursor: Option<DateTime<Utc>>,
+    cursor: RwLock<Option<DateTime<Utc>>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -52,7 +53,7 @@ impl ControllersSync {
         .await
         .expect("Should be able to read cursor from controllers table");
 
-        Self { sql, cursor }
+        Self { sql, cursor: RwLock::new(cursor) }
     }
 
     pub async fn sync(&self) -> Result<(), ControllerSyncError> {
@@ -75,7 +76,7 @@ impl ControllersSync {
               }}
             }}
           }}
-        }}"#, self.cursor.unwrap_or_default().to_rfc3339());
+        }}"#, self.cursor.read().await.unwrap_or_default().to_rfc3339());
 
         // send the query to the graphQL endpoint
         let response = reqwest::Client::new()
@@ -93,6 +94,7 @@ impl ControllersSync {
 
         for controller in controllers {
             self.sql.add_controller(&controller.account.username, &controller.address, controller.created_at).await?;
+            *self.cursor.write().await = Some(controller.created_at);
         }
 
         Ok(())
