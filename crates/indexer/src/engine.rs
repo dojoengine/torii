@@ -353,13 +353,14 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
-                to_block: Some(BlockId::Number(to)),
+                to_block: Some(BlockId::Tag(BlockTag::Latest)),
                 address: Some(*contract_address),
                 keys: None,
             };
 
             event_requests.push((
                 *contract_address,
+                from,
                 to,
                 ProviderRequestData::GetEvents(GetEventsRequest {
                     filter: EventFilterWithPage {
@@ -374,15 +375,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Step 2: Fetch all events recursively
-        events.extend(self.fetch_events(event_requests, &mut cursors).await?);
+        events.extend(self.fetch_events(event_requests, &mut cursors, latest_block.block_number).await?);
 
         // Step 3: Collect unique block numbers from events and cursors
         for event in &events {
-            let block_number = match event.block_number {
-                Some(block_number) => block_number,
-                None => unreachable!(), // Pending block
-            };
-            block_numbers.insert(block_number);
+            block_numbers.insert(event.block_number.unwrap());
         }
         for (_, cursor) in cursors.iter() {
             if let Some(head) = cursor.head {
@@ -443,10 +440,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // Step 6: Assign events to their respective blocks and transactions
         for event in events {
-            let block_number = match event.block_number {
-                Some(block_number) => block_number,
-                None => latest_block.block_number + 1, // Pending block
-            };
+            let block_number = event.block_number.unwrap();
 
             let block = blocks.get_mut(&block_number).expect("Block not found");
             let tx = block
@@ -524,12 +518,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
     async fn fetch_events(
         &self,
-        initial_requests: Vec<(Felt, u64, ProviderRequestData)>,
+        initial_requests: Vec<(Felt, u64, u64, ProviderRequestData)>,
         cursors: &mut HashMap<Felt, Cursor>,
+        latest_block_number: u64,
     ) -> Result<Vec<EmittedEvent>, FetchError> {
         let mut all_events = Vec::new();
         let mut current_requests = initial_requests;
-        let mut old_cursors = cursors.clone();
 
         while !current_requests.is_empty() {
             let mut next_requests = Vec::new();
@@ -538,7 +532,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             // Extract just the requests without the contract addresses
             let batch_requests: Vec<ProviderRequestData> = current_requests
                 .iter()
-                .map(|(_, _, req)| req.clone())
+                .map(|(_, _, _, req)| req.clone())
                 .collect();
 
             debug!(target: LOG_TARGET, "Retrieving events for contracts.");
@@ -547,20 +541,32 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Retrieved events for contracts.");
 
             // Process results and prepare next batch of requests if needed
-            for ((contract_address, to, original_request), result) in
+            for ((contract_address, mut from, mut to, original_request), result) in
                 current_requests.into_iter().zip(batch_results)
             {
                 let contract_type = self.contracts.get(&contract_address).unwrap();
                 debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Pre-processing events for contract.");
 
-                let old_cursor = old_cursors.get_mut(&contract_address).unwrap();
-                let mut last_pending_block_tx_tmp = old_cursor.last_pending_block_tx.clone();
+                let cursor = cursors.get_mut(&contract_address).unwrap();
+                let mut last_pending_block_tx_tmp = cursor.last_pending_block_tx.clone();
+                let mut done = false;
 
                 match result {
                     ProviderResponseData::GetEvents(events_page) => {
                         // Process events for this page, only including events up to our target
                         // block
                         for event in events_page.events.clone() {
+                            if from == 0 {
+                                from = event.block_number.unwrap();
+                                to = (from + self.config.blocks_chunk_size).min(latest_block_number);
+                            }
+
+                            if event.block_number.unwrap() > to {
+                                done = true;
+                                break;
+                            }
+
+                            
                             // Then we skip all transactions until we reach the last pending
                             // processed transaction (if any)
                             if let Some(last_pending_block_tx) = last_pending_block_tx_tmp.clone() {
@@ -572,18 +578,25 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                             // Skip the latest pending block transaction events
                             // * as we might have multiple events for the same transaction
-                            if let Some(last_pending_block_tx) = last_pending_block_tx_tmp.clone() {
+                            if let Some(last_pending_block_tx) = cursor.last_pending_block_tx.clone() {
                                 if event.transaction_hash != last_pending_block_tx {
                                     continue;
                                 }
-                                last_pending_block_tx_tmp = None;
+                                cursor.last_pending_block_tx = None;
                             }
 
                             events.push(event);
                         }
 
+                        // We have no more events to fetch, so we can update the cursor
+                        let new_cursor = cursors.get_mut(&contract_address).unwrap();
+                        if new_cursor.head != Some(to) {
+                            new_cursor.last_pending_block_tx = None;
+                        }
+                        new_cursor.head = Some(to);
+
                         // Add continuation request to next_requests instead of recursing
-                        if events_page.continuation_token.is_some() {
+                        if events_page.continuation_token.is_some() && !done {
                             debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Adding continuation request for contract.");
                             if let ProviderRequestData::GetEvents(mut next_request) =
                                 original_request
@@ -592,17 +605,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     events_page.continuation_token;
                                 next_requests.push((
                                     contract_address,
+                                    from,
                                     to,
                                     ProviderRequestData::GetEvents(next_request),
                                 ));
                             }
-                        } else {
-                            // We have no more events to fetch, so we can update the cursor
-                            let new_cursor = cursors.get_mut(&contract_address).unwrap();
-                            if new_cursor.head != Some(to) {
-                                new_cursor.last_pending_block_tx = None;
-                            }
-                            new_cursor.head = Some(to);
                         }
                     }
                     _ => unreachable!(),
@@ -808,7 +815,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for (event_idx, event) in events.iter().enumerate() {
             // NOTE: erc* processors expect the event_id to be in this format to get
             // transaction_hash:
-            let event_id = format_event_id(block_number, &transaction_hash, event_idx as u64);
+            let event_id = format_event_id(block_number, &transaction_hash, &event.from_address, event_idx as u64);
 
             let Some(&contract_type) = self.contracts.get(&event.from_address) else {
                 continue;

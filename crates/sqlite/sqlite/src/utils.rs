@@ -65,10 +65,10 @@ pub fn sql_string_to_felts(sql_string: &str) -> Vec<Felt> {
         .collect()
 }
 
-pub fn format_event_id(block_number: u64, transaction_hash: &Felt, event_idx: u64) -> String {
+pub fn format_event_id(block_number: u64, transaction_hash: &Felt, contract_address: &Felt, event_idx: u64) -> String {
     format!(
-        "{:#064x}:{:#x}:{:#04x}",
-        block_number, transaction_hash, event_idx
+        "{:#064x}:{:#x}:{:#x}:{:#04x}",
+        block_number, transaction_hash, contract_address, event_idx
     )
 }
 
