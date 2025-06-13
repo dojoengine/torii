@@ -15,7 +15,8 @@ use starknet::core::types::requests::{
 };
 use starknet::core::types::{
     BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
-    MaybePendingBlockWithTxHashes, ResultPageRequest, Transaction,
+    MaybePendingBlockWithReceipts, MaybePendingBlockWithTxHashes, PendingBlockWithReceipts,
+    ResultPageRequest, Transaction,
 };
 use starknet::macros::selector;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
@@ -85,9 +86,9 @@ pub struct FetchRangeResult {
 
 #[derive(Debug, Clone)]
 pub struct FetchPendingResult {
-    pub pending_block: Box<PendingBlockWithReceipts>,
-    pub last_pending_block_tx: Option<Felt>,
+    pub pending_block: PendingBlockWithReceipts,
     pub block_number: u64,
+    pub cursors: HashMap<Felt, Cursor>,
 }
 
 #[derive(Debug, Clone)]
@@ -306,6 +307,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         Ok(range)
     }
 
+    pub async fn process(&mut self, fetch_result: FetchResult) -> Result<()> {
+        match fetch_result {
+            FetchDataResult::Range(range) => self.process_range(range).await?,
+            FetchDataResult::Pending(data) => self.process_pending(data).await?,
+            FetchDataResult::None => {}
+        };
+
+        Ok(())
+    }
+
     pub async fn fetch_range(
         &self,
         cursors: &HashMap<Felt, Cursor>,
@@ -348,10 +359,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Step 2: Fetch all events recursively
-        events.extend(
-            self.fetch_events(event_requests, &mut cursors)
-                .await?,
-        );
+        events.extend(self.fetch_events(event_requests, &mut cursors).await?);
 
         // Step 3: Collect unique block numbers from events and cursors
         for event in &events {
@@ -554,8 +562,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 let contract_type = self.contracts.get(&contract_address).unwrap();
                 debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Pre-processing events for contract.");
 
-                let mut last_pending_block_tx_tmp =
-                    old_cursor.last_pending_block_tx.clone();
+                let mut last_pending_block_tx_tmp = old_cursor.last_pending_block_tx.clone();
 
                 match result {
                     ProviderResponseData::GetEvents(events_page) => {
@@ -564,11 +571,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         for event in events_page.events.clone() {
                             // Then we skip all transactions until we reach the last pending
                             // processed transaction (if any)
-                            if let Some(last_pending_block_tx) =
-                                last_pending_block_tx_tmp.clone()
-                            {
-                                if event.transaction_hash != last_pending_block_tx
-                                {
+                            if let Some(last_pending_block_tx) = last_pending_block_tx_tmp.clone() {
+                                if event.transaction_hash != last_pending_block_tx {
                                     continue;
                                 }
                                 last_pending_block_tx_tmp = None;
@@ -576,11 +580,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                             // Skip the latest pending block transaction events
                             // * as we might have multiple events for the same transaction
-                            if let Some(last_pending_block_tx) =
-                                last_pending_block_tx_tmp.clone()
-                            {
-                                if event.transaction_hash != last_pending_block_tx
-                                {
+                            if let Some(last_pending_block_tx) = last_pending_block_tx_tmp.clone() {
+                                if event.transaction_hash != last_pending_block_tx {
                                     continue;
                                 }
                                 last_pending_block_tx_tmp = None;
@@ -590,8 +591,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         }
 
                         // Add continuation request to next_requests instead of recursing
-                        if events_page.continuation_token.is_some()
-                        {
+                        if events_page.continuation_token.is_some() {
                             debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Adding continuation request for contract.");
                             if let ProviderRequestData::GetEvents(mut next_request) =
                                 original_request
@@ -624,38 +624,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         Ok(all_events)
     }
 
-    async fn fetch_pending(
-        &self,
-        block: BlockHashAndNumber,
-        last_pending_block_tx: Option<Felt>,
-    ) -> Result<Option<FetchPendingResult>> {
-        let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
-            .provider
-            .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
-            .await?
-        {
-            // if the parent hash is not the hash of the latest block that we fetched, then it means
-            // a new block got mined just after we fetched the latest block information
-            if block.block_hash != pending.parent_hash {
-                return Ok(None);
-            }
-
-            pending
-        } else {
-            // TODO: change this to unreachable once katana is updated to return PendingBlockWithTxs
-            // when BlockTag is Pending unreachable!("We requested pending block, so it
-            // must be pending");
-            return Ok(None);
-        };
-
-        Ok(Some(FetchPendingResult {
-            pending_block: Box::new(pending_block),
-            block_number: block.block_number + 1,
-            last_pending_block_tx,
-        }))
-    }
-
-    pub async fn process(&mut self, range: &FetchRangeResult) -> Result<(), ProcessError> {
+    pub async fn process_range(&mut self, range: &FetchRangeResult) -> Result<(), ProcessError> {
         let mut processed_blocks = HashSet::new();
 
         // Process all transactions in the chunk
@@ -700,6 +669,100 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         debug!(target: LOG_TARGET, cursors = ?range.cursors, "Updating cursors.");
         self.db
             .update_cursors(range.cursors.clone(), range.num_transactions.clone())?;
+
+        Ok(())
+    }
+
+    async fn fetch_pending(
+        &self,
+        block: BlockHashAndNumber,
+        cursors: &HashMap<Felt, Cursor>,
+    ) -> Result<Option<FetchPendingResult>> {
+        let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
+            .provider
+            .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
+            .await?
+        {
+            // if the parent hash is not the hash of the latest block that we fetched, then it means
+            // a new block got mined just after we fetched the latest block information
+            if block.block_hash != pending.parent_hash {
+                return Ok(None);
+            }
+
+            pending
+        } else {
+            // TODO: change this to unreachable once katana is updated to return PendingBlockWithTxs
+            // when BlockTag is Pending unreachable!("We requested pending block, so it
+            // must be pending");
+            return Ok(None);
+        };
+
+        Ok(Some(FetchPendingResult {
+            pending_block: Box::new(pending_block),
+            block_number: block.block_number + 1,
+            cursors: cursors.clone(),
+        }))
+    }
+
+    pub async fn process_pending(&mut self, data: FetchPendingResult) -> Result<()> {
+        // Skip transactions that have been processed already
+        // Our cursor is the last processed transaction
+
+        let mut new_cursors = data.cursors.clone();
+
+        let timestamp = data.pending_block.timestamp;
+
+        for t in data.pending_block.transactions {
+            let transaction_hash = t.transaction.transaction_hash();
+
+            for (contract_address, cursor) in &data.cursors {
+                // Skip all transactions until we reach the last processed transaction
+                if let Some(tx) = cursor.last_pending_block_tx {
+                    if transaction_hash != &tx {
+                        continue;
+                    }
+                    cursor.last_pending_block_tx = None;
+                }
+
+                // Skip the last processed transaction itself (since it was already processed)
+                if let Some(last_tx) = data.last_pending_block_tx {
+                    if transaction_hash == &last_tx {
+                        continue;
+                    }
+                }
+            }
+
+            // Skip transaction if it is reverted
+            if t.receipt.execution_result().status() == TransactionExecutionStatus::Reverted {
+                continue;
+            }
+
+            if let Err(e) = self
+                .process_transaction_with_events(
+                    &t,
+                    t.receipt.events(),
+                    data.block_number,
+                    timestamp,
+                    t.transaction,
+                )
+                .await
+            {
+                error!(target: LOG_TARGET, error = %e, transaction_hash = %format!("{:#x}", transaction_hash), "Processing pending transaction.");
+                return Err(e);
+            }
+
+            for (contract_address, cursor) in &mut new_cursors {
+                cursor.last_pending_block_tx = Some(*transaction_hash);
+            }
+
+            debug!(target: LOG_TARGET, transaction_hash = %format!("{:#x}", transaction_hash), "Processed pending transaction.");
+        }
+
+        // Process parallelized events
+        self.task_manager.process_tasks().await?;
+
+        self.db
+            .update_cursors(data.cursors.clone(), data.num_transactions.clone())?;
 
         Ok(())
     }
