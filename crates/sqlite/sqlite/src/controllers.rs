@@ -64,7 +64,7 @@ impl ControllersSync {
             createdAtGT:"{}"
           }}, orderBy:{{
             field:CREATED_AT,
-            direction:DESC
+            direction:ASC
           }}) {{
             edges {{
               node {{
