@@ -19,7 +19,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use camino::Utf8PathBuf;
-use constants::UDC_ADDRESS;
 use dojo_metrics::exporters::prometheus::PrometheusRecorder;
 use dojo_types::naming::compute_selector_from_tag;
 use dojo_world::contracts::world::WorldContractReader;
