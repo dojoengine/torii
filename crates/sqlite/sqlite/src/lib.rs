@@ -37,6 +37,9 @@ pub mod model;
 pub mod simple_broker;
 pub mod utils;
 
+#[cfg(test)]
+pub mod test_utils;
+
 use cache::{LocalCache, Model, ModelCache};
 pub use torii_sqlite_types as types;
 
@@ -1159,7 +1162,10 @@ impl Sql {
                 insert_controller.to_string(),
                 arguments,
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| {
+                dbg!(&e);
+                Error::Executor(ExecutorError::SendError(e))
+            })?;
 
         Ok(())
     }
