@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
@@ -83,15 +85,29 @@ impl ControllersSync {
             self.cursor.read().await.unwrap_or_default().to_rfc3339()
         );
 
-        // send the query to the graphQL endpoint
-        let response = reqwest::Client::new()
-            .post("https://api.cartridge.gg/query")
-            .json(&json!({
-                "query": query,
-            }))
-            .send()
-            .await
-            .map_err(ControllerSyncError::Reqwest)?;
+        let mut attempts = 0;
+        const MAX_RETRIES: u32 = 3;
+        const INITIAL_BACKOFF: Duration = Duration::from_secs(2);
+        let response = loop {
+            attempts += 1;
+            let result = reqwest::Client::new()
+                .post("https://api.cartridge.gg/query")
+                .json(&json!({
+                    "query": query,
+                }))
+                .send()
+                .await;
+
+            match result {
+                Ok(resp) => break resp,
+                Err(_) if attempts < MAX_RETRIES => {
+                    let backoff = INITIAL_BACKOFF * (1 << (attempts - 1));
+                    tokio::time::sleep(backoff).await;
+                    continue;
+                }
+                Err(e) => return Err(ControllerSyncError::Reqwest(e)),
+            }
+        };
 
         let body: ControllersResponse = response.json().await?;
 
