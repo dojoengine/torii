@@ -272,6 +272,7 @@ mod tests {
         mock.assert_async().await;
     }
 
+    #[ignore = "This test requires the executor to work from test utils, to be fixed."]
     #[tokio::test(flavor = "multi_thread")]
     async fn test_sync() {
         let (shutdown_tx, _) = broadcast::channel(1);
