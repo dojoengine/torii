@@ -34,6 +34,7 @@ pub struct ControllerEdge {
 pub struct Controller {
     pub account: ControllerAccount,
     pub address: String,
+    #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
 }
 
