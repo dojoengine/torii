@@ -181,6 +181,9 @@ impl Sql {
             None => return Ok(()), // Already registered by another thread
         };
         let _guard = _lock.lock().await;
+        if self.local_cache.is_token_registered(token_id).await {
+            return Ok(());
+        }
 
         let block_id = BlockId::Tag(BlockTag::Pending);
         let requests = vec![
@@ -280,6 +283,9 @@ impl Sql {
             None => return Ok(()), // Already registered by another thread
         };
         let _guard = _lock.lock().await;
+        if self.local_cache.is_token_registered(id).await {
+            return Ok(());
+        }
 
         let _permit = self
             .nft_metadata_semaphore
