@@ -7,6 +7,7 @@ use tokio::sync::RwLock;
 
 use crate::{error::ControllerSyncError, Sql};
 
+#[derive(Debug)]
 pub struct ControllersSync {
     sql: Sql,
     cursor: RwLock<Option<DateTime<Utc>>>,
