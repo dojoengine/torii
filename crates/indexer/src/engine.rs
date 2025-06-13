@@ -526,6 +526,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     ) -> Result<Vec<EmittedEvent>, FetchError> {
         let mut all_events = Vec::new();
         let mut current_requests = initial_requests;
+        let mut old_cursors = cursors.clone();
 
         while !current_requests.is_empty() {
             let mut next_requests = Vec::new();
@@ -549,8 +550,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 let contract_type = self.contracts.get(&contract_address).unwrap();
                 debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Pre-processing events for contract.");
 
-                let cursor = cursors.get_mut(&contract_address).unwrap();
-                let mut last_pending_block_tx_tmp = cursor.last_pending_block_tx;
+                let old_cursor = old_cursors.get_mut(&contract_address).unwrap();
+                let new_cursor = cursors.get_mut(&contract_address).unwrap();
+                let mut last_pending_block_tx_tmp = old_cursor.last_pending_block_tx;
                 let mut done = false;
 
                 match result {
@@ -580,17 +582,18 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
                             // Skip the latest pending block transaction events
                             // * as we might have multiple events for the same transaction
-                            if let Some(last_pending_block_tx) = cursor.last_pending_block_tx {
+                            if let Some(last_pending_block_tx) =
+                                old_cursor.last_pending_block_tx.take()
+                            {
                                 if event.transaction_hash == last_pending_block_tx {
                                     continue;
                                 }
-                                cursor.last_pending_block_tx = None;
+                                new_cursor.last_pending_block_tx = None;
                             }
 
                             events.push(event);
                         }
 
-                        let new_cursor = cursors.get_mut(&contract_address).unwrap();
                         if new_cursor.head != Some(to) {
                             new_cursor.last_pending_block_tx = None;
                         }
