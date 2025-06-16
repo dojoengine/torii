@@ -1012,7 +1012,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             return Ok(Vec::new());
         }
 
-        const MAX_RETRIES: u32 = 3;
+        const MAX_RETRIES: u32 = 5;
         const INITIAL_BACKOFF: Duration = Duration::from_millis(50);
 
         let mut futures = Vec::new();
