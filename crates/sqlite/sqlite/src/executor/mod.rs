@@ -833,11 +833,11 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         if let Some(transaction) = self.transaction.take() {
             transaction.commit().await?;
         }
-        self.transaction = Some(self.pool.begin().await?);
-
         self.pool
             .execute("PRAGMA wal_checkpoint(TRUNCATE);")
             .await?;
+
+        self.transaction = Some(self.pool.begin().await?);
 
         for message in self.publish_queue.drain(..) {
             send_broker_message(message);
@@ -850,11 +850,11 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         if let Some(transaction) = self.transaction.take() {
             transaction.rollback().await?;
         }
-        self.transaction = Some(self.pool.begin().await?);
-
         self.pool
             .execute("PRAGMA wal_checkpoint(TRUNCATE);")
             .await?;
+
+        self.transaction = Some(self.pool.begin().await?);
 
         self.publish_queue.clear();
         Ok(())
