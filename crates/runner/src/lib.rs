@@ -199,6 +199,7 @@ impl Runner {
             .connect_with(readonly_options)
             .await?;
 
+        let mut migrate_handle = write_pool.acquire().await?;
         if let Some(migrations) = self.args.sql.migrations {
             // Create a temporary directory to combine migrations
             let temp_migrations = TempDir::new()?;
@@ -221,10 +222,13 @@ impl Runner {
 
             // Run combined migrations
             let migrator = sqlx::migrate::Migrator::new(temp_migrations.path()).await?;
-            migrator.run(&write_pool).await?;
+            migrator.run(&mut migrate_handle).await?;
         } else {
-            sqlx::migrate!("../migrations").run(&write_pool).await?;
+            sqlx::migrate!("../migrations")
+                .run(&mut migrate_handle)
+                .await?;
         }
+        drop(migrate_handle);
 
         // Get world address
         let world = WorldContractReader::new(world_address, provider.clone());
