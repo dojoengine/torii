@@ -269,9 +269,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         provider: Arc<P>,
     ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
         let (tx, rx) = unbounded_channel();
-        println!("acquiring transaction");
         let transaction = pool.begin().await?;
-        println!("acquired transaction");
         let publish_queue = Vec::new();
         let shutdown_rx = shutdown_tx.subscribe();
 
