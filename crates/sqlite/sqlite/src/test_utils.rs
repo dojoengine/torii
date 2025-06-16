@@ -18,11 +18,13 @@ impl Sql {
     /// Creates a new temporary file and returns a new Sql instance.
     /// Only the world contract is added to the contracts list.
     /// TODO: think about a more mature interface for this one when more tests are using it.
+    ///
+    /// Returns the Sql instance and a handle to the executor task.
     pub async fn new_tmp_file(
         world_address: Felt,
         provider: Arc<JsonRpcClient<HttpTransport>>,
         shutdown_tx: broadcast::Sender<()>,
-    ) -> Self {
+    ) -> (Self, tokio::task::JoinHandle<()>) {
         let tempfile = NamedTempFile::new().unwrap();
         let path = tempfile.path().to_string_lossy();
 
@@ -55,13 +57,13 @@ impl Sql {
             .await
             .unwrap();
 
-        tokio::spawn(async move {
+        let executor_handle = tokio::spawn(async move {
             executor.run().await.unwrap();
         });
 
         let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
 
-        Sql::new(
+        let sql = Sql::new(
             pool.clone(),
             sender,
             &[Contract {
@@ -71,6 +73,8 @@ impl Sql {
             model_cache,
         )
         .await
-        .unwrap()
+        .unwrap();
+
+        (sql, executor_handle)
     }
 }
