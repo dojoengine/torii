@@ -199,22 +199,29 @@ impl Sql {
         Ok(cursors_map)
     }
 
-    pub fn update_cursors(
-        &mut self,
+    pub async fn update_cursors(
+        &self,
         cursors: HashMap<Felt, Cursor>,
         num_transactions: HashMap<Felt, u64>,
     ) -> Result<(), Error> {
+        let (query, recv) = QueryMessage::new_recv(
+            "".to_string(),
+            vec![],
+            QueryType::UpdateCursors(UpdateCursorsQuery {
+                cursors,
+                num_transactions,
+            }),
+        );
+
         self.executor
-            .send(QueryMessage::new(
-                "".to_string(),
-                vec![],
-                QueryType::UpdateCursors(UpdateCursorsQuery {
-                    cursors,
-                    num_transactions,
-                }),
-            ))
+            .send(query)
             .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
-        Ok(())
+
+        let res = recv
+            .await
+            .map_err(|e| Error::Executor(ExecutorError::RecvError(e)))??;
+
+        Ok(res)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1125,7 +1132,7 @@ impl Sql {
         let res = recv
             .await
             .map_err(|e| Error::Executor(ExecutorError::RecvError(e)))?;
-        res.map_err(Error::Executor)
+        res.map_err(|e| Error::Executor(e))
     }
 
     pub async fn rollback(&self) -> Result<(), Error> {

@@ -665,9 +665,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
 
         // Update cursors
+        // The update cursors query should absolutely succeed, otherwise we will rollback.
         debug!(target: LOG_TARGET, cursors = ?range.cursors, "Updating cursors.");
         self.db
-            .update_cursors(range.cursors.clone(), range.num_transactions.clone())?;
+            .update_cursors(range.cursors.clone(), range.num_transactions.clone())
+            .await?;
 
         Ok(())
     }
@@ -802,8 +804,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Process parallelized events
         self.task_manager.process_tasks().await?;
 
+        // The update cursors query should absolutely succeed, otherwise we will rollback.
         self.db
-            .update_cursors(data.cursors.clone(), data.num_transactions.clone())?;
+            .update_cursors(data.cursors.clone(), data.num_transactions.clone())
+            .await?;
 
         Ok(())
     }
