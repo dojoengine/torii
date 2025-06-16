@@ -112,4 +112,6 @@ pub enum ControllerSyncError {
     Reqwest(#[from] reqwest::Error),
     #[error(transparent)]
     Sql(#[from] crate::error::Error),
+    #[error("API error: {0}")]
+    ApiError(String),
 }
