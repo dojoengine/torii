@@ -610,7 +610,7 @@ impl Sql {
             .send(QueryMessage::new(
                 "INSERT INTO transactions (id, transaction_hash, sender_address, calldata, \
              max_fee, signature, nonce, transaction_type, executed_at, block_number) VALUES (?, \
-             ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING *"
+             ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET transaction_hash=excluded.transaction_hash RETURNING *"
                     .to_string(),
                 vec![
                     Argument::FieldElement(transaction_hash),
