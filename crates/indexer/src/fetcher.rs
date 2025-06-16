@@ -1,13 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Debug;
-use std::hash::Hash;
 use std::ops::AddAssign;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bitflags::bitflags;
-use dojo_utils::provider as provider_utils;
-use dojo_world::contracts::world::WorldContractReader;
 use futures_util::future::try_join_all;
 use hashlink::LinkedHashMap;
 use starknet::core::types::requests::{
@@ -18,16 +14,10 @@ use starknet::core::types::{
     MaybePendingBlockWithReceipts, MaybePendingBlockWithTxHashes, ResultPageRequest, Transaction,
     TransactionExecutionStatus,
 };
-use starknet::macros::selector;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
-use tokio::sync::broadcast::Sender;
 use tokio::time::{sleep, Instant};
-use torii_processors::{EventProcessorConfig, Processors};
-use torii_sqlite::cache::ContractClassCache;
-use torii_sqlite::controllers::ControllersSync;
-use torii_sqlite::types::{Contract, ContractType};
-use torii_sqlite::utils::format_event_id;
+use torii_sqlite::types::ContractType;
 use torii_sqlite::Cursor;
 use tracing::{debug, error, trace, warn};
 
@@ -80,6 +70,7 @@ pub struct FetchResult {
     pub pending: Option<FetchPendingResult>,
 }
 
+#[derive(Debug)]
 pub struct Fetcher<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     pub batch_chunk_size: usize,
     pub blocks_chunk_size: u64,
@@ -92,6 +83,19 @@ pub struct Fetcher<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
 }
 
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
+    pub fn new_default(provider: Arc<P>, contracts: Arc<HashMap<Felt, ContractType>>) -> Self {
+        Self {
+            batch_chunk_size: 1024,
+            blocks_chunk_size: 10240,
+            events_chunk_size: 1024,
+            max_concurrent_tasks: 100,
+            flags: IndexingFlags::empty(),
+            world_block: 0,
+            contracts,
+            provider,
+        }
+    }
+
     pub async fn fetch(&self, cursors: &HashMap<Felt, Cursor>) -> Result<FetchResult, FetchError> {
         let latest_block = self.provider.block_hash_and_number().await?;
         let latest_block_number = latest_block.block_number;
@@ -562,4 +566,3 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         Ok(flattened_results)
     }
 }
-

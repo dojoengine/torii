@@ -11255,6 +11255,7 @@ dependencies = [
  "torii-processors",
  "torii-sqlite",
  "tracing",
+ "url",
 ]
 
 [[package]]

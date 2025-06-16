@@ -1,25 +1,15 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::ops::AddAssign;
 use std::sync::Arc;
 use std::time::Duration;
 
 use bitflags::bitflags;
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
-use futures_util::future::try_join_all;
-use hashlink::LinkedHashMap;
-use starknet::core::types::requests::{
-    GetBlockWithTxHashesRequest, GetEventsRequest, GetTransactionByHashRequest,
-};
-use starknet::core::types::{
-    BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
-    MaybePendingBlockWithReceipts, MaybePendingBlockWithTxHashes, ResultPageRequest, Transaction,
-    TransactionExecutionStatus,
-};
+use starknet::core::types::{Event, Transaction};
 use starknet::macros::selector;
-use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
+use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use tokio::sync::broadcast::Sender;
 use tokio::time::{sleep, Instant};
@@ -28,14 +18,12 @@ use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::controllers::ControllersSync;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::utils::format_event_id;
-use torii_sqlite::{Cursor, Sql};
-use tracing::{debug, error, info, trace, warn};
+use torii_sqlite::Sql;
+use tracing::{debug, error, info, trace};
 
 use crate::constants::LOG_TARGET;
-use crate::error::{Error, FetchError, ProcessError};
-use crate::fetcher::{
-    FetchPendingResult, FetchRangeBlock, FetchRangeResult, FetchResult, FetchTransaction, Fetcher,
-};
+use crate::error::{Error, ProcessError};
+use crate::fetcher::{FetchPendingResult, FetchRangeResult, FetchResult, Fetcher};
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
 
 bitflags! {
