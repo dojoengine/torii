@@ -186,9 +186,9 @@ impl Runner {
         );
         options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
 
-        let pool = SqlitePoolOptions::new()
+        let write_pool = SqlitePoolOptions::new()
             .min_connections(1)
-            .max_connections(self.args.indexing.max_concurrent_tasks as u32)
+            .max_connections(1)
             .connect_with(options.clone())
             .await?;
 
@@ -221,16 +221,16 @@ impl Runner {
 
             // Run combined migrations
             let migrator = sqlx::migrate::Migrator::new(temp_migrations.path()).await?;
-            migrator.run(&pool).await?;
+            migrator.run(&write_pool).await?;
         } else {
-            sqlx::migrate!("../migrations").run(&pool).await?;
+            sqlx::migrate!("../migrations").run(&write_pool).await?;
         }
 
         // Get world address
         let world = WorldContractReader::new(world_address, provider.clone());
 
         let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
+            Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
 
         let model_cache = Arc::new(ModelCache::new(readonly_pool.clone()).await?);
@@ -251,7 +251,7 @@ impl Runner {
             .map(|tag| compute_selector_from_tag(&tag))
             .collect::<HashSet<_>>();
         let db = Sql::new_with_config(
-            pool.clone(),
+            readonly_pool.clone(),
             sender.clone(),
             &self.args.indexing.contracts,
             model_cache.clone(),
