@@ -88,6 +88,7 @@ pub struct EventMessageQuery {
 
 #[derive(Debug, Clone)]
 pub struct StoreTransactionQuery {
+    pub transaction_hash: Felt,
     pub contract_addresses: HashSet<Felt>,
     pub calls: Vec<ParsedCall>,
     pub unique_models: HashSet<Felt>,
@@ -369,10 +370,13 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
             }
             QueryType::StoreTransaction(store_transaction) => {
                 // Our transaction has alraedy been added by another contract probably.
-                let row = if let Some(tx) = query.fetch_optional(&mut **tx).await? {
-                    tx
+                let row = if let Some(row) = query.fetch_optional(&mut **tx).await? {
+                    row
                 } else {
-                    return Ok(());
+                    sqlx::query("SELECT * FROM transactions WHERE transaction_hash = ?")
+                        .bind(felt_to_sql_string(&store_transaction.transaction_hash))
+                        .fetch_one(&mut **tx)
+                        .await?
                 };
 
                 let mut transaction = Transaction::from_row(&row)?;
@@ -382,7 +386,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         "INSERT INTO transaction_contract (transaction_hash, \
                          contract_address) VALUES (?, ?) ON CONFLICT DO NOTHING",
                     )
-                    .bind(&transaction.transaction_hash)
+                    .bind(felt_to_sql_string(&store_transaction.transaction_hash))
                     .bind(felt_to_sql_string(contract_address))
                     .execute(&mut **tx)
                     .await?;
@@ -393,7 +397,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         "INSERT INTO transaction_models (transaction_hash, \
                          model_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
                     )
-                    .bind(&transaction.transaction_hash)
+                    .bind(felt_to_sql_string(&store_transaction.transaction_hash))
                     .bind(felt_to_sql_string(unique_model))
                     .execute(&mut **tx)
                     .await?;
@@ -406,7 +410,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                          contract_address, entrypoint, calldata, call_type, caller_address) \
                          VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                     )
-                    .bind(&transaction.transaction_hash)
+                    .bind(felt_to_sql_string(&store_transaction.transaction_hash))
                     .bind(felt_to_sql_string(&call.contract_address))
                     .bind(call.entrypoint.clone())
                     .bind(felts_to_sql_string(&call.calldata))
