@@ -213,11 +213,13 @@ impl Sql {
             }),
         );
 
-        self.executor.send(query).map_err(|e| {
-            Error::Executor(ExecutorError::SendError(e))
-        })?;
+        self.executor
+            .send(query)
+            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
 
-        let res = recv.await.map_err(|e| Error::Executor(ExecutorError::RecvError(e)))??;
+        let res = recv
+            .await
+            .map_err(|e| Error::Executor(ExecutorError::RecvError(e)))??;
 
         Ok(res)
     }
