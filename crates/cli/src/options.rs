@@ -24,8 +24,8 @@ pub const DEFAULT_RELAY_WEBRTC_PORT: u16 = 9091;
 pub const DEFAULT_RELAY_WEBSOCKET_PORT: u16 = 9092;
 pub const DEFAULT_GRPC_SUBSCRIPTION_BUFFER_SIZE: usize = 256;
 
-pub const DEFAULT_ERC_MAX_METADATA_TASKS: usize = 10;
-pub const DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT: u64 = 1000;
+pub const DEFAULT_ERC_MAX_METADATA_TASKS: usize = 100;
+pub const DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT: u64 = 10000;
 pub const DEFAULT_DATABASE_BUSY_TIMEOUT: u64 = 60_000;
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
