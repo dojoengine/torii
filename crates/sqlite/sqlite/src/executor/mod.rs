@@ -190,12 +190,15 @@ impl QueryMessage {
         query_type: QueryType,
     ) -> (Self, oneshot::Receiver<QueryResult<()>>) {
         let (tx, rx) = oneshot::channel();
-        (QueryMessage {
-            statement,
-            arguments,
-            query_type,
-            tx: Some(tx),
-        }, rx)
+        (
+            QueryMessage {
+                statement,
+                arguments,
+                query_type,
+                tx: Some(tx),
+            },
+            rx,
+        )
     }
 
     pub fn other(statement: String, arguments: Vec<Argument>) -> Self {

@@ -310,7 +310,9 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::FieldElement(selector)],
                         ))
-                        .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+                        .map_err(|e| {
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                        })?;
                 }
             }
         }
@@ -396,7 +398,9 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::String(entity_id.clone())],
                         ))
-                        .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+                        .map_err(|e| {
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                        })?;
                 }
             }
         }
@@ -471,7 +475,9 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::String(entity_id.clone())],
                         ))
-                        .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+                        .map_err(|e| {
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                        })?;
                 }
             }
         }
@@ -513,7 +519,9 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::String(entity_id.clone())],
                         ))
-                        .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+                        .map_err(|e| {
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                        })?;
                 }
             }
         }
@@ -836,7 +844,9 @@ impl Sql {
             for alter_query in alter_table_queries {
                 self.executor
                     .send(QueryMessage::other(alter_query, vec![]))
-                    .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+                    .map_err(|e| {
+                        Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                    })?;
             }
         } else {
             self.executor

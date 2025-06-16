@@ -26,5 +26,4 @@ pub enum ExecutorQueryError {
     SendError(#[from] tokio::sync::mpsc::error::SendError<crate::executor::QueryMessage>),
     #[error(transparent)]
     RecvError(#[from] tokio::sync::oneshot::error::RecvError),
-
 }
