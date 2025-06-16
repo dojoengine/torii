@@ -628,7 +628,7 @@ impl Sql {
                     contract_addresses: contract_addresses.clone(),
                     calls: calls.to_vec(),
                     unique_models: unique_models.clone(),
-                    transaction_hash: transaction_hash,
+                    transaction_hash,
                 }),
             ))
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
