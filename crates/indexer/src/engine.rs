@@ -394,11 +394,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for block_number in &block_numbers {
             block_requests.push(ProviderRequestData::GetBlockWithTxHashes(
                 GetBlockWithTxHashesRequest {
-                    block_id: if *block_number > latest_block.block_number {
-                        BlockId::Tag(BlockTag::Pending)
-                    } else {
-                        BlockId::Number(*block_number)
-                    },
+                    block_id: BlockId::Number(*block_number),
                 },
             ));
         }
@@ -1013,7 +1009,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         const MAX_RETRIES: u32 = 3;
-        const INITIAL_BACKOFF: Duration = Duration::from_secs(2);
+        const INITIAL_BACKOFF: Duration = Duration::from_millis(50);
 
         let mut futures = Vec::new();
         for chunk in requests.chunks(self.config.batch_chunk_size) {
