@@ -394,11 +394,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for block_number in &block_numbers {
             block_requests.push(ProviderRequestData::GetBlockWithTxHashes(
                 GetBlockWithTxHashesRequest {
-                    block_id: if *block_number > latest_block.block_number {
-                        BlockId::Tag(BlockTag::Pending)
-                    } else {
-                        BlockId::Number(*block_number)
-                    },
+                    block_id: BlockId::Number(*block_number),
                 },
             ));
         }
@@ -1012,8 +1008,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             return Ok(Vec::new());
         }
 
-        const MAX_RETRIES: u32 = 3;
-        const INITIAL_BACKOFF: Duration = Duration::from_secs(2);
+        const MAX_RETRIES: u32 = 5;
 
         let mut futures = Vec::new();
         for chunk in requests.chunks(self.config.batch_chunk_size) {
@@ -1024,17 +1019,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         Ok(results) => return Ok::<Vec<ProviderResponseData>, FetchError>(results),
                         Err(e) => {
                             if attempt < MAX_RETRIES {
-                                let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
                                 warn!(
                                     target: LOG_TARGET,
                                     attempt = attempt + 1,
-                                    backoff_secs = backoff.as_secs(),
                                     error = ?e,
                                     chunk_size = chunk.len(),
                                     batch_chunk_size = self.config.batch_chunk_size,
                                     "Retrying failed batch request for chunk."
                                 );
-                                sleep(backoff).await;
+                                tokio::time::sleep(Duration::from_millis(10)).await;
                                 attempt += 1;
                             } else {
                                 error!(
