@@ -25,7 +25,7 @@ pub enum Error {
     #[error(transparent)]
     ProviderError(#[from] ProviderError),
     #[error(transparent)]
-    Executor(#[from] crate::executor::error::ExecutorError),
+    ExecutorQuery(#[from] Box<crate::executor::error::ExecutorQueryError>),
 }
 
 #[derive(Debug, thiserror::Error)]

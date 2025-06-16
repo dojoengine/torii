@@ -6,10 +6,6 @@ pub enum ExecutorError {
     Provider(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
-    #[error(transparent)]
-    SendError(#[from] tokio::sync::mpsc::error::SendError<crate::executor::QueryMessage>),
-    #[error(transparent)]
-    RecvError(#[from] tokio::sync::oneshot::error::RecvError),
 }
 
 #[derive(Error, Debug)]
@@ -26,4 +22,8 @@ pub enum ExecutorQueryError {
     Primitive(#[from] dojo_types::primitive::PrimitiveError),
     #[error(transparent)]
     Executor(#[from] ExecutorError),
+    #[error(transparent)]
+    SendError(#[from] tokio::sync::mpsc::error::SendError<crate::executor::QueryMessage>),
+    #[error(transparent)]
+    RecvError(#[from] tokio::sync::oneshot::error::RecvError),
 }
