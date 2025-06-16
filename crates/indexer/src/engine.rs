@@ -1008,7 +1008,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             return Ok(Vec::new());
         }
 
-        const MAX_RETRIES: u32 = 5;
+        const MAX_RETRIES: u32 = 3;
+        const INITIAL_BACKOFF: Duration = Duration::from_millis(50);
 
         let mut futures = Vec::new();
         for chunk in requests.chunks(self.config.batch_chunk_size) {
@@ -1019,15 +1020,17 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         Ok(results) => return Ok::<Vec<ProviderResponseData>, FetchError>(results),
                         Err(e) => {
                             if attempt < MAX_RETRIES {
+                                let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
                                 warn!(
                                     target: LOG_TARGET,
                                     attempt = attempt + 1,
+                                    backoff_secs = backoff.as_secs(),
                                     error = ?e,
                                     chunk_size = chunk.len(),
                                     batch_chunk_size = self.config.batch_chunk_size,
                                     "Retrying failed batch request for chunk."
                                 );
-                                tokio::time::sleep(Duration::from_millis(10)).await;
+                                sleep(backoff).await;
                                 attempt += 1;
                             } else {
                                 error!(
