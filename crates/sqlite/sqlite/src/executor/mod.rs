@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::mem;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -159,7 +158,7 @@ pub struct Executor<'c, P: Provider + Sync + Send + 'static> {
     // Queries should use `transaction` instead of `pool`
     // This `pool` is only used to create a new `transaction`
     pool: Pool<Sqlite>,
-    transaction: SqlxTransaction<'c, Sqlite>,
+    transaction: Option<SqlxTransaction<'c, Sqlite>>,
     publish_queue: Vec<BrokerMessage>,
     rx: UnboundedReceiver<QueryMessage>,
     shutdown_rx: Receiver<()>,
@@ -270,14 +269,16 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         provider: Arc<P>,
     ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
         let (tx, rx) = unbounded_channel();
+        println!("acquiring transaction");
         let transaction = pool.begin().await?;
+        println!("acquired transaction");
         let publish_queue = Vec::new();
         let shutdown_rx = shutdown_tx.subscribe();
 
         Ok((
             Executor {
                 pool,
-                transaction,
+                transaction: Some(transaction),
                 publish_queue,
                 rx,
                 shutdown_rx,
@@ -311,7 +312,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     }
 
     async fn handle_query_message(&mut self, query_message: QueryMessage) -> QueryResult<()> {
-        let tx = &mut self.transaction;
+        let tx = self.transaction.as_mut().unwrap();
 
         let mut query = sqlx::query(&query_message.statement);
 
@@ -831,8 +832,11 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     }
 
     async fn execute(&mut self) -> Result<()> {
-        let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
-        transaction.commit().await?;
+        if let Some(transaction) = self.transaction.take() {
+            transaction.commit().await?;
+        }
+        self.transaction = Some(self.pool.begin().await?);
+
         self.pool
             .execute("PRAGMA wal_checkpoint(TRUNCATE);")
             .await?;
@@ -845,13 +849,15 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     }
 
     async fn rollback(&mut self) -> Result<()> {
-        let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
-        transaction.rollback().await?;
+        if let Some(transaction) = self.transaction.take() {
+            transaction.rollback().await?;
+        }
+        self.transaction = Some(self.pool.begin().await?);
+
         self.pool
             .execute("PRAGMA wal_checkpoint(TRUNCATE);")
             .await?;
 
-        // NOTE: clear doesn't reset the capacity
         self.publish_queue.clear();
         Ok(())
     }
