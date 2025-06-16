@@ -124,7 +124,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         block_id: BlockId,
         provider: Arc<P>,
     ) -> Result<(), Error> {
-        let tx = &mut self.transaction;
+        let tx = self.transaction.as_mut().unwrap();
         let balance: Option<(String,)> = sqlx::query_as(&format!(
             "SELECT balance FROM {TOKEN_BALANCE_TABLE} WHERE id = ?"
         ))
