@@ -20,7 +20,7 @@ use utils::felts_to_sql_string;
 
 use crate::constants::SQL_FELT_DELIMITER;
 use crate::error::{Error, ParseError};
-use crate::executor::error::ExecutorError;
+use crate::executor::error::ExecutorQueryError;
 use crate::executor::{
     Argument, DeleteEntityQuery, EventMessageQuery, QueryMessage, QueryType, UpdateCursorsQuery,
 };
@@ -114,7 +114,7 @@ impl Sql {
                     Argument::FieldElement(contract.address),
                     Argument::String(contract.r#type.to_string()),
                 ],
-            )).map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }
 
         let local_cache = LocalCache::new(pool.clone()).await;
@@ -151,7 +151,7 @@ impl Sql {
                 "UPDATE contracts SET last_pending_block_contract_tx = ? WHERE id = ?".to_string(),
                 vec![last_pending_block_contract_tx, id],
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -171,7 +171,7 @@ impl Sql {
                 "UPDATE contracts SET last_pending_block_tx = ? WHERE 1=1".to_string(),
                 vec![last_pending_block_tx],
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -215,13 +215,11 @@ impl Sql {
 
         self.executor
             .send(query)
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
-        let res = recv
-            .await
-            .map_err(|e| Error::Executor(ExecutorError::RecvError(e)))??;
-
-        Ok(res)
+        recv.await
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?
+            .map_err(|e| Error::ExecutorQuery(Box::new(e)))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -276,7 +274,7 @@ impl Sql {
                 arguments,
                 QueryType::RegisterModel,
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         self.build_model_query(
             vec![namespaced_name.clone()],
@@ -312,7 +310,7 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::FieldElement(selector)],
                         ))
-                        .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                        .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
                 }
             }
         }
@@ -370,7 +368,7 @@ impl Sql {
                     is_historical: self.config.is_historical(&model_selector),
                 }),
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         self.executor.send(QueryMessage::other(
             "INSERT INTO entity_model (entity_id, model_id) VALUES (?, ?) ON CONFLICT(entity_id, \
@@ -380,7 +378,7 @@ impl Sql {
                 Argument::String(entity_id.clone()),
                 Argument::String(model_id.clone()),
             ],
-        )).map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+        )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         self.set_entity_model(
             &namespaced_name,
@@ -398,7 +396,7 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::String(entity_id.clone())],
                         ))
-                        .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                        .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
                 }
             }
         }
@@ -455,7 +453,7 @@ impl Sql {
                     is_historical: self.config.is_historical(&model_selector),
                 }),
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         self.set_entity_model(
             &namespaced_name,
@@ -473,7 +471,7 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::String(entity_id.clone())],
                         ))
-                        .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                        .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
                 }
             }
         }
@@ -505,7 +503,7 @@ impl Sql {
                     ty: entity.clone(),
                 }),
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         for hook in self.config.hooks.iter() {
             if let HookEvent::ModelDeleted { model_tag } = &hook.event {
@@ -515,7 +513,7 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::String(entity_id.clone())],
                         ))
-                        .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                        .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
                 }
             }
         }
@@ -541,7 +539,7 @@ impl Sql {
                     .to_string(),
                 vec![resource, uri, executed_at],
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -574,7 +572,7 @@ impl Sql {
 
         self.executor
             .send(QueryMessage::other(statement, arguments))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -624,7 +622,7 @@ impl Sql {
                     unique_models: unique_models.clone(),
                 }),
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -650,7 +648,7 @@ impl Sql {
                 vec![id, keys, data, hash, executed_at],
                 QueryType::StoreEvent,
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -769,7 +767,7 @@ impl Sql {
         // Execute the single query
         self.executor
             .send(QueryMessage::other(insert_statement, arguments))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -838,19 +836,19 @@ impl Sql {
             for alter_query in alter_table_queries {
                 self.executor
                     .send(QueryMessage::other(alter_query, vec![]))
-                    .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                    .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
             }
         } else {
             self.executor
                 .send(QueryMessage::other(create_table_query, vec![]))
-                .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }
 
         // Create indices
         for index_query in indices {
             self.executor
                 .send(QueryMessage::other(index_query, vec![]))
-                .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }
 
         Ok(())
@@ -1128,22 +1126,22 @@ impl Sql {
         let (execute, recv) = QueryMessage::execute_recv();
         self.executor
             .send(execute)
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         let res = recv
             .await
-            .map_err(|e| Error::Executor(ExecutorError::RecvError(e)))?;
-        res.map_err(|e| Error::Executor(e))
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?;
+        res.map_err(|e| Error::ExecutorQuery(Box::new(e)))
     }
 
     pub async fn rollback(&self) -> Result<(), Error> {
         let (rollback, recv) = QueryMessage::rollback_recv();
         self.executor
             .send(rollback)
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         let res = recv
             .await
-            .map_err(|e| Error::Executor(ExecutorError::RecvError(e)))?;
-        res.map_err(Error::Executor)
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?;
+        res.map_err(|e| Error::ExecutorQuery(Box::new(e)))
     }
 
     pub async fn add_controller(
@@ -1173,10 +1171,7 @@ impl Sql {
                 insert_controller.to_string(),
                 arguments,
             ))
-            .map_err(|e| {
-                dbg!(&e);
-                Error::Executor(ExecutorError::SendError(e))
-            })?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }

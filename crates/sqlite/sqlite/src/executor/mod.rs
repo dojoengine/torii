@@ -171,7 +171,7 @@ pub struct QueryMessage {
     pub statement: String,
     pub arguments: Vec<Argument>,
     pub query_type: QueryType,
-    tx: Option<oneshot::Sender<Result<()>>>,
+    tx: Option<oneshot::Sender<QueryResult<()>>>,
 }
 
 impl QueryMessage {
@@ -188,67 +188,36 @@ impl QueryMessage {
         statement: String,
         arguments: Vec<Argument>,
         query_type: QueryType,
-    ) -> (Self, oneshot::Receiver<Result<()>>) {
+    ) -> (Self, oneshot::Receiver<QueryResult<()>>) {
         let (tx, rx) = oneshot::channel();
-        (
-            Self {
-                statement,
-                arguments,
-                query_type,
-                tx: Some(tx),
-            },
-            rx,
-        )
+        (QueryMessage {
+            statement,
+            arguments,
+            query_type,
+            tx: Some(tx),
+        }, rx)
     }
 
     pub fn other(statement: String, arguments: Vec<Argument>) -> Self {
-        Self {
-            statement,
-            arguments,
-            query_type: QueryType::Other,
-            tx: None,
-        }
+        QueryMessage::new(statement, arguments, QueryType::Other)
     }
 
     pub fn other_recv(
         statement: String,
         arguments: Vec<Argument>,
-    ) -> (Self, oneshot::Receiver<Result<()>>) {
-        let (tx, rx) = oneshot::channel();
-        (
-            Self {
-                statement,
-                arguments,
-                query_type: QueryType::Other,
-                tx: Some(tx),
-            },
-            rx,
-        )
+    ) -> (Self, oneshot::Receiver<QueryResult<()>>) {
+        QueryMessage::new_recv(statement, arguments, QueryType::Other)
     }
 
     pub fn execute() -> Self {
-        Self {
-            statement: "".to_string(),
-            arguments: vec![],
-            query_type: QueryType::Execute,
-            tx: None,
-        }
+        QueryMessage::new("".to_string(), vec![], QueryType::Execute)
     }
 
-    pub fn execute_recv() -> (Self, oneshot::Receiver<Result<()>>) {
-        let (tx, rx) = oneshot::channel();
-        (
-            Self {
-                statement: "".to_string(),
-                arguments: vec![],
-                query_type: QueryType::Execute,
-                tx: Some(tx),
-            },
-            rx,
-        )
+    pub fn execute_recv() -> (Self, oneshot::Receiver<QueryResult<()>>) {
+        QueryMessage::new_recv("".to_string(), vec![], QueryType::Execute)
     }
 
-    pub fn rollback_recv() -> (Self, oneshot::Receiver<Result<()>>) {
+    pub fn rollback_recv() -> (Self, oneshot::Receiver<QueryResult<()>>) {
         let (tx, rx) = oneshot::channel();
         (
             Self {
@@ -293,15 +262,21 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     debug!(target: LOG_TARGET, "Shutting down executor");
                     break Ok(());
                 }
-                Some(msg) = self.rx.recv() => {
+                Some(mut msg) = self.rx.recv() => {
                     let query_type = msg.query_type.clone();
                     let statement = msg.statement.clone();
                     let arguments = msg.arguments.clone();
-                    match self.handle_query_message(msg).await {
-                        Ok(()) => {},
-                        Err(e) => {
-                            error!(target: LOG_TARGET, r#type = %query_type, error = ?e, "Failed to execute query.");
-                            debug!(target: LOG_TARGET, query = ?statement, arguments = ?arguments, query_type = ?query_type, "Failed to execute query.");
+                    let tx = msg.tx.take();
+                    let res = self.handle_query_message(msg).await;
+
+                    if let Err(e) = &res {
+                        error!(target: LOG_TARGET, r#type = %query_type, error = ?e, "Failed to execute query.");
+                        debug!(target: LOG_TARGET, query = ?statement, arguments = ?arguments, query_type = ?query_type, "Failed to execute query.");
+                    }
+
+                    if let Some(tx) = tx {
+                        if let Err(e) = tx.send(res) {
+                            error!(target: LOG_TARGET, error = ?e, "Failed to send query result.");
                         }
                     }
                 }
@@ -779,30 +754,14 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
             QueryType::Execute => {
                 debug!(target: LOG_TARGET, "Executing query.");
                 let instant = Instant::now();
-                let res = self.execute().await;
+                self.execute().await?;
                 debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Executed query.");
-
-                if let Some(sender) = query_message.tx {
-                    if let Err(e) = sender.send(res) {
-                        e.map_err(ExecutorQueryError::Executor)?;
-                    }
-                } else {
-                    res.map_err(ExecutorQueryError::Executor)?;
-                }
             }
             QueryType::Rollback => {
                 debug!(target: LOG_TARGET, "Rolling back the transaction.");
                 // rollback's the current transaction and starts a new one
-                let res = self.rollback().await;
+                self.rollback().await?;
                 debug!(target: LOG_TARGET, "Rolled back the transaction.");
-
-                if let Some(sender) = query_message.tx {
-                    if let Err(e) = sender.send(res) {
-                        e.map_err(ExecutorQueryError::Executor)?;
-                    }
-                } else {
-                    res.map_err(ExecutorQueryError::Executor)?;
-                }
             }
             QueryType::UpdateNftMetadata(update_metadata) => {
                 // Update metadata in database
