@@ -226,8 +226,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     if let Some(last_fetch_result) = cached_data.as_ref() {
                         Result::<_, Error>::Ok(last_fetch_result.clone())
                     } else {
-                        let mut cursors = self.db.cursors().await?;
-                        let fetch_result = self.fetch(&mut cursors).await?;
+                        let cursors = self.db.cursors().await?;
+                        let fetch_result = self.fetch(&cursors).await?;
                         Ok(Arc::new(fetch_result))
                     }
                 } => {
@@ -297,7 +297,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
     pub async fn fetch(
         &mut self,
-        cursors: &mut HashMap<Felt, Cursor>,
+        cursors: &HashMap<Felt, Cursor>,
     ) -> Result<FetchResult, FetchError> {
         let latest_block = self.provider.block_hash_and_number().await?;
         let latest_block_number = latest_block.block_number;
