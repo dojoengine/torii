@@ -22,7 +22,9 @@ use tracing::{debug, error, info, trace};
 use crate::constants::LOG_TARGET;
 use crate::error::{Error, ProcessError};
 use crate::IndexingFlags;
-use torii_indexer_fetcher::{FetchPendingResult, FetchRangeResult, FetchResult, Fetcher, FetcherConfig};
+use torii_indexer_fetcher::{
+    FetchPendingResult, FetchRangeResult, FetchResult, Fetcher, FetcherConfig,
+};
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
 
 #[derive(Debug)]
@@ -91,7 +93,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         )
     }
 
-    
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_controllers(
         world: WorldContractReader<P>,

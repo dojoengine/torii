@@ -143,10 +143,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         .map(|c| (c.address, Default::default()))
         .collect();
 
-    let fetcher = Fetcher::new(
-        Arc::new(provider.clone()),
-        FetcherConfig::default(),
-    );
+    let fetcher = Fetcher::new(Arc::new(provider.clone()), FetcherConfig::default());
 
     let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();

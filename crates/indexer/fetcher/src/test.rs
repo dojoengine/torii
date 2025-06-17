@@ -41,10 +41,13 @@ async fn test_range_one_block() {
 
     let eternum_block = 1435856;
 
-    let fetcher = Fetcher::new(provider.clone(), FetcherConfig {
-        blocks_chunk_size: 1,
-        ..Default::default()
-    });
+    let fetcher = Fetcher::new(
+        provider.clone(),
+        FetcherConfig {
+            blocks_chunk_size: 1,
+            ..Default::default()
+        },
+    );
 
     // To index 1435856, the cursor must actually be one block behind.
     let cursors = HashMap::from([(

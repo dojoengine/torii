@@ -7,13 +7,12 @@ use std::collections::{BTreeMap, HashMap};
 pub use error::Error;
 
 pub mod json_rpc;
+use bitflags::bitflags;
 use hashlink::LinkedHashMap;
 pub use json_rpc::Fetcher;
 use starknet::core::types::{Event, Transaction};
 use starknet_crypto::Felt;
 use torii_sqlite::Cursor;
-use bitflags::bitflags;
-
 
 bitflags! {
     #[derive(Debug, Clone)]

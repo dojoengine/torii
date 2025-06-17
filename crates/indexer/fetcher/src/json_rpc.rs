@@ -21,7 +21,10 @@ use torii_sqlite::Cursor;
 use tracing::{debug, error, trace, warn};
 
 use crate::error::Error;
-use crate::{FetchPendingResult, FetchRangeBlock, FetchRangeResult, FetchResult, FetchTransaction, FetcherConfig, FetchingFlags};
+use crate::{
+    FetchPendingResult, FetchRangeBlock, FetchRangeResult, FetchResult, FetchTransaction,
+    FetcherConfig, FetchingFlags,
+};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::fetcher";
 
@@ -393,7 +396,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                         for event in events_page.events.clone() {
                             if from == 0 {
                                 from = event.block_number.unwrap();
-                                to = (from + self.config.blocks_chunk_size).min(latest_block_number);
+                                to =
+                                    (from + self.config.blocks_chunk_size).min(latest_block_number);
                             }
 
                             if event.block_number.unwrap() > to {

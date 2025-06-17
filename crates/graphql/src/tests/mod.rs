@@ -422,10 +422,7 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         .map(|c| (c.address, Default::default()))
         .collect();
 
-    let fetcher = Fetcher::new(
-        Arc::new(provider.clone()),
-        FetcherConfig::default(),
-    );
+    let fetcher = Fetcher::new(Arc::new(provider.clone()), FetcherConfig::default());
 
     let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();
