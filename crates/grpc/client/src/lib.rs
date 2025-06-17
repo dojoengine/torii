@@ -18,10 +18,10 @@ use tonic::transport::Endpoint;
 
 use torii_proto::error::ProtoError;
 use torii_proto::proto::world::{
-    world_client, PublishMessageRequest, RetrieveControllersRequest, RetrieveControllersResponse,
-    RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventMessagesRequest,
-    RetrieveEventsRequest, RetrieveEventsResponse, RetrieveTokenBalancesRequest,
-    RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
+    world_client, PublishMessageBatchRequest, PublishMessageRequest, RetrieveControllersRequest,
+    RetrieveControllersResponse, RetrieveEntitiesRequest, RetrieveEntitiesResponse,
+    RetrieveEventMessagesRequest, RetrieveEventsRequest, RetrieveEventsResponse,
+    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
     RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
     SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
     SubscribeEventsRequest, SubscribeEventsResponse, SubscribeIndexerRequest,
@@ -528,6 +528,35 @@ impl WorldClient {
             .await
             .map_err(Error::Grpc)
             .map(|res| Felt::from_bytes_be_slice(&res.into_inner().entity_id))
+    }
+
+    pub async fn publish_message_batch(
+        &mut self,
+        messages: Vec<Message>,
+    ) -> Result<Vec<Felt>, Error> {
+        self.inner
+            .publish_message_batch(PublishMessageBatchRequest {
+                messages: messages
+                    .iter()
+                    .map(|m| PublishMessageRequest {
+                        signature: m
+                            .signature
+                            .iter()
+                            .map(|s| s.to_bytes_be().to_vec())
+                            .collect(),
+                        message: m.message.clone(),
+                    })
+                    .collect(),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| {
+                res.into_inner()
+                    .responses
+                    .iter()
+                    .map(|r| Felt::from_bytes_be_slice(&r.entity_id))
+                    .collect()
+            })
     }
 }
 

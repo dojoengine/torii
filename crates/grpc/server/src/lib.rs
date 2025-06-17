@@ -60,7 +60,7 @@ use torii_proto::proto::types::member_value::ValueType;
 use torii_proto::proto::types::LogicalOperator;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
-    PublishMessageRequest, PublishMessageResponse, RetrieveControllersRequest,
+    PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest, PublishMessageResponse, RetrieveControllersRequest,
     RetrieveControllersResponse, RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest,
     RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
     RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
@@ -1837,6 +1837,29 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         Ok(Response::new(PublishMessageResponse {
             entity_id: entity_id.to_bytes_be().to_vec(),
         }))
+    }
+
+    async fn publish_message_batch(
+        &self,
+        request: Request<PublishMessageBatchRequest>,
+    ) -> Result<Response<PublishMessageBatchResponse>, Status> {
+        let PublishMessageBatchRequest { messages } = request.into_inner();
+        let mut responses = Vec::with_capacity(messages.len());
+        for message in messages {
+            let signature = message.signature.iter().map(|s| Felt::from_bytes_be_slice(s)).collect::<Vec<_>>();
+            let message = message.message;
+            let typed_data = serde_json::from_str::<TypedData>(&message)
+                .map_err(|_| Status::invalid_argument("Invalid message"))?;
+
+            let entity_id = validate_and_set_entity(&self.sql, &typed_data, &signature, &self.provider)
+                .await
+                .map_err(|e| Status::internal(e.to_string()))?;
+            responses.push(PublishMessageResponse {
+                entity_id: entity_id.to_bytes_be().to_vec(),
+            });
+        }
+
+        Ok(Response::new(PublishMessageBatchResponse { responses: responses.into_iter().collect() }))
     }
 }
 
