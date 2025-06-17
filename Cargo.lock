@@ -11221,7 +11221,6 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "base64 0.21.7",
- "bitflags 2.6.0",
  "cainome",
  "cainome-cairo-serde",
  "chrono",
@@ -11252,10 +11251,64 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "tokio-util",
+ "torii-indexer-fetcher",
+ "torii-indexer-types",
  "torii-processors",
  "torii-sqlite",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "torii-indexer-fetcher"
+version = "1.5.8-preview.2"
+dependencies = [
+ "anyhow",
+ "async-recursion",
+ "async-trait",
+ "base64 0.21.7",
+ "cainome",
+ "cainome-cairo-serde",
+ "chrono",
+ "crypto-bigint",
+ "data-url",
+ "dojo-test-utils",
+ "dojo-types 1.5.0-alpha.2",
+ "dojo-utils",
+ "dojo-world",
+ "futures-channel",
+ "futures-util",
+ "hashlink",
+ "ipfs-api-backend-hyper",
+ "katana-runner",
+ "lazy_static",
+ "num-traits 0.2.19",
+ "once_cell",
+ "reqwest",
+ "scarb",
+ "serde",
+ "serde_json",
+ "slab",
+ "sozo-scarbext",
+ "sqlx",
+ "starknet 0.12.0",
+ "starknet-crypto 0.7.4",
+ "tempfile",
+ "thiserror 1.0.63",
+ "tokio",
+ "tokio-util",
+ "torii-indexer-types",
+ "torii-processors",
+ "torii-sqlite",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "torii-indexer-types"
+version = "1.5.8-preview.2"
+dependencies = [
+ "bitflags 2.6.0",
 ]
 
 [[package]]

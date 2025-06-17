@@ -48,7 +48,6 @@ torii-cli = { path = "crates/cli" }
 torii-client = { path = "crates/client" }
 torii-graphql = { path = "crates/graphql" }
 torii-proto = { path = "crates/proto" }
-torii-indexer = { path = "crates/indexer" }
 torii-libp2p-client = { path = "crates/libp2p/client" }
 torii-libp2p-relay = { path = "crates/libp2p/relay" }
 torii-messaging = { path = "crates/messaging" }
@@ -63,6 +62,9 @@ torii-grpc-client = { path = "crates/grpc/client" }
 torii-grpc-server = { path = "crates/grpc/server" }
 torii-adigraphmap = { path = "crates/adigraphmap" }
 torii-task-network = { path = "crates/task-network" }
+torii-indexer-types = { path = "crates/indexer/types" }
+torii-indexer-fetcher = { path = "crates/indexer/fetcher" }
+torii-indexer = { path = "crates/indexer/engine" }
 
 # macros
 merge-options = { git = "https://github.com/dojoengine/dojo", rev = "82fe9bd" }
