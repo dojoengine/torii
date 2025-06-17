@@ -27,6 +27,7 @@ use torii_sqlite::utils::u256_to_sql_string;
 use torii_sqlite::Sql;
 
 use crate::engine::{Engine, EngineConfig};
+use crate::fetcher::Fetcher;
 use torii_processors::processors::Processors;
 
 pub async fn bootstrap_engine<P>(
@@ -42,7 +43,7 @@ where
     let mut engine = Engine::new(
         world,
         db.clone(),
-        provider,
+        provider.clone(),
         Processors {
             ..Processors::default()
         },
@@ -55,7 +56,13 @@ where
         .iter()
         .map(|c| (c.address, Default::default()))
         .collect();
-    let data = engine.fetch(&cursors).await.unwrap();
+
+    let fetcher = Fetcher::new_default(
+        Arc::new(provider),
+        Arc::new(contracts.iter().map(|c| (c.address, c.r#type)).collect()),
+    );
+
+    let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();
 
     db.apply_cache_diff(cursors).await.unwrap();
