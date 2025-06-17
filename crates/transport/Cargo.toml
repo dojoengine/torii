@@ -1,0 +1,16 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "torii-transport"
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+tracing.workspace = true
+futures-util.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+starknet.workspace = true
+serde.workspace = true
+async-trait.workspace = true

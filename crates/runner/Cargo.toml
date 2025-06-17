@@ -46,6 +46,7 @@ torii-libp2p-relay = { workspace = true }
 torii-server.workspace = true
 torii-processors.workspace = true
 tower.workspace = true
+torii-transport.workspace = true
 
 tempfile.workspace = true
 tower-http.workspace = true
