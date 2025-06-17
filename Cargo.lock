@@ -1035,6 +1035,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "borsh"
+version = "1.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad8646f98db542e39fc66e68a20b2144f6a732636df7c2354e74645faaa433ce"
+dependencies = [
+ "cfg_aliases",
+]
+
+[[package]]
 name = "brotli"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1287,7 +1296,7 @@ dependencies = [
  "rayon",
  "rust-analyzer-salsa",
  "semver",
- "smol_str",
+ "smol_str 0.2.2",
  "thiserror 1.0.63",
 ]
 
@@ -1314,7 +1323,7 @@ dependencies = [
  "cairo-lang-utils",
  "itertools 0.12.1",
  "rust-analyzer-salsa",
- "smol_str",
+ "smol_str 0.2.2",
 ]
 
 [[package]]
@@ -1377,7 +1386,7 @@ dependencies = [
  "rust-analyzer-salsa",
  "semver",
  "serde",
- "smol_str",
+ "smol_str 0.2.2",
  "toml 0.8.19",
 ]
 
@@ -1423,7 +1432,7 @@ dependencies = [
  "num-integer",
  "num-traits 0.2.19",
  "rust-analyzer-salsa",
- "smol_str",
+ "smol_str 0.2.2",
 ]
 
 [[package]]
@@ -1471,7 +1480,7 @@ dependencies = [
  "num-bigint",
  "num-traits 0.2.19",
  "rust-analyzer-salsa",
- "smol_str",
+ "smol_str 0.2.2",
  "unescaper",
 ]
 
@@ -1491,7 +1500,7 @@ dependencies = [
  "indoc",
  "itertools 0.12.1",
  "rust-analyzer-salsa",
- "smol_str",
+ "smol_str 0.2.2",
 ]
 
 [[package]]
@@ -1565,7 +1574,7 @@ dependencies = [
  "num-traits 0.2.19",
  "rust-analyzer-salsa",
  "sha3",
- "smol_str",
+ "smol_str 0.2.2",
  "toml 0.8.19",
 ]
 
@@ -1591,7 +1600,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3",
- "smol_str",
+ "smol_str 0.2.2",
  "starknet-types-core",
  "thiserror 1.0.63",
 ]
@@ -1649,7 +1658,7 @@ dependencies = [
  "rust-analyzer-salsa",
  "serde",
  "serde_json",
- "smol_str",
+ "smol_str 0.2.2",
 ]
 
 [[package]]
@@ -1708,7 +1717,7 @@ dependencies = [
  "itertools 0.12.1",
  "serde",
  "serde_json",
- "smol_str",
+ "smol_str 0.2.2",
  "starknet-types-core",
  "thiserror 1.0.63",
 ]
@@ -1731,7 +1740,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3",
- "smol_str",
+ "smol_str 0.2.2",
  "starknet-types-core",
  "thiserror 1.0.63",
 ]
@@ -1749,7 +1758,7 @@ dependencies = [
  "num-bigint",
  "num-traits 0.2.19",
  "rust-analyzer-salsa",
- "smol_str",
+ "smol_str 0.2.2",
  "unescaper",
 ]
 
@@ -2779,7 +2788,7 @@ dependencies = [
  "dojo-types 1.4.1",
  "itertools 0.12.1",
  "serde",
- "smol_str",
+ "smol_str 0.2.2",
  "starknet 0.12.0",
  "starknet-crypto 0.7.4",
  "tracing",
@@ -2787,8 +2796,8 @@ dependencies = [
 
 [[package]]
 name = "dojo-metrics"
-version = "1.5.0-alpha.2"
-source = "git+https://github.com/dojoengine/dojo?rev=4145801#4145801c2a1da8e413af2c57615869a4ccf19e76"
+version = "1.5.1"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-and-benchmarks#0f58c90514e44008418563c99a99aa9fafba708f"
 dependencies = [
  "hyper 0.14.30",
  "jemalloc-ctl",
@@ -2804,14 +2813,13 @@ dependencies = [
 
 [[package]]
 name = "dojo-test-utils"
-version = "1.5.0-alpha.2"
-source = "git+https://github.com/dojoengine/dojo?rev=4145801#4145801c2a1da8e413af2c57615869a4ccf19e76"
+version = "1.5.1"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-and-benchmarks#0f58c90514e44008418563c99a99aa9fafba708f"
 dependencies = [
- "anyhow",
  "assert_fs",
  "camino",
- "scarb",
- "scarb-ui",
+ "scarb-interop",
+ "scarb-metadata 1.14.0",
  "toml 0.8.19",
 ]
 
@@ -2885,6 +2893,23 @@ dependencies = [
 name = "dojo-utils"
 version = "1.5.0-alpha.2"
 source = "git+https://github.com/dojoengine/dojo?rev=4145801#4145801c2a1da8e413af2c57615869a4ccf19e76"
+dependencies = [
+ "anyhow",
+ "colored_json",
+ "futures",
+ "reqwest",
+ "rpassword",
+ "serde_json",
+ "starknet 0.12.0",
+ "thiserror 1.0.63",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "dojo-utils"
+version = "1.5.1"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-and-benchmarks#0f58c90514e44008418563c99a99aa9fafba708f"
 dependencies = [
  "anyhow",
  "colored_json",
@@ -9098,7 +9123,7 @@ dependencies = [
  "redb",
  "reqwest",
  "scarb-build-metadata",
- "scarb-metadata",
+ "scarb-metadata 1.13.0",
  "scarb-proc-macro-server-types",
  "scarb-stable-hash 1.0.0 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "scarb-ui",
@@ -9111,7 +9136,7 @@ dependencies = [
  "serde_repr",
  "sha2",
  "smallvec",
- "smol_str",
+ "smol_str 0.2.2",
  "tar",
  "target-triple",
  "thiserror 2.0.11",
@@ -9139,12 +9164,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "scarb-interop"
+version = "1.5.1"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-and-benchmarks#0f58c90514e44008418563c99a99aa9fafba708f"
+dependencies = [
+ "anyhow",
+ "camino",
+ "dojo-world 1.5.1",
+ "dunce",
+ "scarb-metadata 1.14.0",
+ "serde",
+ "serde_json",
+ "smol_str 0.3.2",
+ "toml 0.8.19",
+]
+
+[[package]]
 name = "scarb-metadata"
 version = "1.13.0"
 source = "git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6#d749b9545f5c50b078870a322a12efe7a17914b6"
 dependencies = [
  "camino",
  "derive_builder",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.11",
+]
+
+[[package]]
+name = "scarb-metadata"
+version = "1.14.0"
+source = "git+https://github.com/software-mansion/scarb?rev=4fdeb7810#4fdeb78106ac719ef6fd31379eef77b27c5e83b2"
+dependencies = [
+ "camino",
  "semver",
  "serde",
  "serde_json",
@@ -9190,7 +9243,7 @@ dependencies = [
  "clap",
  "console",
  "indicatif",
- "scarb-metadata",
+ "scarb-metadata 1.13.0",
  "serde",
  "serde_json",
  "tracing-core",
@@ -9652,6 +9705,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "smol_str"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9676b89cd56310a87b93dec47b11af744f34d5fc9f367b829474eec0a891350d"
+dependencies = [
+ "borsh",
+ "serde",
+]
+
+[[package]]
 name = "snow"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9714,7 +9777,7 @@ dependencies = [
  "colored",
  "colored_json",
  "dojo-types 1.5.0-alpha.2",
- "dojo-utils",
+ "dojo-utils 1.5.0-alpha.2",
  "dojo-world 1.5.0-alpha.2",
  "futures",
  "num-traits 0.2.19",
@@ -11108,7 +11171,7 @@ dependencies = [
  "assert_matches",
  "camino",
  "clap",
- "dojo-utils",
+ "dojo-utils 1.5.1",
  "merge-options",
  "serde",
  "starknet 0.12.0",
@@ -11123,7 +11186,7 @@ version = "1.5.8-preview.2"
 dependencies = [
  "async-trait",
  "crypto-bigint",
- "dojo-types 1.5.0-alpha.2",
+ "dojo-types 1.5.1",
  "dojo-world 1.5.1",
  "futures",
  "futures-util",
@@ -11153,8 +11216,8 @@ dependencies = [
  "chrono",
  "convert_case 0.6.0",
  "dojo-test-utils",
- "dojo-types 1.5.0-alpha.2",
- "dojo-utils",
+ "dojo-types 1.5.1",
+ "dojo-utils 1.5.1",
  "dojo-world 1.5.1",
  "katana-runner",
  "lazy_static",
@@ -11188,7 +11251,7 @@ name = "torii-grpc-client"
 version = "1.5.8-preview.2"
 dependencies = [
  "crypto-bigint",
- "dojo-types 1.5.0-alpha.2",
+ "dojo-types 1.5.1",
  "futures",
  "futures-util",
  "num-traits 0.2.19",
@@ -11219,8 +11282,8 @@ dependencies = [
  "crypto-bigint",
  "dashmap 6.1.0",
  "dojo-test-utils",
- "dojo-types 1.5.0-alpha.2",
- "dojo-utils",
+ "dojo-types 1.5.1",
+ "dojo-utils 1.5.1",
  "dojo-world 1.5.1",
  "futures",
  "futures-util",
@@ -11278,8 +11341,8 @@ dependencies = [
  "crypto-bigint",
  "data-url",
  "dojo-test-utils",
- "dojo-types 1.5.0-alpha.2",
- "dojo-utils",
+ "dojo-types 1.5.1",
+ "dojo-utils 1.5.1",
  "dojo-world 1.5.1",
  "futures-channel",
  "futures-util",
@@ -11324,8 +11387,8 @@ dependencies = [
  "crypto-bigint",
  "data-url",
  "dojo-test-utils",
- "dojo-types 1.5.0-alpha.2",
- "dojo-utils",
+ "dojo-types 1.5.1",
+ "dojo-utils 1.5.1",
  "dojo-world 1.5.1",
  "futures-channel",
  "futures-util",
@@ -11361,7 +11424,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "crypto-bigint",
- "dojo-types 1.5.0-alpha.2",
+ "dojo-types 1.5.1",
  "dojo-world 1.5.1",
  "futures",
  "indexmap 2.7.1",
@@ -11402,7 +11465,7 @@ version = "1.5.8-preview.2"
 dependencies = [
  "anyhow",
  "crypto-bigint",
- "dojo-types 1.5.0-alpha.2",
+ "dojo-types 1.5.1",
  "dojo-world 1.5.1",
  "serde",
  "serde_json",
@@ -11426,7 +11489,7 @@ dependencies = [
  "cainome",
  "cainome-cairo-serde",
  "cainome-cairo-serde-derive",
- "dojo-types 1.5.0-alpha.2",
+ "dojo-types 1.5.1",
  "dojo-world 1.5.1",
  "futures-util",
  "hashlink",
@@ -11449,7 +11512,7 @@ name = "torii-proto"
 version = "1.5.8-preview.2"
 dependencies = [
  "crypto-bigint",
- "dojo-types 1.5.0-alpha.2",
+ "dojo-types 1.5.1",
  "dojo-world 1.5.1",
  "prost 0.12.6",
  "prost 0.13.3",
@@ -11478,8 +11541,8 @@ dependencies = [
  "chrono",
  "ctrlc",
  "dojo-metrics",
- "dojo-types 1.5.0-alpha.2",
- "dojo-utils",
+ "dojo-types 1.5.1",
+ "dojo-utils 1.5.1",
  "dojo-world 1.5.1",
  "either",
  "futures",
@@ -11571,8 +11634,8 @@ dependencies = [
  "dashmap 6.1.0",
  "data-url",
  "dojo-test-utils",
- "dojo-types 1.5.0-alpha.2",
- "dojo-utils",
+ "dojo-types 1.5.1",
+ "dojo-utils 1.5.1",
  "dojo-world 1.5.1",
  "flate2",
  "futures-channel",
@@ -11607,7 +11670,7 @@ version = "1.5.8-preview.2"
 dependencies = [
  "anyhow",
  "chrono",
- "dojo-types 1.5.0-alpha.2",
+ "dojo-types 1.5.1",
  "serde",
  "sqlx",
  "starknet 0.12.0",
@@ -11631,7 +11694,7 @@ version = "1.5.8-preview.2"
 dependencies = [
  "cainome",
  "crypto-bigint",
- "dojo-types 1.5.0-alpha.2",
+ "dojo-types 1.5.1",
  "indexmap 2.7.1",
  "serde",
  "serde_json",
@@ -12468,7 +12531,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "smol_str",
+ "smol_str 0.2.2",
  "stun",
  "thiserror 1.0.63",
  "time",
@@ -13228,7 +13291,7 @@ version = "1.5.8-preview.2"
 dependencies = [
  "anyhow",
  "dojo-test-utils",
- "dojo-utils",
+ "dojo-utils 1.5.1",
  "dojo-world 1.5.1",
  "katana-runner",
  "reqwest",
