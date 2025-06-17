@@ -146,16 +146,17 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                             _ => unreachable!(),
                         };
                         // Initialize block with transactions in the order provided by the block
-                        let mut transactions = LinkedHashMap::new();
-                        for tx_hash in tx_hashes {
-                            transactions.insert(
-                                tx_hash,
-                                FetchTransaction {
-                                    transaction: None,
-                                    events: vec![],
-                                },
-                            );
-                        }
+                        let transactions =
+                            LinkedHashMap::from_iter(tx_hashes.iter().map(|tx_hash| {
+                                (
+                                    *tx_hash,
+                                    FetchTransaction {
+                                        transaction: None,
+                                        events: vec![],
+                                    },
+                                )
+                            }));
+
                         blocks.insert(
                             *block_number,
                             FetchRangeBlock {
