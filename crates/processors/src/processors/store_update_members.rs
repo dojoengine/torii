@@ -2,14 +2,16 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use dojo_types::schema::Ty;
+use dojo_types::schema::{Struct, Ty};
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::Event;
+use starknet::core::utils::get_selector_from_name;
 use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::{debug, info};
 
+use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig};
 use crate::{IndexingMode, Result};
@@ -55,7 +57,7 @@ where
         } else {
             let mut hasher = DefaultHasher::new();
             event.keys[0].hash(&mut hasher);
-            let n_members: u32 = event.data[0].into();
+            let n_members: u32 = event.data[0].try_into().unwrap();
             let mut members = event.data[1..(1 + n_members as usize)].to_vec();
             members.sort();
             members.hash(&mut hasher);
@@ -78,7 +80,7 @@ where
         let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
             panic!(
                 "Expected {} event to be well formed.",
-                <StoreUpdateSchemaProcessor as EventProcessor<P>>::event_key(self)
+                <StoreUpdateMembersProcessor as EventProcessor<P>>::event_key(self)
             )
         }) {
             WorldEvent::StoreUpdateMembers(e) => e,
@@ -128,7 +130,7 @@ where
                 )))?
                 .clone();
             member.ty.deserialize(&mut values)?;
-            members.append(member);
+            members.push(member);
         }
 
         info!(

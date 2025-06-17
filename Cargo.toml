@@ -34,12 +34,12 @@ cainome = { version = "0.5.0", features = ["abigen-rs"] }
 cainome-cairo-serde = { version = "0.1.0" }
 cainome-cairo-serde-derive = { version = "0.1.0" }
 
-dojo-utils = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-and-benchmarks" }
-dojo-types = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-and-benchmarks" }
-dojo-core = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-and-benchmarks" }
-dojo-world = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-and-benchmarks" }
-dojo-test-utils = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-and-benchmarks" }
-dojo-metrics = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-and-benchmarks" }
+dojo-utils = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-1.5" }
+dojo-types = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-1.5" }
+dojo-core = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-1.5" }
+dojo-world = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-1.5" }
+dojo-test-utils = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-1.5" }
+dojo-metrics = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-1.5" }
 
 topological-sort = "0.2"
 

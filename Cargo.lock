@@ -1035,15 +1035,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "borsh"
-version = "1.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad8646f98db542e39fc66e68a20b2144f6a732636df7c2354e74645faaa433ce"
-dependencies = [
- "cfg_aliases",
-]
-
-[[package]]
 name = "brotli"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1296,7 +1287,7 @@ dependencies = [
  "rayon",
  "rust-analyzer-salsa",
  "semver",
- "smol_str 0.2.2",
+ "smol_str",
  "thiserror 1.0.63",
 ]
 
@@ -1323,7 +1314,7 @@ dependencies = [
  "cairo-lang-utils",
  "itertools 0.12.1",
  "rust-analyzer-salsa",
- "smol_str 0.2.2",
+ "smol_str",
 ]
 
 [[package]]
@@ -1386,7 +1377,7 @@ dependencies = [
  "rust-analyzer-salsa",
  "semver",
  "serde",
- "smol_str 0.2.2",
+ "smol_str",
  "toml 0.8.19",
 ]
 
@@ -1432,7 +1423,7 @@ dependencies = [
  "num-integer",
  "num-traits 0.2.19",
  "rust-analyzer-salsa",
- "smol_str 0.2.2",
+ "smol_str",
 ]
 
 [[package]]
@@ -1480,7 +1471,7 @@ dependencies = [
  "num-bigint",
  "num-traits 0.2.19",
  "rust-analyzer-salsa",
- "smol_str 0.2.2",
+ "smol_str",
  "unescaper",
 ]
 
@@ -1500,7 +1491,7 @@ dependencies = [
  "indoc",
  "itertools 0.12.1",
  "rust-analyzer-salsa",
- "smol_str 0.2.2",
+ "smol_str",
 ]
 
 [[package]]
@@ -1574,7 +1565,7 @@ dependencies = [
  "num-traits 0.2.19",
  "rust-analyzer-salsa",
  "sha3",
- "smol_str 0.2.2",
+ "smol_str",
  "toml 0.8.19",
 ]
 
@@ -1600,7 +1591,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3",
- "smol_str 0.2.2",
+ "smol_str",
  "starknet-types-core",
  "thiserror 1.0.63",
 ]
@@ -1658,7 +1649,7 @@ dependencies = [
  "rust-analyzer-salsa",
  "serde",
  "serde_json",
- "smol_str 0.2.2",
+ "smol_str",
 ]
 
 [[package]]
@@ -1717,7 +1708,7 @@ dependencies = [
  "itertools 0.12.1",
  "serde",
  "serde_json",
- "smol_str 0.2.2",
+ "smol_str",
  "starknet-types-core",
  "thiserror 1.0.63",
 ]
@@ -1740,7 +1731,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3",
- "smol_str 0.2.2",
+ "smol_str",
  "starknet-types-core",
  "thiserror 1.0.63",
 ]
@@ -1758,7 +1749,7 @@ dependencies = [
  "num-bigint",
  "num-traits 0.2.19",
  "rust-analyzer-salsa",
- "smol_str 0.2.2",
+ "smol_str",
  "unescaper",
 ]
 
@@ -2317,6 +2308,17 @@ dependencies = [
 [[package]]
 name = "create-output-dir"
 version = "1.0.0"
+source = "git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6#38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6"
+dependencies = [
+ "anyhow",
+ "core-foundation 0.10.0",
+ "tempfile",
+ "winapi",
+]
+
+[[package]]
+name = "create-output-dir"
+version = "1.0.0"
 source = "git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6#d749b9545f5c50b078870a322a12efe7a17914b6"
 dependencies = [
  "anyhow",
@@ -2788,7 +2790,30 @@ dependencies = [
  "dojo-types 1.4.1",
  "itertools 0.12.1",
  "serde",
- "smol_str 0.2.2",
+ "smol_str",
+ "starknet 0.12.0",
+ "starknet-crypto 0.7.4",
+ "tracing",
+]
+
+[[package]]
+name = "dojo-lang"
+version = "1.5.0"
+source = "git+https://github.com/dojoengine/dojo?rev=3bb2f4f0ec54a73ab18f229de0a4b383290ec2ba#3bb2f4f0ec54a73ab18f229de0a4b383290ec2ba"
+dependencies = [
+ "anyhow",
+ "cairo-lang-defs",
+ "cairo-lang-diagnostics",
+ "cairo-lang-filesystem",
+ "cairo-lang-plugins",
+ "cairo-lang-semantic",
+ "cairo-lang-syntax",
+ "cairo-lang-utils",
+ "dojo-types 1.5.0",
+ "itertools 0.12.1",
+ "regex",
+ "serde",
+ "smol_str",
  "starknet 0.12.0",
  "starknet-crypto 0.7.4",
  "tracing",
@@ -2797,7 +2822,7 @@ dependencies = [
 [[package]]
 name = "dojo-metrics"
 version = "1.5.1"
-source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-and-benchmarks#0f58c90514e44008418563c99a99aa9fafba708f"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#b14b7cbed0cc3f8439fd3528f8d6d94431c67405"
 dependencies = [
  "hyper 0.14.30",
  "jemalloc-ctl",
@@ -2814,12 +2839,13 @@ dependencies = [
 [[package]]
 name = "dojo-test-utils"
 version = "1.5.1"
-source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-and-benchmarks#0f58c90514e44008418563c99a99aa9fafba708f"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#b14b7cbed0cc3f8439fd3528f8d6d94431c67405"
 dependencies = [
+ "anyhow",
  "assert_fs",
  "camino",
- "scarb-interop",
- "scarb-metadata 1.14.0",
+ "scarb 2.10.1 (git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6)",
+ "scarb-ui 0.1.5 (git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6)",
  "toml 0.8.19",
 ]
 
@@ -2869,8 +2895,30 @@ dependencies = [
 
 [[package]]
 name = "dojo-types"
+version = "1.5.0"
+source = "git+https://github.com/dojoengine/dojo?rev=3bb2f4f0ec54a73ab18f229de0a4b383290ec2ba#3bb2f4f0ec54a73ab18f229de0a4b383290ec2ba"
+dependencies = [
+ "anyhow",
+ "cainome",
+ "crypto-bigint",
+ "hex",
+ "indexmap 2.7.1",
+ "itertools 0.12.1",
+ "num-traits 0.2.19",
+ "regex",
+ "serde",
+ "serde_json",
+ "starknet 0.12.0",
+ "starknet-crypto 0.7.4",
+ "strum 0.25.0",
+ "strum_macros 0.25.3",
+ "thiserror 1.0.63",
+]
+
+[[package]]
+name = "dojo-types"
 version = "1.5.1"
-source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-and-benchmarks#8489e45844189aedc356dee0a89138562964dac7"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#b14b7cbed0cc3f8439fd3528f8d6d94431c67405"
 dependencies = [
  "anyhow",
  "cainome",
@@ -2909,7 +2957,7 @@ dependencies = [
 [[package]]
 name = "dojo-utils"
 version = "1.5.1"
-source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-and-benchmarks#0f58c90514e44008418563c99a99aa9fafba708f"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#b14b7cbed0cc3f8439fd3528f8d6d94431c67405"
 dependencies = [
  "anyhow",
  "colored_json",
@@ -2952,7 +3000,7 @@ dependencies = [
 [[package]]
 name = "dojo-world"
 version = "1.5.1"
-source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-and-benchmarks#8489e45844189aedc356dee0a89138562964dac7"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#b14b7cbed0cc3f8439fd3528f8d6d94431c67405"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7332,6 +7380,16 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 [[package]]
 name = "once_map"
 version = "0.0.1"
+source = "git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6#38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6"
+dependencies = [
+ "dashmap 6.1.0",
+ "futures",
+ "tokio",
+]
+
+[[package]]
+name = "once_map"
+version = "0.0.1"
 source = "git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6#d749b9545f5c50b078870a322a12efe7a17914b6"
 dependencies = [
  "dashmap 6.1.0",
@@ -9065,6 +9123,99 @@ dependencies = [
 [[package]]
 name = "scarb"
 version = "2.10.1"
+source = "git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6#38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cairo-lang-compiler",
+ "cairo-lang-defs",
+ "cairo-lang-diagnostics",
+ "cairo-lang-executable",
+ "cairo-lang-filesystem",
+ "cairo-lang-formatter",
+ "cairo-lang-lowering",
+ "cairo-lang-macro",
+ "cairo-lang-macro-stable",
+ "cairo-lang-parser",
+ "cairo-lang-semantic",
+ "cairo-lang-sierra",
+ "cairo-lang-sierra-generator",
+ "cairo-lang-sierra-to-casm",
+ "cairo-lang-starknet",
+ "cairo-lang-starknet-classes",
+ "cairo-lang-syntax",
+ "cairo-lang-test-plugin",
+ "cairo-lang-utils",
+ "cairo-lint-core",
+ "camino",
+ "cargo_metadata",
+ "clap",
+ "convert_case 0.7.1",
+ "create-output-dir 1.0.0 (git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6)",
+ "crossbeam-channel",
+ "data-encoding",
+ "deno_task_shell",
+ "derive_builder",
+ "dialoguer",
+ "directories",
+ "dojo-lang 1.5.0",
+ "dunce",
+ "flate2",
+ "fs4",
+ "fs_extra",
+ "futures",
+ "gix",
+ "gix-path",
+ "glob",
+ "ignore",
+ "include_dir",
+ "indoc",
+ "itertools 0.14.0",
+ "libloading",
+ "once_cell",
+ "once_map 0.0.1 (git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6)",
+ "pathdiff",
+ "petgraph 0.7.1",
+ "pubgrub",
+ "ra_ap_toolchain",
+ "redb",
+ "reqwest",
+ "scarb-build-metadata 2.10.1 (git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6)",
+ "scarb-metadata 1.13.0 (git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6)",
+ "scarb-proc-macro-server-types 0.1.0 (git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6)",
+ "scarb-stable-hash 1.0.0 (git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6)",
+ "scarb-ui 0.1.5 (git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6)",
+ "semver",
+ "semver-pubgrub",
+ "serde",
+ "serde-untagged",
+ "serde-value",
+ "serde_json",
+ "serde_repr",
+ "sha2",
+ "smallvec",
+ "smol_str",
+ "tar",
+ "target-triple",
+ "thiserror 2.0.11",
+ "tokio",
+ "tokio-stream",
+ "toml 0.8.19",
+ "toml_edit",
+ "tracing",
+ "tracing-subscriber",
+ "typed-builder",
+ "url",
+ "walkdir",
+ "which 7.0.1",
+ "windows-sys 0.59.0",
+ "zip",
+ "zstd 0.13.2",
+]
+
+[[package]]
+name = "scarb"
+version = "2.10.1"
 source = "git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6#d749b9545f5c50b078870a322a12efe7a17914b6"
 dependencies = [
  "anyhow",
@@ -9093,14 +9244,14 @@ dependencies = [
  "cargo_metadata",
  "clap",
  "convert_case 0.7.1",
- "create-output-dir",
+ "create-output-dir 1.0.0 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "crossbeam-channel",
  "data-encoding",
  "deno_task_shell",
  "derive_builder",
  "dialoguer",
  "directories",
- "dojo-lang",
+ "dojo-lang 1.4.1",
  "dunce",
  "flate2",
  "fs4",
@@ -9115,18 +9266,18 @@ dependencies = [
  "itertools 0.14.0",
  "libloading",
  "once_cell",
- "once_map",
+ "once_map 0.0.1 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "pathdiff",
  "petgraph 0.7.1",
  "pubgrub",
  "ra_ap_toolchain",
  "redb",
  "reqwest",
- "scarb-build-metadata",
- "scarb-metadata 1.13.0",
- "scarb-proc-macro-server-types",
+ "scarb-build-metadata 2.10.1 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
+ "scarb-metadata 1.13.0 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
+ "scarb-proc-macro-server-types 0.1.0 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "scarb-stable-hash 1.0.0 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
- "scarb-ui",
+ "scarb-ui 0.1.5 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "semver",
  "semver-pubgrub",
  "serde",
@@ -9136,7 +9287,7 @@ dependencies = [
  "serde_repr",
  "sha2",
  "smallvec",
- "smol_str 0.2.2",
+ "smol_str",
  "tar",
  "target-triple",
  "thiserror 2.0.11",
@@ -9158,25 +9309,30 @@ dependencies = [
 [[package]]
 name = "scarb-build-metadata"
 version = "2.10.1"
+source = "git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6#38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6"
+dependencies = [
+ "cargo_metadata",
+]
+
+[[package]]
+name = "scarb-build-metadata"
+version = "2.10.1"
 source = "git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6#d749b9545f5c50b078870a322a12efe7a17914b6"
 dependencies = [
  "cargo_metadata",
 ]
 
 [[package]]
-name = "scarb-interop"
-version = "1.5.1"
-source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-and-benchmarks#0f58c90514e44008418563c99a99aa9fafba708f"
+name = "scarb-metadata"
+version = "1.13.0"
+source = "git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6#38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6"
 dependencies = [
- "anyhow",
  "camino",
- "dojo-world 1.5.1",
- "dunce",
- "scarb-metadata 1.14.0",
+ "derive_builder",
+ "semver",
  "serde",
  "serde_json",
- "smol_str 0.3.2",
- "toml 0.8.19",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -9193,15 +9349,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "scarb-metadata"
-version = "1.14.0"
-source = "git+https://github.com/software-mansion/scarb?rev=4fdeb7810#4fdeb78106ac719ef6fd31379eef77b27c5e83b2"
+name = "scarb-proc-macro-server-types"
+version = "0.1.0"
+source = "git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6#38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6"
 dependencies = [
- "camino",
- "semver",
+ "cairo-lang-macro",
  "serde",
  "serde_json",
- "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -9227,10 +9381,35 @@ dependencies = [
 [[package]]
 name = "scarb-stable-hash"
 version = "1.0.0"
+source = "git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6#38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6"
+dependencies = [
+ "data-encoding",
+ "xxhash-rust",
+]
+
+[[package]]
+name = "scarb-stable-hash"
+version = "1.0.0"
 source = "git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6#d749b9545f5c50b078870a322a12efe7a17914b6"
 dependencies = [
  "data-encoding",
  "xxhash-rust",
+]
+
+[[package]]
+name = "scarb-ui"
+version = "0.1.5"
+source = "git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6#38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6"
+dependencies = [
+ "anyhow",
+ "camino",
+ "clap",
+ "console",
+ "indicatif",
+ "scarb-metadata 1.13.0 (git+https://github.com/dojoengine/scarb?rev=38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6)",
+ "serde",
+ "serde_json",
+ "tracing-core",
 ]
 
 [[package]]
@@ -9243,7 +9422,7 @@ dependencies = [
  "clap",
  "console",
  "indicatif",
- "scarb-metadata 1.13.0",
+ "scarb-metadata 1.13.0 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "serde",
  "serde_json",
  "tracing-core",
@@ -9705,16 +9884,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "smol_str"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9676b89cd56310a87b93dec47b11af744f34d5fc9f367b829474eec0a891350d"
-dependencies = [
- "borsh",
- "serde",
-]
-
-[[package]]
 name = "snow"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9800,7 +9969,7 @@ dependencies = [
  "anyhow",
  "camino",
  "dojo-world 1.5.0-alpha.2",
- "scarb",
+ "scarb 2.10.1 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "serde",
  "serde_json",
  "toml 0.8.19",
@@ -11222,7 +11391,7 @@ dependencies = [
  "katana-runner",
  "lazy_static",
  "regex",
- "scarb",
+ "scarb 2.10.1 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "serde",
  "serde_json",
  "serial_test",
@@ -11295,7 +11464,7 @@ dependencies = [
  "num_cpus",
  "rand 0.8.5",
  "rayon",
- "scarb",
+ "scarb 2.10.1 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "serde",
  "serde_json",
  "sozo-scarbext",
@@ -11353,7 +11522,7 @@ dependencies = [
  "num-traits 0.2.19",
  "once_cell",
  "reqwest",
- "scarb",
+ "scarb 2.10.1 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "serde",
  "serde_json",
  "slab",
@@ -11399,7 +11568,7 @@ dependencies = [
  "num-traits 0.2.19",
  "once_cell",
  "reqwest",
- "scarb",
+ "scarb 2.10.1 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "serde",
  "serde_json",
  "slab",
@@ -11646,7 +11815,7 @@ dependencies = [
  "mockito",
  "once_cell",
  "reqwest",
- "scarb",
+ "scarb 2.10.1 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "serde",
  "serde_json",
  "slab",
@@ -12531,7 +12700,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "smol_str 0.2.2",
+ "smol_str",
  "stun",
  "thiserror 1.0.63",
  "time",
@@ -13295,7 +13464,7 @@ dependencies = [
  "dojo-world 1.5.1",
  "katana-runner",
  "reqwest",
- "scarb",
+ "scarb 2.10.1 (git+https://github.com/dojoengine/scarb?rev=d749b9545f5c50b078870a322a12efe7a17914b6)",
  "sozo-ops",
  "sozo-scarbext",
  "starknet 0.12.0",
