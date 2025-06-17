@@ -29,7 +29,6 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-stream = "0.1.11"
 torii-sqlite.workspace = true
-torii-indexer.workspace = true
 tracing.workspace = true
 url.workspace = true
 warp.workspace = true
@@ -50,3 +49,5 @@ toml.workspace = true
 scarb.workspace = true
 sozo-scarbext.workspace = true
 torii-processors = { workspace = true }
+torii-indexer.workspace = true
+torii-indexer-fetcher.workspace = true

@@ -11,92 +11,40 @@ use starknet::core::types::requests::{
 };
 use starknet::core::types::{
     BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
-    MaybePendingBlockWithReceipts, MaybePendingBlockWithTxHashes, ResultPageRequest, Transaction,
+    MaybePendingBlockWithReceipts, MaybePendingBlockWithTxHashes, ResultPageRequest,
     TransactionExecutionStatus,
 };
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
 use tokio::time::{sleep, Instant};
-use torii_sqlite::types::ContractType;
 use torii_sqlite::Cursor;
 use tracing::{debug, error, trace, warn};
 
-use crate::error::FetchError;
-
-use crate::engine::IndexingFlags;
+use crate::error::Error;
+use crate::{
+    FetchPendingResult, FetchRangeBlock, FetchRangeResult, FetchResult, FetchTransaction,
+    FetcherConfig, FetchingFlags,
+};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::fetcher";
 
-#[derive(Debug, Clone)]
-pub struct FetchRangeBlock {
-    // For pending blocks, this is None.
-    // We check the parent hash of the pending block to the latest block
-    // to see if we need to re fetch the pending block.
-    pub block_hash: Option<Felt>,
-    pub timestamp: u64,
-    pub transactions: LinkedHashMap<Felt, FetchTransaction>,
-}
-
-#[derive(Debug, Clone)]
-pub struct FetchTransaction {
-    // this is Some if the transactions indexing flag
-    // is enabled
-    pub transaction: Option<Transaction>,
-    pub events: Vec<Event>,
-}
-
-#[derive(Debug, Clone)]
-pub struct FetchRangeResult {
-    // block_number -> block and transactions
-    pub blocks: BTreeMap<u64, FetchRangeBlock>,
-    // contract_address -> transaction count
-    pub num_transactions: HashMap<Felt, u64>,
-    // new updated cursors
-    pub cursors: HashMap<Felt, Cursor>,
-}
-
-#[derive(Debug, Clone)]
-pub struct FetchPendingResult {
-    pub block_number: u64,
-    pub timestamp: u64,
-    pub cursors: HashMap<Felt, Cursor>,
-    pub transactions: LinkedHashMap<Felt, FetchTransaction>,
-    pub num_transactions: HashMap<Felt, u64>,
-}
-
-#[derive(Debug, Clone)]
-pub struct FetchResult {
-    pub range: FetchRangeResult,
-    pub pending: Option<FetchPendingResult>,
-}
-
 #[derive(Debug)]
 pub struct Fetcher<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
-    pub batch_chunk_size: usize,
-    pub blocks_chunk_size: u64,
-    pub events_chunk_size: u64,
-    pub max_concurrent_tasks: usize,
-    pub contracts: Arc<HashMap<Felt, ContractType>>,
     pub provider: Arc<P>,
-    pub flags: IndexingFlags,
-    pub world_block: u64,
+    pub flags: FetchingFlags,
+    pub config: FetcherConfig,
 }
 
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
-    pub fn new_default(provider: Arc<P>, contracts: Arc<HashMap<Felt, ContractType>>) -> Self {
+    pub fn new(provider: Arc<P>, config: FetcherConfig) -> Self {
         Self {
-            batch_chunk_size: 1024,
-            blocks_chunk_size: 10240,
-            events_chunk_size: 1024,
-            max_concurrent_tasks: 100,
-            flags: IndexingFlags::empty(),
-            world_block: 0,
-            contracts,
+            config,
+            flags: FetchingFlags::empty(),
             provider,
         }
     }
 
-    pub async fn fetch(&self, cursors: &HashMap<Felt, Cursor>) -> Result<FetchResult, FetchError> {
+    pub async fn fetch(&self, cursors: &HashMap<Felt, Cursor>) -> Result<FetchResult, Error> {
         let latest_block = self.provider.block_hash_and_number().await?;
         let latest_block_number = latest_block.block_number;
 
@@ -105,7 +53,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         let range = self.fetch_range(cursors, latest_block.clone()).await?;
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
-        let pending = if self.flags.contains(IndexingFlags::PENDING_BLOCKS)
+        let pending = if self.flags.contains(FetchingFlags::PENDING_BLOCKS)
             && cursors
                 .values()
                 .any(|c| c.head == Some(latest_block_number))
@@ -122,7 +70,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         &self,
         cursors: &HashMap<Felt, Cursor>,
         latest_block: BlockHashAndNumber,
-    ) -> Result<FetchRangeResult, FetchError> {
+    ) -> Result<FetchRangeResult, Error> {
         let mut events = vec![];
         let mut cursors = cursors.clone();
         let mut blocks = BTreeMap::new();
@@ -134,8 +82,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         for (contract_address, cursor) in cursors.iter() {
             let from = cursor
                 .head
-                .map_or(self.world_block, |h| if h == 0 { h } else { h + 1 });
-            let to = (from + self.blocks_chunk_size).min(latest_block.block_number);
+                .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
+            let to = (from + self.config.blocks_chunk_size).min(latest_block.block_number);
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
@@ -153,7 +101,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                         event_filter: events_filter,
                         result_page_request: ResultPageRequest {
                             continuation_token: None,
-                            chunk_size: self.events_chunk_size,
+                            chunk_size: self.config.events_chunk_size,
                         },
                     },
                 }),
@@ -247,7 +195,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         }
 
         // Step 7: Fetch transaction details if enabled
-        if self.flags.contains(IndexingFlags::TRANSACTIONS) && !blocks.is_empty() {
+        if self.flags.contains(FetchingFlags::TRANSACTIONS) && !blocks.is_empty() {
             let mut transaction_requests = Vec::new();
             let mut block_numbers_for_tx = Vec::new();
             for (block_number, block) in &blocks {
@@ -305,7 +253,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         &self,
         latest_block: BlockHashAndNumber,
         cursors: &HashMap<Felt, Cursor>,
-    ) -> Result<Option<FetchPendingResult>, FetchError> {
+    ) -> Result<Option<FetchPendingResult>, Error> {
         let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
             .provider
             .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
@@ -410,7 +358,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         initial_requests: Vec<(Felt, u64, u64, ProviderRequestData)>,
         cursors: &mut HashMap<Felt, Cursor>,
         latest_block_number: u64,
-    ) -> Result<Vec<EmittedEvent>, FetchError> {
+    ) -> Result<Vec<EmittedEvent>, Error> {
         let mut all_events = Vec::new();
         let mut current_requests = initial_requests;
         let mut old_cursors = cursors.clone();
@@ -434,8 +382,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
             for ((contract_address, mut from, mut to, original_request), result) in
                 current_requests.into_iter().zip(batch_results)
             {
-                let contract_type = self.contracts.get(&contract_address).unwrap();
-                debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Pre-processing events for contract.");
+                debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), "Pre-processing events for contract.");
 
                 let old_cursor = old_cursors.get_mut(&contract_address).unwrap();
                 let new_cursor = cursors.get_mut(&contract_address).unwrap();
@@ -449,7 +396,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                         for event in events_page.events.clone() {
                             if from == 0 {
                                 from = event.block_number.unwrap();
-                                to = (from + self.blocks_chunk_size).min(latest_block_number);
+                                to =
+                                    (from + self.config.blocks_chunk_size).min(latest_block_number);
                             }
 
                             if event.block_number.unwrap() > to {
@@ -487,7 +435,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
 
                         // Add continuation request to next_requests instead of recursing
                         if events_page.continuation_token.is_some() && !done {
-                            debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), r#type = ?contract_type, "Adding continuation request for contract.");
+                            debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), "Adding continuation request for contract.");
                             if let ProviderRequestData::GetEvents(mut next_request) =
                                 original_request
                             {
@@ -516,7 +464,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
     async fn chunked_batch_requests(
         &self,
         requests: &[ProviderRequestData],
-    ) -> Result<Vec<ProviderResponseData>, FetchError> {
+    ) -> Result<Vec<ProviderResponseData>, Error> {
         if requests.is_empty() {
             return Ok(Vec::new());
         }
@@ -525,12 +473,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         const INITIAL_BACKOFF: Duration = Duration::from_millis(50);
 
         let mut futures = Vec::new();
-        for chunk in requests.chunks(self.batch_chunk_size) {
+        for chunk in requests.chunks(self.config.batch_chunk_size) {
             futures.push(async move {
                 let mut attempt = 0;
                 loop {
                     match self.provider.batch_requests(chunk).await {
-                        Ok(results) => return Ok::<Vec<ProviderResponseData>, FetchError>(results),
+                        Ok(results) => return Ok::<Vec<ProviderResponseData>, Error>(results),
                         Err(e) => {
                             if attempt < MAX_RETRIES {
                                 let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
@@ -540,7 +488,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                                     backoff_secs = backoff.as_secs(),
                                     error = ?e,
                                     chunk_size = chunk.len(),
-                                    batch_chunk_size = self.batch_chunk_size,
+                                    batch_chunk_size = self.config.batch_chunk_size,
                                     "Retrying failed batch request for chunk."
                                 );
                                 sleep(backoff).await;
@@ -550,10 +498,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                                     target: LOG_TARGET,
                                     error = ?e,
                                     chunk_size = chunk.len(),
-                                    batch_chunk_size = self.batch_chunk_size,
+                                    batch_chunk_size = self.config.batch_chunk_size,
                                     "Chunk batch request failed after all retries. This could be due to the provider being overloaded. You can try reducing the batch chunk size."
                                 );
-                                return Err(FetchError::BatchRequest(Box::new(e.into())));
+                                return Err(Error::BatchRequest(Box::new(e.into())));
                             }
                         }
                     }

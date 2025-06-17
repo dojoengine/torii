@@ -6,11 +6,10 @@ use starknet::macros::felt;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
 use starknet_crypto::Felt;
-use torii_sqlite::types::ContractType;
 use torii_sqlite::Cursor;
 use url::Url;
 
-use crate::fetcher::Fetcher;
+use crate::{Fetcher, FetcherConfig};
 
 const CARTRIDGE_NODE_MAINNET: &str = "https://api.cartridge.gg/x/starknet/mainnet";
 const ETERNUM_ADDRESS: Felt =
@@ -42,10 +41,13 @@ async fn test_range_one_block() {
 
     let eternum_block = 1435856;
 
-    let contracts = Arc::new(HashMap::from([(ETERNUM_ADDRESS, ContractType::WORLD)]));
-
-    let mut fetcher = Fetcher::new_default(provider.clone(), contracts);
-    fetcher.blocks_chunk_size = 1;
+    let fetcher = Fetcher::new(
+        provider.clone(),
+        FetcherConfig {
+            blocks_chunk_size: 1,
+            ..Default::default()
+        },
+    );
 
     // To index 1435856, the cursor must actually be one block behind.
     let cursors = HashMap::from([(

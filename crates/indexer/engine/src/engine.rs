@@ -1,10 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bitflags::bitflags;
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Transaction};
@@ -23,24 +21,16 @@ use tracing::{debug, error, info, trace};
 
 use crate::constants::LOG_TARGET;
 use crate::error::{Error, ProcessError};
-use crate::fetcher::{FetchPendingResult, FetchRangeResult, FetchResult, Fetcher};
+use crate::IndexingFlags;
+use torii_indexer_fetcher::{
+    FetchPendingResult, FetchRangeResult, FetchResult, Fetcher, FetcherConfig,
+};
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
-
-bitflags! {
-    #[derive(Debug, Clone)]
-    pub struct IndexingFlags: u32 {
-        const TRANSACTIONS = 0b00000001;
-        const RAW_EVENTS = 0b00000010;
-        const PENDING_BLOCKS = 0b00000100;
-    }
-}
 
 #[derive(Debug)]
 pub struct EngineConfig {
     pub polling_interval: Duration,
-    pub batch_chunk_size: usize,
-    pub blocks_chunk_size: u64,
-    pub events_chunk_size: u64,
+    pub fetcher_config: FetcherConfig,
     pub max_concurrent_tasks: usize,
     pub flags: IndexingFlags,
     pub event_processor_config: EventProcessorConfig,
@@ -59,19 +49,18 @@ pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     contracts: Arc<HashMap<Felt, ContractType>>,
     contract_class_cache: Arc<ContractClassCache<P>>,
     controllers: Option<Arc<ControllersSync>>,
+    fetcher: Fetcher<P>,
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             polling_interval: Duration::from_millis(500),
-            batch_chunk_size: 1024,
-            blocks_chunk_size: 10240,
-            events_chunk_size: 1024,
             max_concurrent_tasks: 100,
             flags: IndexingFlags::empty(),
             event_processor_config: EventProcessorConfig::default(),
             world_block: 0,
+            fetcher_config: FetcherConfig::default(),
         }
     }
 }
@@ -125,6 +114,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let processors = Arc::new(processors);
         let max_concurrent_tasks = config.max_concurrent_tasks;
         let event_processor_config = config.event_processor_config.clone();
+        let fetcher_config = config.fetcher_config.clone();
         let provider = Arc::new(provider);
 
         Self {
@@ -142,8 +132,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 max_concurrent_tasks,
                 event_processor_config,
             ),
-            contract_class_cache: Arc::new(ContractClassCache::new(provider)),
+            contract_class_cache: Arc::new(ContractClassCache::new(provider.clone())),
             controllers,
+            fetcher: Fetcher::new(provider.clone(), fetcher_config),
         }
     }
 
@@ -165,17 +156,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Thus we can retry the processing with the same data instead of fetching again.
         let mut cached_data: Option<Arc<FetchResult>> = None;
 
-        let fetcher = Fetcher {
-            batch_chunk_size: self.config.batch_chunk_size,
-            blocks_chunk_size: self.config.blocks_chunk_size,
-            events_chunk_size: self.config.events_chunk_size,
-            max_concurrent_tasks: self.config.max_concurrent_tasks,
-            flags: self.config.flags.clone(),
-            world_block: self.config.world_block,
-            contracts: self.contracts.clone(),
-            provider: self.provider.clone(),
-        };
-
         loop {
             tokio::select! {
                 _ = shutdown_rx.recv() => {
@@ -186,7 +166,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         Result::<_, Error>::Ok(last_fetch_result.clone())
                     } else {
                         let cursors = self.db.cursors().await?;
-                        let fetch_result = fetcher.fetch(&cursors).await?;
+                        let fetch_result = self.fetcher.fetch(&cursors).await?;
                         Ok(Arc::new(fetch_result))
                     }
                 } => {

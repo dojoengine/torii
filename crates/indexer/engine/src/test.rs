@@ -27,7 +27,7 @@ use torii_sqlite::utils::u256_to_sql_string;
 use torii_sqlite::Sql;
 
 use crate::engine::{Engine, EngineConfig};
-use crate::fetcher::Fetcher;
+use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
 
 pub async fn bootstrap_engine<P>(
@@ -57,10 +57,7 @@ where
         .map(|c| (c.address, Default::default()))
         .collect();
 
-    let fetcher = Fetcher::new_default(
-        Arc::new(provider),
-        Arc::new(contracts.iter().map(|c| (c.address, c.r#type)).collect()),
-    );
+    let fetcher = Fetcher::new(Arc::new(provider), FetcherConfig::default());
 
     let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();
@@ -145,7 +142,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -322,7 +319,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -472,7 +469,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -678,7 +675,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -873,7 +870,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -1008,7 +1005,7 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
 
@@ -1129,7 +1126,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -1250,7 +1247,7 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =

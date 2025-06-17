@@ -38,7 +38,8 @@ use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
 use torii_cli::ToriiArgs;
 use torii_grpc_server::GrpcConfig;
-use torii_indexer::engine::{Engine, EngineConfig, IndexingFlags};
+use torii_indexer::engine::{Engine, EngineConfig};
+use torii_indexer::{FetcherConfig, FetchingFlags, IndexingFlags};
 use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
@@ -271,15 +272,16 @@ impl Runner {
 
         let processors = Processors::default();
 
-        let mut flags = IndexingFlags::empty();
-        if self.args.indexing.transactions {
-            flags.insert(IndexingFlags::TRANSACTIONS);
-        }
+        let mut indexing_flags = IndexingFlags::empty();
         if self.args.events.raw {
-            flags.insert(IndexingFlags::RAW_EVENTS);
+            indexing_flags.insert(IndexingFlags::RAW_EVENTS);
+        }
+        let mut fetching_flags = FetchingFlags::empty();
+        if self.args.indexing.transactions {
+            fetching_flags.insert(FetchingFlags::TRANSACTIONS);
         }
         if self.args.indexing.pending {
-            flags.insert(IndexingFlags::PENDING_BLOCKS);
+            fetching_flags.insert(FetchingFlags::PENDING_BLOCKS);
         }
 
         let controllers = if self.args.indexing.controllers {
@@ -295,11 +297,15 @@ impl Runner {
             processors,
             EngineConfig {
                 max_concurrent_tasks: self.args.indexing.max_concurrent_tasks,
-                blocks_chunk_size: self.args.indexing.blocks_chunk_size,
-                events_chunk_size: self.args.indexing.events_chunk_size,
-                batch_chunk_size: self.args.indexing.batch_chunk_size,
+                fetcher_config: FetcherConfig {
+                    batch_chunk_size: self.args.indexing.batch_chunk_size,
+                    blocks_chunk_size: self.args.indexing.blocks_chunk_size,
+                    events_chunk_size: self.args.indexing.events_chunk_size,
+                    world_block: self.args.indexing.world_block,
+                    flags: fetching_flags,
+                },
                 polling_interval: Duration::from_millis(self.args.indexing.polling_interval),
-                flags,
+                flags: indexing_flags,
                 event_processor_config: EventProcessorConfig {
                     strict_model_reader: self.args.indexing.strict_model_reader,
                     namespaces: self.args.indexing.namespaces.into_iter().collect(),
