@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
+use lazy_static::lazy_static;
 use starknet::core::types::{Event, Transaction};
 use starknet::macros::selector;
 use starknet::providers::Provider;
@@ -26,6 +27,18 @@ use torii_indexer_fetcher::{
     FetchPendingResult, FetchRangeResult, FetchResult, Fetcher, FetcherConfig,
 };
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
+
+lazy_static! {
+    static ref DOJO_RELATED_EVENTS: HashSet<Felt> = {
+        HashSet::from([
+            selector!("StoreSetRecord"),
+            selector!("StoreUpdateRecord"),
+            selector!("StoreDelRecord"),
+            selector!("StoreUpdateMember"),
+            selector!("EventEmitted"),
+        ])
+    };
+}
 
 #[derive(Debug)]
 pub struct EngineConfig {
@@ -357,13 +370,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
             unique_contracts.insert(event.from_address);
             let event_key = event.keys[0];
-            if contract_type == ContractType::WORLD
-                && (event_key == selector!("StoreSetRecord")
-                    || event_key == selector!("StoreUpdateRecord")
-                    || event_key == selector!("StoreDelRecord")
-                    || event_key == selector!("StoreUpdateMember")
-                    || event_key == selector!("EventEmitted"))
-            {
+            if contract_type == ContractType::WORLD && DOJO_RELATED_EVENTS.contains(&event_key) {
                 unique_models.insert(event.keys[1]);
             }
 
@@ -521,9 +528,4 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         Ok(())
     }
-}
-
-// event_id format: block_number:transaction_hash:event_idx
-pub fn get_transaction_hash_from_event_id(event_id: &str) -> String {
-    event_id.split(':').nth(1).unwrap().to_string()
 }
