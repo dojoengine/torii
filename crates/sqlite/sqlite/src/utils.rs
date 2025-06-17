@@ -79,14 +79,16 @@ pub fn format_event_id(
 
 type BlockNumber = u64;
 type TransactionHash = Felt;
+type ContractAddress = Felt;
 type EventIdx = u64;
 
-pub fn parse_event_id(event_id: &str) -> (BlockNumber, TransactionHash, EventIdx) {
+pub fn parse_event_id(event_id: &str) -> (BlockNumber, TransactionHash, ContractAddress, EventIdx) {
     let parts: Vec<&str> = event_id.split(':').collect();
     (
-        u64::from_str_radix(parts[0].trim_start_matches("0x"), 16).unwrap(),
+        u64::from_str_radix(parts[0].trim_start_matches("0x"), 16).unwrap(), 
         Felt::from_str(parts[1]).unwrap(),
-        u64::from_str_radix(parts[2].trim_start_matches("0x"), 16).unwrap(),
+        Felt::from_str(parts[2]).unwrap(),
+        u64::from_str_radix(parts[3].trim_start_matches("0x"), 16).unwrap(),
     )
 }
 

@@ -22,7 +22,7 @@ use starknet_crypto::poseidon_hash_many;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
 use torii_indexer::engine::{Engine, EngineConfig};
-use torii_indexer::fetcher::Fetcher;
+use torii_indexer_fetcher::Fetcher;
 use torii_processors::processors::Processors;
 use torii_sqlite::cache::ModelCache;
 use torii_sqlite::executor::Executor;

@@ -54,6 +54,7 @@ scarb.workspace = true
 tempfile.workspace = true
 sozo-scarbext.workspace = true
 torii-indexer.workspace = true
+torii-indexer-fetcher.workspace = true
 torii-processors = { workspace = true }
 torii-typed-data = { workspace = true }
 torii-libp2p-relay = { workspace = true }
