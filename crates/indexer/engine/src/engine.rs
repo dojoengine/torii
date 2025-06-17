@@ -303,7 +303,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // The update cursors query should absolutely succeed, otherwise we will rollback.
         debug!(target: LOG_TARGET, cursors = ?range.cursors, "Updating cursors.");
         self.db
-            .update_cursors(range.cursors.clone(), range.num_transactions.clone())
+            .update_cursors(range.cursors.clone(), range.cursor_transactions.clone())
             .await?;
 
         Ok(())
@@ -337,7 +337,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // The update cursors query should absolutely succeed, otherwise we will rollback.
         self.db
-            .update_cursors(data.cursors.clone(), data.num_transactions.clone())
+            .update_cursors(data.cursors.clone(), data.cursor_transactions.clone())
             .await?;
 
         Ok(())

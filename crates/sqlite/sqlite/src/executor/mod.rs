@@ -107,7 +107,7 @@ pub struct EntityQuery {
 #[derive(Debug, Clone)]
 pub struct UpdateCursorsQuery {
     pub cursors: HashMap<Felt, Cursor>,
-    pub num_transactions: HashMap<Felt, u64>,
+    pub cursor_transactions: HashMap<Felt, HashSet<Felt>>,
 }
 
 #[derive(Debug, Clone)]
@@ -315,9 +315,10 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
                         .expect("update cursor not found");
                     let num_transactions = update_cursors
-                        .num_transactions
+                        .cursor_transactions
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
-                        .unwrap_or(&0);
+                        .unwrap_or(&HashSet::new())
+                        .len() as u64;
 
                     let new_head = new_cursor.head.unwrap_or_default();
                     let new_timestamp = new_cursor.last_block_timestamp.unwrap_or_default();
@@ -338,7 +339,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         if diff > 0 {
                             num_transactions / diff
                         } else {
-                            *num_transactions
+                            num_transactions
                         }
                     };
 

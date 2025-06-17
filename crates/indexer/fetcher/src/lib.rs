@@ -2,7 +2,7 @@
 mod test;
 
 pub mod error;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub use error::Error;
 
@@ -66,7 +66,7 @@ pub struct FetchRangeResult {
     // block_number -> block and transactions
     pub blocks: BTreeMap<u64, FetchRangeBlock>,
     // contract_address -> transaction count
-    pub num_transactions: HashMap<Felt, u64>,
+    pub cursor_transactions: HashMap<Felt, HashSet<Felt>>,
     // new updated cursors
     pub cursors: HashMap<Felt, Cursor>,
 }
@@ -77,7 +77,7 @@ pub struct FetchPendingResult {
     pub timestamp: u64,
     pub cursors: HashMap<Felt, Cursor>,
     pub transactions: LinkedHashMap<Felt, FetchTransaction>,
-    pub num_transactions: HashMap<Felt, u64>,
+    pub cursor_transactions: HashMap<Felt, HashSet<Felt>>,
 }
 
 #[derive(Debug, Clone)]

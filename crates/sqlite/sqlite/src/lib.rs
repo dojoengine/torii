@@ -202,14 +202,14 @@ impl Sql {
     pub async fn update_cursors(
         &self,
         cursors: HashMap<Felt, Cursor>,
-        num_transactions: HashMap<Felt, u64>,
+        cursor_transactions: HashMap<Felt, HashSet<Felt>>,
     ) -> Result<(), Error> {
         let (query, recv) = QueryMessage::new_recv(
             "".to_string(),
             vec![],
             QueryType::UpdateCursors(UpdateCursorsQuery {
                 cursors,
-                num_transactions,
+                cursor_transactions,
             }),
         );
 
