@@ -593,11 +593,26 @@ fn build_cursor_values(pagination: &Pagination, row: &SqliteRow) -> Result<Vec<S
     if pagination.order_by.is_empty() {
         Ok(vec![row.try_get("event_id")?])
     } else {
-        let mut values: Vec<String> = pagination
-            .order_by
-            .iter()
-            .map(|ob| row.try_get::<String, &str>(&format!("{}.{}", ob.model, ob.member)))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut values = Vec::new();
+        for ob in &pagination.order_by {
+            let col = format!("{}.{}", ob.model, ob.member);
+            // Try as String first
+            match row.try_get::<String, &str>(&col) {
+                Ok(val) => values.push(val),
+                Err(_) => {
+                    // Try as i64 (INTEGER)
+                    match row.try_get::<i64, &str>(&col) {
+                        Ok(val) => values.push(val.to_string()),
+                        Err(e) => {
+                            return Err(Error::Query(QueryError::InvalidCursor(format!(
+                                "Could not extract cursor value for column {}: {}",
+                                col, e
+                            ))));
+                        }
+                    }
+                }
+            }
+        }
         values.push(row.try_get("event_id")?);
         Ok(values)
     }
