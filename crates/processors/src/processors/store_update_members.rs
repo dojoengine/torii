@@ -38,10 +38,6 @@ where
         event.keys[1].hash(&mut hasher);
         // entity id
         event.keys[2].hash(&mut hasher);
-        let n_members: u32 = event.data[0].into();
-        let mut members = event.data[1..(1 + n_members as usize)].to_vec();
-        members.sort();
-        members.hash(&mut hasher);
         hasher.finish()
     }
 
@@ -59,6 +55,10 @@ where
         } else {
             let mut hasher = DefaultHasher::new();
             event.keys[0].hash(&mut hasher);
+            let n_members: u32 = event.data[0].into();
+            let mut members = event.data[1..(1 + n_members as usize)].to_vec();
+            members.sort();
+            members.hash(&mut hasher);
             IndexingMode::Latest(hasher.finish())
         }
     }
