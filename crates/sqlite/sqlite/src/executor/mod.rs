@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::mem;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -108,7 +107,7 @@ pub struct EntityQuery {
 #[derive(Debug, Clone)]
 pub struct UpdateCursorsQuery {
     pub cursors: HashMap<Felt, Cursor>,
-    pub num_transactions: HashMap<Felt, u64>,
+    pub cursor_transactions: HashMap<Felt, HashSet<Felt>>,
 }
 
 #[derive(Debug, Clone)]
@@ -159,7 +158,7 @@ pub struct Executor<'c, P: Provider + Sync + Send + 'static> {
     // Queries should use `transaction` instead of `pool`
     // This `pool` is only used to create a new `transaction`
     pool: Pool<Sqlite>,
-    transaction: SqlxTransaction<'c, Sqlite>,
+    transaction: Option<SqlxTransaction<'c, Sqlite>>,
     publish_queue: Vec<BrokerMessage>,
     rx: UnboundedReceiver<QueryMessage>,
     shutdown_rx: Receiver<()>,
@@ -172,7 +171,7 @@ pub struct QueryMessage {
     pub statement: String,
     pub arguments: Vec<Argument>,
     pub query_type: QueryType,
-    tx: Option<oneshot::Sender<Result<()>>>,
+    tx: Option<oneshot::Sender<QueryResult<()>>>,
 }
 
 impl QueryMessage {
@@ -189,10 +188,10 @@ impl QueryMessage {
         statement: String,
         arguments: Vec<Argument>,
         query_type: QueryType,
-    ) -> (Self, oneshot::Receiver<Result<()>>) {
+    ) -> (Self, oneshot::Receiver<QueryResult<()>>) {
         let (tx, rx) = oneshot::channel();
         (
-            Self {
+            QueryMessage {
                 statement,
                 arguments,
                 query_type,
@@ -203,53 +202,25 @@ impl QueryMessage {
     }
 
     pub fn other(statement: String, arguments: Vec<Argument>) -> Self {
-        Self {
-            statement,
-            arguments,
-            query_type: QueryType::Other,
-            tx: None,
-        }
+        QueryMessage::new(statement, arguments, QueryType::Other)
     }
 
     pub fn other_recv(
         statement: String,
         arguments: Vec<Argument>,
-    ) -> (Self, oneshot::Receiver<Result<()>>) {
-        let (tx, rx) = oneshot::channel();
-        (
-            Self {
-                statement,
-                arguments,
-                query_type: QueryType::Other,
-                tx: Some(tx),
-            },
-            rx,
-        )
+    ) -> (Self, oneshot::Receiver<QueryResult<()>>) {
+        QueryMessage::new_recv(statement, arguments, QueryType::Other)
     }
 
     pub fn execute() -> Self {
-        Self {
-            statement: "".to_string(),
-            arguments: vec![],
-            query_type: QueryType::Execute,
-            tx: None,
-        }
+        QueryMessage::new("".to_string(), vec![], QueryType::Execute)
     }
 
-    pub fn execute_recv() -> (Self, oneshot::Receiver<Result<()>>) {
-        let (tx, rx) = oneshot::channel();
-        (
-            Self {
-                statement: "".to_string(),
-                arguments: vec![],
-                query_type: QueryType::Execute,
-                tx: Some(tx),
-            },
-            rx,
-        )
+    pub fn execute_recv() -> (Self, oneshot::Receiver<QueryResult<()>>) {
+        QueryMessage::new_recv("".to_string(), vec![], QueryType::Execute)
     }
 
-    pub fn rollback_recv() -> (Self, oneshot::Receiver<Result<()>>) {
+    pub fn rollback_recv() -> (Self, oneshot::Receiver<QueryResult<()>>) {
         let (tx, rx) = oneshot::channel();
         (
             Self {
@@ -277,7 +248,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         Ok((
             Executor {
                 pool,
-                transaction,
+                transaction: Some(transaction),
                 publish_queue,
                 rx,
                 shutdown_rx,
@@ -294,15 +265,21 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     debug!(target: LOG_TARGET, "Shutting down executor");
                     break Ok(());
                 }
-                Some(msg) = self.rx.recv() => {
+                Some(mut msg) = self.rx.recv() => {
                     let query_type = msg.query_type.clone();
                     let statement = msg.statement.clone();
                     let arguments = msg.arguments.clone();
-                    match self.handle_query_message(msg).await {
-                        Ok(()) => {},
-                        Err(e) => {
-                            error!(target: LOG_TARGET, r#type = %query_type, error = ?e, "Failed to execute query.");
-                            debug!(target: LOG_TARGET, query = ?statement, arguments = ?arguments, query_type = ?query_type, "Failed to execute query.");
+                    let tx = msg.tx.take();
+                    let res = self.handle_query_message(msg).await;
+
+                    if let Err(e) = &res {
+                        error!(target: LOG_TARGET, r#type = %query_type, error = ?e, "Failed to execute query.");
+                        debug!(target: LOG_TARGET, query = ?statement, arguments = ?arguments, query_type = ?query_type, "Failed to execute query.");
+                    }
+
+                    if let Some(tx) = tx {
+                        if let Err(e) = tx.send(res) {
+                            error!(target: LOG_TARGET, error = ?e, "Failed to send query result.");
                         }
                     }
                 }
@@ -311,7 +288,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     }
 
     async fn handle_query_message(&mut self, query_message: QueryMessage) -> QueryResult<()> {
-        let tx = &mut self.transaction;
+        let tx = self.transaction.as_mut().unwrap();
 
         let mut query = sqlx::query(&query_message.statement);
 
@@ -338,9 +315,10 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
                         .expect("update cursor not found");
                     let num_transactions = update_cursors
-                        .num_transactions
+                        .cursor_transactions
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
-                        .unwrap_or(&0);
+                        .unwrap_or(&HashSet::new())
+                        .len() as u64;
 
                     let new_head = new_cursor.head.unwrap_or_default();
                     let new_timestamp = new_cursor.last_block_timestamp.unwrap_or_default();
@@ -361,12 +339,13 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         if diff > 0 {
                             num_transactions / diff
                         } else {
-                            *num_transactions
+                            num_transactions
                         }
                     };
 
-                    cursor.last_pending_block_event_id =
-                        new_cursor.last_pending_block_event_id.clone();
+                    cursor.last_pending_block_tx = new_cursor
+                        .last_pending_block_tx
+                        .map(|tx| format!("{:#x}", tx));
                     cursor.tps = Some(new_tps.try_into().expect("does't fit in i64"));
                     cursor.last_block_timestamp =
                         Some(new_timestamp.try_into().expect("doesn't fit in i64"));
@@ -374,12 +353,12 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
 
                     sqlx::query(
                         "UPDATE contracts SET head = ?, last_block_timestamp = ?, \
-                         last_pending_block_event_id = ? WHERE id = \
+                         last_pending_block_tx = ? WHERE id = \
                          ?",
                     )
                     .bind(cursor.head)
                     .bind(cursor.last_block_timestamp)
-                    .bind(&cursor.last_pending_block_event_id)
+                    .bind(&cursor.last_pending_block_tx)
                     .bind(&cursor.contract_address)
                     .execute(&mut **tx)
                     .await?;
@@ -390,15 +369,15 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 }
             }
             QueryType::StoreTransaction(store_transaction) => {
-                let row = query.fetch_one(&mut **tx).await?;
-                let mut transaction = Transaction::from_row(&row)?;
+                // Our transaction has alraedy been added by another contract probably.
+                let mut transaction = Transaction::from_row(&query.fetch_one(&mut **tx).await?)?;
 
                 for contract_address in &store_transaction.contract_addresses {
                     sqlx::query(
                         "INSERT INTO transaction_contract (transaction_hash, \
                          contract_address) VALUES (?, ?) ON CONFLICT DO NOTHING",
                     )
-                    .bind(&transaction.transaction_hash)
+                    .bind(transaction.transaction_hash.clone())
                     .bind(felt_to_sql_string(contract_address))
                     .execute(&mut **tx)
                     .await?;
@@ -409,7 +388,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         "INSERT INTO transaction_models (transaction_hash, \
                          model_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
                     )
-                    .bind(&transaction.transaction_hash)
+                    .bind(transaction.transaction_hash.clone())
                     .bind(felt_to_sql_string(unique_model))
                     .execute(&mut **tx)
                     .await?;
@@ -422,7 +401,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                          contract_address, entrypoint, calldata, call_type, caller_address) \
                          VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                     )
-                    .bind(&transaction.transaction_hash)
+                    .bind(transaction.transaction_hash.clone())
                     .bind(felt_to_sql_string(&call.contract_address))
                     .bind(call.entrypoint.clone())
                     .bind(felts_to_sql_string(&call.calldata))
@@ -773,30 +752,14 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
             QueryType::Execute => {
                 debug!(target: LOG_TARGET, "Executing query.");
                 let instant = Instant::now();
-                let res = self.execute().await;
+                self.execute().await?;
                 debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Executed query.");
-
-                if let Some(sender) = query_message.tx {
-                    if let Err(e) = sender.send(res) {
-                        e.map_err(ExecutorQueryError::Executor)?;
-                    }
-                } else {
-                    res.map_err(ExecutorQueryError::Executor)?;
-                }
             }
             QueryType::Rollback => {
                 debug!(target: LOG_TARGET, "Rolling back the transaction.");
                 // rollback's the current transaction and starts a new one
-                let res = self.rollback().await;
+                self.rollback().await?;
                 debug!(target: LOG_TARGET, "Rolled back the transaction.");
-
-                if let Some(sender) = query_message.tx {
-                    if let Err(e) = sender.send(res) {
-                        e.map_err(ExecutorQueryError::Executor)?;
-                    }
-                } else {
-                    res.map_err(ExecutorQueryError::Executor)?;
-                }
             }
             QueryType::UpdateNftMetadata(update_metadata) => {
                 // Update metadata in database
@@ -824,11 +787,14 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     }
 
     async fn execute(&mut self) -> Result<()> {
-        let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
-        transaction.commit().await?;
+        if let Some(transaction) = self.transaction.take() {
+            transaction.commit().await?;
+        }
         self.pool
             .execute("PRAGMA wal_checkpoint(TRUNCATE);")
             .await?;
+
+        self.transaction = Some(self.pool.begin().await?);
 
         for message in self.publish_queue.drain(..) {
             send_broker_message(message);
@@ -838,13 +804,15 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
     }
 
     async fn rollback(&mut self) -> Result<()> {
-        let transaction = mem::replace(&mut self.transaction, self.pool.begin().await?);
-        transaction.rollback().await?;
+        if let Some(transaction) = self.transaction.take() {
+            transaction.rollback().await?;
+        }
         self.pool
             .execute("PRAGMA wal_checkpoint(TRUNCATE);")
             .await?;
 
-        // NOTE: clear doesn't reset the capacity
+        self.transaction = Some(self.pool.begin().await?);
+
         self.publish_queue.clear();
         Ok(())
     }

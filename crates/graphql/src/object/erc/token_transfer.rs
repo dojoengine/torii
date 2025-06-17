@@ -5,9 +5,8 @@ use serde::Deserialize;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{FromRow, Pool, Row, Sqlite, SqliteConnection};
 use starknet_crypto::Felt;
-use torii_indexer::engine::get_transaction_hash_from_event_id;
 use torii_sqlite::constants::TOKEN_TRANSFER_TABLE;
-use torii_sqlite::utils::felt_to_sql_string;
+use torii_sqlite::utils::{felt_to_sql_string, parse_event_id};
 use tracing::warn;
 
 use super::erc_token::{Erc20Token, ErcTokenType};
@@ -281,7 +280,8 @@ fn token_transfers_connection_output<'a>(
 pub fn token_transfer_mapping_from_row(
     row: &TransferQueryResultRaw,
 ) -> Result<TokenTransferNode, String> {
-    let transaction_hash = get_transaction_hash_from_event_id(&row.id);
+    let (_, transaction_hash, _, _) = parse_event_id(&row.id);
+    let transaction_hash = felt_to_sql_string(&transaction_hash);
 
     match row.contract_type.to_lowercase().as_str() {
         "erc20" => {

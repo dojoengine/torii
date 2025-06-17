@@ -27,6 +27,7 @@ use torii_sqlite::utils::u256_to_sql_string;
 use torii_sqlite::Sql;
 
 use crate::engine::{Engine, EngineConfig};
+use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
 
 pub async fn bootstrap_engine<P>(
@@ -42,7 +43,7 @@ where
     let mut engine = Engine::new(
         world,
         db.clone(),
-        provider,
+        provider.clone(),
         Processors {
             ..Processors::default()
         },
@@ -51,11 +52,14 @@ where
         contracts,
     );
 
-    let mut cursors = contracts
+    let cursors = contracts
         .iter()
         .map(|c| (c.address, Default::default()))
         .collect();
-    let data = engine.fetch(&mut cursors).await.unwrap();
+
+    let fetcher = Fetcher::new(Arc::new(provider), FetcherConfig::default());
+
+    let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();
 
     db.apply_cache_diff(cursors).await.unwrap();
@@ -67,7 +71,7 @@ where
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -138,7 +142,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -252,7 +256,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -315,7 +319,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -382,7 +386,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -465,7 +469,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -574,7 +578,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -671,7 +675,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -781,7 +785,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -866,7 +870,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -931,7 +935,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_update_with_set_record(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -1001,7 +1005,7 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
 
@@ -1036,7 +1040,7 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -1122,7 +1126,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
@@ -1168,7 +1172,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
 async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../examples/");
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
     let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
@@ -1243,7 +1247,7 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
         .connect_with(options)
         .await
         .unwrap();
-    sqlx::migrate!("../migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =

@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use dojo_types::naming::get_tag;
 use dojo_types::primitive::SqlType;
 use dojo_types::schema::{Struct, Ty};
@@ -19,7 +20,7 @@ use utils::felts_to_sql_string;
 
 use crate::constants::SQL_FELT_DELIMITER;
 use crate::error::{Error, ParseError};
-use crate::executor::error::ExecutorError;
+use crate::executor::error::ExecutorQueryError;
 use crate::executor::{
     Argument, DeleteEntityQuery, EventMessageQuery, QueryMessage, QueryType, UpdateCursorsQuery,
 };
@@ -28,12 +29,16 @@ use torii_sqlite_types::{Contract, Hook, ModelIndices};
 
 pub mod cache;
 pub mod constants;
+pub mod controllers;
 pub mod erc;
 pub mod error;
 pub mod executor;
 pub mod model;
 pub mod simple_broker;
 pub mod utils;
+
+#[cfg(test)]
+pub mod test_utils;
 
 use cache::{LocalCache, Model, ModelCache};
 pub use torii_sqlite_types as types;
@@ -77,7 +82,7 @@ pub struct Sql {
 
 #[derive(Default, Debug, Clone)]
 pub struct Cursor {
-    pub last_pending_block_event_id: Option<String>,
+    pub last_pending_block_tx: Option<Felt>,
     pub head: Option<u64>,
     pub last_block_timestamp: Option<u64>,
 }
@@ -109,7 +114,7 @@ impl Sql {
                     Argument::FieldElement(contract.address),
                     Argument::String(contract.r#type.to_string()),
                 ],
-            )).map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }
 
         let local_cache = LocalCache::new(pool.clone()).await;
@@ -146,7 +151,7 @@ impl Sql {
                 "UPDATE contracts SET last_pending_block_contract_tx = ? WHERE id = ?".to_string(),
                 vec![last_pending_block_contract_tx, id],
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -166,7 +171,7 @@ impl Sql {
                 "UPDATE contracts SET last_pending_block_tx = ? WHERE 1=1".to_string(),
                 vec![last_pending_block_tx],
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -180,8 +185,12 @@ impl Sql {
         for c in cursors {
             let contract_address = Felt::from_str(&c.contract_address)
                 .map_err(|e| Error::Parse(ParseError::FromStr(e)))?;
+            let last_pending_block_tx = c
+                .last_pending_block_tx
+                .map(|tx| Felt::from_str(&tx).map_err(|e| Error::Parse(ParseError::FromStr(e))))
+                .transpose()?;
             let cursor = Cursor {
-                last_pending_block_event_id: c.last_pending_block_event_id,
+                last_pending_block_tx,
                 head: c.head.map(|h| h as u64),
                 last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
             };
@@ -190,22 +199,27 @@ impl Sql {
         Ok(cursors_map)
     }
 
-    pub fn update_cursors(
-        &mut self,
+    pub async fn update_cursors(
+        &self,
         cursors: HashMap<Felt, Cursor>,
-        num_transactions: HashMap<Felt, u64>,
+        cursor_transactions: HashMap<Felt, HashSet<Felt>>,
     ) -> Result<(), Error> {
+        let (query, recv) = QueryMessage::new_recv(
+            "".to_string(),
+            vec![],
+            QueryType::UpdateCursors(UpdateCursorsQuery {
+                cursors,
+                cursor_transactions,
+            }),
+        );
+
         self.executor
-            .send(QueryMessage::new(
-                "".to_string(),
-                vec![],
-                QueryType::UpdateCursors(UpdateCursorsQuery {
-                    cursors,
-                    num_transactions,
-                }),
-            ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
-        Ok(())
+            .send(query)
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+
+        recv.await
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?
+            .map_err(|e| Error::ExecutorQuery(Box::new(e)))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -260,7 +274,7 @@ impl Sql {
                 arguments,
                 QueryType::RegisterModel,
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         self.build_model_query(
             vec![namespaced_name.clone()],
@@ -296,7 +310,9 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::FieldElement(selector)],
                         ))
-                        .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                        .map_err(|e| {
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                        })?;
                 }
             }
         }
@@ -354,7 +370,7 @@ impl Sql {
                     is_historical: self.config.is_historical(&model_selector),
                 }),
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         self.executor.send(QueryMessage::other(
             "INSERT INTO entity_model (entity_id, model_id) VALUES (?, ?) ON CONFLICT(entity_id, \
@@ -364,7 +380,7 @@ impl Sql {
                 Argument::String(entity_id.clone()),
                 Argument::String(model_id.clone()),
             ],
-        )).map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+        )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         self.set_entity_model(
             &namespaced_name,
@@ -382,7 +398,9 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::String(entity_id.clone())],
                         ))
-                        .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                        .map_err(|e| {
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                        })?;
                 }
             }
         }
@@ -439,7 +457,7 @@ impl Sql {
                     is_historical: self.config.is_historical(&model_selector),
                 }),
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         self.set_entity_model(
             &namespaced_name,
@@ -457,7 +475,9 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::String(entity_id.clone())],
                         ))
-                        .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                        .map_err(|e| {
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                        })?;
                 }
             }
         }
@@ -489,7 +509,7 @@ impl Sql {
                     ty: entity.clone(),
                 }),
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         for hook in self.config.hooks.iter() {
             if let HookEvent::ModelDeleted { model_tag } = &hook.event {
@@ -499,7 +519,9 @@ impl Sql {
                             hook.statement.clone(),
                             vec![Argument::String(entity_id.clone())],
                         ))
-                        .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                        .map_err(|e| {
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                        })?;
                 }
             }
         }
@@ -525,7 +547,7 @@ impl Sql {
                     .to_string(),
                 vec![resource, uri, executed_at],
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -558,7 +580,7 @@ impl Sql {
 
         self.executor
             .send(QueryMessage::other(statement, arguments))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -588,7 +610,7 @@ impl Sql {
             .send(QueryMessage::new(
                 "INSERT INTO transactions (id, transaction_hash, sender_address, calldata, \
              max_fee, signature, nonce, transaction_type, executed_at, block_number) VALUES (?, \
-             ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING *"
+             ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET transaction_hash=excluded.transaction_hash RETURNING *"
                     .to_string(),
                 vec![
                     Argument::FieldElement(transaction_hash),
@@ -608,7 +630,7 @@ impl Sql {
                     unique_models: unique_models.clone(),
                 }),
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -634,7 +656,7 @@ impl Sql {
                 vec![id, keys, data, hash, executed_at],
                 QueryType::StoreEvent,
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -753,7 +775,7 @@ impl Sql {
         // Execute the single query
         self.executor
             .send(QueryMessage::other(insert_statement, arguments))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -822,19 +844,21 @@ impl Sql {
             for alter_query in alter_table_queries {
                 self.executor
                     .send(QueryMessage::other(alter_query, vec![]))
-                    .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                    .map_err(|e| {
+                        Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                    })?;
             }
         } else {
             self.executor
                 .send(QueryMessage::other(create_table_query, vec![]))
-                .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }
 
         // Create indices
         for index_query in indices {
             self.executor
                 .send(QueryMessage::other(index_query, vec![]))
-                .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }
 
         Ok(())
@@ -1112,29 +1136,29 @@ impl Sql {
         let (execute, recv) = QueryMessage::execute_recv();
         self.executor
             .send(execute)
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         let res = recv
             .await
-            .map_err(|e| Error::Executor(ExecutorError::RecvError(e)))?;
-        res.map_err(Error::Executor)
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?;
+        res.map_err(|e| Error::ExecutorQuery(Box::new(e)))
     }
 
     pub async fn rollback(&self) -> Result<(), Error> {
         let (rollback, recv) = QueryMessage::rollback_recv();
         self.executor
             .send(rollback)
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         let res = recv
             .await
-            .map_err(|e| Error::Executor(ExecutorError::RecvError(e)))?;
-        res.map_err(Error::Executor)
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?;
+        res.map_err(|e| Error::ExecutorQuery(Box::new(e)))
     }
 
     pub async fn add_controller(
-        &mut self,
+        &self,
         username: &str,
         address: &str,
-        block_timestamp: u64,
+        timestamp: DateTime<Utc>,
     ) -> Result<(), Error> {
         let insert_controller = "
             INSERT INTO controllers (id, username, address, deployed_at)
@@ -1149,7 +1173,7 @@ impl Sql {
             Argument::String(username.to_string()),
             Argument::String(username.to_string()),
             Argument::String(address.to_string()),
-            Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
+            Argument::String(timestamp.to_rfc3339()),
         ];
 
         self.executor
@@ -1157,7 +1181,7 @@ impl Sql {
                 insert_controller.to_string(),
                 arguments,
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }

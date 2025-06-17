@@ -15,7 +15,7 @@ use super::{Sql, SQL_FELT_DELIMITER};
 use crate::constants::TOKEN_TRANSFER_TABLE;
 use crate::error::{Error, ParseError, TokenMetadataError};
 use crate::executor::erc::{RegisterNftTokenQuery, UpdateNftMetadataQuery};
-use crate::executor::error::ExecutorError;
+use crate::executor::error::ExecutorQueryError;
 use crate::executor::{
     ApplyBalanceDiffQuery, Argument, QueryMessage, QueryType, RegisterErc20TokenQuery,
 };
@@ -165,7 +165,7 @@ impl Sql {
                     metadata,
                 }),
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -181,6 +181,9 @@ impl Sql {
             None => return Ok(()), // Already registered by another thread
         };
         let _guard = _lock.lock().await;
+        if self.local_cache.is_token_registered(token_id).await {
+            return Ok(());
+        }
 
         let block_id = BlockId::Tag(BlockTag::Pending);
         let requests = vec![
@@ -261,7 +264,7 @@ impl Sql {
                     decimals,
                 }),
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         self.local_cache.mark_token_registered(token_id).await;
 
@@ -280,6 +283,9 @@ impl Sql {
             None => return Ok(()), // Already registered by another thread
         };
         let _guard = _lock.lock().await;
+        if self.local_cache.is_token_registered(id).await {
+            return Ok(());
+        }
 
         let _permit = self
             .nft_metadata_semaphore
@@ -299,7 +305,7 @@ impl Sql {
                     metadata,
                 }),
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         self.local_cache.mark_token_registered(id).await;
 
@@ -338,7 +344,7 @@ impl Sql {
                 ],
                 QueryType::Other,
             ))
-            .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }
@@ -360,7 +366,7 @@ impl Sql {
                     vec![],
                     QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery { erc_cache, cursors }),
                 ))
-                .map_err(|e| Error::Executor(ExecutorError::SendError(e)))?;
+                .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }
         Ok(())
     }

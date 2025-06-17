@@ -25,7 +25,7 @@ pub enum Error {
     #[error(transparent)]
     ProviderError(#[from] ProviderError),
     #[error(transparent)]
-    Executor(#[from] crate::executor::error::ExecutorError),
+    ExecutorQuery(#[from] Box<crate::executor::error::ExecutorQueryError>),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -104,4 +104,14 @@ pub enum QueryError {
     InvalidNamespacedModel(String),
     #[error("Invalid cursor: {0}")]
     InvalidCursor(String),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ControllerSyncError {
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
+    #[error(transparent)]
+    Sql(#[from] crate::error::Error),
+    #[error("API error: {0}")]
+    ApiError(String),
 }

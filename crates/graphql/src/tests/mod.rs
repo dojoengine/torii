@@ -27,6 +27,7 @@ use starknet::providers::JsonRpcClient;
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use torii_indexer::engine::{Engine, EngineConfig};
+use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
 use torii_sqlite::cache::ModelCache;
 use torii_sqlite::executor::Executor;
@@ -416,11 +417,14 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         contracts,
     );
 
-    let mut cursors = contracts
+    let cursors = contracts
         .iter()
         .map(|c| (c.address, Default::default()))
         .collect();
-    let data = engine.fetch(&mut cursors).await.unwrap();
+
+    let fetcher = Fetcher::new(Arc::new(provider.clone()), FetcherConfig::default());
+
+    let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();
     db.execute().await.unwrap();
     Ok(pool)

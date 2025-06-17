@@ -62,7 +62,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         .cursors
                         .get(&Felt::from_str(contract_address).unwrap())
                         .unwrap();
-                    let block_id = if cursor.last_pending_block_event_id.is_some() {
+                    let block_id = if cursor.last_pending_block_tx.is_some() {
                         BlockId::Tag(BlockTag::Pending)
                     } else {
                         BlockId::Number(cursor.head.unwrap())
@@ -89,7 +89,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         .cursors
                         .get(&Felt::from_str(contract_address).unwrap())
                         .unwrap();
-                    let block_id = if cursor.last_pending_block_event_id.is_some() {
+                    let block_id = if cursor.last_pending_block_tx.is_some() {
                         BlockId::Tag(BlockTag::Pending)
                     } else {
                         BlockId::Number(cursor.head.unwrap())
@@ -124,7 +124,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         block_id: BlockId,
         provider: Arc<P>,
     ) -> Result<(), Error> {
-        let tx = &mut self.transaction;
+        let tx = self.transaction.as_mut().unwrap();
         let balance: Option<(String,)> = sqlx::query_as(&format!(
             "SELECT balance FROM {TOKEN_BALANCE_TABLE} WHERE id = ?"
         ))

@@ -3,7 +3,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
-    FetchError(#[from] FetchError),
+    Fetcher(#[from] torii_indexer_fetcher::Error),
     #[error(transparent)]
     ProcessError(#[from] ProcessError),
     #[error(transparent)]
@@ -12,14 +12,8 @@ pub enum Error {
     ProviderError(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
     AnyhowError(#[from] anyhow::Error),
-}
-
-#[derive(Error, Debug)]
-pub enum FetchError {
     #[error(transparent)]
-    Provider(#[from] starknet::providers::ProviderError),
-    #[error(transparent)]
-    BatchRequest(#[from] Box<FetchError>),
+    ControllerSync(#[from] torii_sqlite::error::ControllerSyncError),
 }
 
 #[derive(Error, Debug)]

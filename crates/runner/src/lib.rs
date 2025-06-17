@@ -19,7 +19,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use camino::Utf8PathBuf;
-use constants::UDC_ADDRESS;
 use dojo_metrics::exporters::prometheus::PrometheusRecorder;
 use dojo_types::naming::compute_selector_from_tag;
 use dojo_world::contracts::world::WorldContractReader;
@@ -39,11 +38,13 @@ use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
 use torii_cli::ToriiArgs;
 use torii_grpc_server::GrpcConfig;
-use torii_indexer::engine::{Engine, EngineConfig, IndexingFlags};
+use torii_indexer::engine::{Engine, EngineConfig};
+use torii_indexer::{FetcherConfig, FetchingFlags, IndexingFlags};
 use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
 use torii_sqlite::cache::ModelCache;
+use torii_sqlite::controllers::ControllersSync;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::{Contract, ContractType, Model};
@@ -89,13 +90,6 @@ impl Runner {
             address: world_address,
             r#type: ContractType::WORLD,
         });
-
-        if self.args.indexing.controllers {
-            self.args.indexing.contracts.push(Contract {
-                address: UDC_ADDRESS,
-                r#type: ContractType::UDC,
-            });
-        }
 
         // Setup cancellation for graceful shutdown
         let (shutdown_tx, _) = broadcast::channel(1);
@@ -193,9 +187,9 @@ impl Runner {
         );
         options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
 
-        let pool = SqlitePoolOptions::new()
+        let write_pool = SqlitePoolOptions::new()
             .min_connections(1)
-            .max_connections(self.args.indexing.max_concurrent_tasks as u32)
+            .max_connections(1)
             .connect_with(options.clone())
             .await?;
 
@@ -206,6 +200,7 @@ impl Runner {
             .connect_with(readonly_options)
             .await?;
 
+        let mut migrate_handle = write_pool.acquire().await?;
         if let Some(migrations) = self.args.sql.migrations {
             // Create a temporary directory to combine migrations
             let temp_migrations = TempDir::new()?;
@@ -228,16 +223,19 @@ impl Runner {
 
             // Run combined migrations
             let migrator = sqlx::migrate::Migrator::new(temp_migrations.path()).await?;
-            migrator.run(&pool).await?;
+            migrator.run(&mut migrate_handle).await?;
         } else {
-            sqlx::migrate!("../migrations").run(&pool).await?;
+            sqlx::migrate!("../migrations")
+                .run(&mut migrate_handle)
+                .await?;
         }
+        drop(migrate_handle);
 
         // Get world address
         let world = WorldContractReader::new(world_address, provider.clone());
 
         let (mut executor, sender) =
-            Executor::new(pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
+            Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
 
         let model_cache = Arc::new(ModelCache::new(readonly_pool.clone()).await?);
@@ -258,7 +256,7 @@ impl Runner {
             .map(|tag| compute_selector_from_tag(&tag))
             .collect::<HashSet<_>>();
         let db = Sql::new_with_config(
-            pool.clone(),
+            readonly_pool.clone(),
             sender.clone(),
             &self.args.indexing.contracts,
             model_cache.clone(),
@@ -274,29 +272,40 @@ impl Runner {
 
         let processors = Processors::default();
 
-        let mut flags = IndexingFlags::empty();
-        if self.args.indexing.transactions {
-            flags.insert(IndexingFlags::TRANSACTIONS);
-        }
+        let mut indexing_flags = IndexingFlags::empty();
         if self.args.events.raw {
-            flags.insert(IndexingFlags::RAW_EVENTS);
+            indexing_flags.insert(IndexingFlags::RAW_EVENTS);
+        }
+        let mut fetching_flags = FetchingFlags::empty();
+        if self.args.indexing.transactions {
+            fetching_flags.insert(FetchingFlags::TRANSACTIONS);
         }
         if self.args.indexing.pending {
-            flags.insert(IndexingFlags::PENDING_BLOCKS);
+            fetching_flags.insert(FetchingFlags::PENDING_BLOCKS);
         }
 
-        let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new(
+        let controllers = if self.args.indexing.controllers {
+            Some(Arc::new(ControllersSync::new(db.clone()).await))
+        } else {
+            None
+        };
+
+        let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new_with_controllers(
             world,
             db.clone(),
             provider.clone(),
             processors,
             EngineConfig {
                 max_concurrent_tasks: self.args.indexing.max_concurrent_tasks,
-                blocks_chunk_size: self.args.indexing.blocks_chunk_size,
-                events_chunk_size: self.args.indexing.events_chunk_size,
-                batch_chunk_size: self.args.indexing.batch_chunk_size,
+                fetcher_config: FetcherConfig {
+                    batch_chunk_size: self.args.indexing.batch_chunk_size,
+                    blocks_chunk_size: self.args.indexing.blocks_chunk_size,
+                    events_chunk_size: self.args.indexing.events_chunk_size,
+                    world_block: self.args.indexing.world_block,
+                    flags: fetching_flags,
+                },
                 polling_interval: Duration::from_millis(self.args.indexing.polling_interval),
-                flags,
+                flags: indexing_flags,
                 event_processor_config: EventProcessorConfig {
                     strict_model_reader: self.args.indexing.strict_model_reader,
                     namespaces: self.args.indexing.namespaces.into_iter().collect(),
@@ -306,6 +315,7 @@ impl Runner {
             },
             shutdown_tx.clone(),
             &self.args.indexing.contracts,
+            controllers,
         );
 
         let shutdown_rx = shutdown_tx.subscribe();

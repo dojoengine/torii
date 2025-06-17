@@ -22,6 +22,7 @@ use starknet_crypto::poseidon_hash_many;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
 use torii_indexer::engine::{Engine, EngineConfig};
+use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
 use torii_sqlite::cache::ModelCache;
 use torii_sqlite::executor::Executor;
@@ -137,11 +138,14 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         contracts,
     );
 
-    let mut cursors = contracts
+    let cursors = contracts
         .iter()
         .map(|c| (c.address, Default::default()))
         .collect();
-    let data = engine.fetch(&mut cursors).await.unwrap();
+
+    let fetcher = Fetcher::new(Arc::new(provider.clone()), FetcherConfig::default());
+
+    let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();
 
     db.execute().await.unwrap();
