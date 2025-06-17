@@ -264,6 +264,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Process all transactions in the chunk
         for (block_number, block) in &range.blocks {
             for (transaction_hash, tx) in &block.transactions {
+                if tx.events.is_empty() {
+                    continue;
+                }
+
                 trace!(target: LOG_TARGET, "Processing transaction hash: {:#x}", transaction_hash);
 
                 self.process_transaction_with_events(
@@ -303,7 +307,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // The update cursors query should absolutely succeed, otherwise we will rollback.
         debug!(target: LOG_TARGET, cursors = ?range.cursors, "Updating cursors.");
         self.db
-            .update_cursors(range.cursors.clone(), range.num_transactions.clone())
+            .update_cursors(range.cursors.clone(), range.cursor_transactions.clone())
             .await?;
 
         Ok(())
@@ -337,7 +341,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         // The update cursors query should absolutely succeed, otherwise we will rollback.
         self.db
-            .update_cursors(data.cursors.clone(), data.num_transactions.clone())
+            .update_cursors(data.cursors.clone(), data.cursor_transactions.clone())
             .await?;
 
         Ok(())

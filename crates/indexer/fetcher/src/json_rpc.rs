@@ -1,6 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
-use std::ops::AddAssign;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -75,7 +74,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         let mut cursors = cursors.clone();
         let mut blocks = BTreeMap::new();
         let mut block_numbers = BTreeSet::new();
-        let mut num_transactions = HashMap::new();
+        let mut cursor_transactions = HashMap::new();
 
         // Step 1: Create initial batch requests for events from all contracts
         let mut event_requests = Vec::new();
@@ -147,16 +146,17 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                             _ => unreachable!(),
                         };
                         // Initialize block with transactions in the order provided by the block
-                        let mut transactions = LinkedHashMap::new();
-                        for tx_hash in tx_hashes {
-                            transactions.insert(
-                                tx_hash,
-                                FetchTransaction {
-                                    transaction: None,
-                                    events: vec![],
-                                },
-                            );
-                        }
+                        let transactions =
+                            LinkedHashMap::from_iter(tx_hashes.iter().map(|tx_hash| {
+                                (
+                                    *tx_hash,
+                                    FetchTransaction {
+                                        transaction: None,
+                                        events: vec![],
+                                    },
+                                )
+                            }));
+
                         blocks.insert(
                             *block_number,
                             FetchRangeBlock {
@@ -189,9 +189,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                 data: event.data.clone(),
             });
 
-            // Increment transaction count for the contract
-            let entry = num_transactions.entry(event.from_address).or_insert(0);
-            *entry += 1;
+            // Add transaction to cursor transactions
+            cursor_transactions
+                .entry(event.from_address)
+                .or_insert(HashSet::new())
+                .insert(event.transaction_hash);
         }
 
         // Step 7: Fetch transaction details if enabled
@@ -244,7 +246,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
 
         Ok(FetchRangeResult {
             blocks,
-            num_transactions,
+            cursor_transactions,
             cursors,
         })
     }
@@ -294,7 +296,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                 )
             })
             .collect();
-        let mut num_transactions = HashMap::new();
+        let mut cursor_transactions = HashMap::new();
 
         for (contract_address, cursor) in &mut new_cursors {
             if cursor.head != Some(latest_block.block_number) {
@@ -325,10 +327,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                     continue;
                 }
 
-                num_transactions
+                cursor_transactions
                     .entry(*contract_address)
-                    .or_insert(0)
-                    .add_assign(1);
+                    .or_insert(HashSet::new())
+                    .insert(*tx_hash);
 
                 transactions.entry(*tx_hash).and_modify(|tx| {
                     tx.events.extend(
@@ -349,7 +351,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
             transactions,
             block_number,
             cursors: new_cursors,
-            num_transactions,
+            cursor_transactions,
         }))
     }
 
