@@ -10,7 +10,7 @@ use torii_sqlite::types::ContractType;
 use torii_sqlite::Cursor;
 use url::Url;
 
-use crate::fetcher::Fetcher;
+use crate::Fetcher;
 
 const CARTRIDGE_NODE_MAINNET: &str = "https://api.cartridge.gg/x/starknet/mainnet";
 const ETERNUM_ADDRESS: Felt =

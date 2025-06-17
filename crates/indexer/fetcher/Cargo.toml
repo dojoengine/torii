@@ -1,8 +1,8 @@
 [package]
-description = "Torii indexer implementation."
+description = "Torii indexer fetcher implementation."
 edition.workspace = true
 license-file.workspace = true
-name = "torii-indexer"
+name = "torii-indexer-fetcher"
 repository.workspace = true
 version.workspace = true
 
@@ -13,7 +13,6 @@ anyhow.workspace = true
 async-recursion = "1.0.5"
 async-trait.workspace = true
 base64.workspace = true
-bitflags = "2.6.0"
 cainome.workspace = true
 cainome-cairo-serde.workspace = true
 chrono.workspace = true
@@ -42,6 +41,7 @@ tracing.workspace = true
 torii-sqlite.workspace = true
 lazy_static.workspace = true
 torii-processors.workspace = true
+torii-indexer-types.workspace = true
 
 [dev-dependencies]
 dojo-test-utils.workspace = true

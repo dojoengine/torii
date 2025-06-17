@@ -27,7 +27,7 @@ use torii_sqlite::utils::u256_to_sql_string;
 use torii_sqlite::Sql;
 
 use crate::engine::{Engine, EngineConfig};
-use crate::fetcher::Fetcher;
+use torii_indexer_fetcher::Fetcher;
 use torii_processors::processors::Processors;
 
 pub async fn bootstrap_engine<P>(

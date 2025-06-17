@@ -1,10 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bitflags::bitflags;
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Transaction};
@@ -21,19 +19,12 @@ use torii_sqlite::utils::format_event_id;
 use torii_sqlite::Sql;
 use tracing::{debug, error, info, trace};
 
+use torii_indexer_types::IndexingFlags;
+
 use crate::constants::LOG_TARGET;
 use crate::error::{Error, ProcessError};
-use crate::fetcher::{FetchPendingResult, FetchRangeResult, FetchResult, Fetcher};
+use torii_indexer_fetcher::{FetchPendingResult, FetchRangeResult, FetchResult, Fetcher};
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
-
-bitflags! {
-    #[derive(Debug, Clone)]
-    pub struct IndexingFlags: u32 {
-        const TRANSACTIONS = 0b00000001;
-        const RAW_EVENTS = 0b00000010;
-        const PENDING_BLOCKS = 0b00000100;
-    }
-}
 
 #[derive(Debug)]
 pub struct EngineConfig {

@@ -21,9 +21,8 @@ use torii_sqlite::types::ContractType;
 use torii_sqlite::Cursor;
 use tracing::{debug, error, trace, warn};
 
-use crate::error::FetchError;
-
-use crate::engine::IndexingFlags;
+use crate::error::Error;
+use torii_indexer_types::IndexingFlags;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::fetcher";
 
@@ -96,7 +95,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         }
     }
 
-    pub async fn fetch(&self, cursors: &HashMap<Felt, Cursor>) -> Result<FetchResult, FetchError> {
+    pub async fn fetch(&self, cursors: &HashMap<Felt, Cursor>) -> Result<FetchResult, Error> {
         let latest_block = self.provider.block_hash_and_number().await?;
         let latest_block_number = latest_block.block_number;
 
@@ -122,7 +121,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         &self,
         cursors: &HashMap<Felt, Cursor>,
         latest_block: BlockHashAndNumber,
-    ) -> Result<FetchRangeResult, FetchError> {
+    ) -> Result<FetchRangeResult, Error> {
         let mut events = vec![];
         let mut cursors = cursors.clone();
         let mut blocks = BTreeMap::new();
@@ -305,7 +304,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         &self,
         latest_block: BlockHashAndNumber,
         cursors: &HashMap<Felt, Cursor>,
-    ) -> Result<Option<FetchPendingResult>, FetchError> {
+    ) -> Result<Option<FetchPendingResult>, Error> {
         let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
             .provider
             .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
@@ -410,7 +409,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         initial_requests: Vec<(Felt, u64, u64, ProviderRequestData)>,
         cursors: &mut HashMap<Felt, Cursor>,
         latest_block_number: u64,
-    ) -> Result<Vec<EmittedEvent>, FetchError> {
+    ) -> Result<Vec<EmittedEvent>, Error> {
         let mut all_events = Vec::new();
         let mut current_requests = initial_requests;
         let mut old_cursors = cursors.clone();
@@ -516,7 +515,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
     async fn chunked_batch_requests(
         &self,
         requests: &[ProviderRequestData],
-    ) -> Result<Vec<ProviderResponseData>, FetchError> {
+    ) -> Result<Vec<ProviderResponseData>, Error> {
         if requests.is_empty() {
             return Ok(Vec::new());
         }
@@ -530,7 +529,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                 let mut attempt = 0;
                 loop {
                     match self.provider.batch_requests(chunk).await {
-                        Ok(results) => return Ok::<Vec<ProviderResponseData>, FetchError>(results),
+                        Ok(results) => return Ok::<Vec<ProviderResponseData>, Error>(results),
                         Err(e) => {
                             if attempt < MAX_RETRIES {
                                 let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
@@ -553,7 +552,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                                     batch_chunk_size = self.batch_chunk_size,
                                     "Chunk batch request failed after all retries. This could be due to the provider being overloaded. You can try reducing the batch chunk size."
                                 );
-                                return Err(FetchError::BatchRequest(Box::new(e.into())));
+                                return Err(Error::BatchRequest(Box::new(e.into())));
                             }
                         }
                     }
