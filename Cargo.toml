@@ -62,12 +62,13 @@ torii-grpc-client = { path = "crates/grpc/client" }
 torii-grpc-server = { path = "crates/grpc/server" }
 torii-adigraphmap = { path = "crates/adigraphmap" }
 torii-task-network = { path = "crates/task-network" }
-torii-indexer-types = { path = "crates/indexer/types" }
 torii-indexer-fetcher = { path = "crates/indexer/fetcher" }
 torii-indexer = { path = "crates/indexer/engine" }
 
 # macros
 merge-options = { git = "https://github.com/dojoengine/dojo", rev = "82fe9bd" }
+
+bitflags = "2.9.1"
 
 anyhow = "1.0.89"
 arbitrary = { version = "1.3.2", features = [ "derive" ] }
