@@ -264,6 +264,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Process all transactions in the chunk
         for (block_number, block) in &range.blocks {
             for (transaction_hash, tx) in &block.transactions {
+                if tx.events.is_empty() {
+                    continue;
+                }
+
                 trace!(target: LOG_TARGET, "Processing transaction hash: {:#x}", transaction_hash);
 
                 self.process_transaction_with_events(
