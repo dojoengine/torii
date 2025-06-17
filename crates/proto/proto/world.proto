@@ -63,6 +63,9 @@ service World {
 
     // Publish a torii offchain message
     rpc PublishMessage (PublishMessageRequest) returns (PublishMessageResponse);
+
+    // Publish a set of torii offchain messages
+    rpc PublishMessageBatch (PublishMessageBatchRequest) returns (PublishMessageBatchResponse);
 }
 
 message RetrieveControllersRequest {
@@ -273,4 +276,12 @@ message PublishMessageRequest {
 
 message PublishMessageResponse {
     bytes entity_id = 1;
+}
+
+message PublishMessageBatchRequest {
+    repeated PublishMessageRequest messages = 1;
+}
+
+message PublishMessageBatchResponse {
+    repeated PublishMessageResponse responses = 1;
 }

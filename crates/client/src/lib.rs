@@ -44,6 +44,14 @@ impl Client {
         Ok(entity_id)
     }
 
+    /// Publishes a set of offchain messages to the world.
+    /// Returns the entity ids of the offchain messages.
+    pub async fn publish_message_batch(&self, messages: Vec<Message>) -> Result<Vec<Felt>, Error> {
+        let mut grpc_client = self.inner.write().await;
+        let entity_ids = grpc_client.publish_message_batch(messages).await?;
+        Ok(entity_ids)
+    }
+
     /// Returns a read lock on the World metadata that the client is connected to.
     pub async fn metadata(&self) -> Result<WorldMetadata, Error> {
         let mut grpc_client = self.inner.write().await;
