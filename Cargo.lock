@@ -11566,6 +11566,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "torii-storage"
+version = "1.5.8-preview.2"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "dojo-types 1.5.0-alpha.2",
+ "dojo-world",
+ "serde",
+ "starknet 0.12.0",
+]
+
+[[package]]
 name = "torii-task-network"
 version = "1.5.8-preview.2"
 dependencies = [

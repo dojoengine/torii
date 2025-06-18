@@ -9,7 +9,7 @@ members = [
 	"crates/server",
  	"crates/sqlite/types",
 	"xtask/generate-test-db",
-	"crates/task-network",
+	"crates/task-network", "crates/storage",
 ]
 
 [workspace.package]
