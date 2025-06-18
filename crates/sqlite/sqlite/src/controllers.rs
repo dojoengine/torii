@@ -6,6 +6,7 @@ use serde_json::json;
 use sqlx::SqlitePool;
 use starknet_crypto::Felt;
 use tokio::sync::RwLock;
+use torii_storage::Storage;
 use tracing::warn;
 
 use crate::{error::ControllerSyncError, Sql};

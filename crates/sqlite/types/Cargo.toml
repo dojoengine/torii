@@ -12,3 +12,4 @@ dojo-types.workspace = true
 sqlx.workspace = true
 serde.workspace = true
 anyhow.workspace = true
+torii-storage.workspace = true

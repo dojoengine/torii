@@ -41,6 +41,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 flate2.workspace = true
 dashmap.workspace = true
+torii-storage.workspace = true
 
 [dev-dependencies]
 dojo-test-utils.workspace = true

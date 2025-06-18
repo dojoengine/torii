@@ -7,6 +7,7 @@ use dojo_types::schema::Ty;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use starknet::core::types::Felt;
+use torii_storage::types::ParsedCall;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SQLFelt(pub Felt);
@@ -233,30 +234,6 @@ pub struct ContractCursor {
     pub last_block_timestamp: Option<i64>,
     pub contract_address: String,
     pub last_pending_block_tx: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub enum CallType {
-    Execute,
-    ExecuteFromOutside,
-}
-
-impl std::fmt::Display for CallType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CallType::Execute => write!(f, "EXECUTE"),
-            CallType::ExecuteFromOutside => write!(f, "EXECUTE_FROM_OUTSIDE"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ParsedCall {
-    pub contract_address: Felt,
-    pub entrypoint: String,
-    pub calldata: Vec<Felt>,
-    pub call_type: CallType,
-    pub caller_address: Felt,
 }
 
 #[derive(FromRow, Deserialize, Debug, Clone, Default)]

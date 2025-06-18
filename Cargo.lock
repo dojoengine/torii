@@ -11549,6 +11549,7 @@ dependencies = [
  "tokio-util",
  "torii-indexer",
  "torii-sqlite-types",
+ "torii-storage",
  "tracing",
  "url",
 ]
@@ -11563,6 +11564,7 @@ dependencies = [
  "serde",
  "sqlx",
  "starknet 0.12.0",
+ "torii-storage",
 ]
 
 [[package]]

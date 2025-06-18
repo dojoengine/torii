@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::str::FromStr;
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
@@ -10,168 +9,24 @@ use starknet::core::utils::{get_selector_from_name, parse_cairo_short_string};
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use tracing::{debug, warn};
 
-use super::utils::{u256_to_sql_string, I256};
-use super::{Sql, SQL_FELT_DELIMITER};
+use super::utils::u256_to_sql_string;
+use super::Sql;
 use crate::constants::TOKEN_TRANSFER_TABLE;
 use crate::error::{Error, ParseError, TokenMetadataError};
-use crate::executor::erc::{RegisterNftTokenQuery, UpdateNftMetadataQuery};
+use crate::executor::erc::RegisterNftTokenQuery;
 use crate::executor::error::ExecutorQueryError;
 use crate::executor::{
-    ApplyBalanceDiffQuery, Argument, QueryMessage, QueryType, RegisterErc20TokenQuery,
+     Argument, QueryMessage, QueryType, RegisterErc20TokenQuery,
 };
 use crate::utils::{
-    felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, fetch_content_from_http,
+    fetch_content_from_http,
     fetch_content_from_ipfs, sanitize_json_string, utc_dt_string_from_timestamp,
 };
-use crate::Cursor;
 
 impl Sql {
-    #[allow(clippy::too_many_arguments)]
-    pub async fn handle_erc20_transfer<P: Provider + Sync>(
-        &mut self,
-        contract_address: Felt,
-        from_address: Felt,
-        to_address: Felt,
-        amount: U256,
-        provider: &P,
-        block_timestamp: u64,
-        event_id: &str,
-    ) -> Result<(), Error> {
-        // contract_address
-        let token_id = felt_to_sql_string(&contract_address);
 
-        // optimistically add the token_id to cache
-        // this cache is used while applying the cache diff
-        // so we need to make sure that all RegisterErc*Token queries
-        // are applied before the cache diff is applied
-        self.try_register_erc20_token_metadata(contract_address, &token_id, provider)
-            .await?;
-
-        self.store_erc_transfer_event(
-            contract_address,
-            from_address,
-            to_address,
-            amount,
-            &token_id,
-            block_timestamp,
-            event_id,
-        )?;
-
-        if from_address != Felt::ZERO {
-            // from_address/contract_address/
-            let from_balance_id = felts_to_sql_string(&[from_address, contract_address]);
-            let mut from_balance = self
-                .local_cache
-                .erc_cache
-                .entry(from_balance_id)
-                .or_default();
-            *from_balance -= I256::from(amount);
-        }
-
-        if to_address != Felt::ZERO {
-            let to_balance_id = felts_to_sql_string(&[to_address, contract_address]);
-            let mut to_balance = self.local_cache.erc_cache.entry(to_balance_id).or_default();
-            *to_balance += I256::from(amount);
-        }
-
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn handle_nft_transfer<P: Provider + Sync>(
-        &mut self,
-        provider: &P,
-        contract_address: Felt,
-        from_address: Felt,
-        to_address: Felt,
-        token_id: U256,
-        amount: U256,
-        block_timestamp: u64,
-        event_id: &str,
-    ) -> Result<(), Error> {
-        // contract_address:id
-        let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
-        // optimistically add the token_id to cache
-        // this cache is used while applying the cache diff
-        // so we need to make sure that all RegisterErc*Token queries
-        // are applied before the cache diff is applied
-        self.try_register_nft_token_metadata(&id, contract_address, token_id, provider)
-            .await?;
-
-        self.store_erc_transfer_event(
-            contract_address,
-            from_address,
-            to_address,
-            amount,
-            &id,
-            block_timestamp,
-            event_id,
-        )?;
-
-        // from_address/contract_address:id
-        if from_address != Felt::ZERO {
-            let from_balance_id = format!(
-                "{}{SQL_FELT_DELIMITER}{}",
-                felt_to_sql_string(&from_address),
-                &id
-            );
-            let mut from_balance = self
-                .local_cache
-                .erc_cache
-                .entry(from_balance_id)
-                .or_default();
-            *from_balance -= I256::from(amount);
-        }
-
-        if to_address != Felt::ZERO {
-            let to_balance_id = format!(
-                "{}{SQL_FELT_DELIMITER}{}",
-                felt_to_sql_string(&to_address),
-                &id
-            );
-            let mut to_balance = self.local_cache.erc_cache.entry(to_balance_id).or_default();
-            *to_balance += I256::from(amount);
-        }
-
-        Ok(())
-    }
-
-    pub async fn update_nft_metadata<P: Provider + Sync>(
-        &mut self,
-        provider: &P,
-        contract_address: Felt,
-        token_id: U256,
-    ) -> Result<(), Error> {
-        let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
-        if !self.local_cache.is_token_registered(&id).await {
-            return Ok(());
-        }
-
-        let _permit = self
-            .nft_metadata_semaphore
-            .acquire()
-            .await
-            .map_err(|e| Error::TokenMetadata(TokenMetadataError::AcquireError(e)))?;
-        let metadata = fetch_token_metadata(contract_address, token_id, provider).await?;
-
-        self.executor
-            .send(QueryMessage::new(
-                "".to_string(),
-                vec![],
-                QueryType::UpdateNftMetadata(UpdateNftMetadataQuery {
-                    id,
-                    contract_address,
-                    token_id,
-                    metadata,
-                }),
-            ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        Ok(())
-    }
-
-    async fn try_register_erc20_token_metadata<P: Provider + Sync>(
-        &mut self,
+    pub(crate) async fn try_register_erc20_token_metadata<P: Provider + Sync>(
+        &self,
         contract_address: Felt,
         token_id: &str,
         provider: &P,
@@ -271,8 +126,8 @@ impl Sql {
         Ok(())
     }
 
-    async fn try_register_nft_token_metadata<P: Provider + Sync>(
-        &mut self,
+    pub(crate) async fn try_register_nft_token_metadata<P: Provider + Sync>(
+        &self,
         id: &str,
         contract_address: Felt,
         actual_token_id: U256,
@@ -313,8 +168,8 @@ impl Sql {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn store_erc_transfer_event(
-        &mut self,
+    pub(crate) fn store_erc_transfer_event(
+        &self,
         contract_address: Felt,
         from: Felt,
         to: Felt,
@@ -346,28 +201,6 @@ impl Sql {
             ))
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
-        Ok(())
-    }
-
-    pub async fn apply_cache_diff(&mut self, cursors: HashMap<Felt, Cursor>) -> Result<(), Error> {
-        if !self.local_cache.erc_cache.is_empty() {
-            let erc_cache = self
-                .local_cache
-                .erc_cache
-                .iter()
-                .map(|t| (t.key().clone(), *t.value()))
-                .collect::<HashMap<String, I256>>();
-            self.local_cache.erc_cache.clear();
-            self.local_cache.erc_cache.shrink_to_fit();
-
-            self.executor
-                .send(QueryMessage::new(
-                    "".to_string(),
-                    vec![],
-                    QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery { erc_cache, cursors }),
-                ))
-                .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-        }
         Ok(())
     }
 }

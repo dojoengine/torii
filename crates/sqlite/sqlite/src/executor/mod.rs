@@ -16,6 +16,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 use torii_sqlite_types::OptimisticToken;
+use torii_storage::types::ParsedCall;
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
@@ -25,7 +26,7 @@ use crate::simple_broker::SimpleBroker;
 use crate::types::{
     ContractCursor, Entity as EntityUpdated, Event as EventEmitted,
     EventMessage as EventMessageUpdated, Model as ModelRegistered, OptimisticEntity,
-    OptimisticEventMessage, ParsedCall, Token, TokenBalance, Transaction,
+    OptimisticEventMessage, Token, TokenBalance, Transaction,
 };
 use crate::utils::{felt_to_sql_string, felts_to_sql_string, u256_to_sql_string, I256};
 use crate::Cursor;
