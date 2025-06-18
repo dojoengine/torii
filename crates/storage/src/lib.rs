@@ -13,14 +13,16 @@ use crate::types::{Cursor, ParsedCall};
 
 pub mod types;
 
+pub type StorageError = Box<dyn Error + Send + Sync>;
+
 #[async_trait]
-pub trait Storage<E: Error + Send + Sync>: Send + Sync {
+pub trait Storage: Send + Sync {
     /// Updates the contract cursors with the storage.
     async fn update_cursors(
         &self,
         cursors: HashMap<Felt, Cursor>,
         cursor_transactions: HashMap<Felt, HashSet<Felt>>,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Registers a model with the storage, along with its table.
     /// This is also used when a model is upgraded, which should
@@ -37,7 +39,7 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         block_timestamp: u64,
         schema_diff: Option<&Ty>,
         upgrade_diff: Option<&Ty>,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Sets an entity with the storage.
     /// It should insert or update the entity if it already exists.
@@ -50,7 +52,7 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         entity_id: Felt,
         model_selector: Felt,
         keys_str: Option<&str>,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Sets an event message with the storage.
     /// It should insert or update the event message if it already exists.
@@ -60,7 +62,7 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Deletes an entity with the storage.
     /// It should delete the entity from the entity table.
@@ -72,7 +74,7 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Sets the metadata for a resource with the storage.
     /// It should insert or update the metadata if it already exists.
@@ -82,7 +84,7 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         resource: &Felt,
         uri: &str,
         block_timestamp: u64,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Updates the metadata for a resource with the storage.
     /// It should update the metadata if it already exists.
@@ -94,7 +96,7 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         metadata: &WorldMetadata,
         icon_img: &Option<String>,
         cover_img: &Option<String>,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Stores a transaction with the storage.
     /// It should insert or ignore the transaction if it already exists.
@@ -114,7 +116,7 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         block_timestamp: u64,
         calls: &[ParsedCall],
         unique_models: &HashSet<Felt>,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Stores an event with the storage.
     fn store_event(
@@ -123,7 +125,7 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         event: &Event,
         transaction_hash: Felt,
         block_timestamp: u64,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Adds a controller to the storage.
     async fn add_controller(
@@ -131,7 +133,7 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         username: &str,
         address: &str,
         timestamp: DateTime<Utc>,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Handles ERC20 token transfers, updating balances and registering tokens as needed.
     async fn handle_erc20_transfer<P: Provider + Sync>(
@@ -143,7 +145,7 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         amount: U256,
         block_timestamp: u64,
         event_id: &str,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Handles NFT (ERC721/ERC1155) token transfers, updating balances and registering tokens as needed.
     async fn handle_nft_transfer<P: Provider + Sync>(
@@ -156,7 +158,7 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         amount: U256,
         block_timestamp: u64,
         event_id: &str,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Updates NFT metadata for a specific token.
     async fn update_nft_metadata<P: Provider + Sync>(
@@ -164,14 +166,14 @@ pub trait Storage<E: Error + Send + Sync>: Send + Sync {
         provider: &P,
         contract_address: Felt,
         token_id: U256,
-    ) -> Result<(), E>;
+    ) -> Result<(), StorageError>;
 
     /// Applies cached balance differences to the storage.
-    async fn apply_cache_diff(&self, cursors: HashMap<Felt, Cursor>) -> Result<(), E>;
+    async fn apply_cache_diff(&self, cursors: HashMap<Felt, Cursor>) -> Result<(), StorageError>;
 
     /// Executes pending operations and commits the current transaction.
-    async fn execute(&self) -> Result<(), E>;
+    async fn execute(&self) -> Result<(), StorageError>;
 
     /// Rolls back the current transaction and starts a new one.
-    async fn rollback(&self) -> Result<(), E>;
+    async fn rollback(&self) -> Result<(), StorageError>;
 }

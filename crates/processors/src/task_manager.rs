@@ -6,6 +6,7 @@ use starknet::core::types::Event;
 use starknet::providers::Provider;
 use torii_sqlite::types::ContractType;
 use torii_sqlite::Sql;
+use torii_storage::Storage;
 use torii_task_network::TaskNetwork;
 use tracing::{debug, error};
 
@@ -36,7 +37,7 @@ struct TaskData {
 
 #[allow(missing_debug_implementations)]
 pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
-    db: Sql,
+    storage: Box<dyn Storage>,
     world: Arc<WorldContractReader<P>>,
     task_network: TaskNetwork<TaskId, TaskData>,
     processors: Arc<Processors<P>>,
@@ -45,14 +46,14 @@ pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
 
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
     pub fn new(
-        db: Sql,
+        storage: Box<dyn Storage>,
         world: Arc<WorldContractReader<P>>,
         processors: Arc<Processors<P>>,
         max_concurrent_tasks: usize,
         event_processor_config: EventProcessorConfig,
     ) -> Self {
         Self {
-            db,
+            storage,
             world,
             task_network: TaskNetwork::new(max_concurrent_tasks),
             processors,
@@ -122,20 +123,20 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             return Ok(());
         }
 
-        let db = self.db.clone();
+        let storage = self.storage.clone();
         let world = self.world.clone();
         let processors = self.processors.clone();
         let event_processor_config = self.event_processor_config.clone();
 
         self.task_network
             .process_tasks(move |task_id, task_data| {
-                let db = db.clone();
+                let storage = storage.clone();
                 let world = world.clone();
                 let processors = processors.clone();
                 let event_processor_config = event_processor_config.clone();
 
                 async move {
-                    let mut local_db = db.clone();
+                    let mut local_storage = storage.clone();
 
                     // Process all events for this task sequentially
                     for ParallelizedEvent {
@@ -169,7 +170,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                             if let Err(e) = processor
                                 .process(
                                     world.clone(),
-                                    &mut local_db,
+                                    &mut local_storage,
                                     *block_number,
                                     *block_timestamp,
                                     event_id,

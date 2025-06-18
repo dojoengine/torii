@@ -12,15 +12,15 @@ use starknet::{
     providers::Provider,
 };
 use starknet_crypto::{poseidon_hash_many, Felt};
+use torii_math::I256;
 use torii_sqlite_types::HookEvent;
 use torii_storage::{
     types::{Cursor, ParsedCall},
-    Storage,
+    Storage, StorageError,
 };
 
 use crate::constants::SQL_FELT_DELIMITER;
 use crate::{
-    cache::Model,
     erc::fetch_token_metadata,
     error::{Error, ParseError, TokenMetadataError},
     executor::{
@@ -30,19 +30,19 @@ use crate::{
     },
     utils::{
         felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string,
-        utc_dt_string_from_timestamp, I256,
+        utc_dt_string_from_timestamp
     },
     Sql,
 };
 
 #[async_trait]
-impl Storage<Error> for Sql {
+impl Storage for Sql {
     /// Updates the contract cursors with the storage.
     async fn update_cursors(
         &self,
         cursors: HashMap<Felt, Cursor>,
         cursor_transactions: HashMap<Felt, HashSet<Felt>>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         let (query, recv) = QueryMessage::new_recv(
             "".to_string(),
             vec![],
@@ -58,7 +58,9 @@ impl Storage<Error> for Sql {
 
         recv.await
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?
-            .map_err(|e| Error::ExecutorQuery(Box::new(e)))
+            .map_err(|e| Error::ExecutorQuery(Box::new(e)))?;
+
+        Ok(())
     }
 
     /// Registers a model with the storage, along with its table.
@@ -76,7 +78,7 @@ impl Storage<Error> for Sql {
         block_timestamp: u64,
         schema_diff: Option<&Ty>,
         upgrade_diff: Option<&Ty>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         let selector = compute_selector_from_names(namespace, &model.name());
         let namespaced_name = get_tag(namespace, &model.name());
         let namespaced_schema = Ty::Struct(Struct {
@@ -126,10 +128,10 @@ impl Storage<Error> for Sql {
 
         // we set the model in the cache directly
         // because entities might be using it before the query queue is processed
-        self.model_cache
+        self.cache.model_cache
             .set(
                 selector,
-                Model {
+                torii_cache::Model {
                     namespace: namespace.to_string(),
                     name: model.name().to_string(),
                     selector,
@@ -172,7 +174,7 @@ impl Storage<Error> for Sql {
         entity_id: Felt,
         model_selector: Felt,
         keys_str: Option<&str>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         let namespaced_name = entity.name();
 
         let entity_id = format!("{:#x}", entity_id);
@@ -259,7 +261,7 @@ impl Storage<Error> for Sql {
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         let keys = if let Ty::Struct(s) = &entity {
             let mut keys = Vec::new();
             for m in s.keys() {
@@ -267,7 +269,7 @@ impl Storage<Error> for Sql {
             }
             keys
         } else {
-            return Err(Error::Parse(ParseError::InvalidTyEntity));
+            return Err(Box::new(Error::Parse(ParseError::InvalidTyEntity)));
         };
 
         let namespaced_name = entity.name();
@@ -341,7 +343,7 @@ impl Storage<Error> for Sql {
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         let entity_id = format!("{:#x}", entity_id);
         let model_id = format!("{:#x}", model_id);
         let model_table = entity.name();
@@ -381,7 +383,12 @@ impl Storage<Error> for Sql {
     /// Sets the metadata for a resource with the storage.
     /// It should insert or update the metadata if it already exists.
     /// Along with its model state in the model table.
-    fn set_metadata(&self, resource: &Felt, uri: &str, block_timestamp: u64) -> Result<(), Error> {
+    fn set_metadata(
+        &self,
+        resource: &Felt,
+        uri: &str,
+        block_timestamp: u64,
+    ) -> Result<(), StorageError> {
         let resource = Argument::FieldElement(*resource);
         let uri = Argument::String(uri.to_string());
         let executed_at = Argument::String(utc_dt_string_from_timestamp(block_timestamp));
@@ -409,7 +416,7 @@ impl Storage<Error> for Sql {
         metadata: &WorldMetadata,
         icon_img: &Option<String>,
         cover_img: &Option<String>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         let json = serde_json::to_string(metadata).unwrap(); // safe unwrap
 
         let mut update = vec!["uri=?", "json=?", "updated_at=CURRENT_TIMESTAMP"];
@@ -453,7 +460,7 @@ impl Storage<Error> for Sql {
         block_timestamp: u64,
         calls: &[ParsedCall],
         unique_models: &HashSet<Felt>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         // Store the transaction in the transactions table
         self.executor
             .send(QueryMessage::new(
@@ -491,7 +498,7 @@ impl Storage<Error> for Sql {
         event: &Event,
         transaction_hash: Felt,
         block_timestamp: u64,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         let id = Argument::String(event_id.to_string());
         let keys = Argument::String(felts_to_sql_string(&event.keys));
         let data = Argument::String(felts_to_sql_string(&event.data));
@@ -517,7 +524,7 @@ impl Storage<Error> for Sql {
         username: &str,
         address: &str,
         timestamp: DateTime<Utc>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         let insert_controller = "
             INSERT INTO controllers (id, username, address, deployed_at)
             VALUES (?, ?, ?, ?)
@@ -554,7 +561,7 @@ impl Storage<Error> for Sql {
         amount: U256,
         block_timestamp: u64,
         event_id: &str,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         // contract_address
         let token_id = felt_to_sql_string(&contract_address);
 
@@ -579,8 +586,9 @@ impl Storage<Error> for Sql {
             // from_address/contract_address/
             let from_balance_id = felts_to_sql_string(&[from_address, contract_address]);
             let mut from_balance = self
-                .local_cache
+                .cache
                 .erc_cache
+                .balances_diff
                 .entry(from_balance_id)
                 .or_default();
             *from_balance -= I256::from(amount);
@@ -588,7 +596,12 @@ impl Storage<Error> for Sql {
 
         if to_address != Felt::ZERO {
             let to_balance_id = felts_to_sql_string(&[to_address, contract_address]);
-            let mut to_balance = self.local_cache.erc_cache.entry(to_balance_id).or_default();
+            let mut to_balance = self
+                .cache
+                .erc_cache
+                .balances_diff
+                .entry(to_balance_id)
+                .or_default();
             *to_balance += I256::from(amount);
         }
 
@@ -607,7 +620,7 @@ impl Storage<Error> for Sql {
         amount: U256,
         block_timestamp: u64,
         event_id: &str,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         // contract_address:id
         let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
         // optimistically add the token_id to cache
@@ -635,8 +648,9 @@ impl Storage<Error> for Sql {
                 &id
             );
             let mut from_balance = self
-                .local_cache
+                .cache
                 .erc_cache
+                .balances_diff
                 .entry(from_balance_id)
                 .or_default();
             *from_balance -= I256::from(amount);
@@ -648,7 +662,7 @@ impl Storage<Error> for Sql {
                 felt_to_sql_string(&to_address),
                 &id
             );
-            let mut to_balance = self.local_cache.erc_cache.entry(to_balance_id).or_default();
+            let mut to_balance = self.cache.erc_cache.balances_diff.entry(to_balance_id).or_default();
             *to_balance += I256::from(amount);
         }
 
@@ -661,9 +675,9 @@ impl Storage<Error> for Sql {
         provider: &P,
         contract_address: Felt,
         token_id: U256,
-    ) -> Result<(), Error> {
+    ) -> Result<(), StorageError> {
         let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
-        if !self.local_cache.is_token_registered(&id).await {
+        if !self.cache.erc_cache.is_token_registered(&id).await {
             return Ok(());
         }
 
@@ -691,16 +705,17 @@ impl Storage<Error> for Sql {
     }
 
     /// Applies cached balance differences to the storage.
-    async fn apply_cache_diff(&self, cursors: HashMap<Felt, Cursor>) -> Result<(), Error> {
-        if !self.local_cache.erc_cache.is_empty() {
+    async fn apply_cache_diff(&self, cursors: HashMap<Felt, Cursor>) -> Result<(), StorageError> {
+        if !self.cache.erc_cache.balances_diff.is_empty() {
             let erc_cache = self
-                .local_cache
+                .cache
                 .erc_cache
+                .balances_diff
                 .iter()
                 .map(|t| (t.key().clone(), *t.value()))
                 .collect::<HashMap<String, I256>>();
-            self.local_cache.erc_cache.clear();
-            self.local_cache.erc_cache.shrink_to_fit();
+            self.cache.erc_cache.balances_diff.clear();
+            self.cache.erc_cache.balances_diff.shrink_to_fit();
 
             self.executor
                 .send(QueryMessage::new(
@@ -714,7 +729,7 @@ impl Storage<Error> for Sql {
     }
 
     /// Executes pending operations and commits the current transaction.
-    async fn execute(&self) -> Result<(), Error> {
+    async fn execute(&self) -> Result<(), StorageError> {
         let (execute, recv) = QueryMessage::execute_recv();
         self.executor
             .send(execute)
@@ -722,11 +737,12 @@ impl Storage<Error> for Sql {
         let res = recv
             .await
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?;
-        res.map_err(|e| Error::ExecutorQuery(Box::new(e)))
+        res.map_err(|e| Error::ExecutorQuery(Box::new(e)))?;
+        Ok(())
     }
 
     /// Rolls back the current transaction and starts a new one.
-    async fn rollback(&self) -> Result<(), Error> {
+    async fn rollback(&self) -> Result<(), StorageError> {
         let (rollback, recv) = QueryMessage::rollback_recv();
         self.executor
             .send(rollback)
@@ -734,6 +750,7 @@ impl Storage<Error> for Sql {
         let res = recv
             .await
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?;
-        res.map_err(|e| Error::ExecutorQuery(Box::new(e)))
+        res.map_err(|e| Error::ExecutorQuery(Box::new(e)))?;
+        Ok(())
     }
 }

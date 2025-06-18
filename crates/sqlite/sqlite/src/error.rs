@@ -26,6 +26,10 @@ pub enum Error {
     ProviderError(#[from] ProviderError),
     #[error(transparent)]
     ExecutorQuery(#[from] Box<crate::executor::error::ExecutorQueryError>),
+    #[error(transparent)]
+    Storage(#[from] torii_storage::StorageError),
+    #[error(transparent)]
+    Cache(#[from] torii_cache::error::Error),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -110,8 +114,8 @@ pub enum QueryError {
 pub enum ControllerSyncError {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
-    #[error(transparent)]
-    Sql(#[from] crate::error::Error),
     #[error("API error: {0}")]
     ApiError(String),
+    #[error(transparent)]
+    Storage(#[from] torii_storage::StorageError),
 }

@@ -11053,6 +11053,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "torii-cache"
+version = "1.5.8-preview.2"
+dependencies = [
+ "dashmap 6.1.0",
+ "dojo-types 1.5.0-alpha.2",
+ "dojo-world",
+ "serde_json",
+ "sqlx",
+ "starknet 0.12.0",
+ "thiserror 1.0.63",
+ "tokio",
+ "torii-math",
+ "torii-sqlite-types",
+]
+
+[[package]]
 name = "torii-cli"
 version = "1.5.8-preview.2"
 dependencies = [
@@ -11257,6 +11273,7 @@ dependencies = [
  "torii-indexer-fetcher",
  "torii-processors",
  "torii-sqlite",
+ "torii-storage",
  "tracing",
  "url",
 ]
@@ -11338,6 +11355,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "torii-math"
+version = "1.5.8-preview.2"
+dependencies = [
+ "starknet-core 0.12.3",
+]
+
+[[package]]
 name = "torii-mcp"
 version = "1.5.8-preview.2"
 dependencies = [
@@ -11392,6 +11416,7 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "torii-sqlite",
+ "torii-storage",
  "torii-task-network",
  "tracing",
 ]
@@ -11547,7 +11572,9 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "tokio-util",
+ "torii-cache",
  "torii-indexer",
+ "torii-math",
  "torii-sqlite-types",
  "torii-storage",
  "tracing",

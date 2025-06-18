@@ -168,7 +168,7 @@ impl ControllersSync {
                 )
                 .await;
 
-            e?;
+            e.map_err(ControllerSyncError::Storage)?;
 
             *self.cursor.write().await = Some(controller.created_at);
         }

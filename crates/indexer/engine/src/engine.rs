@@ -18,6 +18,7 @@ use torii_sqlite::controllers::ControllersSync;
 use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::utils::format_event_id;
 use torii_sqlite::Sql;
+use torii_storage::Storage;
 use tracing::{debug, error, info, trace};
 
 use crate::constants::LOG_TARGET;
@@ -53,7 +54,7 @@ pub struct EngineConfig {
 #[allow(missing_debug_implementations)]
 pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     world: Arc<WorldContractReader<P>>,
-    db: Sql,
+    storage: Storage,
     provider: Arc<P>,
     processors: Arc<Processors<P>>,
     config: EngineConfig,
@@ -87,7 +88,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         world: WorldContractReader<P>,
-        db: Sql,
+        storage: Storage,
         provider: P,
         processors: Processors<P>,
         config: EngineConfig,
@@ -96,7 +97,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     ) -> Self {
         Self::new_with_controllers(
             world,
-            db,
+            storage,
             provider,
             processors,
             config,
@@ -109,7 +110,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_controllers(
         world: WorldContractReader<P>,
-        db: Sql,
+        storage: Storage,
         provider: P,
         processors: Processors<P>,
         config: EngineConfig,
@@ -132,14 +133,14 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
         Self {
             world: world.clone(),
-            db: db.clone(),
+            storage: storage.clone(),
             provider: provider.clone(),
             processors: processors.clone(),
             config,
             shutdown_tx,
             contracts,
             task_manager: TaskManager::new(
-                db,
+                storage,
                 world,
                 processors,
                 max_concurrent_tasks,
@@ -215,12 +216,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                             info!(target: LOG_TARGET, num_controllers = num_controllers, "Synced controllers.");
                                         }
                                     }
-                                    self.db.execute().await?;
+                                    self.storage.execute().await?;
                                 },
                                 Err(e) => {
                                     error!(target: LOG_TARGET, error = ?e, "Processing fetched data.");
                                     processing_erroring_out = true;
-                                    self.db.rollback().await?;
+                                    self.storage.rollback().await?;
                                     self.task_manager.clear_tasks();
                                     sleep(processing_backoff_delay).await;
                                     if processing_backoff_delay < max_backoff_delay {
@@ -300,13 +301,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Apply ERC balances cache diff
         debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
         let instant = Instant::now();
-        self.db.apply_cache_diff(range.cursors.clone()).await?;
+        self.storage.apply_cache_diff(range.cursors.clone()).await?;
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
 
         // Update cursors
         // The update cursors query should absolutely succeed, otherwise we will rollback.
         debug!(target: LOG_TARGET, cursors = ?range.cursors, "Updating cursors.");
-        self.db
+        self.storage
             .update_cursors(range.cursors.clone(), range.cursor_transactions.clone())
             .await?;
 
@@ -340,7 +341,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         self.task_manager.process_tasks().await?;
 
         // The update cursors query should absolutely succeed, otherwise we will rollback.
-        self.db
+        self.storage
             .update_cursors(data.cursors.clone(), data.cursor_transactions.clone())
             .await?;
 
@@ -413,7 +414,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         for processor in &self.processors.block {
             processor
                 .process(
-                    &mut self.db,
+                    &mut self.storage,
                     self.provider.as_ref(),
                     block_number,
                     block_timestamp,

@@ -11,12 +11,19 @@ use starknet::core::types::{
 };
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::{Provider, ProviderError};
-use starknet_crypto::Felt;
+use starknet::core::types::Felt;
 use tokio::sync::{Mutex, RwLock};
+use torii_math::I256;
 
-use crate::constants::TOKENS_TABLE;
 use crate::error::{Error, ParseError};
-use crate::utils::I256;
+
+pub mod error;
+
+#[derive(Debug)]
+pub struct Cache {
+    pub model_cache: ModelCache,
+    pub erc_cache: ErcCache,
+}
 
 #[derive(Debug, Clone)]
 pub struct Model {
@@ -167,24 +174,24 @@ pub enum TokenState {
 }
 
 #[derive(Debug)]
-pub struct LocalCache {
-    pub erc_cache: DashMap<String, I256>,
+pub struct ErcCache {
+    pub balances_diff: DashMap<String, I256>,
     // the registry is a map of token_id to a mutex that is used to track if the token is registered
     // we need a mutex for the token state to prevent race conditions in case of multiple token regs
     pub token_id_registry: DashMap<String, TokenState>,
 }
 
-impl LocalCache {
+impl ErcCache {
     pub async fn new(pool: Pool<Sqlite>) -> Self {
         // read existing token_id's from balances table and cache them
         let token_id_registry: Vec<String> =
-            sqlx::query_scalar(&format!("SELECT id FROM {TOKENS_TABLE}"))
+            sqlx::query_scalar(&format!("SELECT id FROM tokens"))
                 .fetch_all(&pool)
                 .await
                 .expect("Should be able to read token_id's from blances table");
 
         Self {
-            erc_cache: DashMap::new(),
+            balances_diff: DashMap::new(),
             token_id_registry: token_id_registry
                 .iter()
                 .map(|token_id| (token_id.clone(), TokenState::Registered))
@@ -271,7 +278,7 @@ impl<P: Provider + Sync + std::fmt::Debug> ContractClassCache<P> {
                         .get_class_hash_at(block_id, contract_address)
                         .await?
                 }
-                _ => return Err(Error::ProviderError(e)),
+                _ => return Err(Error::Provider(e)),
             },
         };
         let class = match self

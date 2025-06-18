@@ -8,6 +8,7 @@ use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Semaphore;
+use torii_cache::Cache;
 use torii_sqlite_types::ContractCursor;
 use torii_storage::types::Cursor;
 use torii_storage::Storage;
@@ -20,7 +21,6 @@ use crate::executor::{
 use crate::utils::utc_dt_string_from_timestamp;
 use torii_sqlite_types::{Contract, Hook, ModelIndices};
 
-pub mod cache;
 pub mod constants;
 pub mod controllers;
 pub mod erc;
@@ -34,7 +34,6 @@ pub mod utils;
 #[cfg(test)]
 pub mod test_utils;
 
-use cache::{LocalCache, Model, ModelCache};
 pub use torii_sqlite_types as types;
 
 #[derive(Debug, Clone)]
@@ -69,8 +68,7 @@ pub struct Sql {
     pub pool: Pool<Sqlite>,
     pub executor: UnboundedSender<QueryMessage>,
     nft_metadata_semaphore: Arc<Semaphore>,
-    model_cache: Arc<ModelCache>,
-    local_cache: Arc<LocalCache>,
+    cache: Arc<Cache>,
     pub config: SqlConfig,
 }
 
@@ -79,16 +77,16 @@ impl Sql {
         pool: Pool<Sqlite>,
         executor: UnboundedSender<QueryMessage>,
         contracts: &[Contract],
-        model_cache: Arc<ModelCache>,
+        cache: Arc<Cache>,
     ) -> Result<Self, Error> {
-        Self::new_with_config(pool, executor, contracts, model_cache, Default::default()).await
+        Self::new_with_config(pool, executor, contracts, cache, Default::default()).await
     }
 
     pub async fn new_with_config(
         pool: Pool<Sqlite>,
         executor: UnboundedSender<QueryMessage>,
         contracts: &[Contract],
-        model_cache: Arc<ModelCache>,
+        cache: Arc<Cache>,
         config: SqlConfig,
     ) -> Result<Self, Error> {
         for contract in contracts {
@@ -104,13 +102,11 @@ impl Sql {
             )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }
 
-        let local_cache = LocalCache::new(pool.clone()).await;
         let nft_metadata_semaphore = Arc::new(Semaphore::new(config.max_metadata_tasks));
         let db = Self {
             pool: pool.clone(),
             executor,
-            model_cache,
-            local_cache: Arc::new(local_cache),
+            cache,
             config,
             nft_metadata_semaphore,
         };
@@ -143,8 +139,8 @@ impl Sql {
         Ok(cursors_map)
     }
     
-    pub async fn model(&self, selector: Felt) -> Result<Model, Error> {
-        self.model_cache.model(&selector).await
+    pub async fn model(&self, selector: Felt) -> Result<torii_cache::Model, Error> {
+        self.cache.model_cache.model(&selector).await.map_err(Error::Cache)
     }
 
     fn set_entity_model(

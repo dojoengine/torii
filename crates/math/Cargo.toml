@@ -1,0 +1,10 @@
+[package]
+name = "torii-math"
+edition.workspace = true
+license.workspace = true
+license-file.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+starknet-core.workspace = true

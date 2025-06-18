@@ -15,6 +15,7 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
+use torii_math::I256;
 use torii_sqlite_types::OptimisticToken;
 use torii_storage::types::ParsedCall;
 use tracing::{debug, error, info, warn};
@@ -28,7 +29,7 @@ use crate::types::{
     EventMessage as EventMessageUpdated, Model as ModelRegistered, OptimisticEntity,
     OptimisticEventMessage, Token, TokenBalance, Transaction,
 };
-use crate::utils::{felt_to_sql_string, felts_to_sql_string, u256_to_sql_string, I256};
+use crate::utils::{felt_to_sql_string, felts_to_sql_string, u256_to_sql_string};
 use crate::Cursor;
 
 pub mod erc;

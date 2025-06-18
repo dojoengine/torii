@@ -9,7 +9,7 @@ members = [
 	"crates/server",
  	"crates/sqlite/types",
 	"xtask/generate-test-db",
-	"crates/task-network", "crates/storage",
+	"crates/task-network", "crates/storage", "crates/cache", "crates/math",
 ]
 
 [workspace.package]
@@ -59,6 +59,8 @@ torii-task-network = { path = "crates/task-network" }
 torii-indexer-fetcher = { path = "crates/indexer/fetcher" }
 torii-indexer = { path = "crates/indexer/engine" }
 torii-storage = { path = "crates/storage" }
+torii-math = { path = "crates/math" }
+torii-cache = { path = "crates/cache" }
 
 # macros
 merge-options = { git = "https://github.com/dojoengine/dojo", rev = "82fe9bd" }

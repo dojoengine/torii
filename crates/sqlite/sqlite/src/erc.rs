@@ -24,19 +24,18 @@ use crate::utils::{
 };
 
 impl Sql {
-
     pub(crate) async fn try_register_erc20_token_metadata<P: Provider + Sync>(
         &self,
         contract_address: Felt,
         token_id: &str,
         provider: &P,
     ) -> Result<(), Error> {
-        let _lock = match self.local_cache.get_token_registration_lock(token_id).await {
+        let _lock = match self.cache.erc_cache.get_token_registration_lock(token_id).await {
             Some(lock) => lock,
             None => return Ok(()), // Already registered by another thread
         };
         let _guard = _lock.lock().await;
-        if self.local_cache.is_token_registered(token_id).await {
+        if self.cache.erc_cache.is_token_registered(token_id).await {
             return Ok(());
         }
 
@@ -121,7 +120,7 @@ impl Sql {
             ))
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
-        self.local_cache.mark_token_registered(token_id).await;
+        self.cache.erc_cache.mark_token_registered(token_id).await;
 
         Ok(())
     }
@@ -133,12 +132,12 @@ impl Sql {
         actual_token_id: U256,
         provider: &P,
     ) -> Result<(), Error> {
-        let _lock = match self.local_cache.get_token_registration_lock(id).await {
+        let _lock = match self.cache.erc_cache.get_token_registration_lock(id).await {
             Some(lock) => lock,
             None => return Ok(()), // Already registered by another thread
         };
         let _guard = _lock.lock().await;
-        if self.local_cache.is_token_registered(id).await {
+        if self.cache.erc_cache.is_token_registered(id).await {
             return Ok(());
         }
 
@@ -162,7 +161,7 @@ impl Sql {
             ))
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
-        self.local_cache.mark_token_registered(id).await;
+        self.cache.erc_cache.mark_token_registered(id).await;
 
         Ok(())
     }
