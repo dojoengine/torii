@@ -7,7 +7,6 @@ use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::Semaphore;
 use torii_cache::Cache;
 use torii_sqlite_types::ContractCursor;
 use torii_storage::types::Cursor;
@@ -41,7 +40,6 @@ pub struct SqlConfig {
     pub model_indices: Vec<ModelIndices>,
     pub historical_models: HashSet<Felt>,
     pub hooks: Vec<Hook>,
-    pub max_metadata_tasks: usize,
 }
 
 impl Default for SqlConfig {
@@ -51,7 +49,6 @@ impl Default for SqlConfig {
             model_indices: vec![],
             historical_models: HashSet::new(),
             hooks: vec![],
-            max_metadata_tasks: 10,
         }
     }
 }

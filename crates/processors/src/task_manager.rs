@@ -4,6 +4,7 @@ use dojo_world::contracts::WorldContractReader;
 use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
+use torii_cache::Cache;
 use torii_storage::types::ContractType;
 use torii_storage::Storage;
 use torii_task_network::TaskNetwork;
@@ -37,6 +38,7 @@ struct TaskData {
 #[allow(missing_debug_implementations)]
 pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     storage: Arc<dyn Storage>,
+    cache: Arc<Cache>,
     world: Arc<WorldContractReader<P>>,
     task_network: TaskNetwork<TaskId, TaskData>,
     processors: Arc<Processors<P>>,
@@ -46,6 +48,7 @@ pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
     pub fn new(
         storage: Arc<dyn Storage>,
+        cache: Arc<Cache>,
         world: Arc<WorldContractReader<P>>,
         processors: Arc<Processors<P>>,
         max_concurrent_tasks: usize,
@@ -53,6 +56,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
     ) -> Self {
         Self {
             storage,
+            cache,
             world,
             task_network: TaskNetwork::new(max_concurrent_tasks),
             processors,
@@ -126,6 +130,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         let world = self.world.clone();
         let processors = self.processors.clone();
         let event_processor_config = self.event_processor_config.clone();
+        let cache = self.cache.clone();
 
         self.task_network
             .process_tasks(move |task_id, task_data| {
@@ -133,6 +138,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                 let world = world.clone();
                 let processors = processors.clone();
                 let event_processor_config = event_processor_config.clone();
+                let cache = cache.clone();
 
                 async move {
                     // Process all events for this task sequentially
@@ -166,6 +172,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
 
                             let ctx = EventProcessorContext {
                                 storage: storage.clone(),
+                                cache: cache.clone(),
                                 block_number: *block_number,
                                 block_timestamp: *block_timestamp,
                                 event_id: event_id.clone(),
