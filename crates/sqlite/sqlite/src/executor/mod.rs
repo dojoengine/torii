@@ -29,7 +29,7 @@ use crate::types::{
     EventMessage as EventMessageUpdated, Model as ModelRegistered, OptimisticEntity,
     OptimisticEventMessage, Token, TokenBalance, Transaction,
 };
-use crate::utils::{felt_to_sql_string, felts_to_sql_string, u256_to_sql_string};
+use crate::utils::{felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, u256_to_sql_string};
 use crate::Cursor;
 
 pub mod erc;
@@ -717,7 +717,10 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     "INSERT INTO tokens (id, contract_address, token_id, name, symbol, decimals, \
                      metadata) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
                 )
-                .bind(&register_nft_token.id)
+                .bind(felt_and_u256_to_sql_string(
+                    &register_nft_token.contract_address,
+                    &register_nft_token.token_id,
+                ))
                 .bind(felt_to_sql_string(&register_nft_token.contract_address))
                 .bind(u256_to_sql_string(&register_nft_token.token_id))
                 .bind(&name)

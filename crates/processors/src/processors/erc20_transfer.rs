@@ -9,6 +9,7 @@ use starknet::providers::Provider;
 use torii_sqlite::Sql;
 use tracing::debug;
 
+use crate::erc::try_register_erc20_token;
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext};
@@ -68,10 +69,10 @@ where
         // this cache is used while applying the cache diff
         // so we need to make sure that all RegisterErc*Token queries
         // are applied before the cache diff is applied
-        self.try_register_erc20_token_metadata(contract_address, &token_id, provider)
+        try_register_erc20_token(token_address, ctx.world.provider(), ctx.storage.clone(), ctx.cache.clone())
             .await?;
 
-        self.store_erc_transfer_event(
+        ctx.storage.store_erc_transfer_event(
             contract_address,
             from_address,
             to_address,

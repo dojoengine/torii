@@ -4,6 +4,7 @@ use dojo_world::contracts::WorldContractReader;
 use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
+use torii_storage::types::ContractType;
 use torii_storage::Storage;
 use torii_task_network::TaskNetwork;
 use tracing::{debug, error};
@@ -134,8 +135,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                 let event_processor_config = event_processor_config.clone();
 
                 async move {
-                    let mut local_storage = storage.clone();
-
                     // Process all events for this task sequentially
                     for ParallelizedEvent {
                         contract_type,
@@ -166,7 +165,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                             );
 
                             let ctx = EventProcessorContext {
-                                storage: local_storage.clone(),
+                                storage: storage.clone(),
                                 block_number: *block_number,
                                 block_timestamp: *block_timestamp,
                                 event_id: event_id.clone(),

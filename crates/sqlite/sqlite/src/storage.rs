@@ -7,10 +7,7 @@ use dojo_types::{
     schema::{Struct, Ty},
 };
 use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
-use starknet::{
-    core::types::{Event, U256},
-    providers::Provider,
-};
+use starknet::core::types::{Event, U256};
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_sqlite_types::HookEvent;
@@ -19,10 +16,13 @@ use torii_storage::{
     Storage, StorageError,
 };
 
-use crate::{constants::SQL_FELT_DELIMITER, executor::RegisterErc20TokenQuery};
 use crate::{
-    erc::fetch_token_metadata,
-    error::{Error, ParseError, TokenMetadataError},
+    constants::TOKEN_TRANSFER_TABLE,
+    executor::{RegisterErc20TokenQuery, RegisterNftTokenQuery},
+    utils::u256_to_sql_string,
+};
+use crate::{
+    error::{Error, ParseError},
     executor::{
         erc::UpdateNftMetadataQuery, error::ExecutorQueryError, ApplyBalanceDiffQuery, Argument,
         DeleteEntityQuery, EntityQuery, EventMessageQuery, QueryMessage, QueryType,
@@ -554,85 +554,6 @@ impl Storage for Sql {
         Ok(())
     }
 
-    /// Handles ERC20 token transfers, updating balances and registering tokens as needed.
-    async fn handle_erc20_transfer<P: Provider + Sync>(
-        &self,
-        provider: &P,
-        contract_address: Felt,
-        from_address: Felt,
-        to_address: Felt,
-        amount: U256,
-        block_timestamp: u64,
-        event_id: &str,
-    ) -> Result<(), StorageError> {
-    }
-
-    /// Handles NFT (ERC721/ERC1155) token transfers, updating balances and registering tokens as needed.
-    #[allow(clippy::too_many_arguments)]
-    async fn handle_nft_transfer<P: Provider + Sync>(
-        &self,
-        provider: &P,
-        contract_address: Felt,
-        from_address: Felt,
-        to_address: Felt,
-        token_id: U256,
-        amount: U256,
-        block_timestamp: u64,
-        event_id: &str,
-    ) -> Result<(), StorageError> {
-        // contract_address:id
-        let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
-        // optimistically add the token_id to cache
-        // this cache is used while applying the cache diff
-        // so we need to make sure that all RegisterErc*Token queries
-        // are applied before the cache diff is applied
-        self.try_register_nft_token_metadata(&id, contract_address, token_id, provider)
-            .await?;
-
-        self.store_erc_transfer_event(
-            contract_address,
-            from_address,
-            to_address,
-            amount,
-            &id,
-            block_timestamp,
-            event_id,
-        )?;
-
-        // from_address/contract_address:id
-        if from_address != Felt::ZERO {
-            let from_balance_id = format!(
-                "{}{SQL_FELT_DELIMITER}{}",
-                felt_to_sql_string(&from_address),
-                &id
-            );
-            let mut from_balance = self
-                .cache
-                .erc_cache
-                .balances_diff
-                .entry(from_balance_id)
-                .or_default();
-            *from_balance -= I256::from(amount);
-        }
-
-        if to_address != Felt::ZERO {
-            let to_balance_id = format!(
-                "{}{SQL_FELT_DELIMITER}{}",
-                felt_to_sql_string(&to_address),
-                &id
-            );
-            let mut to_balance = self
-                .cache
-                .erc_cache
-                .balances_diff
-                .entry(to_balance_id)
-                .or_default();
-            *to_balance += I256::from(amount);
-        }
-
-        Ok(())
-    }
-
     /// Registers an ERC20 token with the storage.
     async fn register_erc20_token(
         &self,
@@ -641,7 +562,6 @@ impl Storage for Sql {
         symbol: String,
         decimals: u8,
     ) -> Result<(), StorageError> {
-        let id = format!("{:#x}", contract_address);
         self.executor
             .send(QueryMessage::new(
                 "".to_string(),
@@ -657,6 +577,28 @@ impl Storage for Sql {
         Ok(())
     }
 
+    /// Registers an NFT token with the storage.
+    async fn register_nft_token(
+        &self,
+        contract_address: Felt,
+        token_id: U256,
+        metadata: String,
+    ) -> Result<(), StorageError> {
+        self.executor
+            .send(QueryMessage::new(
+                "".to_string(),
+                vec![],
+                QueryType::RegisterNftToken(RegisterNftTokenQuery {
+                    contract_address,
+                    token_id,
+                    metadata,
+                }),
+            ))
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+
+        Ok(())
+    }
+
     /// Updates NFT metadata for a specific token.
     async fn update_nft_metadata(
         &self,
@@ -665,7 +607,7 @@ impl Storage for Sql {
         metadata: String,
     ) -> Result<(), StorageError> {
         let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
-        
+
         self.executor
             .send(QueryMessage::new(
                 "".to_string(),
@@ -676,6 +618,51 @@ impl Storage for Sql {
                     token_id,
                     metadata,
                 }),
+            ))
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+
+        Ok(())
+    }
+
+    /// Stores an ERC transfer event with the storage.
+    #[allow(clippy::too_many_arguments)]
+    async fn store_erc_transfer_event(
+        &self,
+        contract_address: Felt,
+        from: Felt,
+        to: Felt,
+        amount: U256,
+        token_id: Option<U256>,
+        block_timestamp: u64,
+        event_id: &str,
+    ) -> Result<(), StorageError> {
+        let token_id = if let Some(token_id) = token_id {
+            felt_and_u256_to_sql_string(&contract_address, &token_id)
+        } else {
+            felt_to_sql_string(&contract_address)
+        };
+
+        let id = format!("{}:{}", event_id, token_id);
+
+        let insert_query = format!(
+            "INSERT INTO {TOKEN_TRANSFER_TABLE} (id, contract_address, from_address, to_address, \
+             amount, token_id, event_id, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING"
+        );
+
+        self.executor
+            .send(QueryMessage::new(
+                insert_query.to_string(),
+                vec![
+                    Argument::String(id),
+                    Argument::FieldElement(contract_address),
+                    Argument::FieldElement(from),
+                    Argument::FieldElement(to),
+                    Argument::String(u256_to_sql_string(&amount)),
+                    Argument::String(token_id.to_string()),
+                    Argument::String(event_id.to_string()),
+                    Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
+                ],
+                QueryType::Other,
             ))
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 

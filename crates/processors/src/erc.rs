@@ -13,7 +13,7 @@ use crate::{error::{Error, ParseError, TokenMetadataError}, fetch::{fetch_conten
 pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
     contract_address: Felt,
     provider: &P,
-    storage: Box<dyn Storage>,
+    storage: Arc<dyn Storage>,
     cache: Arc<Cache>,
 ) -> Result<(), Error> {
     let token_id = format!("{:#x}", contract_address);

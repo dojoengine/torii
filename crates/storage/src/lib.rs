@@ -135,7 +135,7 @@ pub trait Storage: Send + Sync {
         timestamp: DateTime<Utc>,
     ) -> Result<(), StorageError>;
 
-    /// Handles ERC20 token transfers, updating balances and registering tokens as needed.
+    /// Registers an ERC20 token with the storage.
     async fn register_erc20_token(
         &self,
         contract_address: Felt,
@@ -144,12 +144,24 @@ pub trait Storage: Send + Sync {
         decimals: u8,
     ) -> Result<(), StorageError>;
 
-    /// Handles NFT (ERC721/ERC1155) token transfers, updating balances and registering tokens as needed.
+    /// Registers an NFT (ERC721/ERC1155) token with the storage.
     async fn register_nft_token(
         &self,
         contract_address: Felt,
         token_id: U256,
         metadata: String,
+    ) -> Result<(), StorageError>;
+
+    /// Stores a token transfer event with the storage.
+    async fn store_erc_transfer_event(
+        &self,
+        contract_address: Felt,
+        from: Felt,
+        to: Felt,
+        amount: U256,
+        token_id: Option<U256>,
+        block_timestamp: u64,
+        event_id: &str,
     ) -> Result<(), StorageError>;
 
     /// Updates NFT metadata for a specific token.

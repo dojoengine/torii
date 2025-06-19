@@ -23,7 +23,6 @@ use torii_sqlite_types::{Contract, Hook, ModelIndices};
 
 pub mod constants;
 pub mod controllers;
-pub mod erc;
 pub mod error;
 pub mod executor;
 pub mod model;
@@ -67,7 +66,6 @@ impl SqlConfig {
 pub struct Sql {
     pub pool: Pool<Sqlite>,
     pub executor: UnboundedSender<QueryMessage>,
-    nft_metadata_semaphore: Arc<Semaphore>,
     cache: Arc<Cache>,
     pub config: SqlConfig,
 }
@@ -102,13 +100,11 @@ impl Sql {
             )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }
 
-        let nft_metadata_semaphore = Arc::new(Semaphore::new(config.max_metadata_tasks));
         let db = Self {
             pool: pool.clone(),
             executor,
             cache,
             config,
-            nft_metadata_semaphore,
         };
 
         db.execute().await?;

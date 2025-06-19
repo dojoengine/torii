@@ -19,7 +19,6 @@ use torii_math::I256;
 
 #[derive(Debug, Clone)]
 pub struct RegisterNftTokenQuery {
-    pub id: String,
     pub contract_address: Felt,
     pub token_id: U256,
     pub metadata: String,

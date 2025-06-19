@@ -39,7 +39,7 @@ impl std::fmt::Display for CallType {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Copy)]
 pub enum ContractType {
     WORLD,
     ERC20,

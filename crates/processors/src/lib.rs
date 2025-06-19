@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, Transaction};
 use starknet::providers::Provider;
-use torii_cache::ContractClassCache;
+use torii_cache::{Cache, ContractClassCache};
 use torii_storage::Storage;
 
 pub mod error;
@@ -25,6 +25,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct EventProcessorContext<P: Provider + Sync> {
     pub world: Arc<WorldContractReader<P>>,
     pub storage: Arc<dyn Storage>,
+    pub cache: Arc<Cache>,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub event_id: String,
