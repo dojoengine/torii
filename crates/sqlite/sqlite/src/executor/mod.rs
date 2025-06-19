@@ -739,7 +739,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     "INSERT INTO tokens (id, contract_address, name, symbol, decimals) VALUES (?, \
                      ?, ?, ?, ?) RETURNING *",
                 )
-                .bind(&register_erc20_token.token_id)
+                .bind(felt_to_sql_string(&register_erc20_token.contract_address))
                 .bind(felt_to_sql_string(&register_erc20_token.contract_address))
                 .bind(&register_erc20_token.name)
                 .bind(&register_erc20_token.symbol)

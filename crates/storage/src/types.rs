@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::Deserialize;
 use starknet::core::types::Felt;
 
@@ -33,6 +35,42 @@ impl std::fmt::Display for CallType {
             CallType::Call => write!(f, "call"),
             CallType::Invoke => write!(f, "invoke"),
             CallType::Deploy => write!(f, "deploy"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub enum ContractType {
+    WORLD,
+    ERC20,
+    ERC721,
+    ERC1155,
+    UDC,
+}
+
+impl FromStr for ContractType {
+    type Err = anyhow::Error;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_lowercase().as_str() {
+            "world" => Ok(ContractType::WORLD),
+            "erc20" => Ok(ContractType::ERC20),
+            "erc721" => Ok(ContractType::ERC721),
+            "erc1155" => Ok(ContractType::ERC1155),
+            "udc" => Ok(ContractType::UDC),
+            _ => Err(anyhow::anyhow!("Invalid ERC type: {}", input)),
+        }
+    }
+}
+
+impl std::fmt::Display for ContractType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ContractType::WORLD => write!(f, "WORLD"),
+            ContractType::ERC20 => write!(f, "ERC20"),
+            ContractType::ERC721 => write!(f, "ERC721"),
+            ContractType::ERC1155 => write!(f, "ERC1155"),
+            ContractType::UDC => write!(f, "UDC"),
         }
     }
 }

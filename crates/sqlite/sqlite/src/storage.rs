@@ -19,7 +19,7 @@ use torii_storage::{
     Storage, StorageError,
 };
 
-use crate::constants::SQL_FELT_DELIMITER;
+use crate::{constants::SQL_FELT_DELIMITER, executor::RegisterErc20TokenQuery};
 use crate::{
     erc::fetch_token_metadata,
     error::{Error, ParseError, TokenMetadataError},
@@ -630,6 +630,30 @@ impl Storage for Sql {
             *to_balance += I256::from(amount);
         }
 
+        Ok(())
+    }
+
+    /// Registers an ERC20 token with the storage.
+    async fn register_erc20_token(
+        &self,
+        contract_address: Felt,
+        name: String,
+        symbol: String,
+        decimals: u8,
+    ) -> Result<(), StorageError> {
+        let id = format!("{:#x}", contract_address);
+        self.executor
+            .send(QueryMessage::new(
+                "".to_string(),
+                vec![],
+                QueryType::RegisterErc20Token(RegisterErc20TokenQuery {
+                    contract_address,
+                    name,
+                    symbol,
+                    decimals,
+                }),
+            ))
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         Ok(())
     }
 

@@ -6,13 +6,14 @@ use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, Transaction};
 use starknet::providers::Provider;
 use torii_cache::ContractClassCache;
-use torii_sqlite::Sql;
 use torii_storage::Storage;
 
 pub mod error;
 pub mod processors;
 pub mod task_manager;
 mod erc;
+mod fetch;
+mod constants;
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
@@ -23,7 +24,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct EventProcessorContext<P: Provider + Sync> {
     pub world: Arc<WorldContractReader<P>>,
-    pub storage: Box<dyn Storage>,
+    pub storage: Arc<dyn Storage>,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub event_id: String,
@@ -91,16 +92,32 @@ where
     ) -> Result<()>;
 }
 
+pub struct BlockProcessorContext<P: Provider + Sync> {
+    pub storage: Arc<dyn Storage>,
+    pub provider: Arc<P>,
+    pub block_number: u64,
+    pub block_timestamp: u64,
+}
+
 #[async_trait]
 pub trait BlockProcessor<P: Provider + Sync>: Send + Sync {
     fn get_block_number(&self) -> String;
     async fn process(
         &self,
-        db: &mut Sql,
-        provider: &P,
-        block_number: u64,
-        block_timestamp: u64,
+        ctx: &BlockProcessorContext<P>,
     ) -> Result<()>;
+}
+
+pub struct TransactionProcessorContext<P: Provider + Sync + std::fmt::Debug> {
+    pub storage: Arc<dyn Storage>,
+    pub provider: Arc<P>,
+    pub block_number: u64,
+    pub block_timestamp: u64,
+    pub transaction_hash: Felt,
+    pub transaction: Transaction,
+    pub contract_addresses: HashSet<Felt>,
+    pub contract_class_cache: Arc<ContractClassCache<P>>,
+    pub unique_models: HashSet<Felt>,
 }
 
 #[async_trait]
@@ -108,14 +125,6 @@ pub trait TransactionProcessor<P: Provider + Sync + std::fmt::Debug>: Send + Syn
     #[allow(clippy::too_many_arguments)]
     async fn process(
         &self,
-        db: &mut Sql,
-        provider: &P,
-        block_number: u64,
-        block_timestamp: u64,
-        transaction_hash: Felt,
-        contract_addresses: &HashSet<Felt>,
-        transaction: &Transaction,
-        contract_class_cache: &ContractClassCache<P>,
-        unique_models: &HashSet<Felt>,
+        ctx: &TransactionProcessorContext<P>,
     ) -> Result<()>;
 }

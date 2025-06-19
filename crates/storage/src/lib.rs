@@ -139,7 +139,6 @@ pub trait Storage: Send + Sync {
     async fn register_erc20_token(
         &self,
         contract_address: Felt,
-        token_id: U256,
         name: String,
         symbol: String,
         decimals: u8,

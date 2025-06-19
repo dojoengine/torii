@@ -7,7 +7,7 @@ use dojo_types::schema::Ty;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use starknet::core::types::Felt;
-use torii_storage::types::ParsedCall;
+use torii_storage::types::{ContractType, ParsedCall};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SQLFelt(pub Felt);
@@ -178,51 +178,15 @@ pub struct TokenBalance {
     pub token_id: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Contract {
     pub address: Felt,
     pub r#type: ContractType,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ContractType {
-    WORLD,
-    ERC20,
-    ERC721,
-    ERC1155,
-    UDC,
-}
-
 impl std::fmt::Display for Contract {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{:#x}", self.r#type, self.address)
-    }
-}
-
-impl FromStr for ContractType {
-    type Err = anyhow::Error;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        match input.to_lowercase().as_str() {
-            "world" => Ok(ContractType::WORLD),
-            "erc20" => Ok(ContractType::ERC20),
-            "erc721" => Ok(ContractType::ERC721),
-            "erc1155" => Ok(ContractType::ERC1155),
-            "udc" => Ok(ContractType::UDC),
-            _ => Err(anyhow::anyhow!("Invalid ERC type: {}", input)),
-        }
-    }
-}
-
-impl std::fmt::Display for ContractType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ContractType::WORLD => write!(f, "WORLD"),
-            ContractType::ERC20 => write!(f, "ERC20"),
-            ContractType::ERC721 => write!(f, "ERC721"),
-            ContractType::ERC1155 => write!(f, "ERC1155"),
-            ContractType::UDC => write!(f, "UDC"),
-        }
     }
 }
 

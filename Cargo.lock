@@ -11388,6 +11388,7 @@ dependencies = [
  "starknet-crypto 0.7.4",
  "thiserror 1.0.63",
  "tokio",
+ "torii-cache",
  "torii-storage",
  "tracing",
 ]
@@ -11402,12 +11403,13 @@ dependencies = [
  "cainome",
  "cainome-cairo-serde",
  "cainome-cairo-serde-derive",
+ "data-url",
  "dojo-types 1.5.0-alpha.2",
  "dojo-world",
  "futures-util",
  "hashlink",
  "ipfs-api-backend-hyper",
- "lazy_static",
+ "once_cell",
  "reqwest",
  "serde",
  "serde_json",
@@ -11415,7 +11417,8 @@ dependencies = [
  "starknet-crypto 0.7.4",
  "thiserror 1.0.63",
  "tokio",
- "torii-sqlite",
+ "tokio-util",
+ "torii-cache",
  "torii-storage",
  "torii-task-network",
  "tracing",
@@ -11598,6 +11601,7 @@ dependencies = [
 name = "torii-storage"
 version = "1.5.8-preview.2"
 dependencies = [
+ "anyhow",
  "async-trait",
  "chrono",
  "dojo-types 1.5.0-alpha.2",

@@ -4,15 +4,13 @@ use dojo_world::contracts::WorldContractReader;
 use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
-use torii_sqlite::types::ContractType;
-use torii_sqlite::Sql;
 use torii_storage::Storage;
 use torii_task_network::TaskNetwork;
 use tracing::{debug, error};
 
 use crate::error::Error;
 use crate::processors::Processors;
-use crate::{EventKey, EventProcessorConfig, IndexingMode};
+use crate::{EventKey, EventProcessorConfig, EventProcessorContext, IndexingMode};
 
 const LOG_TARGET: &str = "torii::indexer::task_manager";
 
@@ -37,7 +35,7 @@ struct TaskData {
 
 #[allow(missing_debug_implementations)]
 pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
-    storage: Box<dyn Storage>,
+    storage: Arc<dyn Storage>,
     world: Arc<WorldContractReader<P>>,
     task_network: TaskNetwork<TaskId, TaskData>,
     processors: Arc<Processors<P>>,
@@ -46,7 +44,7 @@ pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
 
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
     pub fn new(
-        storage: Box<dyn Storage>,
+        storage: Arc<dyn Storage>,
         world: Arc<WorldContractReader<P>>,
         processors: Arc<Processors<P>>,
         max_concurrent_tasks: usize,
@@ -167,18 +165,17 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 "Processing parallelized event."
                             );
 
-                            if let Err(e) = processor
-                                .process(
-                                    world.clone(),
-                                    &mut local_storage,
-                                    *block_number,
-                                    *block_timestamp,
-                                    event_id,
-                                    event,
-                                    &event_processor_config,
-                                )
-                                .await
-                            {
+                            let ctx = EventProcessorContext {
+                                storage: local_storage.clone(),
+                                block_number: *block_number,
+                                block_timestamp: *block_timestamp,
+                                event_id: event_id.clone(),
+                                event: event.clone(),
+                                config: event_processor_config.clone(),
+                                world: world.clone(),
+                            };
+
+                            if let Err(e) = processor.process(&ctx).await {
                                 error!(
                                     target: LOG_TARGET,
                                     event_name = processor.event_key(),

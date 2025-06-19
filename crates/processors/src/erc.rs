@@ -1,28 +1,35 @@
-use starknet::providers::Provider;
+use std::{str::FromStr, sync::Arc};
+
+use cainome_cairo_serde::{ByteArray, CairoSerde};
+use data_url::{mime::Mime, DataUrl};
+use starknet::{core::{types::{requests::CallRequest, BlockId, BlockTag, FunctionCall, U256}, utils::{get_selector_from_name, parse_cairo_short_string}}, macros::selector, providers::{Provider, ProviderRequestData, ProviderResponseData}};
+use starknet_crypto::Felt;
 use torii_cache::Cache;
 use torii_storage::Storage;
+use tracing::{debug, warn};
 
-use crate::error::TokenMetadataError;
+use crate::{error::{Error, ParseError, TokenMetadataError}, fetch::{fetch_content_from_http, fetch_content_from_ipfs}};
 
 pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
     contract_address: Felt,
-    token_id: &str,
     provider: &P,
     storage: Box<dyn Storage>,
     cache: Arc<Cache>,
 ) -> Result<(), Error> {
-    let _lock = match cache.erc_cache.get_token_registration_lock(token_id).await {
+    let token_id = format!("{:#x}", contract_address);
+    let _lock = match cache.erc_cache.get_token_registration_lock(&token_id).await {
         Some(lock) => lock,
         None => return Ok(()), // Already registered by another thread
     };
     let _guard = _lock.lock().await;
-    if cache.erc_cache.is_token_registered(token_id).await {
+    if cache.erc_cache.is_token_registered(&token_id).await {
         return Ok(());
     }
 
-    storage.register_erc20_token(token_id, contract_address, name, symbol, decimals).await?;
+    let (name, symbol, decimals) = fetch_erc20_token_metadata(provider, contract_address).await?;
+    storage.register_erc20_token(contract_address, name, symbol, decimals).await?;
 
-    cache.erc_cache.mark_token_registered(token_id).await;
+    cache.erc_cache.mark_token_registered(&token_id).await;
 
     Ok(())
 }
@@ -36,7 +43,7 @@ pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
         ProviderRequestData::Call(CallRequest {
             request: FunctionCall {
                 contract_address,
-                entry_point_selector: get_selector_from_name("name").unwrap(),
+                entry_point_selector: selector!("name"),
                 calldata: vec![],
             },
             block_id,
@@ -44,7 +51,7 @@ pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
         ProviderRequestData::Call(CallRequest {
             request: FunctionCall {
                 contract_address,
-                entry_point_selector: get_selector_from_name("symbol").unwrap(),
+                entry_point_selector: selector!("symbol"),
                 calldata: vec![],
             },
             block_id,
@@ -52,7 +59,7 @@ pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
         ProviderRequestData::Call(CallRequest {
             request: FunctionCall {
                 contract_address,
-                entry_point_selector: get_selector_from_name("decimals").unwrap(),
+                entry_point_selector: selector!("decimals"),
                 calldata: vec![],
             },
             block_id,
@@ -65,36 +72,34 @@ pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
     let name = match &results[0] {
         ProviderResponseData::Call(name) if name.len() == 1 => {
             parse_cairo_short_string(&name[0])
-                .map_err(|e| Error::Parse(ParseError::ParseCairoShortString(e)))?
+                .map_err(|e| TokenMetadataError::Parse(ParseError::ParseCairoShortString(e)))?
         }
         ProviderResponseData::Call(name) => ByteArray::cairo_deserialize(name, 0)
-            .map_err(|e| Error::Parse(ParseError::CairoSerdeError(e)))?
+            .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
             .to_string()
-            .map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?,
-        _ => return Err(Error::TokenMetadata(TokenMetadataError::InvalidTokenName)),
+            .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
+        _ => return Err(TokenMetadataError::InvalidTokenName),
     };
 
     // Parse symbol
     let symbol = match &results[1] {
         ProviderResponseData::Call(symbol) if symbol.len() == 1 => {
             parse_cairo_short_string(&symbol[0])
-                .map_err(|e| Error::Parse(ParseError::ParseCairoShortString(e)))?
+                .map_err(|e| TokenMetadataError::Parse(ParseError::ParseCairoShortString(e)))?
         }
         ProviderResponseData::Call(symbol) => ByteArray::cairo_deserialize(symbol, 0)
-            .map_err(|e| Error::Parse(ParseError::CairoSerdeError(e)))?
+            .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
             .to_string()
-            .map_err(|e| Error::Parse(ParseError::FromUtf8(e)))?,
-        _ => return Err(Error::TokenMetadata(TokenMetadataError::InvalidTokenSymbol)),
+            .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
+        _ => return Err(TokenMetadataError::InvalidTokenSymbol),
     };
 
     // Parse decimals
     let decimals = match &results[2] {
         ProviderResponseData::Call(decimals) => u8::cairo_deserialize(decimals, 0)
-            .map_err(|e| Error::Parse(ParseError::CairoSerdeError(e)))?,
+            .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?,
         _ => {
-            return Err(Error::TokenMetadata(
-                TokenMetadataError::InvalidTokenDecimals,
-            ))
+            return Err(TokenMetadataError::InvalidTokenDecimals)
         }
     };
 
@@ -269,5 +274,83 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, TokenM
             Ok(json)
         }
         uri => Err(TokenMetadataError::UnsupportedUriScheme(uri.to_string())),
+    }
+}
+
+/// Sanitizes a JSON string by escaping unescaped double quotes within string values.
+pub fn sanitize_json_string(s: &str) -> String {
+    let mut result = String::new();
+    let mut chars = s.chars().peekable();
+    let mut in_string = false;
+    let mut backslash_count = 0;
+
+    while let Some(c) = chars.next() {
+        if !in_string {
+            if c == '"' {
+                in_string = true;
+                backslash_count = 0;
+                result.push('"');
+            } else {
+                result.push(c);
+            }
+        } else if c == '\\' {
+            backslash_count += 1;
+            result.push('\\');
+        } else if c == '"' {
+            if backslash_count % 2 == 0 {
+                // Unescaped double quote
+                let mut temp_chars = chars.clone();
+                // Skip whitespace
+                while let Some(&next_c) = temp_chars.peek() {
+                    if next_c.is_whitespace() {
+                        temp_chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                // Check next non-whitespace character
+                if let Some(&next_c) = temp_chars.peek() {
+                    if next_c == ':' || next_c == ',' || next_c == '}' {
+                        // End of string
+                        result.push('"');
+                        in_string = false;
+                    } else {
+                        // Internal unescaped quote, escape it
+                        result.push_str("\\\"");
+                    }
+                } else {
+                    // End of input, treat as end of string
+                    result.push('"');
+                    in_string = false;
+                }
+            } else {
+                // Escaped double quote, part of string
+                result.push('"');
+            }
+            backslash_count = 0;
+        } else {
+            result.push(c);
+            backslash_count = 0;
+        }
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_json_string() {
+        let input = r#"{"name":""Rage Shout" DireWolf"}"#;
+        let expected = r#"{"name":"\"Rage Shout\" DireWolf"}"#;
+        let sanitized = sanitize_json_string(input);
+        assert_eq!(sanitized, expected);
+
+        let input_escaped = r#"{"name":"\"Properly Escaped\" Wolf"}"#;
+        let expected_escaped = r#"{"name":"\"Properly Escaped\" Wolf"}"#;
+        let sanitized_escaped = sanitize_json_string(input_escaped);
+        assert_eq!(sanitized_escaped, expected_escaped);
     }
 }

@@ -35,7 +35,6 @@ pub struct UpdateNftMetadataQuery {
 
 #[derive(Debug, Clone)]
 pub struct RegisterErc20TokenQuery {
-    pub token_id: String,
     pub contract_address: Felt,
     pub name: String,
     pub symbol: String,

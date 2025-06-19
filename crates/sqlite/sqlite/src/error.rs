@@ -31,14 +31,6 @@ pub enum Error {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum HttpError {
-    #[error("Unsuccessful status code: {0} with body: {1}")]
-    StatusCode(reqwest::StatusCode, String),
-    #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
-}
-
-#[derive(Debug, thiserror::Error)]
 pub enum ParseError {
     #[error(transparent)]
     NonAsciiName(#[from] NonAsciiNameError),
