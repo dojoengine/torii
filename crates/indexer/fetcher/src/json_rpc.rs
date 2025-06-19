@@ -30,17 +30,12 @@ pub(crate) const LOG_TARGET: &str = "torii::indexer::fetcher";
 #[derive(Debug)]
 pub struct Fetcher<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     pub provider: Arc<P>,
-    pub flags: FetchingFlags,
     pub config: FetcherConfig,
 }
 
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
     pub fn new(provider: Arc<P>, config: FetcherConfig) -> Self {
-        Self {
-            config,
-            flags: FetchingFlags::empty(),
-            provider,
-        }
+        Self { config, provider }
     }
 
     pub async fn fetch(&self, cursors: &HashMap<Felt, Cursor>) -> Result<FetchResult, Error> {
@@ -52,7 +47,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         let range = self.fetch_range(cursors, latest_block.clone()).await?;
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
-        let pending = if self.flags.contains(FetchingFlags::PENDING_BLOCKS)
+        let pending = if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
             && cursors
                 .values()
                 .any(|c| c.head == Some(latest_block_number))
@@ -197,7 +192,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         }
 
         // Step 7: Fetch transaction details if enabled
-        if self.flags.contains(FetchingFlags::TRANSACTIONS) && !blocks.is_empty() {
+        if self.config.flags.contains(FetchingFlags::TRANSACTIONS) && !blocks.is_empty() {
             let mut transaction_requests = Vec::new();
             let mut block_numbers_for_tx = Vec::new();
             for (block_number, block) in &blocks {
