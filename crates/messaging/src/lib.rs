@@ -12,7 +12,6 @@ use sqlx::types::chrono::Utc;
 use starknet::providers::Provider;
 use starknet_core::types::{typed_data::TypeReference, TypedData};
 use starknet_crypto::{poseidon_hash_many, Felt};
-use torii_sqlite::{utils::felts_to_sql_string, Sql};
 use tracing::{debug, info, warn};
 pub use validation::{validate_message, validate_signature};
 
@@ -72,7 +71,6 @@ pub async fn validate_and_set_entity<P: Provider + Sync>(
             return Err(MessagingError::ModelNotFound(e.to_string()));
         }
     };
-    let keys_str = felts_to_sql_string(&keys);
     let entity_id = poseidon_hash_many(&keys);
     let model_id = ty_model_id(&ty).unwrap();
 
@@ -150,7 +148,7 @@ pub async fn validate_and_set_entity<P: Provider + Sync>(
         Utc::now().timestamp() as u64,
         entity_id,
         model_id,
-        &keys_str,
+        &keys,
     )
     .await
     {

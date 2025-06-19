@@ -18,5 +18,5 @@ starknet-core.workspace = true
 starknet-crypto.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-torii-sqlite.workspace = true
+torii-storage.workspace = true
 tracing.workspace = true

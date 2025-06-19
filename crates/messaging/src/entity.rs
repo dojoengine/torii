@@ -3,6 +3,7 @@ use dojo_types::schema::Ty;
 use dojo_world::contracts::naming::compute_selector_from_tag;
 use starknet::core::types::Felt;
 use torii_sqlite::Sql;
+use torii_storage::Storage;
 
 use crate::error::MessagingError;
 
@@ -51,16 +52,16 @@ pub fn get_identity_from_ty(ty: &Ty) -> Result<Felt, MessagingError> {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn set_entity(
-    db: &Sql,
+    storage: Box<dyn Storage>,
     ty: Ty,
     block_timestamp: u64,
     entity_id: Felt,
     model_id: Felt,
-    keys: &str,
+    keys: Vec<Felt>,
 ) -> Result<(), MessagingError> {
     let event_id = format!("{:#064x}", block_timestamp);
 
-    db.set_entity(
+    storage.set_entity(
         ty,
         &event_id,
         block_timestamp,
@@ -70,6 +71,6 @@ pub async fn set_entity(
     )
     .await
     .map_err(MessagingError::SqliteError)?;
-    db.execute().await?;
+    storage.execute().await?;
     Ok(())
 }

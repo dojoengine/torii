@@ -51,7 +51,7 @@ pub trait Storage: Send + Sync {
         block_timestamp: u64,
         entity_id: Felt,
         model_selector: Felt,
-        keys_str: Option<&str>,
+        keys: Option<Vec<Felt>>,
     ) -> Result<(), StorageError>;
 
     /// Sets an event message with the storage.

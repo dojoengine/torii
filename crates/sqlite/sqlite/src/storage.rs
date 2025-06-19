@@ -30,7 +30,7 @@ use crate::{
     },
     utils::{
         felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string,
-        utc_dt_string_from_timestamp
+        utc_dt_string_from_timestamp,
     },
     Sql,
 };
@@ -128,7 +128,8 @@ impl Storage for Sql {
 
         // we set the model in the cache directly
         // because entities might be using it before the query queue is processed
-        self.cache.model_cache
+        self.cache
+            .model_cache
             .set(
                 selector,
                 torii_cache::Model {
@@ -173,12 +174,14 @@ impl Storage for Sql {
         block_timestamp: u64,
         entity_id: Felt,
         model_selector: Felt,
-        keys_str: Option<&str>,
+        keys: Option<Vec<Felt>>,
     ) -> Result<(), StorageError> {
         let namespaced_name = entity.name();
 
         let entity_id = format!("{:#x}", entity_id);
         let model_id = format!("{:#x}", model_selector);
+
+        let keys_str = keys.map(|keys| felts_to_sql_string(&keys));
 
         let insert_entities = if keys_str.is_some() {
             "INSERT INTO entities (id, event_id, executed_at, keys) VALUES (?, ?, ?, ?) ON \
@@ -197,8 +200,8 @@ impl Storage for Sql {
             Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
         ];
 
-        if let Some(keys) = keys_str {
-            arguments.push(Argument::String(keys.to_string()));
+        if let Some(keys) = keys_str.clone() {
+            arguments.push(Argument::String(keys));
         }
 
         self.executor
@@ -210,7 +213,7 @@ impl Storage for Sql {
                     block_timestamp: utc_dt_string_from_timestamp(block_timestamp),
                     entity_id: entity_id.clone(),
                     model_id: model_id.clone(),
-                    keys_str: keys_str.map(|s| s.to_string()),
+                    keys_str: keys_str.clone(),
                     ty: entity.clone(),
                     is_historical: self.config.is_historical(&model_selector),
                 }),
@@ -662,7 +665,12 @@ impl Storage for Sql {
                 felt_to_sql_string(&to_address),
                 &id
             );
-            let mut to_balance = self.cache.erc_cache.balances_diff.entry(to_balance_id).or_default();
+            let mut to_balance = self
+                .cache
+                .erc_cache
+                .balances_diff
+                .entry(to_balance_id)
+                .or_default();
             *to_balance += I256::from(amount);
         }
 

@@ -106,8 +106,6 @@ where
             "Store set record.",
         );
 
-        let keys_str = felts_to_sql_string(&event.keys);
-
         let mut keys_and_unpacked = [event.keys, event.values].concat();
 
         let mut entity = model.schema;
@@ -119,7 +117,7 @@ where
             block_timestamp,
             event.entity_id,
             event.selector,
-            Some(&keys_str),
+            Some(&event.keys),
         )
         .await?;
         Ok(())
