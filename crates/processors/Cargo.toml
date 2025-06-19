@@ -29,3 +29,4 @@ hashlink.workspace = true
 serde.workspace = true
 reqwest.workspace = true
 torii-storage.workspace = true
+torii-cache.workspace = true

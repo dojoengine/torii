@@ -5,12 +5,14 @@ use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, Transaction};
 use starknet::providers::Provider;
-use torii_sqlite::cache::ContractClassCache;
+use torii_cache::ContractClassCache;
 use torii_sqlite::Sql;
+use torii_storage::Storage;
 
 pub mod error;
 pub mod processors;
 pub mod task_manager;
+mod erc;
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
@@ -18,6 +20,16 @@ use crate::task_manager::TaskId;
 pub use processors::Processors;
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+pub struct EventProcessorContext<P: Provider + Sync> {
+    pub world: Arc<WorldContractReader<P>>,
+    pub storage: Box<dyn Storage>,
+    pub block_number: u64,
+    pub block_timestamp: u64,
+    pub event_id: String,
+    pub event: Event,
+    pub config: EventProcessorConfig,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct EventProcessorConfig {
@@ -75,13 +87,7 @@ where
     #[allow(clippy::too_many_arguments)]
     async fn process(
         &self,
-        world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        block_number: u64,
-        block_timestamp: u64,
-        event_id: &str,
-        event: &Event,
-        _config: &EventProcessorConfig,
+        ctx: &EventProcessorContext<P>,
     ) -> Result<()>;
 }
 

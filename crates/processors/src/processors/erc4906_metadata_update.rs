@@ -11,7 +11,7 @@ use tracing::debug;
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig, IndexingMode};
+use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc4906_metadata_update";
 #[derive(Default, Debug)]
@@ -55,19 +55,27 @@ where
 
     async fn process(
         &self,
-        world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        _block_number: u64,
-        _block_timestamp: u64,
-        _event_id: &str,
-        event: &Event,
-        _config: &EventProcessorConfig,
+        ctx: &EventProcessorContext<P>,
     ) -> Result<(), Error> {
-        let token_address = event.from_address;
-        let token_id = U256Cainome::cairo_deserialize(&event.keys, 1)?;
+        let token_address = ctx.event.from_address;
+        let token_id = U256Cainome::cairo_deserialize(&ctx.event.keys, 1)?;
         let token_id = U256::from_words(token_id.low, token_id.high);
 
-        db.update_nft_metadata(world.provider(), token_address, token_id)
+        let id = felt_and_u256_to_sql_string(&token_address, &token_id);
+        if !ctx.cache.erc_cache.is_token_registered(&id).await {
+            return Ok(());
+        }
+
+        let _permit = ctx
+            .cache
+            .nft_metadata_semaphore
+            .acquire()
+            .await
+            .map_err(|e| Error::TokenMetadata(TokenMetadataError::AcquireError(e)))?;
+        let metadata = fetch_token_metadata(token_address, token_id, ctx.world.provider()).await?;
+
+
+        ctx.storage.update_nft_metadata(token_address, token_id, metadata)
             .await?;
 
         debug!(

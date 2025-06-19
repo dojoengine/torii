@@ -11,9 +11,10 @@ use tracing::debug;
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc20_transfer";
+
 
 #[derive(Default, Debug)]
 pub struct Erc20TransferProcessor;
@@ -54,31 +55,55 @@ where
 
     async fn process(
         &self,
-        world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        _block_number: u64,
-        block_timestamp: u64,
-        event_id: &str,
-        event: &Event,
-        _config: &EventProcessorConfig,
+        ctx: &EventProcessorContext<P>,
     ) -> Result<(), Error> {
-        let token_address = event.from_address;
-        let from = event.keys[1];
-        let to = event.keys[2];
+        let token_address = ctx.event.from_address;
+        let from = ctx.event.keys[1];
+        let to = ctx.event.keys[2];
 
-        let value = U256Cainome::cairo_deserialize(&event.data, 0)?;
+        let value = U256Cainome::cairo_deserialize(&ctx.event.data, 0)?;
         let value = U256::from_words(value.low, value.high);
 
-        db.handle_erc20_transfer(
-            token_address,
-            from,
-            to,
-            value,
-            world.provider(),
+        // optimistically add the token_id to cache
+        // this cache is used while applying the cache diff
+        // so we need to make sure that all RegisterErc*Token queries
+        // are applied before the cache diff is applied
+        self.try_register_erc20_token_metadata(contract_address, &token_id, provider)
+            .await?;
+
+        self.store_erc_transfer_event(
+            contract_address,
+            from_address,
+            to_address,
+            amount,
+            &token_id,
             block_timestamp,
             event_id,
-        )
-        .await?;
+        )?;
+
+        if from_address != Felt::ZERO {
+            // from_address/contract_address/
+            let from_balance_id = felts_to_sql_string(&[from_address, contract_address]);
+            let mut from_balance = self
+                .cache
+                .erc_cache
+                .balances_diff
+                .entry(from_balance_id)
+                .or_default();
+            *from_balance -= I256::from(amount);
+        }
+
+        if to_address != Felt::ZERO {
+            let to_balance_id = felts_to_sql_string(&[to_address, contract_address]);
+            let mut to_balance = self
+                .cache
+                .erc_cache
+                .balances_diff
+                .entry(to_balance_id)
+                .or_default();
+            *to_balance += I256::from(amount);
+        }
+
         debug!(target: LOG_TARGET,from = ?from, to = ?to, value = ?value, "ERC20 Transfer.");
 
         Ok(())

@@ -19,4 +19,5 @@ starknet-crypto.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 torii-storage.workspace = true
+torii-cache.workspace = true
 tracing.workspace = true

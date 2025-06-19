@@ -3,7 +3,7 @@ pub mod error;
 pub mod parsing;
 pub mod validation;
 
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 pub use entity::{get_identity_from_ty, set_entity, ty_keys, ty_model_id};
 pub use error::MessagingError;
@@ -12,18 +12,21 @@ use sqlx::types::chrono::Utc;
 use starknet::providers::Provider;
 use starknet_core::types::{typed_data::TypeReference, TypedData};
 use starknet_crypto::{poseidon_hash_many, Felt};
+use torii_cache::ModelCache;
+use torii_storage::Storage;
 use tracing::{debug, info, warn};
 pub use validation::{validate_message, validate_signature};
 
 pub const LOG_TARGET: &str = "torii::messaging";
 
 pub async fn validate_and_set_entity<P: Provider + Sync>(
-    db: &Sql,
+    storage: Box<dyn Storage>,
+    cache: Arc<ModelCache>,
     message: &TypedData,
     signature: &[Felt],
     provider: &P,
 ) -> Result<Felt, MessagingError> {
-    let ty = match validate_message(db, message).await {
+    let ty = match validate_message(cache, message).await {
         Ok(parsed_message) => parsed_message,
         Err(e) => {
             warn!(
@@ -46,19 +49,6 @@ pub async fn validate_and_set_entity<P: Provider + Sync>(
         message = ?message.primary_type().signature_ref_repr(),
         "Received message."
     );
-
-    // retrieve entity identity from db
-    let mut pool = match db.pool.acquire().await {
-        Ok(pool) => pool,
-        Err(e) => {
-            warn!(
-                target: LOG_TARGET,
-                error = ?e,
-                "Acquiring pool."
-            );
-            return Err(MessagingError::SqliteError(e.into()));
-        }
-    };
 
     let keys = match ty_keys(&ty) {
         Ok(keys) => keys,

@@ -565,50 +565,6 @@ impl Storage for Sql {
         block_timestamp: u64,
         event_id: &str,
     ) -> Result<(), StorageError> {
-        // contract_address
-        let token_id = felt_to_sql_string(&contract_address);
-
-        // optimistically add the token_id to cache
-        // this cache is used while applying the cache diff
-        // so we need to make sure that all RegisterErc*Token queries
-        // are applied before the cache diff is applied
-        self.try_register_erc20_token_metadata(contract_address, &token_id, provider)
-            .await?;
-
-        self.store_erc_transfer_event(
-            contract_address,
-            from_address,
-            to_address,
-            amount,
-            &token_id,
-            block_timestamp,
-            event_id,
-        )?;
-
-        if from_address != Felt::ZERO {
-            // from_address/contract_address/
-            let from_balance_id = felts_to_sql_string(&[from_address, contract_address]);
-            let mut from_balance = self
-                .cache
-                .erc_cache
-                .balances_diff
-                .entry(from_balance_id)
-                .or_default();
-            *from_balance -= I256::from(amount);
-        }
-
-        if to_address != Felt::ZERO {
-            let to_balance_id = felts_to_sql_string(&[to_address, contract_address]);
-            let mut to_balance = self
-                .cache
-                .erc_cache
-                .balances_diff
-                .entry(to_balance_id)
-                .or_default();
-            *to_balance += I256::from(amount);
-        }
-
-        Ok(())
     }
 
     /// Handles NFT (ERC721/ERC1155) token transfers, updating balances and registering tokens as needed.
@@ -678,24 +634,14 @@ impl Storage for Sql {
     }
 
     /// Updates NFT metadata for a specific token.
-    async fn update_nft_metadata<P: Provider + Sync>(
+    async fn update_nft_metadata(
         &self,
-        provider: &P,
         contract_address: Felt,
         token_id: U256,
+        metadata: String,
     ) -> Result<(), StorageError> {
         let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
-        if !self.cache.erc_cache.is_token_registered(&id).await {
-            return Ok(());
-        }
-
-        let _permit = self
-            .nft_metadata_semaphore
-            .acquire()
-            .await
-            .map_err(|e| Error::TokenMetadata(TokenMetadataError::AcquireError(e)))?;
-        let metadata = fetch_token_metadata(contract_address, token_id, provider).await?;
-
+        
         self.executor
             .send(QueryMessage::new(
                 "".to_string(),

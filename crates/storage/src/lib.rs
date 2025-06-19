@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use dojo_types::schema::Ty;
 use dojo_world::config::WorldMetadata;
 use dojo_world::contracts::abigen::model::Layout;
-use starknet::{core::types::{Event, Felt, U256}, providers::Provider};
+use starknet::core::types::{Event, Felt, U256};
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
@@ -136,36 +136,29 @@ pub trait Storage: Send + Sync {
     ) -> Result<(), StorageError>;
 
     /// Handles ERC20 token transfers, updating balances and registering tokens as needed.
-    async fn handle_erc20_transfer<P: Provider + Sync>(
+    async fn register_erc20_token(
         &self,
-        provider: &P,
         contract_address: Felt,
-        from_address: Felt,
-        to_address: Felt,
-        amount: U256,
-        block_timestamp: u64,
-        event_id: &str,
+        token_id: U256,
+        name: String,
+        symbol: String,
+        decimals: u8,
     ) -> Result<(), StorageError>;
 
     /// Handles NFT (ERC721/ERC1155) token transfers, updating balances and registering tokens as needed.
-    async fn handle_nft_transfer<P: Provider + Sync>(
+    async fn register_nft_token(
         &self,
-        provider: &P,
         contract_address: Felt,
-        from_address: Felt,
-        to_address: Felt,
         token_id: U256,
-        amount: U256,
-        block_timestamp: u64,
-        event_id: &str,
+        metadata: String,
     ) -> Result<(), StorageError>;
 
     /// Updates NFT metadata for a specific token.
-    async fn update_nft_metadata<P: Provider + Sync>(
+    async fn update_nft_metadata(
         &self,
-        provider: &P,
         contract_address: Felt,
         token_id: U256,
+        metadata: String,
     ) -> Result<(), StorageError>;
 
     /// Applies cached balance differences to the storage.
