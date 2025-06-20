@@ -36,6 +36,9 @@ pub enum MessagingError {
     EnumError(#[from] EnumError),
 
     #[error(transparent)]
+    StorageError(#[from] torii_storage::StorageError),
+
+    #[error(transparent)]
     SqliteError(#[from] torii_sqlite::error::Error),
 
     #[error(transparent)]

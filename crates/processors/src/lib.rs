@@ -12,8 +12,8 @@ use torii_storage::Storage;
 pub mod error;
 pub mod processors;
 pub mod task_manager;
+pub mod fetch;
 mod erc;
-mod fetch;
 mod constants;
 
 use crate::error::Error;

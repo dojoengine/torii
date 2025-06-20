@@ -52,7 +52,7 @@ pub fn get_identity_from_ty(ty: &Ty) -> Result<Felt, MessagingError> {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn set_entity(
-    storage: Box<dyn Storage>,
+    db: &Sql,
     ty: Ty,
     block_timestamp: u64,
     entity_id: Felt,
@@ -61,7 +61,7 @@ pub async fn set_entity(
 ) -> Result<(), MessagingError> {
     let event_id = format!("{:#064x}", block_timestamp);
 
-    storage.set_entity(
+    db.set_entity(
         ty,
         &event_id,
         block_timestamp,
@@ -70,7 +70,7 @@ pub async fn set_entity(
         Some(keys),
     )
     .await
-    .map_err(MessagingError::SqliteError)?;
-    storage.execute().await?;
+    .map_err(MessagingError::StorageError)?;
+    db.execute().await?;
     Ok(())
 }
