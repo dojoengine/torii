@@ -410,7 +410,7 @@ impl Storage for Sql {
     /// Sets the metadata for a resource with the storage.
     /// It should insert or update the metadata if it already exists.
     /// Along with its model state in the model table.
-    fn set_metadata(
+    async fn set_metadata(
         &self,
         resource: &Felt,
         uri: &str,
@@ -436,7 +436,7 @@ impl Storage for Sql {
     /// Updates the metadata for a resource with the storage.
     /// It should update the metadata if it already exists.
     /// Along with its model state in the model table.
-    fn update_metadata(
+    async fn update_metadata(
         &self,
         resource: &Felt,
         uri: &str,
@@ -473,7 +473,7 @@ impl Storage for Sql {
     /// It should insert or ignore the transaction if it already exists.
     /// And store all the relevant calls made in the transaction.
     /// Along with the unique models if any used in the transaction.
-    fn store_transaction(
+    async fn store_transaction(
         &self,
         transaction_hash: Felt,
         sender_address: Felt,
@@ -519,7 +519,7 @@ impl Storage for Sql {
     }
 
     /// Stores an event with the storage.
-    fn store_event(
+    async fn store_event(
         &self,
         event_id: &str,
         event: &Event,

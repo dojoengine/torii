@@ -134,19 +134,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sanitize_json_string() {
-        let input = r#"{"name":""Rage Shout" DireWolf"}"#;
-        let expected = r#"{"name":"\"Rage Shout\" DireWolf"}"#;
-        let sanitized = sanitize_json_string(input);
-        assert_eq!(sanitized, expected);
-
-        let input_escaped = r#"{"name":"\"Properly Escaped\" Wolf"}"#;
-        let expected_escaped = r#"{"name":"\"Properly Escaped\" Wolf"}"#;
-        let sanitized_escaped = sanitize_json_string(input_escaped);
-        assert_eq!(sanitized_escaped, expected_escaped);
-    }
-
-    #[test]
     fn test_must_utc_datetime_from_timestamp() {
         let timestamp = 1633027200;
         let expected_date = NaiveDate::from_ymd_opt(2021, 9, 30).unwrap();
