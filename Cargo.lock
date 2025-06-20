@@ -11496,6 +11496,7 @@ dependencies = [
  "torii-processors",
  "torii-server",
  "torii-sqlite",
+ "torii-storage",
  "tower",
  "tower-http",
  "tracing",

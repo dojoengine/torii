@@ -40,6 +40,7 @@ toml.workspace = true
 torii-cli.workspace = true
 torii-cache.workspace = true
 torii-sqlite.workspace = true
+torii-storage.workspace = true
 torii-graphql.workspace = true
 torii-grpc-server = { workspace = true }
 torii-libp2p-relay = { workspace = true }

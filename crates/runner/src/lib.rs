@@ -44,12 +44,12 @@ use torii_indexer::{FetcherConfig, FetchingFlags, IndexingFlags};
 use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
-use torii_sqlite::cache::ModelCache;
 use torii_sqlite::controllers::ControllersSync;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::simple_broker::SimpleBroker;
-use torii_sqlite::types::{Contract, ContractType, Model};
+use torii_sqlite::types::{Contract, Model};
 use torii_sqlite::{Sql, SqlConfig};
+use torii_storage::types::ContractType;
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
@@ -290,9 +290,10 @@ impl Runner {
             None
         };
 
+        let storage = Arc::new(db.clone());
         let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new_with_controllers(
             world,
-            db.clone(),
+            storage.clone(),
             cache.clone(),
             provider.clone(),
             processors,

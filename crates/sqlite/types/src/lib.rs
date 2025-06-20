@@ -177,7 +177,7 @@ pub struct TokenBalance {
     pub token_id: String,
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct Contract {
     pub address: Felt,
     pub r#type: ContractType,
