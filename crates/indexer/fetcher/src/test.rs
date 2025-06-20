@@ -6,7 +6,7 @@ use starknet::macros::felt;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
 use starknet_crypto::Felt;
-use torii_sqlite::Cursor;
+use torii_storage::types::Cursor;
 use url::Url;
 
 use crate::{Fetcher, FetcherConfig};

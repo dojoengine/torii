@@ -16,7 +16,7 @@ use starknet::core::types::{
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
 use tokio::time::{sleep, Instant};
-use torii_sqlite::Cursor;
+use torii_storage::types::Cursor;
 use tracing::{debug, error, trace, warn};
 
 use crate::error::Error;

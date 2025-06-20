@@ -39,3 +39,4 @@ futures-util.workspace = true
 tokio-stream = "0.1.17"
 uuid = "1.15.1"
 regex.workspace = true
+torii-processors.workspace = true

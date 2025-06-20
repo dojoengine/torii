@@ -7,18 +7,16 @@ use base64::Engine as _;
 use cainome::cairo_serde::Zeroable;
 use dojo_world::config::WorldMetadata;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
-use dojo_world::contracts::world::WorldContractReader;
 use dojo_world::uri::Uri;
 use starknet::core::types::{Event, Felt};
 use starknet::providers::Provider;
-use torii_sqlite::error::ParseError;
-use torii_sqlite::utils::fetch_content_from_ipfs;
-use torii_sqlite::Sql;
+use torii_storage::Storage;
 use tracing::{error, info};
 
-use crate::error::Error;
+use crate::error::{Error, ParseError};
+use crate::fetch::fetch_content_from_ipfs;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorContext};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::metadata_update";
 
@@ -44,19 +42,10 @@ where
         hasher.finish()
     }
 
-    async fn process(
-        &self,
-        _world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        _block_number: u64,
-        block_timestamp: u64,
-        _event_id: &str,
-        event: &Event,
-        _config: &EventProcessorConfig,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
-        let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
+        let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
             panic!(
                 "Expected {} event to be well formed.",
                 <MetadataUpdateProcessor as EventProcessor<P>>::event_key(self)
@@ -76,14 +65,15 @@ where
             uri = %uri_str,
             "Resource metadata set."
         );
-        db.set_metadata(&event.resource, &uri_str, block_timestamp)?;
-
-        let db = db.clone();
+        ctx.storage
+            .set_metadata(&event.resource, &uri_str, ctx.block_timestamp)
+            .await?;
 
         // Only retrieve metadata for the World contract.
+        let storage = ctx.storage.clone();
         if event.resource.is_zero() {
             tokio::spawn(async move {
-                try_retrieve(db, event.resource, uri_str).await;
+                try_retrieve(storage, event.resource, uri_str).await;
             });
         }
 
@@ -91,10 +81,12 @@ where
     }
 }
 
-async fn try_retrieve(mut db: Sql, resource: Felt, uri_str: String) {
+async fn try_retrieve(storage: Arc<dyn Storage>, resource: Felt, uri_str: String) {
     match metadata(uri_str.clone()).await {
         Ok((metadata, icon_img, cover_img)) => {
-            db.update_metadata(&resource, &uri_str, &metadata, &icon_img, &cover_img)
+            storage
+                .update_metadata(&resource, &uri_str, &metadata, &icon_img, &cover_img)
+                .await
                 .unwrap();
             info!(
                 target: LOG_TARGET,

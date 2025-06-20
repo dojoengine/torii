@@ -1,9 +1,8 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::cache::ModelCache;
 use crate::executor::Executor;
-use crate::types::{Contract, ContractType};
+use crate::types::Contract;
 use crate::Sql;
 use sqlx::sqlite::{
     SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
@@ -13,6 +12,8 @@ use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::JsonRpcClient;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
+use torii_cache::Cache;
+use torii_storage::types::ContractType;
 
 impl Sql {
     /// Creates a new temporary file and returns a new Sql instance.
@@ -61,7 +62,7 @@ impl Sql {
             executor.run().await.unwrap();
         });
 
-        let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
+        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
 
         let sql = Sql::new(
             pool.clone(),
@@ -70,7 +71,7 @@ impl Sql {
                 address: world_address,
                 r#type: ContractType::WORLD,
             }],
-            model_cache,
+            cache,
         )
         .await
         .unwrap();

@@ -12,7 +12,7 @@ use hashlink::LinkedHashMap;
 pub use json_rpc::Fetcher;
 use starknet::core::types::{Event, Transaction};
 use starknet_crypto::Felt;
-use torii_sqlite::Cursor;
+use torii_storage::types::Cursor;
 
 bitflags! {
     #[derive(Debug, Clone)]
