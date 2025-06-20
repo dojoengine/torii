@@ -25,6 +25,15 @@ pub struct Cache {
     pub erc_cache: ErcCache,
 }
 
+impl Cache {
+    pub async fn new(pool: SqlitePool) -> Result<Self, Error> {
+        Ok(Self {
+            model_cache: ModelCache::new(pool.clone()).await?,
+            erc_cache: ErcCache::new(pool).await,
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Model {
     /// Namespace of the model
