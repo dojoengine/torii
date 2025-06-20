@@ -32,23 +32,12 @@ pub mod test_utils;
 
 pub use torii_sqlite_types as types;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SqlConfig {
     pub all_model_indices: bool,
     pub model_indices: Vec<ModelIndices>,
     pub historical_models: HashSet<Felt>,
     pub hooks: Vec<Hook>,
-}
-
-impl Default for SqlConfig {
-    fn default() -> Self {
-        Self {
-            all_model_indices: false,
-            model_indices: vec![],
-            historical_models: HashSet::new(),
-            hooks: vec![],
-        }
-    }
 }
 
 impl SqlConfig {
@@ -134,6 +123,14 @@ impl Sql {
         self.cache
             .model_cache
             .model(&selector)
+            .await
+            .map_err(Error::Cache)
+    }
+
+    pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<torii_cache::Model>, Error> {
+        self.cache
+            .model_cache
+            .models(selectors)
             .await
             .map_err(Error::Cache)
     }

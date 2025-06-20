@@ -4,6 +4,7 @@ use dojo_types::schema::Ty;
 use dojo_world::config::WorldMetadata;
 use dojo_world::contracts::abigen::model::Layout;
 use starknet::core::types::{Event, Felt, U256};
+use std::fmt::Debug;
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
@@ -16,7 +17,7 @@ pub mod types;
 pub type StorageError = Box<dyn Error + Send + Sync>;
 
 #[async_trait]
-pub trait Storage: Send + Sync {
+pub trait Storage: Send + Sync + Debug {
     /// Updates the contract cursors with the storage.
     async fn update_cursors(
         &self,
@@ -27,6 +28,7 @@ pub trait Storage: Send + Sync {
     /// Registers a model with the storage, along with its table.
     /// This is also used when a model is upgraded, which should
     /// update the model schema and its table.
+    #[allow(clippy::too_many_arguments)]
     async fn register_model(
         &self,
         namespace: &str,
@@ -102,6 +104,7 @@ pub trait Storage: Send + Sync {
     /// It should insert or ignore the transaction if it already exists.
     /// And store all the relevant calls made in the transaction.
     /// Along with the unique models if any used in the transaction.
+    #[allow(clippy::too_many_arguments)]
     fn store_transaction(
         &self,
         transaction_hash: Felt,
@@ -153,6 +156,7 @@ pub trait Storage: Send + Sync {
     ) -> Result<(), StorageError>;
 
     /// Stores a token transfer event with the storage.
+    #[allow(clippy::too_many_arguments)]
     async fn store_erc_transfer_event(
         &self,
         contract_address: Felt,

@@ -11082,6 +11082,7 @@ dependencies = [
  "starknet 0.12.0",
  "toml 0.8.19",
  "torii-sqlite-types",
+ "torii-storage",
  "url",
 ]
 

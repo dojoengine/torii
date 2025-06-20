@@ -184,7 +184,7 @@ pub struct ErcCache {
 impl ErcCache {
     pub async fn new(pool: Pool<Sqlite>) -> Self {
         // read existing token_id's from balances table and cache them
-        let token_id_registry: Vec<String> = sqlx::query_scalar(&format!("SELECT id FROM tokens"))
+        let token_id_registry: Vec<String> = sqlx::query_scalar("SELECT id FROM tokens")
             .fetch_all(&pool)
             .await
             .expect("Should be able to read token_id's from blances table");

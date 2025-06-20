@@ -23,6 +23,7 @@ pub use processors::Processors;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Debug)]
 pub struct EventProcessorContext<P: Provider + Sync> {
     pub world: Arc<WorldContractReader<P>>,
     pub storage: Arc<dyn Storage>,
@@ -35,12 +36,23 @@ pub struct EventProcessorContext<P: Provider + Sync> {
     pub nft_metadata_semaphore: Arc<Semaphore>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct EventProcessorConfig {
     pub namespaces: HashSet<String>,
     pub strict_model_reader: bool,
     pub historical_models: HashSet<Felt>,
     pub max_metadata_tasks: usize,
+}
+
+impl Default for EventProcessorConfig {
+    fn default() -> Self {
+        Self {
+            namespaces: HashSet::new(),
+            strict_model_reader: false,
+            historical_models: HashSet::new(),
+            max_metadata_tasks: 10,
+        }
+    }
 }
 
 impl EventProcessorConfig {
@@ -93,6 +105,7 @@ where
     async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<()>;
 }
 
+#[derive(Debug)]
 pub struct BlockProcessorContext<P: Provider + Sync> {
     pub storage: Arc<dyn Storage>,
     pub provider: Arc<P>,
@@ -106,6 +119,7 @@ pub trait BlockProcessor<P: Provider + Sync>: Send + Sync {
     async fn process(&self, ctx: &BlockProcessorContext<P>) -> Result<()>;
 }
 
+#[derive(Debug)]
 pub struct TransactionProcessorContext<P: Provider + Sync + std::fmt::Debug> {
     pub storage: Arc<dyn Storage>,
     pub cache: Arc<ContractClassCache<P>>,

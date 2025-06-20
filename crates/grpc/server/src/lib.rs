@@ -42,7 +42,6 @@ use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
 use torii_messaging::validate_and_set_entity;
 use torii_proto::error::ProtoError;
-use torii_sqlite::cache::ModelCache;
 use torii_sqlite::constants::SQL_DEFAULT_LIMIT;
 use torii_sqlite::error::{ParseError, QueryError};
 use torii_sqlite::model::{decode_cursor, encode_cursor, fetch_entities, map_row_to_ty};
@@ -93,7 +92,6 @@ pub struct DojoWorld<P: Provider + Sync> {
     sql: Sql,
     provider: Arc<P>,
     world_address: Felt,
-    model_cache: Arc<ModelCache>,
     cross_messaging_tx: Option<UnboundedSender<Message>>,
     entity_manager: Arc<EntityManager>,
     event_message_manager: Arc<EventMessageManager>,
@@ -109,7 +107,6 @@ impl<P: Provider + Sync> DojoWorld<P> {
         sql: Sql,
         provider: Arc<P>,
         world_address: Felt,
-        model_cache: Arc<ModelCache>,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
         config: GrpcConfig,
     ) -> Self {
@@ -150,7 +147,6 @@ impl<P: Provider + Sync> DojoWorld<P> {
             sql,
             provider,
             world_address,
-            model_cache,
             cross_messaging_tx,
             entity_manager,
             event_message_manager,
@@ -194,8 +190,8 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let mut models_metadata = Vec::with_capacity(models.len());
         for model in models {
             let schema = self
-                .model_cache
-                .model(&Felt::from_str(&model.id).map_err(ParseError::FromStr)?)
+                .sql
+                .model(Felt::from_str(&model.id).map_err(ParseError::FromStr)?)
                 .await?
                 .schema;
             models_metadata.push(proto::types::ModelMetadata {
@@ -327,10 +323,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
                     .map_err(ParseError::FromStr)?
                     .to_bytes_be()
                     .to_vec();
-                let model = self
-                    .model_cache
-                    .model(&Felt::from_str(model_id).map_err(ParseError::FromStr)?)
-                    .await?;
+                let model = self.sql.model(Felt::from_str(model_id).map_err(ParseError::FromStr)?).await?;
                 let mut schema = model.schema;
                 schema.from_json_value(
                     serde_json::from_str(data).map_err(ParseError::FromJsonStr)?,
@@ -400,7 +393,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             .map(|model| compute_selector_from_tag(model))
             .collect::<Vec<_>>();
         let schemas = self
-            .model_cache
+            .sql
             .models(&models)
             .await?
             .iter()
@@ -496,7 +489,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             .map(|model| compute_selector_from_tag(model))
             .collect::<Vec<_>>();
         let schemas = self
-            .model_cache
+            .sql
             .models(&models)
             .await?
             .iter()
@@ -637,7 +630,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             })
             .collect::<Vec<_>>();
         let schemas = self
-            .model_cache
+            .sql
             .models(&model_ids)
             .await?
             .into_iter()
@@ -700,7 +693,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             .map(|model| compute_selector_from_tag(model))
             .collect::<Vec<_>>();
         let schemas = self
-            .model_cache
+            .sql
             .models(&models)
             .await?
             .iter()
@@ -752,7 +745,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         // selector
         let model = compute_selector_from_names(namespace, name);
 
-        let model = self.model_cache.model(&model).await?;
+        let model = self.sql.model(model).await?;
 
         Ok(proto::types::ModelMetadata {
             namespace: namespace.to_string(),
@@ -1904,7 +1897,6 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     sql: Sql,
     provider: Arc<P>,
     world_address: Felt,
-    model_cache: Arc<ModelCache>,
     cross_messaging_tx: UnboundedSender<Message>,
     config: GrpcConfig,
 ) -> Result<
@@ -1926,7 +1918,6 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
         sql,
         provider,
         world_address,
-        model_cache,
         Some(cross_messaging_tx),
         config,
     );
