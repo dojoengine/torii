@@ -2,15 +2,25 @@ use std::{str::FromStr, sync::Arc};
 
 use cainome_cairo_serde::{ByteArray, CairoSerde};
 use data_url::{mime::Mime, DataUrl};
-use starknet::{core::{types::{requests::CallRequest, BlockId, BlockTag, FunctionCall, U256}, utils::{get_selector_from_name, parse_cairo_short_string}}, macros::selector, providers::{Provider, ProviderRequestData, ProviderResponseData}};
+use starknet::{
+    core::{
+        types::{requests::CallRequest, BlockId, BlockTag, FunctionCall, U256},
+        utils::{get_selector_from_name, parse_cairo_short_string},
+    },
+    macros::selector,
+    providers::{Provider, ProviderRequestData, ProviderResponseData},
+};
 use starknet_crypto::Felt;
 use tokio::sync::Semaphore;
 use torii_cache::Cache;
+use torii_math::I256;
 use torii_storage::Storage;
 use tracing::{debug, warn};
-use torii_math::I256;
 
-use crate::{error::{Error, ParseError, TokenMetadataError}, fetch::{fetch_content_from_http, fetch_content_from_ipfs}};
+use crate::{
+    error::{Error, ParseError, TokenMetadataError},
+    fetch::{fetch_content_from_http, fetch_content_from_ipfs},
+};
 
 const SQL_FELT_DELIMITER: &str = "/";
 
@@ -90,7 +100,9 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
         .map_err(|e| Error::TokenMetadataError(TokenMetadataError::AcquireError(e)))?;
     let metadata = fetch_token_metadata(contract_address, actual_token_id, provider).await?;
 
-    storage.register_nft_token(contract_address, actual_token_id, metadata).await?;
+    storage
+        .register_nft_token(contract_address, actual_token_id, metadata)
+        .await?;
 
     cache.erc_cache.mark_token_registered(id).await;
 
@@ -114,7 +126,9 @@ pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
     }
 
     let (name, symbol, decimals) = fetch_erc20_token_metadata(provider, contract_address).await?;
-    storage.register_erc20_token(contract_address, name, symbol, decimals).await?;
+    storage
+        .register_erc20_token(contract_address, name, symbol, decimals)
+        .await?;
 
     cache.erc_cache.mark_token_registered(&token_id).await;
 
@@ -185,9 +199,7 @@ pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
     let decimals = match &results[2] {
         ProviderResponseData::Call(decimals) => u8::cairo_deserialize(decimals, 0)
             .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?,
-        _ => {
-            return Err(TokenMetadataError::InvalidTokenDecimals)
-        }
+        _ => return Err(TokenMetadataError::InvalidTokenDecimals),
     };
 
     Ok((name, symbol, decimals))

@@ -26,10 +26,7 @@ where
         0
     }
 
-    async fn process(
-        &self,
-        _ctx: &EventProcessorContext<P>,
-    ) -> Result<(), Error> {
+    async fn process(&self, _ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         // We can choose to consider them, or not.
 
         Ok(())

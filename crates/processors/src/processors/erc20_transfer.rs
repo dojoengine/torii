@@ -1,8 +1,8 @@
-use std::hash::{DefaultHasher, Hash, Hasher};
 use async_trait::async_trait;
 use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use tracing::debug;
 
 use crate::erc::{try_register_erc20_token, update_erc_balance_diff};

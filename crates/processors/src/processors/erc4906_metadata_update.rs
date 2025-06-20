@@ -51,10 +51,7 @@ where
         IndexingMode::Latest(hasher.finish())
     }
 
-    async fn process(
-        &self,
-        ctx: &EventProcessorContext<P>,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         let token_address = ctx.event.from_address;
         let token_id = U256Cainome::cairo_deserialize(&ctx.event.keys, 1)?;
         let token_id = U256::from_words(token_id.low, token_id.high);
@@ -72,8 +69,8 @@ where
 
         let metadata = fetch_token_metadata(token_address, token_id, ctx.world.provider()).await?;
 
-
-        ctx.storage.update_nft_metadata(token_address, token_id, metadata)
+        ctx.storage
+            .update_nft_metadata(token_address, token_id, metadata)
             .await?;
 
         debug!(

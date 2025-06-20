@@ -1,8 +1,8 @@
-use std::hash::{DefaultHasher, Hash, Hasher};
 use async_trait::async_trait;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use tracing::{debug, info};
 
 use crate::error::Error;
@@ -52,10 +52,7 @@ where
         }
     }
 
-    async fn process(
-        &self,
-        ctx: &EventProcessorContext<P>,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
@@ -95,14 +92,15 @@ where
 
         let entity = model.schema;
 
-        ctx.storage.delete_entity(
-            event.entity_id,
-            event.selector,
-            entity,
-            &ctx.event_id,
-            ctx.block_timestamp,
-        )
-        .await?;
+        ctx.storage
+            .delete_entity(
+                event.entity_id,
+                event.selector,
+                entity,
+                &ctx.event_id,
+                ctx.block_timestamp,
+            )
+            .await?;
 
         Ok(())
     }

@@ -266,10 +266,7 @@ impl StoreTransactionProcessor {
 impl<P: Provider + Send + Sync + std::fmt::Debug> TransactionProcessor<P>
     for StoreTransactionProcessor
 {
-    async fn process(
-        &self,
-        ctx: &TransactionProcessorContext<P>,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &TransactionProcessorContext<P>) -> Result<(), Error> {
         let Some(tx_info) = Self::extract_transaction_info(&ctx.transaction) else {
             return Ok(());
         };

@@ -14,9 +14,7 @@ use torii_storage::Storage;
 
 use crate::error::{Error, ParseError};
 use crate::executor::error::ExecutorQueryError;
-use crate::executor::{
-    Argument, QueryMessage,
-};
+use crate::executor::{Argument, QueryMessage};
 use crate::utils::utc_dt_string_from_timestamp;
 use torii_sqlite_types::{Contract, Hook, ModelIndices};
 
@@ -131,9 +129,13 @@ impl Sql {
         }
         Ok(cursors_map)
     }
-    
+
     pub async fn model(&self, selector: Felt) -> Result<torii_cache::Model, Error> {
-        self.cache.model_cache.model(&selector).await.map_err(Error::Cache)
+        self.cache
+            .model_cache
+            .model(&selector)
+            .await
+            .map_err(Error::Cache)
     }
 
     fn set_entity_model(

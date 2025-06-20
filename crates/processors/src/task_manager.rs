@@ -62,7 +62,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             world,
             task_network: TaskNetwork::new(max_concurrent_tasks),
             processors,
-            nft_metadata_semaphore: Arc::new(Semaphore::new(event_processor_config.max_metadata_tasks)),
+            nft_metadata_semaphore: Arc::new(Semaphore::new(
+                event_processor_config.max_metadata_tasks,
+            )),
             event_processor_config,
         }
     }

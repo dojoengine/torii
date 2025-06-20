@@ -1,4 +1,4 @@
-use std::{time::Duration};
+use std::time::Duration;
 
 use futures_util::TryStreamExt;
 use ipfs_api_backend_hyper::{IpfsApi, IpfsClient, TryFromUri};
@@ -7,7 +7,10 @@ use reqwest::Client;
 use tokio_util::bytes::Bytes;
 use tracing::debug;
 
-use crate::{constants::{IPFS_CLIENT_PASSWORD, IPFS_CLIENT_URL, IPFS_CLIENT_USERNAME}, error::HttpError};
+use crate::{
+    constants::{IPFS_CLIENT_PASSWORD, IPFS_CLIENT_URL, IPFS_CLIENT_USERNAME},
+    error::HttpError,
+};
 
 // Global clients
 static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {

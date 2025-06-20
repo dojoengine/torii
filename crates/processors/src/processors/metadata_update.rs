@@ -42,10 +42,7 @@ where
         hasher.finish()
     }
 
-    async fn process(
-        &self,
-        ctx: &EventProcessorContext<P>,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
@@ -68,7 +65,8 @@ where
             uri = %uri_str,
             "Resource metadata set."
         );
-        ctx.storage.set_metadata(&event.resource, &uri_str, ctx.block_timestamp)?;
+        ctx.storage
+            .set_metadata(&event.resource, &uri_str, ctx.block_timestamp)?;
 
         // Only retrieve metadata for the World contract.
         let storage = ctx.storage.clone();
@@ -85,7 +83,8 @@ where
 async fn try_retrieve(storage: Arc<dyn Storage>, resource: Felt, uri_str: String) {
     match metadata(uri_str.clone()).await {
         Ok((metadata, icon_img, cover_img)) => {
-            storage.update_metadata(&resource, &uri_str, &metadata, &icon_img, &cover_img)
+            storage
+                .update_metadata(&resource, &uri_str, &metadata, &icon_img, &cover_img)
                 .unwrap();
             info!(
                 target: LOG_TARGET,

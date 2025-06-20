@@ -7,9 +7,7 @@ use sqlx::{Column, Row, TypeInfo};
 use starknet::core::types::U256;
 use starknet_crypto::Felt;
 
-use crate::constants::{
-    SQL_FELT_DELIMITER,
-};
+use crate::constants::SQL_FELT_DELIMITER;
 
 pub fn must_utc_datetime_from_timestamp(timestamp: u64) -> DateTime<Utc> {
     let naive_dt = DateTime::from_timestamp(timestamp as i64, 0)

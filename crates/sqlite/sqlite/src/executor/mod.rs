@@ -29,7 +29,9 @@ use crate::types::{
     EventMessage as EventMessageUpdated, Model as ModelRegistered, OptimisticEntity,
     OptimisticEventMessage, Token, TokenBalance, Transaction,
 };
-use crate::utils::{felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, u256_to_sql_string};
+use crate::utils::{
+    felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, u256_to_sql_string,
+};
 use crate::Cursor;
 
 pub mod erc;

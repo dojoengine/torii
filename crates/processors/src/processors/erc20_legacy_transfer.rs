@@ -50,10 +50,7 @@ where
         hasher.finish()
     }
 
-    async fn process(
-        &self,
-        ctx: &EventProcessorContext<P>,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         let token_address = ctx.event.from_address;
         let from = ctx.event.data[0];
         let to = ctx.event.data[1];
@@ -65,22 +62,28 @@ where
         // this cache is used while applying the cache diff
         // so we need to make sure that all RegisterErc*Token queries
         // are applied before the cache diff is applied
-        try_register_erc20_token(token_address, ctx.world.provider(), ctx.storage.clone(), ctx.cache.clone())
-            .await?;
+        try_register_erc20_token(
+            token_address,
+            ctx.world.provider(),
+            ctx.storage.clone(),
+            ctx.cache.clone(),
+        )
+        .await?;
 
         // Update the balances diffs on the cache
         update_erc_balance_diff(ctx.cache.clone(), token_address, from, to, value)?;
 
-        ctx.storage.store_erc_transfer_event(
-            token_address,
-            from,
-            to,
-            value,
-            None,
-            ctx.block_timestamp,
-            &ctx.event_id,
-        )
-        .await?;
+        ctx.storage
+            .store_erc_transfer_event(
+                token_address,
+                from,
+                to,
+                value,
+                None,
+                ctx.block_timestamp,
+                &ctx.event_id,
+            )
+            .await?;
         debug!(target: LOG_TARGET,from = ?from, to = ?to, value = ?value, "Legacy ERC20 Transfer.");
 
         Ok(())

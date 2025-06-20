@@ -6,7 +6,9 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{felt_and_u256_to_sql_string, try_register_nft_token_metadata, update_erc_balance_diff};
+use crate::erc::{
+    felt_and_u256_to_sql_string, try_register_nft_token_metadata, update_erc_balance_diff,
+};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
@@ -62,16 +64,17 @@ where
 
         update_erc_balance_diff(ctx.cache.clone(), token_address, from, to, amount)?;
 
-        ctx.storage.store_erc_transfer_event(
-            token_address,
-            from,
-            to,
-            amount,
-            Some(token_id),
-            ctx.block_timestamp,
-            &ctx.event_id,
-        )
-        .await?;
+        ctx.storage
+            .store_erc_transfer_event(
+                token_address,
+                from,
+                to,
+                amount,
+                Some(token_id),
+                ctx.block_timestamp,
+                &ctx.event_id,
+            )
+            .await?;
 
         debug!(target: LOG_TARGET, from = ?from, to = ?to, token_id = ?token_id, amount = ?amount, "ERC1155 TransferSingle");
 

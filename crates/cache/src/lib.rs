@@ -6,12 +6,12 @@ use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::model::Layout;
 use sqlx::{Pool, Sqlite, SqlitePool};
 use starknet::core::types::contract::AbiEntry;
+use starknet::core::types::Felt;
 use starknet::core::types::{
     BlockId, BlockTag, ContractClass, EntryPointsByType, LegacyContractAbiEntry, StarknetError,
 };
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::{Provider, ProviderError};
-use starknet::core::types::Felt;
 use tokio::sync::{Mutex, RwLock};
 use torii_math::I256;
 
@@ -184,11 +184,10 @@ pub struct ErcCache {
 impl ErcCache {
     pub async fn new(pool: Pool<Sqlite>) -> Self {
         // read existing token_id's from balances table and cache them
-        let token_id_registry: Vec<String> =
-            sqlx::query_scalar(&format!("SELECT id FROM tokens"))
-                .fetch_all(&pool)
-                .await
-                .expect("Should be able to read token_id's from blances table");
+        let token_id_registry: Vec<String> = sqlx::query_scalar(&format!("SELECT id FROM tokens"))
+            .fetch_all(&pool)
+            .await
+            .expect("Should be able to read token_id's from blances table");
 
         Self {
             balances_diff: DashMap::new(),

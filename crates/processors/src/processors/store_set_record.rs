@@ -53,10 +53,7 @@ where
         }
     }
 
-    async fn process(
-        &self,
-        ctx: &EventProcessorContext<P>,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
@@ -101,15 +98,16 @@ where
         let mut entity = model.schema;
         entity.deserialize(&mut keys_and_unpacked)?;
 
-        ctx.storage.set_entity(
-            entity,
-            &ctx.event_id,
-            ctx.block_timestamp,
-            event.entity_id,
-            event.selector,
-            Some(event.keys.clone()),
-        )
-        .await?;
+        ctx.storage
+            .set_entity(
+                entity,
+                &ctx.event_id,
+                ctx.block_timestamp,
+                event.entity_id,
+                event.selector,
+                Some(event.keys.clone()),
+            )
+            .await?;
         Ok(())
     }
 }

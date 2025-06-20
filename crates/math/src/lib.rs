@@ -1,4 +1,7 @@
-use std::{cmp::Ordering, ops::{Add, AddAssign, Sub, SubAssign}};
+use std::{
+    cmp::Ordering,
+    ops::{Add, AddAssign, Sub, SubAssign},
+};
 
 use starknet_core::types::U256;
 

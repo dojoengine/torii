@@ -9,12 +9,12 @@ use tokio::sync::Semaphore;
 use torii_cache::{Cache, ContractClassCache};
 use torii_storage::Storage;
 
+mod constants;
+mod erc;
 pub mod error;
+pub mod fetch;
 pub mod processors;
 pub mod task_manager;
-pub mod fetch;
-mod erc;
-mod constants;
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
@@ -90,10 +90,7 @@ where
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn process(
-        &self,
-        ctx: &EventProcessorContext<P>,
-    ) -> Result<()>;
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<()>;
 }
 
 pub struct BlockProcessorContext<P: Provider + Sync> {
@@ -106,10 +103,7 @@ pub struct BlockProcessorContext<P: Provider + Sync> {
 #[async_trait]
 pub trait BlockProcessor<P: Provider + Sync>: Send + Sync {
     fn get_block_number(&self) -> String;
-    async fn process(
-        &self,
-        ctx: &BlockProcessorContext<P>,
-    ) -> Result<()>;
+    async fn process(&self, ctx: &BlockProcessorContext<P>) -> Result<()>;
 }
 
 pub struct TransactionProcessorContext<P: Provider + Sync + std::fmt::Debug> {
@@ -128,8 +122,5 @@ pub struct TransactionProcessorContext<P: Provider + Sync + std::fmt::Debug> {
 #[async_trait]
 pub trait TransactionProcessor<P: Provider + Sync + std::fmt::Debug>: Send + Sync {
     #[allow(clippy::too_many_arguments)]
-    async fn process(
-        &self,
-        ctx: &TransactionProcessorContext<P>,
-    ) -> Result<()>;
+    async fn process(&self, ctx: &TransactionProcessorContext<P>) -> Result<()>;
 }

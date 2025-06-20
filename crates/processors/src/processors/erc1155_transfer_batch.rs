@@ -7,7 +7,9 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{felt_and_u256_to_sql_string, try_register_nft_token_metadata, update_erc_balance_diff};
+use crate::erc::{
+    felt_and_u256_to_sql_string, try_register_nft_token_metadata, update_erc_balance_diff,
+};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
@@ -39,10 +41,7 @@ where
         hasher.finish()
     }
 
-    async fn process(
-        &self,
-        ctx: &EventProcessorContext<P>,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         let token_address = ctx.event.from_address;
         let from = ctx.event.keys[2];
         let to = ctx.event.keys[3];
@@ -108,16 +107,17 @@ where
 
                 update_erc_balance_diff(cache, token_address, from, to, amount)?;
 
-                storage.store_erc_transfer_event(
-                    token_address,
-                    from,
-                    to,
-                    amount,
-                    Some(token_id_clone),
-                    block_timestamp_clone,
-                    &event_id_clone,
-                )
-                .await?;
+                storage
+                    .store_erc_transfer_event(
+                        token_address,
+                        from,
+                        to,
+                        amount,
+                        Some(token_id_clone),
+                        block_timestamp_clone,
+                        &event_id_clone,
+                    )
+                    .await?;
 
                 debug!(
                     target: LOG_TARGET,

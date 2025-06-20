@@ -8,8 +8,8 @@ use starknet::providers::Provider;
 use tracing::{debug, info};
 
 use crate::task_manager::TaskId;
-use crate::{EventProcessorContext, Result};
 use crate::EventProcessor;
+use crate::{EventProcessorContext, Result};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::upgrade_event";
 
@@ -37,10 +37,7 @@ where
         hasher.finish()
     }
 
-    async fn process(
-        &self,
-        ctx: &EventProcessorContext<P>,
-    ) -> Result<()> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<()> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
@@ -121,21 +118,22 @@ where
             "Upgraded event content."
         );
 
-        ctx.storage.register_model(
-            &namespace,
-            &new_schema,
-            layout,
-            event.class_hash.into(),
-            event.address.into(),
-            packed_size,
-            unpacked_size,
-            ctx.block_timestamp,
-            Some(&schema_diff),
-            // This will be Some if we have an "upgrade" diff. Which means
-            // if some columns have been modified.
-            prev_schema.diff(&new_schema).as_ref(),
-        )
-        .await?;
+        ctx.storage
+            .register_model(
+                &namespace,
+                &new_schema,
+                layout,
+                event.class_hash.into(),
+                event.address.into(),
+                packed_size,
+                unpacked_size,
+                ctx.block_timestamp,
+                Some(&schema_diff),
+                // This will be Some if we have an "upgrade" diff. Which means
+                // if some columns have been modified.
+                prev_schema.diff(&new_schema).as_ref(),
+            )
+            .await?;
 
         Ok(())
     }

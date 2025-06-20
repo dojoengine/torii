@@ -55,10 +55,7 @@ where
         hasher.finish()
     }
 
-    async fn process(
-        &self,
-        ctx: &EventProcessorContext<P>,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
@@ -119,19 +116,20 @@ where
             "Registered model content."
         );
 
-        ctx.storage.register_model(
-            &namespace,
-            &schema,
-            layout,
-            event.class_hash.into(),
-            event.address.into(),
-            packed_size,
-            unpacked_size,
-            ctx.block_timestamp,
-            None,
-            None,
-        )
-        .await?;
+        ctx.storage
+            .register_model(
+                &namespace,
+                &schema,
+                layout,
+                event.class_hash.into(),
+                event.address.into(),
+                packed_size,
+                unpacked_size,
+                ctx.block_timestamp,
+                None,
+                None,
+            )
+            .await?;
 
         Ok(())
     }

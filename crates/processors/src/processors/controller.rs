@@ -126,10 +126,7 @@ where
         hasher.finish()
     }
 
-    async fn process(
-        &self,
-        ctx: &EventProcessorContext<P>,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&ctx.event.data, 0)?;
 
         if !is_cartridge_controller(&udc_event).await? {
@@ -159,7 +156,13 @@ where
             "Controller deployed."
         );
 
-        ctx.storage.add_controller(&username, &address, DateTime::from_timestamp(ctx.block_timestamp as i64, 0).unwrap()).await?;
+        ctx.storage
+            .add_controller(
+                &username,
+                &address,
+                DateTime::from_timestamp(ctx.block_timestamp as i64, 0).unwrap(),
+            )
+            .await?;
 
         Ok(())
     }
