@@ -1,18 +1,14 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
-use torii_sqlite::utils::felts_to_sql_string;
-use torii_sqlite::Sql;
 use tracing::{debug, info};
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig, IndexingMode};
+use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_set_record";
 
@@ -59,17 +55,11 @@ where
 
     async fn process(
         &self,
-        _world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        _block_number: u64,
-        block_timestamp: u64,
-        event_id: &str,
-        event: &Event,
-        config: &EventProcessorConfig,
+        ctx: &EventProcessorContext<P>,
     ) -> Result<(), Error> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
-        let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
+        let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
             panic!(
                 "Expected {} event to be well formed.",
                 <StoreSetRecordProcessor as EventProcessor<P>>::event_key(self)
@@ -83,9 +73,9 @@ where
 
         // If the model does not exist, silently ignore it.
         // This can happen if only specific namespaces are indexed.
-        let model = match db.model(event.selector).await {
+        let model = match ctx.cache.model_cache.model(&event.selector).await {
             Ok(m) => m,
-            Err(e) if e.to_string().contains("no rows") && !config.namespaces.is_empty() => {
+            Err(e) if e.to_string().contains("no rows") && !ctx.config.namespaces.is_empty() => {
                 debug!(
                     target: LOG_TARGET,
                     selector = %event.selector,
@@ -106,18 +96,18 @@ where
             "Store set record.",
         );
 
-        let mut keys_and_unpacked = [event.keys, event.values].concat();
+        let mut keys_and_unpacked = [event.keys.clone(), event.values].concat();
 
         let mut entity = model.schema;
         entity.deserialize(&mut keys_and_unpacked)?;
 
-        db.set_entity(
+        ctx.storage.set_entity(
             entity,
-            event_id,
-            block_timestamp,
+            &ctx.event_id,
+            ctx.block_timestamp,
             event.entity_id,
             event.selector,
-            Some(&event.keys),
+            Some(event.keys.clone()),
         )
         .await?;
         Ok(())

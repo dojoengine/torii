@@ -31,3 +31,5 @@ torii-cache.workspace = true
 data-url.workspace = true
 tokio-util.workspace = true
 once_cell.workspace = true
+torii-math.workspace = true
+chrono.workspace = true

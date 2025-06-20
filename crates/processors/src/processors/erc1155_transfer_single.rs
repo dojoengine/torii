@@ -6,12 +6,11 @@ use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
-use torii_sqlite::Sql;
 use tracing::debug;
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc1155_transfer_single";
 
@@ -41,17 +40,11 @@ where
 
     async fn process(
         &self,
-        world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        _block_number: u64,
-        block_timestamp: u64,
-        event_id: &str,
-        event: &Event,
-        _config: &EventProcessorConfig,
+        ctx: &EventProcessorContext<P>,
     ) -> Result<(), Error> {
-        let token_address = event.from_address;
-        let from = event.keys[2];
-        let to = event.keys[3];
+        let token_address = ctx.event.from_address;
+        let from = ctx.event.keys[2];
+        let to = ctx.event.keys[3];
 
         let token_id = U256Cainome::cairo_deserialize(&event.data, 0)?;
         let token_id = U256::from_words(token_id.low, token_id.high);

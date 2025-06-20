@@ -21,25 +21,22 @@ pub struct ParsedCall {
     pub caller_address: Felt,
 }
 
-/// Type of call made in a transaction
 #[derive(Debug, Clone, Deserialize)]
 pub enum CallType {
-    Call,
-    Invoke,
-    Deploy,
+    Execute,
+    ExecuteFromOutside,
 }
 
 impl std::fmt::Display for CallType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CallType::Call => write!(f, "call"),
-            CallType::Invoke => write!(f, "invoke"),
-            CallType::Deploy => write!(f, "deploy"),
+            CallType::Execute => write!(f, "EXECUTE"),
+            CallType::ExecuteFromOutside => write!(f, "EXECUTE_FROM_OUTSIDE"),
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Copy)]
+#[derive(Debug, Clone, Deserialize, Copy, Hash, PartialEq, Eq)]
 pub enum ContractType {
     WORLD,
     ERC20,

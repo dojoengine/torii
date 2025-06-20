@@ -7,8 +7,63 @@ use starknet_crypto::Felt;
 use torii_cache::Cache;
 use torii_storage::Storage;
 use tracing::{debug, warn};
+use torii_math::I256;
 
 use crate::{error::{Error, ParseError, TokenMetadataError}, fetch::{fetch_content_from_http, fetch_content_from_ipfs}};
+
+const SQL_FELT_DELIMITER: &str = "/";
+
+pub fn felts_to_sql_string(felts: &[Felt]) -> String {
+    felts
+        .iter()
+        .map(|k| format!("{:#x}", k))
+        .collect::<Vec<String>>()
+        .join(SQL_FELT_DELIMITER)
+        + SQL_FELT_DELIMITER
+}
+
+pub fn felt_to_sql_string(felt: &Felt) -> String {
+    format!("{:#x}", felt)
+}
+
+pub fn felt_and_u256_to_sql_string(felt: &Felt, u256: &U256) -> String {
+    format!("{}:{}", felt_to_sql_string(felt), u256_to_sql_string(u256))
+}
+
+pub fn u256_to_sql_string(u256: &U256) -> String {
+    format!("{:#064x}", u256)
+}
+
+pub fn update_erc_balance_diff(
+    cache: Arc<Cache>,
+    contract_address: Felt,
+    from: Felt,
+    to: Felt,
+    value: U256,
+) -> Result<(), Error> {
+    if from != Felt::ZERO {
+        // from_address/contract_address/
+        let from_balance_id = felts_to_sql_string(&[from, contract_address]);
+        let mut from_balance = cache
+            .erc_cache
+            .balances_diff
+            .entry(from_balance_id)
+            .or_default();
+        *from_balance -= I256::from(value);
+    }
+
+    if to != Felt::ZERO {
+        let to_balance_id = felts_to_sql_string(&[to, contract_address]);
+        let mut to_balance = cache
+            .erc_cache
+            .balances_diff
+            .entry(to_balance_id)
+            .or_default();
+        *to_balance += I256::from(value);
+    }
+
+    Ok(())
+}
 
 pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
     contract_address: Felt,

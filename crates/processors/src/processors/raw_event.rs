@@ -1,14 +1,10 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
-use torii_sqlite::Sql;
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorContext};
 
 #[derive(Default, Debug)]
 pub struct RawEventProcessor;
@@ -32,13 +28,7 @@ where
 
     async fn process(
         &self,
-        _world: Arc<WorldContractReader<P>>,
-        _db: &mut Sql,
-        _block_number: u64,
-        _block_timestamp: u64,
-        _event_id: &str,
-        _event: &Event,
-        _config: &EventProcessorConfig,
+        _ctx: &EventProcessorContext<P>,
     ) -> Result<(), Error> {
         // We can choose to consider them, or not.
 

@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, Transaction};
 use starknet::providers::Provider;
+use tokio::sync::Semaphore;
 use torii_cache::{Cache, ContractClassCache};
 use torii_storage::Storage;
 
@@ -31,6 +32,7 @@ pub struct EventProcessorContext<P: Provider + Sync> {
     pub event_id: String,
     pub event: Event,
     pub config: EventProcessorConfig,
+    pub nft_metadata_semaphore: Arc<Semaphore>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -38,6 +40,7 @@ pub struct EventProcessorConfig {
     pub namespaces: HashSet<String>,
     pub strict_model_reader: bool,
     pub historical_models: HashSet<Felt>,
+    pub max_metadata_tasks: usize,
 }
 
 impl EventProcessorConfig {
@@ -111,6 +114,7 @@ pub trait BlockProcessor<P: Provider + Sync>: Send + Sync {
 
 pub struct TransactionProcessorContext<P: Provider + Sync + std::fmt::Debug> {
     pub storage: Arc<dyn Storage>,
+    pub cache: Arc<ContractClassCache<P>>,
     pub provider: Arc<P>,
     pub block_number: u64,
     pub block_timestamp: u64,

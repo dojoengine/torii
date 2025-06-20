@@ -4,6 +4,7 @@ use dojo_world::contracts::WorldContractReader;
 use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
+use tokio::sync::Semaphore;
 use torii_cache::Cache;
 use torii_storage::types::ContractType;
 use torii_storage::Storage;
@@ -43,6 +44,7 @@ pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     task_network: TaskNetwork<TaskId, TaskData>,
     processors: Arc<Processors<P>>,
     event_processor_config: EventProcessorConfig,
+    nft_metadata_semaphore: Arc<Semaphore>,
 }
 
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
@@ -60,6 +62,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             world,
             task_network: TaskNetwork::new(max_concurrent_tasks),
             processors,
+            nft_metadata_semaphore: Arc::new(Semaphore::new(event_processor_config.max_metadata_tasks)),
             event_processor_config,
         }
     }
@@ -131,6 +134,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         let processors = self.processors.clone();
         let event_processor_config = self.event_processor_config.clone();
         let cache = self.cache.clone();
+        let nft_metadata_semaphore = self.nft_metadata_semaphore.clone();
 
         self.task_network
             .process_tasks(move |task_id, task_data| {
@@ -139,6 +143,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                 let processors = processors.clone();
                 let event_processor_config = event_processor_config.clone();
                 let cache = cache.clone();
+                let nft_metadata_semaphore = nft_metadata_semaphore.clone();
 
                 async move {
                     // Process all events for this task sequentially
@@ -179,6 +184,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 event: event.clone(),
                                 config: event_processor_config.clone(),
                                 world: world.clone(),
+                                nft_metadata_semaphore: nft_metadata_semaphore.clone(),
                             };
 
                             if let Err(e) = processor.process(&ctx).await {

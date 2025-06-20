@@ -1,19 +1,16 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use dojo_types::naming::compute_selector_from_names;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{BlockId, Event};
 use starknet::providers::Provider;
-use torii_sqlite::Sql;
 use tracing::{debug, info};
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorContext};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::register_event";
 
@@ -58,17 +55,11 @@ where
 
     async fn process(
         &self,
-        world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        block_number: u64,
-        block_timestamp: u64,
-        _event_id: &str,
-        event: &Event,
-        config: &EventProcessorConfig,
+        ctx: &EventProcessorContext<P>,
     ) -> Result<(), Error> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
-        let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
+        let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
             panic!(
                 "Expected {} event to be well formed.",
                 <RegisterEventProcessor as EventProcessor<P>>::event_key(self)
@@ -86,7 +77,7 @@ where
 
         // If the namespace is not in the list of namespaces to index, silently ignore it.
         // If our config is empty, we index all namespaces.
-        if !config.should_index(&namespace) {
+        if !ctx.config.should_index(&namespace) {
             return Ok(());
         }
 
@@ -97,11 +88,11 @@ where
             &name,
             event.address.0,
             event.class_hash.0,
-            &world,
+            &ctx.world,
         )
         .await;
-        if config.strict_model_reader {
-            model.set_block(BlockId::Number(block_number)).await;
+        if ctx.config.strict_model_reader {
+            model.set_block(BlockId::Number(ctx.block_number)).await;
         }
         let schema = model.schema().await?;
         let layout = model.layout().await?;
@@ -129,7 +120,7 @@ where
             "Registered event content."
         );
 
-        db.register_model(
+        ctx.storage.register_model(
             &namespace,
             &schema,
             layout,
@@ -137,7 +128,7 @@ where
             event.address.into(),
             packed_size,
             unpacked_size,
-            block_timestamp,
+            ctx.block_timestamp,
             None,
             None,
         )

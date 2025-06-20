@@ -29,6 +29,8 @@ pub enum Error {
     ControllerProcessorError(#[from] crate::processors::controller::ControllerProcessorError),
     #[error(transparent)]
     TokenMetadataError(#[from] TokenMetadataError),
+    #[error(transparent)]
+    CacheError(#[from] torii_cache::error::Error),
 }
 
 #[derive(Error, Debug)]
@@ -75,6 +77,8 @@ pub enum ParseError {
     ParseCairoShortString(#[from] ParseCairoShortStringError),
     #[error(transparent)]
     FromUtf8(#[from] std::string::FromUtf8Error),
+    #[error(transparent)]
+    Utf8Error(#[from] std::str::Utf8Error),
     #[error(transparent)]
     CairoSerdeError(#[from] cainome::cairo_serde::Error),
     #[error(transparent)]

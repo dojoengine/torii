@@ -13,13 +13,11 @@
 //! (this operation is costly, so we only do it if the calldata structure is not enough).
 
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use cainome_cairo_serde::CairoSerde;
-use dojo_world::contracts::world::WorldContractReader;
-use lazy_static::lazy_static;
+use chrono::DateTime;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Event;
@@ -29,13 +27,11 @@ use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use thiserror::Error;
 use tokio::time::sleep;
-use torii_sqlite::utils::must_utc_datetime_from_timestamp;
-use torii_sqlite::Sql;
 use tracing::{debug, error, info, warn};
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorContext};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::controller";
 const CARTRIDGE_LOOKUP_URL: &str = "https://api.cartridge.gg/lookup";
@@ -67,33 +63,31 @@ struct UdcContractDeployedEvent {
     salt: Felt,
 }
 
-lazy_static! {
-    // https://x.cartridge.gg/
-    pub(crate) static ref CARTRIDGE_MAGIC: [Felt; 22] = [
-        felt!("0x68"),
-        felt!("0x74"),
-        felt!("0x74"),
-        felt!("0x70"),
-        felt!("0x73"),
-        felt!("0x3a"),
-        felt!("0x2f"),
-        felt!("0x2f"),
-        felt!("0x78"),
-        felt!("0x2e"),
-        felt!("0x63"),
-        felt!("0x61"),
-        felt!("0x72"),
-        felt!("0x74"),
-        felt!("0x72"),
-        felt!("0x69"),
-        felt!("0x64"),
-        felt!("0x67"),
-        felt!("0x65"),
-        felt!("0x2e"),
-        felt!("0x67"),
-        felt!("0x67"),
-    ];
-}
+// https://x.cartridge.gg/
+const CARTRIDGE_MAGIC: [Felt; 22] = [
+    felt!("0x68"),
+    felt!("0x74"),
+    felt!("0x74"),
+    felt!("0x70"),
+    felt!("0x73"),
+    felt!("0x3a"),
+    felt!("0x2f"),
+    felt!("0x2f"),
+    felt!("0x78"),
+    felt!("0x2e"),
+    felt!("0x63"),
+    felt!("0x61"),
+    felt!("0x72"),
+    felt!("0x74"),
+    felt!("0x72"),
+    felt!("0x69"),
+    felt!("0x64"),
+    felt!("0x67"),
+    felt!("0x65"),
+    felt!("0x2e"),
+    felt!("0x67"),
+    felt!("0x67"),
+];
 
 #[derive(Debug, Serialize, Deserialize)]
 struct LookupRequest {
@@ -134,15 +128,9 @@ where
 
     async fn process(
         &self,
-        _world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        _block_number: u64,
-        block_timestamp: u64,
-        _event_id: &str,
-        event: &Event,
-        _config: &EventProcessorConfig,
+        ctx: &EventProcessorContext<P>,
     ) -> Result<(), Error> {
-        let udc_event = UdcContractDeployedEvent::cairo_deserialize(&event.data, 0)?;
+        let udc_event = UdcContractDeployedEvent::cairo_deserialize(&ctx.event.data, 0)?;
 
         if !is_cartridge_controller(&udc_event).await? {
             return Ok(());
@@ -171,12 +159,7 @@ where
             "Controller deployed."
         );
 
-        db.add_controller(
-            &username,
-            &address,
-            must_utc_datetime_from_timestamp(block_timestamp),
-        )
-        .await?;
+        ctx.storage.add_controller(&username, &address, DateTime::from_timestamp(ctx.block_timestamp as i64, 0).unwrap()).await?;
 
         Ok(())
     }

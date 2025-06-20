@@ -1,15 +1,13 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
-use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::error::Error;
+use crate::erc::{felt_and_u256_to_sql_string, fetch_token_metadata};
+use crate::error::{Error, TokenMetadataError};
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
 
@@ -67,11 +65,11 @@ where
         }
 
         let _permit = ctx
-            .cache
             .nft_metadata_semaphore
             .acquire()
             .await
-            .map_err(|e| Error::TokenMetadata(TokenMetadataError::AcquireError(e)))?;
+            .map_err(TokenMetadataError::AcquireError)?;
+
         let metadata = fetch_token_metadata(token_address, token_id, ctx.world.provider()).await?;
 
 

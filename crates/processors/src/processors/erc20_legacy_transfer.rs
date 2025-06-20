@@ -1,17 +1,15 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
-use torii_sqlite::Sql;
 use tracing::debug;
 
+use crate::erc::{try_register_erc20_token, update_erc_balance_diff};
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorContext};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc20_legacy_transfer";
 
@@ -54,29 +52,33 @@ where
 
     async fn process(
         &self,
-        world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        _block_number: u64,
-        block_timestamp: u64,
-        event_id: &str,
-        event: &Event,
-        _config: &EventProcessorConfig,
+        ctx: &EventProcessorContext<P>,
     ) -> Result<(), Error> {
-        let token_address = event.from_address;
-        let from = event.data[0];
-        let to = event.data[1];
+        let token_address = ctx.event.from_address;
+        let from = ctx.event.data[0];
+        let to = ctx.event.data[1];
 
-        let value = U256Cainome::cairo_deserialize(&event.data, 2)?;
+        let value = U256Cainome::cairo_deserialize(&ctx.event.data, 2)?;
         let value = U256::from_words(value.low, value.high);
 
-        db.handle_erc20_transfer(
+        // optimistically add the token_id to cache
+        // this cache is used while applying the cache diff
+        // so we need to make sure that all RegisterErc*Token queries
+        // are applied before the cache diff is applied
+        try_register_erc20_token(token_address, ctx.world.provider(), ctx.storage.clone(), ctx.cache.clone())
+            .await?;
+
+        // Update the balances diffs on the cache
+        update_erc_balance_diff(ctx.cache.clone(), token_address, from, to, value)?;
+
+        ctx.storage.store_erc_transfer_event(
             token_address,
             from,
             to,
             value,
-            world.provider(),
-            block_timestamp,
-            event_id,
+            None,
+            ctx.block_timestamp,
+            &ctx.event_id,
         )
         .await?;
         debug!(target: LOG_TARGET,from = ?from, to = ?to, value = ?value, "Legacy ERC20 Transfer.");

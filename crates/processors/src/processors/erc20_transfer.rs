@@ -1,21 +1,16 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
-use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::erc::try_register_erc20_token;
+use crate::erc::{try_register_erc20_token, update_erc_balance_diff};
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext};
+use crate::{EventProcessor, EventProcessorContext};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc20_transfer";
-
 
 #[derive(Default, Debug)]
 pub struct Erc20TransferProcessor;
@@ -54,10 +49,7 @@ where
         hasher.finish()
     }
 
-    async fn process(
-        &self,
-        ctx: &EventProcessorContext<P>,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         let token_address = ctx.event.from_address;
         let from = ctx.event.keys[1];
         let to = ctx.event.keys[2];
@@ -69,41 +61,28 @@ where
         // this cache is used while applying the cache diff
         // so we need to make sure that all RegisterErc*Token queries
         // are applied before the cache diff is applied
-        try_register_erc20_token(token_address, ctx.world.provider(), ctx.storage.clone(), ctx.cache.clone())
+        try_register_erc20_token(
+            token_address,
+            ctx.world.provider(),
+            ctx.storage.clone(),
+            ctx.cache.clone(),
+        )
+        .await?;
+
+        // Update the balances diffs in the cache
+        update_erc_balance_diff(ctx.cache.clone(), token_address, from, to, value);
+
+        ctx.storage
+            .store_erc_transfer_event(
+                token_address,
+                from,
+                to,
+                value,
+                None,
+                ctx.block_timestamp,
+                &ctx.event_id,
+            )
             .await?;
-
-        ctx.storage.store_erc_transfer_event(
-            contract_address,
-            from_address,
-            to_address,
-            amount,
-            &token_id,
-            block_timestamp,
-            event_id,
-        )?;
-
-        if from_address != Felt::ZERO {
-            // from_address/contract_address/
-            let from_balance_id = felts_to_sql_string(&[from_address, contract_address]);
-            let mut from_balance = self
-                .cache
-                .erc_cache
-                .balances_diff
-                .entry(from_balance_id)
-                .or_default();
-            *from_balance -= I256::from(amount);
-        }
-
-        if to_address != Felt::ZERO {
-            let to_balance_id = felts_to_sql_string(&[to_address, contract_address]);
-            let mut to_balance = self
-                .cache
-                .erc_cache
-                .balances_diff
-                .entry(to_balance_id)
-                .or_default();
-            *to_balance += I256::from(amount);
-        }
 
         debug!(target: LOG_TARGET,from = ?from, to = ?to, value = ?value, "ERC20 Transfer.");
 
