@@ -4,6 +4,7 @@ use cainome_cairo_serde::{ByteArray, CairoSerde};
 use data_url::{mime::Mime, DataUrl};
 use starknet::{core::{types::{requests::CallRequest, BlockId, BlockTag, FunctionCall, U256}, utils::{get_selector_from_name, parse_cairo_short_string}}, macros::selector, providers::{Provider, ProviderRequestData, ProviderResponseData}};
 use starknet_crypto::Felt;
+use tokio::sync::Semaphore;
 use torii_cache::Cache;
 use torii_storage::Storage;
 use tracing::{debug, warn};
@@ -61,6 +62,37 @@ pub fn update_erc_balance_diff(
             .or_default();
         *to_balance += I256::from(value);
     }
+
+    Ok(())
+}
+
+pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
+    id: &str,
+    contract_address: Felt,
+    actual_token_id: U256,
+    provider: &P,
+    cache: Arc<Cache>,
+    storage: Arc<dyn Storage>,
+    nft_metadata_semaphore: Arc<Semaphore>,
+) -> Result<(), Error> {
+    let _lock = match cache.erc_cache.get_token_registration_lock(id).await {
+        Some(lock) => lock,
+        None => return Ok(()), // Already registered by another thread
+    };
+    let _guard = _lock.lock().await;
+    if cache.erc_cache.is_token_registered(id).await {
+        return Ok(());
+    }
+
+    let _permit = nft_metadata_semaphore
+        .acquire()
+        .await
+        .map_err(|e| Error::TokenMetadataError(TokenMetadataError::AcquireError(e)))?;
+    let metadata = fetch_token_metadata(contract_address, actual_token_id, provider).await?;
+
+    storage.register_nft_token(contract_address, actual_token_id, metadata).await?;
+
+    cache.erc_cache.mark_token_registered(id).await;
 
     Ok(())
 }

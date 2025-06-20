@@ -70,8 +70,9 @@ where
         let mut token_id = from_token_id;
 
         while token_id <= to_token_id {
-            let mut storage = ctx.storage.clone();
-            let mut nft_metadata_semaphore = ctx.nft_metadata_semaphore.clone();
+            let storage = ctx.storage.clone();
+            let nft_metadata_semaphore = ctx.nft_metadata_semaphore.clone();
+            let world = ctx.world.clone();
             let token_address_clone = token_address;
             let current_token_id = token_id;
 
@@ -84,7 +85,7 @@ where
                 let metadata = fetch_token_metadata(
                     token_address_clone,
                     current_token_id,
-                    ctx.world.provider(),
+                    world.provider(),
                 )
                 .await?;
                 storage
