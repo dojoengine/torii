@@ -44,6 +44,7 @@ torii-processors.workspace = true
 torii-indexer-fetcher.workspace = true
 bitflags.workspace = true
 torii-storage.workspace = true
+torii-cache.workspace = true
 
 [dev-dependencies]
 dojo-test-utils.workspace = true

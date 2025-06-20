@@ -66,7 +66,8 @@ where
             "Resource metadata set."
         );
         ctx.storage
-            .set_metadata(&event.resource, &uri_str, ctx.block_timestamp)?;
+            .set_metadata(&event.resource, &uri_str, ctx.block_timestamp)
+            .await?;
 
         // Only retrieve metadata for the World contract.
         let storage = ctx.storage.clone();
@@ -85,6 +86,7 @@ async fn try_retrieve(storage: Arc<dyn Storage>, resource: Felt, uri_str: String
         Ok((metadata, icon_img, cover_img)) => {
             storage
                 .update_metadata(&resource, &uri_str, &metadata, &icon_img, &cover_img)
+                .await
                 .unwrap();
             info!(
                 target: LOG_TARGET,

@@ -18,6 +18,9 @@ pub type StorageError = Box<dyn Error + Send + Sync>;
 
 #[async_trait]
 pub trait Storage: Send + Sync + Debug {
+    /// Returns the cursors for all contracts.
+    async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, StorageError>;
+
     /// Updates the contract cursors with the storage.
     async fn update_cursors(
         &self,
@@ -81,7 +84,7 @@ pub trait Storage: Send + Sync + Debug {
     /// Sets the metadata for a resource with the storage.
     /// It should insert or update the metadata if it already exists.
     /// Along with its model state in the model table.
-    fn set_metadata(
+    async fn set_metadata(
         &self,
         resource: &Felt,
         uri: &str,
@@ -91,7 +94,7 @@ pub trait Storage: Send + Sync + Debug {
     /// Updates the metadata for a resource with the storage.
     /// It should update the metadata if it already exists.
     /// Along with its model state in the model table.
-    fn update_metadata(
+    async fn update_metadata(
         &self,
         resource: &Felt,
         uri: &str,
@@ -105,7 +108,7 @@ pub trait Storage: Send + Sync + Debug {
     /// And store all the relevant calls made in the transaction.
     /// Along with the unique models if any used in the transaction.
     #[allow(clippy::too_many_arguments)]
-    fn store_transaction(
+    async fn store_transaction(
         &self,
         transaction_hash: Felt,
         sender_address: Felt,
@@ -122,7 +125,7 @@ pub trait Storage: Send + Sync + Debug {
     ) -> Result<(), StorageError>;
 
     /// Stores an event with the storage.
-    fn store_event(
+    async fn store_event(
         &self,
         event_id: &str,
         event: &Event,

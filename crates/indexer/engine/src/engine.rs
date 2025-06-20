@@ -11,15 +11,15 @@ use starknet::macros::selector;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use tokio::sync::broadcast::Sender;
+use tokio::sync::Semaphore;
 use tokio::time::{sleep, Instant};
+use torii_cache::{Cache, ContractClassCache};
+use torii_storage::types::ContractType;
 use torii_storage::Storage;
 use torii_processors::{BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors, TransactionProcessorContext};
-use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::controllers::ControllersSync;
-use torii_sqlite::types::{Contract, ContractType};
+use torii_sqlite::types::{Contract};
 use torii_sqlite::utils::format_event_id;
-use torii_sqlite::Sql;
-use torii_storage::Storage;
 use tracing::{debug, error, info, trace};
 
 use crate::constants::LOG_TARGET;
@@ -55,6 +55,7 @@ pub struct EngineConfig {
 #[allow(missing_debug_implementations)]
 pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     world: Arc<WorldContractReader<P>>,
+    cache: Arc<Cache>,
     storage: Arc<dyn Storage>,
     provider: Arc<P>,
     processors: Arc<Processors<P>>,
@@ -65,6 +66,7 @@ pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     contract_class_cache: Arc<ContractClassCache<P>>,
     controllers: Option<Arc<ControllersSync>>,
     fetcher: Fetcher<P>,
+    nft_metadata_semaphore: Arc<Semaphore>,
 }
 
 impl Default for EngineConfig {
@@ -90,6 +92,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     pub fn new(
         world: WorldContractReader<P>,
         storage: Arc<dyn Storage>,
+        cache: Arc<Cache>,
         provider: P,
         processors: Processors<P>,
         config: EngineConfig,
@@ -99,6 +102,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         Self::new_with_controllers(
             world,
             storage,
+            cache,
             provider,
             processors,
             config,
@@ -112,6 +116,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     pub fn new_with_controllers(
         world: WorldContractReader<P>,
         storage: Arc<dyn Storage>,
+        cache: Arc<Cache>,
         provider: P,
         processors: Processors<P>,
         config: EngineConfig,
@@ -131,10 +136,14 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let event_processor_config = config.event_processor_config.clone();
         let fetcher_config = config.fetcher_config.clone();
         let provider = Arc::new(provider);
+        let nft_metadata_semaphore = Arc::new(Semaphore::new(
+            event_processor_config.max_metadata_tasks,
+        ));
 
         Self {
             world: world.clone(),
             storage: storage.clone(),
+            cache: cache.clone(),
             provider: provider.clone(),
             processors: processors.clone(),
             config,
@@ -151,6 +160,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             contract_class_cache: Arc::new(ContractClassCache::new(provider.clone())),
             controllers,
             fetcher: Fetcher::new(provider.clone(), fetcher_config),
+            nft_metadata_semaphore,
         }
     }
 
@@ -474,9 +484,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         contract_type: ContractType,
     ) -> Result<(), ProcessError> {
         if self.config.flags.contains(IndexingFlags::RAW_EVENTS) {
-            self.db
+            self.storage
                 .store_event(event_id, event, transaction_hash, block_timestamp)
-                .map_err(ProcessError::Sqlite)?;
+                .await?;
         }
 
         let event_key = event.keys[0];
@@ -487,13 +497,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             let ctx = EventProcessorContext {
                 storage: self.storage.clone(),
                 world: self.world.clone(),
-                cache: self.contract_class_cache.clone(),
+                cache: self.cache.clone(),
                 config: self.config.event_processor_config.clone(),
-                nft_metadata_semaphore: self.nft_metadata_semaphore.clone(),
                 block_number,
                 block_timestamp,
-                event_id,
+                event_id: event_id.to_string(),
                 event: event.clone(),
+                nft_metadata_semaphore: self.nft_metadata_semaphore.clone(),
             };
             if self.processors.catch_all_event.validate(event) {
                 if let Err(e) = self

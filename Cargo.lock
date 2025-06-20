@@ -11271,6 +11271,7 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "tokio-util",
+ "torii-cache",
  "torii-indexer-fetcher",
  "torii-processors",
  "torii-sqlite",
@@ -11320,6 +11321,7 @@ dependencies = [
  "tokio-util",
  "torii-processors",
  "torii-sqlite",
+ "torii-storage",
  "tracing",
  "url",
 ]

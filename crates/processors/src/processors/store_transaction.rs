@@ -305,7 +305,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug> TransactionProcessor<P>
             ctx.block_timestamp,
             &calls,
             &ctx.unique_models,
-        )?;
+        )
+        .await?;
 
         Ok(())
     }

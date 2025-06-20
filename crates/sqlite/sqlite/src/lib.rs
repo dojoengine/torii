@@ -1,5 +1,4 @@
-use std::collections::{HashMap, HashSet};
-use std::str::FromStr;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use dojo_types::primitive::SqlType;
@@ -8,7 +7,6 @@ use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
 use torii_cache::Cache;
-use torii_sqlite_types::ContractCursor;
 use torii_storage::types::Cursor;
 use torii_storage::Storage;
 
@@ -94,29 +92,6 @@ impl Sql {
         db.execute().await?;
 
         Ok(db)
-    }
-
-    pub async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, Error> {
-        let cursors = sqlx::query_as::<_, ContractCursor>("SELECT * FROM contracts")
-            .fetch_all(&self.pool)
-            .await?;
-
-        let mut cursors_map = HashMap::new();
-        for c in cursors {
-            let contract_address = Felt::from_str(&c.contract_address)
-                .map_err(|e| Error::Parse(ParseError::FromStr(e)))?;
-            let last_pending_block_tx = c
-                .last_pending_block_tx
-                .map(|tx| Felt::from_str(&tx).map_err(|e| Error::Parse(ParseError::FromStr(e))))
-                .transpose()?;
-            let cursor = Cursor {
-                last_pending_block_tx,
-                head: c.head.map(|h| h as u64),
-                last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
-            };
-            cursors_map.insert(contract_address, cursor);
-        }
-        Ok(cursors_map)
     }
 
     pub async fn model(&self, selector: Felt) -> Result<torii_cache::Model, Error> {

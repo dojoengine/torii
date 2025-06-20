@@ -20,11 +20,9 @@ use starknet::providers::{JsonRpcClient, Provider};
 use starknet_crypto::poseidon_hash_many;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
-use torii_sqlite::cache::ModelCache;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::types::{Contract, ContractType, Token};
 use torii_sqlite::utils::u256_to_sql_string;
-use torii_sqlite::Sql;
 
 use crate::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};

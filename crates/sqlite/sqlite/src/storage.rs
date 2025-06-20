@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, str::FromStr};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -10,7 +10,7 @@ use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
 use starknet::core::types::{Event, U256};
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
-use torii_sqlite_types::HookEvent;
+use torii_sqlite_types::{ContractCursor, HookEvent};
 use torii_storage::{
     types::{Cursor, ParsedCall},
     Storage, StorageError,
@@ -37,6 +37,30 @@ use crate::{
 
 #[async_trait]
 impl Storage for Sql {
+    /// Returns the cursors for all contracts.
+    async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, StorageError> {
+        let cursors = sqlx::query_as::<_, ContractCursor>("SELECT * FROM contracts")
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut cursors_map = HashMap::new();
+        for c in cursors {
+            let contract_address = Felt::from_str(&c.contract_address)
+                .map_err(|e| Error::Parse(ParseError::FromStr(e)))?;
+            let last_pending_block_tx = c
+                .last_pending_block_tx
+                .map(|tx| Felt::from_str(&tx).map_err(|e| Error::Parse(ParseError::FromStr(e))))
+                .transpose()?;
+            let cursor = Cursor {
+                last_pending_block_tx,
+                head: c.head.map(|h| h as u64),
+                last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
+            };
+            cursors_map.insert(contract_address, cursor);
+        }
+        Ok(cursors_map)
+    }
+
     /// Updates the contract cursors with the storage.
     async fn update_cursors(
         &self,
