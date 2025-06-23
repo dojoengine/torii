@@ -352,7 +352,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Process parallelized events
+        debug!(target: LOG_TARGET, "Processing parallelized events.");
+        let instant = Instant::now();
         self.task_manager.process_tasks().await?;
+        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed parallelized events.");
+
+        // Apply ERC balances cache diff
+        debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
+        let instant = Instant::now();
+        self.storage.apply_cache_diff(data.cursors.clone()).await?;
+        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
 
         // The update cursors query should absolutely succeed, otherwise we will rollback.
         self.storage
