@@ -697,7 +697,10 @@ impl Storage for Sql {
     }
 
     /// Applies cached balance differences to the storage.
-    async fn apply_cache_diff(&self, cursors: HashMap<Felt, Cursor>) -> Result<(), StorageError> {
+    async fn apply_balances_diff(
+        &self,
+        cursors: HashMap<Felt, Cursor>,
+    ) -> Result<(), StorageError> {
         if !self.cache.erc_cache.balances_diff.is_empty() {
             let erc_cache = self
                 .cache

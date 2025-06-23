@@ -180,7 +180,8 @@ pub trait Storage: Send + Sync + Debug {
     ) -> Result<(), StorageError>;
 
     /// Applies cached balance differences to the storage.
-    async fn apply_cache_diff(&self, cursors: HashMap<Felt, Cursor>) -> Result<(), StorageError>;
+    async fn apply_balances_diff(&self, cursors: HashMap<Felt, Cursor>)
+        -> Result<(), StorageError>;
 
     /// Executes pending operations and commits the current transaction.
     async fn execute(&self) -> Result<(), StorageError>;

@@ -315,7 +315,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Apply ERC balances cache diff
         debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
         let instant = Instant::now();
-        self.storage.apply_cache_diff(range.cursors.clone()).await?;
+        self.storage
+            .apply_balances_diff(range.cursors.clone())
+            .await?;
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
 
         // Update cursors
@@ -360,7 +362,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Apply ERC balances cache diff
         debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
         let instant = Instant::now();
-        self.storage.apply_cache_diff(data.cursors.clone()).await?;
+        self.storage
+            .apply_balances_diff(data.cursors.clone())
+            .await?;
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
 
         // The update cursors query should absolutely succeed, otherwise we will rollback.
