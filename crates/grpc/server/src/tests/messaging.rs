@@ -1,6 +1,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
+use dojo_types::naming::compute_selector_from_names;
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Member, Struct, Ty};
 use dojo_world::contracts::abigen::model::Layout;
@@ -71,9 +72,9 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
 
     // Register the model for our Message
     db.register_model(
-        "types_test",
+        compute_selector_from_names("types_test", "Message"),
         &Ty::Struct(Struct {
-            name: "Message".to_string(),
+            name: "types_test-Message".to_string(),
             children: vec![
                 Member {
                     name: "identity".to_string(),
@@ -289,7 +290,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
 
     // Register the message model on both databases
     let message_model = Ty::Struct(Struct {
-        name: "Message".to_string(),
+        name: "types_test-Message".to_string(),
         children: vec![
             Member {
                 name: "identity".to_string(),
@@ -306,7 +307,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
 
     for db in [&mut db1, &mut db2] {
         db.register_model(
-            "types_test",
+            compute_selector_from_names("types_test", "Message"),
             &message_model,
             &Layout::Fixed(vec![]),
             Felt::ZERO,

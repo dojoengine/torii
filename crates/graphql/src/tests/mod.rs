@@ -5,6 +5,7 @@ use anyhow::Result;
 use async_graphql::dynamic::Schema;
 use dojo_test_utils::compiler::CompilerTestSetup;
 use dojo_test_utils::migration::copy_types_test_db;
+use dojo_types::naming::{get_tag};
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Enum, EnumOption, Member, Struct, Ty};
 use dojo_utils::{TransactionExt, TransactionWaiter, TxnConfig};
@@ -224,10 +225,11 @@ pub async fn run_graphql_subscription(
 }
 
 pub async fn model_fixtures(db: &Sql) {
+    let tag = get_tag("types_test", "Record");
     db.register_model(
-        "types_test",
+        compute_selector_from_tag(&tag),
         &Ty::Struct(Struct {
-            name: "Record".to_string(),
+            name: tag,
             children: vec![
                 Member {
                     name: "depth".to_string(),
