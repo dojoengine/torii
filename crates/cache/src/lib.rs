@@ -127,7 +127,8 @@ impl Cache for InMemoryCache {
 
     async fn update_balance_diff(&self, token_id: &str, from: Felt, to: Felt, value: U256) {
         if from != Felt::ZERO {
-            let from_balance_id = format!("{}/{}", format!("{:#x}", from), token_id);
+            // from/token_id
+            let from_balance_id = format!("{:#x}/{}", from, token_id);
             let mut from_balance = self
                 .erc_cache
                 .balances_diff
@@ -137,7 +138,8 @@ impl Cache for InMemoryCache {
         }
 
         if to != Felt::ZERO {
-            let to_balance_id = format!("{}/{}", format!("{:#x}", to), token_id);
+            // to/token_id
+            let to_balance_id = format!("{:#x}/{}", to, token_id);
             let mut to_balance = self
                 .erc_cache
                 .balances_diff
