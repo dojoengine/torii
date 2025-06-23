@@ -59,6 +59,8 @@ torii-processors = { workspace = true }
 torii-typed-data = { workspace = true }
 torii-libp2p-relay = { workspace = true }
 indexmap.workspace = true
+torii-cache.workspace = true
+torii-storage.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

@@ -15,12 +15,14 @@ use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
 use tokio::time::{sleep, Duration};
 use tonic::Request;
+use torii_cache::Cache;
 use torii_libp2p_relay::Relay;
 use torii_proto::proto::world::PublishMessageRequest;
-use torii_sqlite::cache::ModelCache;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::{Contract, ContractType};
+use torii_sqlite::types::Contract;
 use torii_sqlite::Sql;
+use torii_storage::types::ContractType;
+use torii_storage::Storage;
 use torii_typed_data::typed_data::{Domain, Field, SimpleField, TypedData};
 
 use crate::{DojoWorld, GrpcConfig};
@@ -55,15 +57,15 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let mut db = Sql::new(
+    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+    let db = Sql::new(
         pool.clone(),
         sender,
         &[Contract {
             address: Felt::ZERO,
             r#type: ContractType::WORLD,
         }],
-        model_cache.clone(),
+        cache.clone(),
     )
     .await
     .unwrap();
@@ -104,7 +106,6 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
         db,
         provider.clone(),
         Felt::ZERO, // world_address
-        model_cache,
         None,
         GrpcConfig::default(),
     );
@@ -253,7 +254,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         executor1.run().await.unwrap();
     });
 
-    let model_cache1 = Arc::new(ModelCache::new(pool1.clone()).await.unwrap());
+    let cache1 = Arc::new(Cache::new(pool1.clone()).await.unwrap());
     let mut db1 = Sql::new(
         pool1.clone(),
         sender1,
@@ -261,7 +262,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
             address: Felt::ZERO,
             r#type: ContractType::WORLD,
         }],
-        model_cache1.clone(),
+        cache1.clone(),
     )
     .await
     .unwrap();
@@ -276,7 +277,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         executor2.run().await.unwrap();
     });
 
-    let model_cache2 = Arc::new(ModelCache::new(pool2.clone()).await.unwrap());
+    let cache2 = Arc::new(Cache::new(pool2.clone()).await.unwrap());
     let mut db2 = Sql::new(
         pool2.clone(),
         sender2,
@@ -284,7 +285,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
             address: Felt::ZERO,
             r#type: ContractType::WORLD,
         }],
-        model_cache2.clone(),
+        cache2.clone(),
     )
     .await
     .unwrap();
@@ -366,7 +367,6 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         db1,
         provider.clone(),
         Felt::ZERO, // world_address
-        model_cache1,
         Some(cross_messaging_tx1),
         GrpcConfig::default(),
     );

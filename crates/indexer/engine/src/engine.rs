@@ -14,12 +14,15 @@ use tokio::sync::broadcast::Sender;
 use tokio::sync::Semaphore;
 use tokio::time::{sleep, Instant};
 use torii_cache::{Cache, ContractClassCache};
+use torii_processors::{
+    BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors,
+    TransactionProcessorContext,
+};
+use torii_sqlite::controllers::ControllersSync;
+use torii_sqlite::types::Contract;
+use torii_sqlite::utils::format_event_id;
 use torii_storage::types::ContractType;
 use torii_storage::Storage;
-use torii_processors::{BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors, TransactionProcessorContext};
-use torii_sqlite::controllers::ControllersSync;
-use torii_sqlite::types::{Contract};
-use torii_sqlite::utils::format_event_id;
 use tracing::{debug, error, info, trace};
 
 use crate::constants::LOG_TARGET;
@@ -136,9 +139,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let event_processor_config = config.event_processor_config.clone();
         let fetcher_config = config.fetcher_config.clone();
         let provider = Arc::new(provider);
-        let nft_metadata_semaphore = Arc::new(Semaphore::new(
-            event_processor_config.max_metadata_tasks,
-        ));
+        let nft_metadata_semaphore =
+            Arc::new(Semaphore::new(event_processor_config.max_metadata_tasks));
 
         Self {
             world: world.clone(),
@@ -155,7 +157,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 world,
                 processors,
                 max_concurrent_tasks,
-                event_processor_config
+                event_processor_config,
             ),
             contract_class_cache: Arc::new(ContractClassCache::new(provider.clone())),
             controllers,
@@ -431,11 +433,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         };
 
         for processor in &self.processors.block {
-            processor
-                .process(
-                    &ctx,
-                )
-                .await?
+            processor.process(&ctx).await?
         }
 
         trace!(target: LOG_TARGET, block_number = %block_number, "Processed block.");
@@ -464,11 +462,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             unique_models: unique_models.clone(),
         };
         for processor in &self.processors.transaction {
-            processor
-                .process(
-                    &ctx,
-                )
-                .await?
+            processor.process(&ctx).await?
         }
 
         Ok(())
@@ -506,14 +500,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 nft_metadata_semaphore: self.nft_metadata_semaphore.clone(),
             };
             if self.processors.catch_all_event.validate(event) {
-                if let Err(e) = self
-                    .processors
-                    .catch_all_event
-                    .process(
-                        &ctx,
-                    )
-                    .await
-                {
+                if let Err(e) = self.processors.catch_all_event.process(&ctx).await {
                     error!(target: LOG_TARGET, error = ?e, "Processing catch all event processor.");
                     return Err(e.into());
                 }

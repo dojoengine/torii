@@ -55,3 +55,4 @@ sozo-scarbext.workspace = true
 tempfile.workspace = true
 sqlx.workspace = true
 url.workspace = true
+torii-sqlite.workspace = true

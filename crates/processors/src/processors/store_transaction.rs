@@ -292,21 +292,22 @@ impl<P: Provider + Send + Sync + std::fmt::Debug> TransactionProcessor<P>
             vec![]
         };
 
-        ctx.storage.store_transaction(
-            tx_info.transaction_hash,
-            tx_info.sender_address,
-            &tx_info.calldata,
-            tx_info.max_fee,
-            &tx_info.signature,
-            tx_info.nonce,
-            ctx.block_number,
-            &ctx.contract_addresses,
-            tx_info.transaction_type,
-            ctx.block_timestamp,
-            &calls,
-            &ctx.unique_models,
-        )
-        .await?;
+        ctx.storage
+            .store_transaction(
+                tx_info.transaction_hash,
+                tx_info.sender_address,
+                &tx_info.calldata,
+                tx_info.max_fee,
+                &tx_info.signature,
+                tx_info.nonce,
+                ctx.block_number,
+                &ctx.contract_addresses,
+                tx_info.transaction_type,
+                ctx.block_timestamp,
+                &calls,
+                &ctx.unique_models,
+            )
+            .await?;
 
         Ok(())
     }
