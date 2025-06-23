@@ -128,7 +128,7 @@ where
 
         ctx.storage
             .register_model(
-                &namespace,
+                event.selector,
                 &new_schema,
                 &layout,
                 event.class_hash.into(),

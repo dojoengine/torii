@@ -5,10 +5,7 @@ use std::{
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use dojo_types::{
-    naming::{compute_selector_from_names, get_tag},
-    schema::{Struct, Ty},
-};
+use dojo_types::{naming::compute_selector_from_names, schema::Ty};
 use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
 use starknet::core::types::{Event, U256};
 use starknet_crypto::{poseidon_hash_many, Felt};
@@ -162,7 +159,7 @@ impl Storage for Sql {
     /// update the model schema and its table.
     async fn register_model(
         &self,
-        namespace: &str,
+        selector: Felt,
         model: &Ty,
         layout: &Layout,
         class_hash: Felt,
@@ -173,12 +170,8 @@ impl Storage for Sql {
         schema_diff: Option<&Ty>,
         upgrade_diff: Option<&Ty>,
     ) -> Result<(), StorageError> {
-        let selector = compute_selector_from_names(namespace, &model.name());
-        let namespaced_name = get_tag(namespace, &model.name());
-        let namespaced_schema = Ty::Struct(Struct {
-            name: namespaced_name.clone(),
-            children: model.as_struct().unwrap().children.clone(),
-        });
+        let namespaced_name = model.name();
+        let (namespace, name) = namespaced_name.split_once('-').unwrap();
 
         let insert_models =
             "INSERT INTO models (id, namespace, name, class_hash, contract_address, layout, \
@@ -190,7 +183,7 @@ impl Storage for Sql {
         let arguments = vec![
             Argument::FieldElement(selector),
             Argument::String(namespace.to_string()),
-            Argument::String(model.name().to_string()),
+            Argument::String(name.to_string()),
             Argument::FieldElement(class_hash),
             Argument::FieldElement(contract_address),
             Argument::String(
@@ -198,7 +191,7 @@ impl Storage for Sql {
                     .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?,
             ),
             Argument::String(
-                serde_json::to_string(&namespaced_schema)
+                serde_json::to_string(&model)
                     .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?,
             ),
             Argument::Int(packed_size as i64),

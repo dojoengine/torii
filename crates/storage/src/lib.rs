@@ -47,7 +47,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     #[allow(clippy::too_many_arguments)]
     async fn register_model(
         &self,
-        namespace: &str,
+        selector: Felt,
         model: &Ty,
         layout: &Layout,
         class_hash: Felt,
