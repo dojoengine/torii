@@ -57,7 +57,7 @@ where
         let token_id = U256::from_words(token_id.low, token_id.high);
 
         let id = felt_and_u256_to_sql_string(&token_address, &token_id);
-        if !ctx.cache.erc_cache.is_token_registered(&id).await {
+        if !ctx.cache.is_token_registered(&id).await {
             return Ok(());
         }
 

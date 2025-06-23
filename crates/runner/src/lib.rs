@@ -260,7 +260,6 @@ impl Runner {
             readonly_pool.clone(),
             sender.clone(),
             &self.args.indexing.contracts,
-            cache.clone(),
             SqlConfig {
                 all_model_indices: self.args.sql.all_model_indices,
                 model_indices: self.args.sql.model_indices.clone(),

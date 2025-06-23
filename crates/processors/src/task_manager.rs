@@ -39,7 +39,7 @@ struct TaskData {
 #[allow(missing_debug_implementations)]
 pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     storage: Arc<dyn Storage>,
-    cache: Arc<Cache>,
+    cache: Arc<dyn Cache>,
     world: Arc<WorldContractReader<P>>,
     task_network: TaskNetwork<TaskId, TaskData>,
     processors: Arc<Processors<P>>,
@@ -50,7 +50,7 @@ pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
     pub fn new(
         storage: Arc<dyn Storage>,
-        cache: Arc<Cache>,
+        cache: Arc<dyn Cache>,
         world: Arc<WorldContractReader<P>>,
         processors: Arc<Processors<P>>,
         max_concurrent_tasks: usize,

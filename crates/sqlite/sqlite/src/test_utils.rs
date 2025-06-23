@@ -61,9 +61,7 @@ impl Sql {
         let executor_handle = tokio::spawn(async move {
             executor.run().await.unwrap();
         });
-
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
-
+        
         let sql = Sql::new(
             pool.clone(),
             sender,
@@ -71,10 +69,10 @@ impl Sql {
                 address: world_address,
                 r#type: ContractType::WORLD,
             }],
-            cache,
         )
         .await
         .unwrap();
+        let cache = Arc::new(Cache::new(Arc::new(sql)).await.unwrap());
 
         (sql, executor_handle)
     }

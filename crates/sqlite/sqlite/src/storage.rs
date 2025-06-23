@@ -1,23 +1,22 @@
 use std::{
     collections::{HashMap, HashSet},
-    str::FromStr, sync::Arc,
+    str::FromStr,
 };
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dojo_types::{
     naming::{compute_selector_from_names, get_tag},
-    schema::{ModelMetadata, Struct, Ty},
-    WorldMetadata,
+    schema::{Struct, Ty},
 };
-use dojo_world::contracts::abigen::model::Layout;
+use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
 use starknet::core::types::{Event, U256};
 use starknet_crypto::{poseidon_hash_many, Felt};
-use torii_cache::Cache;
 use torii_math::I256;
-use torii_sqlite_types::{ContractCursor, HookEvent, Model};
+use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
-    types::{Cursor, ParsedCall}, ReadOnlyStorage, Storage, StorageError
+    types::{Cursor, Model, ParsedCall},
+    ReadOnlyStorage, Storage, StorageError,
 };
 
 use crate::{
@@ -66,16 +65,19 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Returns the model metadata for the storage.
-    async fn model(&self, selector: &Felt) -> Result<ModelMetadata, StorageError> {
-        let model = sqlx::query_as::<_, Model>("SELECT * FROM models WHERE id = ?")
+    async fn model(&self, selector: &Felt) -> Result<Model, StorageError> {
+        let model = sqlx::query_as::<_, SQLModel>("SELECT * FROM models WHERE id = ?")
             .bind(format!("{:#x}", selector))
             .fetch_one(&self.pool)
             .await?;
 
-        let layout = serde_json::from_str(&model.layout).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
-        let schema = serde_json::from_str(&model.schema).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+        let layout = serde_json::from_str(&model.layout)
+            .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+        let schema = serde_json::from_str(&model.schema)
+            .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
 
-        let model_metadata = ModelMetadata {
+        let model_metadata = Model {
+            selector: Felt::from_str(&model.id)?,
             name: model.name,
             namespace: model.namespace,
             schema,
@@ -89,17 +91,20 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Returns the models for the storage.
-    async fn models(&self) -> Result<Vec<ModelMetadata>, StorageError> {
-        let models = sqlx::query_as::<_, Model>("SELECT * FROM models")
+    async fn models(&self) -> Result<Vec<Model>, StorageError> {
+        let models = sqlx::query_as::<_, SQLModel>("SELECT * FROM models")
             .fetch_all(&self.pool)
             .await?;
 
         let mut models_metadata = Vec::with_capacity(models.len());
         for model in models {
-            let layout = serde_json::from_str(&model.layout).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
-            let schema = serde_json::from_str(&model.schema).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+            let layout = serde_json::from_str(&model.layout)
+                .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+            let schema = serde_json::from_str(&model.schema)
+                .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
 
-            let model_metadata = ModelMetadata {
+            let model_metadata = Model {
+                selector: Felt::from_str(&model.id)?,
                 name: model.name,
                 namespace: model.namespace,
                 schema,
@@ -152,7 +157,7 @@ impl Storage for Sql {
         &self,
         namespace: &str,
         model: &Ty,
-        layout: Layout,
+        layout: &Layout,
         class_hash: Felt,
         contract_address: Felt,
         packed_size: u32,
@@ -734,21 +739,19 @@ impl Storage for Sql {
     /// Applies cached balance differences to the storage.
     async fn apply_balances_diff(
         &self,
+        balances_diff: HashMap<String, I256>,
         cursors: HashMap<Felt, Cursor>,
-        cache: Arc<dyn Cache + Send + Sync>,
     ) -> Result<(), StorageError> {
-        let balances_diff = cache.balances_diff().await;
-        if !balances_diff.is_empty() {
-            cache.clear_balances_diff().await;
-
-            self.executor
-                .send(QueryMessage::new(
-                    "".to_string(),
-                    vec![],
-                    QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery { balances_diff, cursors }),
-                ))
-                .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-        }
+        self.executor
+            .send(QueryMessage::new(
+                "".to_string(),
+                vec![],
+                QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery {
+                    balances_diff,
+                    cursors,
+                }),
+            ))
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         Ok(())
     }
 

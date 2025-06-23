@@ -46,8 +46,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         apply_balance_diff: ApplyBalanceDiffQuery,
         provider: Arc<P>,
     ) -> Result<(), Error> {
-        let erc_cache = apply_balance_diff.erc_cache;
-        for (id_str, balance) in erc_cache.iter() {
+        let balances_diff = apply_balance_diff.balances_diff;
+        for (id_str, balance) in balances_diff.iter() {
             let id = id_str.split(SQL_FELT_DELIMITER).collect::<Vec<&str>>();
             match id.len() {
                 2 => {

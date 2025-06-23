@@ -6,7 +6,7 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{try_register_erc20_token, update_erc_balance_diff};
+use crate::erc::{felt_to_sql_string, try_register_erc20_token};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
@@ -71,7 +71,7 @@ where
         .await?;
 
         // Update the balances diffs on the cache
-        update_erc_balance_diff(ctx.cache.clone(), token_address, None, from, to, value)?;
+        ctx.cache.update_balance_diff(&felt_to_sql_string(&token_address), from, to, value).await;
 
         ctx.storage
             .store_erc_transfer_event(

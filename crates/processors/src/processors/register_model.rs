@@ -6,6 +6,7 @@ use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
 use starknet::core::types::{BlockId, Event};
 use starknet::providers::Provider;
+use torii_storage::types::Model;
 use tracing::{debug, info};
 
 use crate::error::Error;
@@ -73,6 +74,7 @@ where
         // Safe to unwrap, since it's coming from the chain.
         let namespace = event.namespace.to_string().unwrap();
         let name = event.name.to_string().unwrap();
+        let selector = compute_selector_from_names(&namespace, &name);
 
         // If the namespace is not in the list of namespaces to index, silently ignore it.
         // If our config is empty, we index all namespaces.
@@ -120,7 +122,7 @@ where
             .register_model(
                 &namespace,
                 &schema,
-                layout,
+                &layout,
                 event.class_hash.into(),
                 event.address.into(),
                 packed_size,
@@ -130,6 +132,18 @@ where
                 None,
             )
             .await?;
+
+        ctx.cache.register_model(selector, Model {
+            selector,
+            namespace,
+            name,
+            class_hash: event.class_hash.into(),
+            contract_address: event.address.into(),
+            packed_size,
+            unpacked_size,
+            layout,
+            schema,
+        }).await;
 
         Ok(())
     }

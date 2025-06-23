@@ -12,3 +12,4 @@ dojo-world.workspace = true
 serde.workspace = true
 starknet.workspace = true
 anyhow.workspace = true
+torii-math.workspace = true

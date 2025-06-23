@@ -1,16 +1,17 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use dojo_types::schema::{Ty, ModelMetadata};
-use dojo_types::WorldMetadata;
+use dojo_types::schema::Ty;
+use dojo_world::config::WorldMetadata;
 use dojo_world::contracts::abigen::model::Layout;
 use starknet::core::types::{Event, Felt, U256};
+use torii_math::I256;
 use std::fmt::Debug;
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
 };
 
-use crate::types::{Cursor, ParsedCall};
+use crate::types::{Cursor, Model, ParsedCall};
 
 pub mod types;
 
@@ -22,10 +23,10 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, StorageError>;
 
     /// Returns the model metadata for the storage.
-    async fn model(&self, model: &Felt) -> Result<ModelMetadata, StorageError>;
+    async fn model(&self, model: &Felt) -> Result<Model, StorageError>;
 
     /// Returns the models for the storage.
-    async fn models(&self) -> Result<Vec<ModelMetadata>, StorageError>;
+    async fn models(&self) -> Result<Vec<Model>, StorageError>;
 }
 
 #[async_trait]
@@ -45,7 +46,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         &self,
         namespace: &str,
         model: &Ty,
-        layout: Layout,
+        layout: &Layout,
         class_hash: Felt,
         contract_address: Felt,
         packed_size: u32,
@@ -189,7 +190,11 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     ) -> Result<(), StorageError>;
 
     /// Applies cached balance differences to the storage.
-    async fn apply_balances_diff(&self, cursors: HashMap<Felt, Cursor>)
+    async fn apply_balances_diff(
+        &self,
+        balances_diff: HashMap<String, I256>,
+        cursors: HashMap<Felt, Cursor>,
+    )
         -> Result<(), StorageError>;
 
     /// Executes pending operations and commits the current transaction.

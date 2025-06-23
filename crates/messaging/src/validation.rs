@@ -7,6 +7,7 @@ use starknet::providers::Provider;
 use starknet_core::types::typed_data::TypeReference;
 use starknet_core::types::TypedData;
 use torii_sqlite::Sql;
+use torii_storage::ReadOnlyStorage;
 
 use crate::error::MessagingError;
 use crate::parsing::parse_value_to_ty;
@@ -44,7 +45,7 @@ pub async fn validate_message(db: &Sql, message: &TypedData) -> Result<Ty, Messa
     let selector = compute_selector_from_tag(&tag);
 
     let mut ty = db
-        .model(selector)
+        .model(&selector)
         .await
         .map_err(|e| MessagingError::ModelNotFound(e.to_string()))?
         .schema;

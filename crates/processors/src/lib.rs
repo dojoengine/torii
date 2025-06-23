@@ -27,7 +27,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct EventProcessorContext<P: Provider + Sync> {
     pub world: Arc<WorldContractReader<P>>,
     pub storage: Arc<dyn Storage>,
-    pub cache: Arc<Cache>,
+    pub cache: Arc<dyn Cache>,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub event_id: String,

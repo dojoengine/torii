@@ -58,7 +58,7 @@ pub struct EngineConfig {
 #[allow(missing_debug_implementations)]
 pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     world: Arc<WorldContractReader<P>>,
-    cache: Arc<Cache>,
+    cache: Arc<dyn Cache>,
     storage: Arc<dyn Storage>,
     provider: Arc<P>,
     processors: Arc<Processors<P>>,
@@ -95,7 +95,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     pub fn new(
         world: WorldContractReader<P>,
         storage: Arc<dyn Storage>,
-        cache: Arc<Cache>,
+        cache: Arc<dyn Cache>,
         provider: P,
         processors: Processors<P>,
         config: EngineConfig,
@@ -119,7 +119,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     pub fn new_with_controllers(
         world: WorldContractReader<P>,
         storage: Arc<dyn Storage>,
-        cache: Arc<Cache>,
+        cache: Arc<dyn Cache>,
         provider: P,
         processors: Processors<P>,
         config: EngineConfig,
@@ -316,8 +316,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
         let instant = Instant::now();
         self.storage
-            .apply_balances_diff(range.cursors.clone())
+            .apply_balances_diff(self.cache.balances_diff().await, range.cursors.clone())
             .await?;
+        self.cache.clear_balances_diff().await;
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
 
         // Update cursors
@@ -363,8 +364,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
         let instant = Instant::now();
         self.storage
-            .apply_balances_diff(data.cursors.clone())
+            .apply_balances_diff(self.cache.balances_diff().await, data.cursors.clone())
             .await?;
+        self.cache.clear_balances_diff().await;
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
 
         // The update cursors query should absolutely succeed, otherwise we will rollback.

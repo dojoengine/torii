@@ -4,10 +4,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use dojo_types::naming;
-use dojo_types::schema::ModelMetadata;
+use torii_storage::types::Model;
 use sqlx::{Pool, Sqlite, SqlitePool};
 use starknet::core::types::contract::AbiEntry;
-use starknet::core::types::Felt;
+use starknet::core::types::{Felt, U256};
 use starknet::core::types::{
     BlockId, BlockTag, ContractClass, EntryPointsByType, LegacyContractAbiEntry, StarknetError,
 };
@@ -17,7 +17,7 @@ use tokio::sync::{Mutex, RwLock};
 use torii_math::I256;
 use torii_storage::ReadOnlyStorage;
 
-use crate::error::{Error, ParseError};
+use crate::error::Error;
 
 pub mod error;
 
@@ -26,10 +26,10 @@ pub type CacheError = Box<dyn std::error::Error + Send + Sync>;
 #[async_trait]
 pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
     /// Get models by selectors. If selectors is empty, returns all models.
-    async fn models(&self, selectors: &[Felt]) -> Result<Vec<ModelMetadata>, CacheError>;
+    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, CacheError>;
 
     /// Get a specific model by selector.
-    async fn model(&self, selector: &Felt) -> Result<ModelMetadata, CacheError>;
+    async fn model(&self, selector: &Felt) -> Result<Model, CacheError>;
 
     /// Check if a token is registered.
     async fn is_token_registered(&self, token_id: &str) -> bool;
@@ -43,8 +43,8 @@ pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
 
 #[async_trait]
 pub trait Cache: ReadOnlyCache + Send + Sync + std::fmt::Debug {
-    /// Set a model in the cache.
-    async fn set_model(&self, selector: Felt, model: ModelMetadata);
+    /// Register a model in the cache.
+    async fn register_model(&self, selector: Felt, model: Model);
 
     /// Clear all models from the cache.
     async fn clear_models(&self);
@@ -54,6 +54,9 @@ pub trait Cache: ReadOnlyCache + Send + Sync + std::fmt::Debug {
 
     /// Clear the balances diff.
     async fn clear_balances_diff(&self);
+
+    /// Update the balances diff.
+    async fn update_balance_diff(&self, token_id: &str, from: Felt, to: Felt, value: U256);
 }
 
 #[derive(Debug)]
@@ -73,11 +76,11 @@ impl CacheImpl {
 
 #[async_trait]
 impl ReadOnlyCache for CacheImpl {
-    async fn models(&self, selectors: &[Felt]) -> Result<Vec<ModelMetadata>, CacheError> {
+    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, CacheError> {
         self.model_cache.models(selectors).await.map_err(|e| Box::new(e) as CacheError)
     }
 
-    async fn model(&self, selector: &Felt) -> Result<ModelMetadata, CacheError> {
+    async fn model(&self, selector: &Felt) -> Result<Model, CacheError> {
         self.model_cache.model(selector).await.map_err(|e| Box::new(e) as CacheError)
     }
 
@@ -96,7 +99,7 @@ impl ReadOnlyCache for CacheImpl {
 
 #[async_trait]
 impl Cache for CacheImpl {
-    async fn set_model(&self, selector: Felt, model: ModelMetadata) {
+    async fn register_model(&self, selector: Felt, model: Model) {
         self.model_cache.set(selector, model).await
     }
 
@@ -112,12 +115,34 @@ impl Cache for CacheImpl {
         self.erc_cache.balances_diff.clear();
         self.erc_cache.balances_diff.shrink_to_fit();
     }
+
+    async fn update_balance_diff(&self, token_id: &str, from: Felt, to: Felt, value: U256) {    
+        if from != Felt::ZERO {
+            let from_balance_id = format!("{}/{}", format!("{:#x}", from), token_id);
+            let mut from_balance = self
+                .erc_cache
+                .balances_diff
+                .entry(from_balance_id)
+                .or_default();
+            *from_balance -= I256::from(value);
+        }
+    
+        if to != Felt::ZERO {
+            let to_balance_id = format!("{}/{}", format!("{:#x}", to), token_id);
+            let mut to_balance = self
+                .erc_cache
+                .balances_diff
+                .entry(to_balance_id)
+                .or_default();
+            *to_balance += I256::from(value);
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct ModelCache {
     storage: Arc<dyn ReadOnlyStorage>,
-    model_cache: RwLock<HashMap<Felt, ModelMetadata>>,
+    model_cache: RwLock<HashMap<Felt, Model>>,
 }
 
 impl ModelCache {
@@ -139,7 +164,7 @@ impl ModelCache {
         })
     }
 
-    pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<ModelMetadata>, Error> {
+    pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, Error> {
         if selectors.is_empty() {
             return Ok(self.model_cache.read().await.values().cloned().collect());
         }
@@ -152,7 +177,7 @@ impl ModelCache {
         Ok(schemas)
     }
 
-    pub async fn model(&self, selector: &Felt) -> Result<ModelMetadata, Error> {
+    pub async fn model(&self, selector: &Felt) -> Result<Model, Error> {
         {
             let cache = self.model_cache.read().await;
             if let Some(model) = cache.get(selector).cloned() {
@@ -163,7 +188,7 @@ impl ModelCache {
         self.update_model(selector).await
     }
 
-    async fn update_model(&self, selector: &Felt) -> Result<ModelMetadata, Error> {
+    async fn update_model(&self, selector: &Felt) -> Result<Model, Error> {
         let model = self.storage.model(selector).await?;
 
         let mut cache = self.model_cache.write().await;
@@ -173,7 +198,7 @@ impl ModelCache {
         Ok(model)
     }
 
-    pub async fn set(&self, selector: Felt, model: ModelMetadata) {
+    pub async fn set(&self, selector: Felt, model: Model) {
         let mut cache = self.model_cache.write().await;
         cache.insert(selector, model);
     }

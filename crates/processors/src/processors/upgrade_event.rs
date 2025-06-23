@@ -5,6 +5,7 @@ use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
 use starknet::core::types::{BlockId, Event};
 use starknet::providers::Provider;
+use torii_storage::types::Model;
 use tracing::{debug, info};
 
 use crate::task_manager::TaskId;
@@ -57,7 +58,7 @@ where
 
         // If the model does not exist, silently ignore it.
         // This can happen if only specific namespaces are indexed.
-        let model = match ctx.cache.model_cache.model(&event.selector).await {
+        let model = match ctx.cache.model(&event.selector).await {
             Ok(m) => m,
             Err(e) if e.to_string().contains("no rows") => {
                 debug!(
@@ -122,7 +123,7 @@ where
             .register_model(
                 &namespace,
                 &new_schema,
-                layout,
+                &layout,
                 event.class_hash.into(),
                 event.address.into(),
                 packed_size,
@@ -134,6 +135,18 @@ where
                 prev_schema.diff(&new_schema).as_ref(),
             )
             .await?;
+
+        ctx.cache.register_model(event.selector, Model {
+            selector: event.selector,
+            namespace,
+            name,
+            class_hash: event.class_hash.into(),
+            contract_address: event.address.into(),
+            packed_size,
+            unpacked_size,
+            layout,
+            schema: new_schema,
+        }).await;
 
         Ok(())
     }

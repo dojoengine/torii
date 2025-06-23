@@ -13,7 +13,6 @@ use starknet::{
 use starknet_crypto::Felt;
 use tokio::sync::Semaphore;
 use torii_cache::Cache;
-use torii_math::I256;
 use torii_storage::Storage;
 use tracing::{debug, warn};
 
@@ -47,57 +46,21 @@ pub fn u256_to_sql_string(u256: &U256) -> String {
     format!("{:#064x}", u256)
 }
 
-pub fn update_erc_balance_diff(
-    cache: Arc<Cache>,
-    contract_address: Felt,
-    token_id: Option<U256>,
-    from: Felt,
-    to: Felt,
-    value: U256,
-) -> Result<(), Error> {
-    let id = match token_id {
-        Some(token_id) => felt_and_u256_to_sql_string(&contract_address, &token_id),
-        None => felt_to_sql_string(&contract_address),
-    };
-
-    if from != Felt::ZERO {
-        let from_balance_id = format!("{}/{}", felt_to_sql_string(&from), id);
-        let mut from_balance = cache
-            .erc_cache
-            .balances_diff
-            .entry(from_balance_id)
-            .or_default();
-        *from_balance -= I256::from(value);
-    }
-
-    if to != Felt::ZERO {
-        let to_balance_id = format!("{}/{}", felt_to_sql_string(&to), id);
-        let mut to_balance = cache
-            .erc_cache
-            .balances_diff
-            .entry(to_balance_id)
-            .or_default();
-        *to_balance += I256::from(value);
-    }
-
-    Ok(())
-}
-
 pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
     id: &str,
     contract_address: Felt,
     actual_token_id: U256,
     provider: &P,
-    cache: Arc<Cache>,
+    cache: Arc<dyn Cache + Send + Sync>,
     storage: Arc<dyn Storage>,
     nft_metadata_semaphore: Arc<Semaphore>,
 ) -> Result<(), Error> {
-    let _lock = match cache.erc_cache.get_token_registration_lock(id).await {
+    let _lock = match cache.get_token_registration_lock(id).await {
         Some(lock) => lock,
         None => return Ok(()), // Already registered by another thread
     };
     let _guard = _lock.lock().await;
-    if cache.erc_cache.is_token_registered(id).await {
+    if cache.is_token_registered(id).await {
         return Ok(());
     }
 
@@ -111,7 +74,7 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
         .register_nft_token(contract_address, actual_token_id, metadata)
         .await?;
 
-    cache.erc_cache.mark_token_registered(id).await;
+    cache.mark_token_registered(id).await;
 
     Ok(())
 }
@@ -120,15 +83,15 @@ pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
     contract_address: Felt,
     provider: &P,
     storage: Arc<dyn Storage>,
-    cache: Arc<Cache>,
+    cache: Arc<dyn Cache + Send + Sync>,
 ) -> Result<(), Error> {
     let token_id = format!("{:#x}", contract_address);
-    let _lock = match cache.erc_cache.get_token_registration_lock(&token_id).await {
+    let _lock = match cache.get_token_registration_lock(&token_id).await {
         Some(lock) => lock,
         None => return Ok(()), // Already registered by another thread
     };
     let _guard = _lock.lock().await;
-    if cache.erc_cache.is_token_registered(&token_id).await {
+    if cache.is_token_registered(&token_id).await {
         return Ok(());
     }
 
@@ -137,7 +100,7 @@ pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
         .register_erc20_token(contract_address, name, symbol, decimals)
         .await?;
 
-    cache.erc_cache.mark_token_registered(&token_id).await;
+    cache.mark_token_registered(&token_id).await;
 
     Ok(())
 }
