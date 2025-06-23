@@ -35,6 +35,7 @@ use torii_processors::processors::Processors;
 pub async fn bootstrap_engine<P>(
     world: WorldContractReader<P>,
     db: Sql,
+    cache: Arc<Cache>,
     provider: P,
     contracts: &[Contract],
 ) -> Result<Engine<P>, Box<dyn std::error::Error>>
@@ -45,7 +46,7 @@ where
     let mut engine = Engine::new(
         world,
         Arc::new(db.clone()),
-        Arc::new(Cache::new(db.pool.clone()).await.unwrap()),
+        cache,
         provider.clone(),
         Processors {
             ..Processors::default()
@@ -165,7 +166,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -338,7 +339,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -482,7 +483,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -683,7 +684,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -873,7 +874,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -1004,7 +1005,7 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 }
@@ -1119,7 +1120,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -1235,7 +1236,7 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), Arc::clone(&provider), &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
