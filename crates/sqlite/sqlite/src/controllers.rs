@@ -181,34 +181,48 @@ impl ControllersSync {
 mod tests {
     use std::sync::Arc;
 
+    use crate::executor::Executor;
+
     use super::*;
     use mockito::Server;
     use serde_json::json;
-    use sqlx::Row;
-    use starknet::{
-        macros::felt,
-        providers::{jsonrpc::HttpTransport, JsonRpcClient},
+    use sqlx::{
+        sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+        Row,
     };
-    use starknet_crypto::Felt;
+    use starknet::providers::{jsonrpc::HttpTransport, JsonRpcClient};
+    use tempfile::NamedTempFile;
     use tokio::sync::broadcast;
     use url::Url;
 
     const CARTRIDGE_NODE_MAINNET: &str = "https://api.cartridge.gg/x/starknet/mainnet";
 
-    /// Creates a new Sql instance with a temporary file.
-    ///
-    /// Returns the Sql instance and a handle to the executor task.
-    async fn new_sql_test(
-        world_address: Felt,
+    async fn bootstrap_sql(
+        path: &str,
         shutdown_tx: broadcast::Sender<()>,
+        provider: Arc<JsonRpcClient<HttpTransport>>,
     ) -> (Sql, tokio::task::JoinHandle<()>) {
-        let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(
-            Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
-        )));
+        let options = SqliteConnectOptions::from_str(path)
+            .unwrap()
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
-        Sql::new_tmp_file(world_address, provider.clone(), shutdown_tx).await
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+                .await
+                .unwrap();
+
+        (
+            Sql::new(pool.clone(), sender, &[]).await.unwrap(),
+            tokio::spawn(async move {
+                executor.run().await.unwrap();
+            }),
+        )
     }
-
     #[tokio::test]
     async fn test_fetch_controllers_success() {
         let mut server = Server::new_async().await;
@@ -240,8 +254,16 @@ mod tests {
             .await;
 
         let (shutdown_tx, _) = broadcast::channel(1);
-
-        let (sql, executor_handle) = new_sql_test(felt!("0x123"), shutdown_tx.clone()).await;
+        let tempfile = NamedTempFile::new().unwrap();
+        let path = tempfile.path().to_string_lossy();
+        let (sql, executor_handle) = bootstrap_sql(
+            &path,
+            shutdown_tx.clone(),
+            Arc::new(JsonRpcClient::new(HttpTransport::new(
+                Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
+            ))),
+        )
+        .await;
         let sync = ControllersSync::new(sql)
             .await
             .with_api_url(server.url() + "/query");
@@ -272,7 +294,16 @@ mod tests {
             .await;
 
         let (shutdown_tx, _) = broadcast::channel(1);
-        let (sql, executor_handle) = new_sql_test(felt!("0x1234"), shutdown_tx.clone()).await;
+        let tempfile = NamedTempFile::new().unwrap();
+        let path = tempfile.path().to_string_lossy();
+        let (sql, executor_handle) = bootstrap_sql(
+            &path,
+            shutdown_tx.clone(),
+            Arc::new(JsonRpcClient::new(HttpTransport::new(
+                Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
+            ))),
+        )
+        .await;
 
         let sync = ControllersSync::new(sql)
             .await
@@ -297,7 +328,16 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_sync() {
         let (shutdown_tx, _) = broadcast::channel(1);
-        let (sql, executor_handle) = new_sql_test(felt!("0x123"), shutdown_tx.clone()).await;
+        let tempfile = NamedTempFile::new().unwrap();
+        let path = tempfile.path().to_string_lossy();
+        let (sql, executor_handle) = bootstrap_sql(
+            &path,
+            shutdown_tx.clone(),
+            Arc::new(JsonRpcClient::new(HttpTransport::new(
+                Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
+            ))),
+        )
+        .await;
 
         let ctrls = ControllersSync::new(sql).await;
 
@@ -327,7 +367,17 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_controllers_api_empty_future() {
         let (shutdown_tx, _) = broadcast::channel(1);
-        let (sql, executor_handle) = new_sql_test(felt!("0x123"), shutdown_tx.clone()).await;
+        let tempfile = NamedTempFile::new().unwrap();
+        let path = tempfile.path().to_string_lossy();
+
+        let (sql, executor_handle) = bootstrap_sql(
+            &path,
+            shutdown_tx.clone(),
+            Arc::new(JsonRpcClient::new(HttpTransport::new(
+                Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
+            ))),
+        )
+        .await;
 
         // Insert a controller in the future which should always yield an empty result.
         let timestamp = chrono::Utc::now() + chrono::Duration::days(10);

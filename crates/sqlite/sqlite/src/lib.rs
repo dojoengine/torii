@@ -23,9 +23,6 @@ pub mod simple_broker;
 pub mod storage;
 pub mod utils;
 
-#[cfg(test)]
-pub mod test_utils;
-
 pub use torii_sqlite_types as types;
 
 #[derive(Debug, Clone, Default)]
