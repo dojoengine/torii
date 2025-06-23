@@ -2,6 +2,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use async_trait::async_trait;
 use dojo_types::naming::compute_selector_from_names;
+use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
 use starknet::core::types::{BlockId, Event};
@@ -93,7 +94,13 @@ where
         if ctx.config.strict_model_reader {
             model.set_block(BlockId::Number(ctx.block_number)).await;
         }
-        let schema = model.schema().await?;
+        let mut schema = model.schema().await?;
+        match &mut schema {
+            Ty::Struct(struct_ty) => {
+                struct_ty.name = format!("{}-{}", namespace, struct_ty.name);
+            }
+            _ => unreachable!(),
+        }
         let layout = model.layout().await?;
 
         let unpacked_size: u32 = model.unpacked_size().await?;

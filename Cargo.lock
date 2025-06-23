@@ -11622,6 +11622,7 @@ dependencies = [
  "dojo-world",
  "serde",
  "starknet 0.12.0",
+ "torii-math",
 ]
 
 [[package]]
