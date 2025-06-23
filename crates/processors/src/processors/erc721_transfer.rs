@@ -73,7 +73,14 @@ where
         )
         .await?;
 
-        update_erc_balance_diff(ctx.cache.clone(), token_address, from, to, U256::from(1u8))?;
+        update_erc_balance_diff(
+            ctx.cache.clone(),
+            token_address,
+            Some(token_id),
+            from,
+            to,
+            U256::from(1u8),
+        )?;
 
         ctx.storage
             .store_erc_transfer_event(

@@ -62,7 +62,14 @@ where
         )
         .await?;
 
-        update_erc_balance_diff(ctx.cache.clone(), token_address, from, to, amount)?;
+        update_erc_balance_diff(
+            ctx.cache.clone(),
+            token_address,
+            Some(token_id),
+            from,
+            to,
+            amount,
+        )?;
 
         ctx.storage
             .store_erc_transfer_event(

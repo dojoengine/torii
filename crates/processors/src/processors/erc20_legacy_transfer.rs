@@ -71,7 +71,7 @@ where
         .await?;
 
         // Update the balances diffs on the cache
-        update_erc_balance_diff(ctx.cache.clone(), token_address, from, to, value)?;
+        update_erc_balance_diff(ctx.cache.clone(), token_address, None, from, to, value)?;
 
         ctx.storage
             .store_erc_transfer_event(

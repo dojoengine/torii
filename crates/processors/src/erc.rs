@@ -22,8 +22,10 @@ use crate::{
     fetch::{fetch_content_from_http, fetch_content_from_ipfs},
 };
 
+#[allow(dead_code)]
 const SQL_FELT_DELIMITER: &str = "/";
 
+#[allow(dead_code)]
 pub fn felts_to_sql_string(felts: &[Felt]) -> String {
     felts
         .iter()
@@ -48,13 +50,18 @@ pub fn u256_to_sql_string(u256: &U256) -> String {
 pub fn update_erc_balance_diff(
     cache: Arc<Cache>,
     contract_address: Felt,
+    token_id: Option<U256>,
     from: Felt,
     to: Felt,
     value: U256,
 ) -> Result<(), Error> {
+    let id = match token_id {
+        Some(token_id) => felt_and_u256_to_sql_string(&contract_address, &token_id),
+        None => felt_to_sql_string(&contract_address),
+    };
+
     if from != Felt::ZERO {
-        // from_address/contract_address/
-        let from_balance_id = felts_to_sql_string(&[from, contract_address]);
+        let from_balance_id = format!("{}/{}", felt_to_sql_string(&from), id);
         let mut from_balance = cache
             .erc_cache
             .balances_diff
@@ -64,7 +71,7 @@ pub fn update_erc_balance_diff(
     }
 
     if to != Felt::ZERO {
-        let to_balance_id = felts_to_sql_string(&[to, contract_address]);
+        let to_balance_id = format!("{}/{}", felt_to_sql_string(&to), id);
         let mut to_balance = cache
             .erc_cache
             .balances_diff

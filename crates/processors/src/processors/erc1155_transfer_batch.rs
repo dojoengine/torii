@@ -105,7 +105,14 @@ where
                 )
                 .await?;
 
-                update_erc_balance_diff(cache, token_address, from, to, amount)?;
+                update_erc_balance_diff(
+                    cache,
+                    token_address,
+                    Some(token_id_clone),
+                    from,
+                    to,
+                    amount,
+                )?;
 
                 storage
                     .store_erc_transfer_event(
