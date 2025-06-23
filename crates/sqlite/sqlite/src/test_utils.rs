@@ -12,7 +12,6 @@ use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::JsonRpcClient;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
-use torii_cache::Cache;
 use torii_storage::types::ContractType;
 
 impl Sql {
@@ -61,7 +60,7 @@ impl Sql {
         let executor_handle = tokio::spawn(async move {
             executor.run().await.unwrap();
         });
-        
+
         let sql = Sql::new(
             pool.clone(),
             sender,
@@ -72,7 +71,6 @@ impl Sql {
         )
         .await
         .unwrap();
-        let cache = Arc::new(Cache::new(Arc::new(sql)).await.unwrap());
 
         (sql, executor_handle)
     }

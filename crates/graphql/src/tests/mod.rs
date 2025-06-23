@@ -26,7 +26,7 @@ use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::JsonRpcClient;
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
-use torii_cache::Cache;
+use torii_cache::InMemoryCache;
 use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
@@ -287,7 +287,7 @@ pub async fn model_fixtures(db: &Sql) {
                 },
             ],
         }),
-        Layout::Fixed(vec![]),
+        &Layout::Fixed(vec![]),
         Felt::ONE,
         Felt::TWO,
         0,
@@ -389,7 +389,6 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         executor.run().await.unwrap();
     });
 
-    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender,
@@ -397,10 +396,10 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
             address: world_address,
             r#type: ContractType::WORLD,
         }],
-        Arc::clone(&cache),
     )
     .await
     .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let contracts = &[Contract {
@@ -410,7 +409,7 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
     let mut engine = Engine::new(
         world,
         Arc::new(db.clone()),
-        Arc::clone(&cache),
+        cache.clone(),
         Arc::clone(&provider),
         Processors {
             ..Processors::default()

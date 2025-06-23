@@ -71,7 +71,9 @@ where
         .await?;
 
         // Update the balances diffs on the cache
-        ctx.cache.update_balance_diff(&felt_to_sql_string(&token_address), from, to, value).await;
+        ctx.cache
+            .update_balance_diff(&felt_to_sql_string(&token_address), from, to, value)
+            .await;
 
         ctx.storage
             .store_erc_transfer_event(

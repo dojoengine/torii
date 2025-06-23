@@ -5,7 +5,6 @@ use dojo_world::contracts::abigen::model::Layout;
 use serde::Deserialize;
 use starknet::core::types::Felt;
 
-
 #[derive(Debug, Clone)]
 pub struct Model {
     /// Namespace of the model

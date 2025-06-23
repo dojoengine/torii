@@ -1,20 +1,19 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use dashmap::DashMap;
 use dojo_types::naming;
-use torii_storage::types::Model;
-use sqlx::{Pool, Sqlite, SqlitePool};
 use starknet::core::types::contract::AbiEntry;
-use starknet::core::types::{Felt, U256};
 use starknet::core::types::{
     BlockId, BlockTag, ContractClass, EntryPointsByType, LegacyContractAbiEntry, StarknetError,
 };
+use starknet::core::types::{Felt, U256};
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::{Provider, ProviderError};
 use tokio::sync::{Mutex, RwLock};
 use torii_math::I256;
+use torii_storage::types::Model;
 use torii_storage::ReadOnlyStorage;
 
 use crate::error::Error;
@@ -29,7 +28,7 @@ pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
     async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, CacheError>;
 
     /// Get a specific model by selector.
-    async fn model(&self, selector: &Felt) -> Result<Model, CacheError>;
+    async fn model(&self, selector: Felt) -> Result<Model, CacheError>;
 
     /// Check if a token is registered.
     async fn is_token_registered(&self, token_id: &str) -> bool;
@@ -60,28 +59,34 @@ pub trait Cache: ReadOnlyCache + Send + Sync + std::fmt::Debug {
 }
 
 #[derive(Debug)]
-pub struct CacheImpl {
+pub struct InMemoryCache {
     pub model_cache: ModelCache,
     pub erc_cache: ErcCache,
 }
 
-impl CacheImpl {
-    pub async fn new(storage: Arc<dyn ReadOnlyStorage>, pool: SqlitePool) -> Result<Self, Error> {
+impl InMemoryCache {
+    pub async fn new(storage: Arc<dyn ReadOnlyStorage>) -> Result<Self, Error> {
         Ok(Self {
-            model_cache: ModelCache::new(storage).await?,
-            erc_cache: ErcCache::new(pool).await,
+            model_cache: ModelCache::new(storage.clone()).await?,
+            erc_cache: ErcCache::new(storage).await?,
         })
     }
 }
 
 #[async_trait]
-impl ReadOnlyCache for CacheImpl {
+impl ReadOnlyCache for InMemoryCache {
     async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, CacheError> {
-        self.model_cache.models(selectors).await.map_err(|e| Box::new(e) as CacheError)
+        self.model_cache
+            .models(selectors)
+            .await
+            .map_err(|e| Box::new(e) as CacheError)
     }
 
-    async fn model(&self, selector: &Felt) -> Result<Model, CacheError> {
-        self.model_cache.model(selector).await.map_err(|e| Box::new(e) as CacheError)
+    async fn model(&self, selector: Felt) -> Result<Model, CacheError> {
+        self.model_cache
+            .model(selector)
+            .await
+            .map_err(|e| Box::new(e) as CacheError)
     }
 
     async fn is_token_registered(&self, token_id: &str) -> bool {
@@ -93,12 +98,16 @@ impl ReadOnlyCache for CacheImpl {
     }
 
     async fn balances_diff(&self) -> HashMap<String, I256> {
-        self.erc_cache.balances_diff.iter().map(|t| (t.key().clone(), *t.value())).collect()
+        self.erc_cache
+            .balances_diff
+            .iter()
+            .map(|t| (t.key().clone(), *t.value()))
+            .collect()
     }
 }
 
 #[async_trait]
-impl Cache for CacheImpl {
+impl Cache for InMemoryCache {
     async fn register_model(&self, selector: Felt, model: Model) {
         self.model_cache.set(selector, model).await
     }
@@ -116,7 +125,7 @@ impl Cache for CacheImpl {
         self.erc_cache.balances_diff.shrink_to_fit();
     }
 
-    async fn update_balance_diff(&self, token_id: &str, from: Felt, to: Felt, value: U256) {    
+    async fn update_balance_diff(&self, token_id: &str, from: Felt, to: Felt, value: U256) {
         if from != Felt::ZERO {
             let from_balance_id = format!("{}/{}", format!("{:#x}", from), token_id);
             let mut from_balance = self
@@ -126,7 +135,7 @@ impl Cache for CacheImpl {
                 .or_default();
             *from_balance -= I256::from(value);
         }
-    
+
         if to != Felt::ZERO {
             let to_balance_id = format!("{}/{}", format!("{:#x}", to), token_id);
             let mut to_balance = self
@@ -152,10 +161,7 @@ impl ModelCache {
         let mut model_cache = HashMap::new();
         for model in models {
             let selector = naming::compute_selector_from_names(&model.namespace, &model.name);
-            model_cache.insert(
-                selector,
-                model,
-            );
+            model_cache.insert(selector, model);
         }
 
         Ok(Self {
@@ -171,16 +177,16 @@ impl ModelCache {
 
         let mut schemas = Vec::with_capacity(selectors.len());
         for selector in selectors {
-            schemas.push(self.model(selector).await?);
+            schemas.push(self.model(*selector).await?);
         }
 
         Ok(schemas)
     }
 
-    pub async fn model(&self, selector: &Felt) -> Result<Model, Error> {
+    pub async fn model(&self, selector: Felt) -> Result<Model, Error> {
         {
             let cache = self.model_cache.read().await;
-            if let Some(model) = cache.get(selector).cloned() {
+            if let Some(model) = cache.get(&selector).cloned() {
                 return Ok(model);
             }
         }
@@ -188,7 +194,7 @@ impl ModelCache {
         self.update_model(selector).await
     }
 
-    async fn update_model(&self, selector: &Felt) -> Result<Model, Error> {
+    async fn update_model(&self, selector: Felt) -> Result<Model, Error> {
         let model = self.storage.model(selector).await?;
 
         let mut cache = self.model_cache.write().await;
@@ -224,20 +230,17 @@ pub struct ErcCache {
 }
 
 impl ErcCache {
-    pub async fn new(pool: Pool<Sqlite>) -> Self {
+    pub async fn new(storage: Arc<dyn ReadOnlyStorage>) -> Result<Self, Error> {
         // read existing token_id's from balances table and cache them
-        let token_id_registry: Vec<String> = sqlx::query_scalar("SELECT id FROM tokens")
-            .fetch_all(&pool)
-            .await
-            .expect("Should be able to read token_id's from blances table");
+        let token_id_registry: HashSet<String> = storage.token_ids().await?;
 
-        Self {
+        Ok(Self {
             balances_diff: DashMap::new(),
             token_id_registry: token_id_registry
                 .iter()
                 .map(|token_id| (token_id.clone(), TokenState::Registered))
                 .collect(),
-        }
+        })
     }
 
     pub async fn get_token_registration_lock(&self, token_id: &str) -> Option<Arc<Mutex<()>>> {

@@ -8,7 +8,6 @@ mod tests {
     use starknet::providers::jsonrpc::HttpTransport;
     use starknet::providers::JsonRpcClient;
     use tokio::sync::broadcast;
-    use torii_cache::Cache;
     use torii_sqlite::executor::Executor;
     use torii_sqlite::types::Contract;
     use torii_sqlite::Sql;
@@ -68,7 +67,6 @@ mod tests {
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -76,7 +74,6 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();
@@ -155,7 +152,6 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -163,7 +159,6 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();

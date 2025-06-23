@@ -6,9 +6,7 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{
-    felt_and_u256_to_sql_string, try_register_nft_token_metadata,
-};
+use crate::erc::{felt_and_u256_to_sql_string, try_register_nft_token_metadata};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
@@ -74,7 +72,9 @@ where
         )
         .await?;
 
-        ctx.cache.update_balance_diff(&id, from, to, U256::from(1u8)).await;
+        ctx.cache
+            .update_balance_diff(&id, from, to, U256::from(1u8))
+            .await;
 
         ctx.storage
             .store_erc_transfer_event(

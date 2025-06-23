@@ -55,7 +55,7 @@ where
 
         // If the model does not exist, silently ignore it.
         // This can happen if only specific namespaces are indexed.
-        let model = match ctx.cache.model(&event.selector).await {
+        let model = match ctx.cache.model(event.selector).await {
             Ok(m) => m,
             Err(e) if e.to_string().contains("no rows") => {
                 debug!(
@@ -133,17 +133,22 @@ where
             )
             .await?;
 
-        ctx.cache.register_model(event.selector, Model {
-            selector: event.selector,
-            namespace,
-            name,
-            class_hash: event.class_hash.into(),
-            contract_address: event.address.into(),
-            packed_size,
-            unpacked_size,
-            layout,
-            schema: new_schema,
-        }).await;
+        ctx.cache
+            .register_model(
+                event.selector,
+                Model {
+                    selector: event.selector,
+                    namespace,
+                    name,
+                    class_hash: event.class_hash.into(),
+                    contract_address: event.address.into(),
+                    packed_size,
+                    unpacked_size,
+                    layout,
+                    schema: new_schema,
+                },
+            )
+            .await;
 
         Ok(())
     }

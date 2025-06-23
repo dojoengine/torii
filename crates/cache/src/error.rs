@@ -1,6 +1,6 @@
-use torii_storage::StorageError;
 use starknet::{core::types::FromStrError, providers::ProviderError};
 use thiserror::Error;
+use torii_storage::StorageError;
 
 #[derive(Error, Debug)]
 pub enum Error {

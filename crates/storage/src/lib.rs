@@ -4,12 +4,12 @@ use dojo_types::schema::Ty;
 use dojo_world::config::WorldMetadata;
 use dojo_world::contracts::abigen::model::Layout;
 use starknet::core::types::{Event, Felt, U256};
-use torii_math::I256;
 use std::fmt::Debug;
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
 };
+use torii_math::I256;
 
 use crate::types::{Cursor, Model, ParsedCall};
 
@@ -23,10 +23,13 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, StorageError>;
 
     /// Returns the model metadata for the storage.
-    async fn model(&self, model: &Felt) -> Result<Model, StorageError>;
+    async fn model(&self, model: Felt) -> Result<Model, StorageError>;
 
     /// Returns the models for the storage.
     async fn models(&self) -> Result<Vec<Model>, StorageError>;
+
+    /// Returns the IDs of all the registered tokens
+    async fn token_ids(&self) -> Result<HashSet<String>, StorageError>;
 }
 
 #[async_trait]
@@ -194,8 +197,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         &self,
         balances_diff: HashMap<String, I256>,
         cursors: HashMap<Felt, Cursor>,
-    )
-        -> Result<(), StorageError>;
+    ) -> Result<(), StorageError>;
 
     /// Executes pending operations and commits the current transaction.
     async fn execute(&self) -> Result<(), StorageError>;

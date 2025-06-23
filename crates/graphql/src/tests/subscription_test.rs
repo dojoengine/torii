@@ -17,7 +17,6 @@ mod tests {
     use starknet::providers::JsonRpcClient;
     use starknet_crypto::{poseidon_hash_many, Felt};
     use tokio::sync::{broadcast, mpsc};
-    use torii_cache::Cache;
     use torii_sqlite::executor::Executor;
     use torii_sqlite::types::Contract;
     use torii_sqlite::Sql;
@@ -42,7 +41,6 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -50,7 +48,6 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();
@@ -216,7 +213,6 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -224,11 +220,9 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();
-
         model_fixtures(&db).await;
         // 0. Preprocess expected entity value
         let namespace = "types_test".to_string();
@@ -368,7 +362,6 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -376,7 +369,6 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();
@@ -411,7 +403,7 @@ mod tests {
             db.register_model(
                 &namespace,
                 &model,
-                Layout::Fixed(vec![]),
+                &Layout::Fixed(vec![]),
                 class_hash,
                 contract_address,
                 0,
@@ -460,7 +452,6 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -468,7 +459,6 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();
@@ -502,7 +492,7 @@ mod tests {
             db.register_model(
                 &namespace,
                 &model,
-                Layout::Fixed(vec![]),
+                &Layout::Fixed(vec![]),
                 class_hash,
                 contract_address,
                 0,
@@ -553,7 +543,6 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -561,7 +550,6 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();

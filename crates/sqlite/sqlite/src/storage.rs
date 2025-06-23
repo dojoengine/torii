@@ -65,7 +65,7 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Returns the model metadata for the storage.
-    async fn model(&self, selector: &Felt) -> Result<Model, StorageError> {
+    async fn model(&self, selector: Felt) -> Result<Model, StorageError> {
         let model = sqlx::query_as::<_, SQLModel>("SELECT * FROM models WHERE id = ?")
             .bind(format!("{:#x}", selector))
             .fetch_one(&self.pool)
@@ -119,6 +119,13 @@ impl ReadOnlyStorage for Sql {
         }
 
         Ok(models_metadata)
+    }
+
+    async fn token_ids(&self) -> Result<HashSet<String>, StorageError> {
+        let token_ids = sqlx::query_scalar::<_, String>("SELECT id FROM tokens")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(token_ids.into_iter().collect())
     }
 }
 

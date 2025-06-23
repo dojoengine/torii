@@ -133,17 +133,22 @@ where
             )
             .await?;
 
-        ctx.cache.register_model(selector, Model {
-            selector,
-            namespace,
-            name,
-            class_hash: event.class_hash.into(),
-            contract_address: event.address.into(),
-            packed_size,
-            unpacked_size,
-            layout,
-            schema,
-        }).await;
+        ctx.cache
+            .register_model(
+                selector,
+                Model {
+                    selector,
+                    namespace,
+                    name,
+                    class_hash: event.class_hash.into(),
+                    contract_address: event.address.into(),
+                    packed_size,
+                    unpacked_size,
+                    layout,
+                    schema,
+                },
+            )
+            .await;
 
         Ok(())
     }
