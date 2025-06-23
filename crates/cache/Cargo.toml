@@ -5,6 +5,7 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 dashmap.workspace = true
 dojo-types.workspace = true
 dojo-world.workspace = true
@@ -15,3 +16,4 @@ tokio.workspace = true
 torii-math.workspace = true
 torii-sqlite-types.workspace = true
 serde_json.workspace = true
+torii-storage.workspace = true

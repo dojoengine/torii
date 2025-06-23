@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use dashmap::DashMap;
-use dojo_types::schema::Ty;
-use dojo_world::contracts::abigen::model::Layout;
+use dojo_types::naming;
+use dojo_types::schema::ModelMetadata;
 use sqlx::{Pool, Sqlite, SqlitePool};
 use starknet::core::types::contract::AbiEntry;
 use starknet::core::types::Felt;
@@ -14,92 +15,131 @@ use starknet::core::utils::get_selector_from_name;
 use starknet::providers::{Provider, ProviderError};
 use tokio::sync::{Mutex, RwLock};
 use torii_math::I256;
+use torii_storage::ReadOnlyStorage;
 
 use crate::error::{Error, ParseError};
 
 pub mod error;
 
+pub type CacheError = Box<dyn std::error::Error + Send + Sync>;
+
+#[async_trait]
+pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
+    /// Get models by selectors. If selectors is empty, returns all models.
+    async fn models(&self, selectors: &[Felt]) -> Result<Vec<ModelMetadata>, CacheError>;
+
+    /// Get a specific model by selector.
+    async fn model(&self, selector: &Felt) -> Result<ModelMetadata, CacheError>;
+
+    /// Check if a token is registered.
+    async fn is_token_registered(&self, token_id: &str) -> bool;
+
+    /// Get a token registration lock for coordination.
+    async fn get_token_registration_lock(&self, token_id: &str) -> Option<Arc<Mutex<()>>>;
+
+    /// Get the balances diff.
+    async fn balances_diff(&self) -> HashMap<String, I256>;
+}
+
+#[async_trait]
+pub trait Cache: ReadOnlyCache + Send + Sync + std::fmt::Debug {
+    /// Set a model in the cache.
+    async fn set_model(&self, selector: Felt, model: ModelMetadata);
+
+    /// Clear all models from the cache.
+    async fn clear_models(&self);
+
+    /// Mark a token as registered.
+    async fn mark_token_registered(&self, token_id: &str);
+
+    /// Clear the balances diff.
+    async fn clear_balances_diff(&self);
+}
+
 #[derive(Debug)]
-pub struct Cache {
+pub struct CacheImpl {
     pub model_cache: ModelCache,
     pub erc_cache: ErcCache,
 }
 
-impl Cache {
-    pub async fn new(pool: SqlitePool) -> Result<Self, Error> {
+impl CacheImpl {
+    pub async fn new(storage: Arc<dyn ReadOnlyStorage>, pool: SqlitePool) -> Result<Self, Error> {
         Ok(Self {
-            model_cache: ModelCache::new(pool.clone()).await?,
+            model_cache: ModelCache::new(storage).await?,
             erc_cache: ErcCache::new(pool).await,
         })
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Model {
-    /// Namespace of the model
-    pub namespace: String,
-    /// The name of the model
-    pub name: String,
-    /// The selector of the model
-    pub selector: Felt,
-    /// The class hash of the model
-    pub class_hash: Felt,
-    /// The contract address of the model
-    pub contract_address: Felt,
-    pub packed_size: u32,
-    pub unpacked_size: u32,
-    pub layout: Layout,
-    pub schema: Ty,
+#[async_trait]
+impl ReadOnlyCache for CacheImpl {
+    async fn models(&self, selectors: &[Felt]) -> Result<Vec<ModelMetadata>, CacheError> {
+        self.model_cache.models(selectors).await.map_err(|e| Box::new(e) as CacheError)
+    }
+
+    async fn model(&self, selector: &Felt) -> Result<ModelMetadata, CacheError> {
+        self.model_cache.model(selector).await.map_err(|e| Box::new(e) as CacheError)
+    }
+
+    async fn is_token_registered(&self, token_id: &str) -> bool {
+        self.erc_cache.is_token_registered(token_id).await
+    }
+
+    async fn get_token_registration_lock(&self, token_id: &str) -> Option<Arc<Mutex<()>>> {
+        self.erc_cache.get_token_registration_lock(token_id).await
+    }
+
+    async fn balances_diff(&self) -> HashMap<String, I256> {
+        self.erc_cache.balances_diff.iter().map(|t| (t.key().clone(), *t.value())).collect()
+    }
+}
+
+#[async_trait]
+impl Cache for CacheImpl {
+    async fn set_model(&self, selector: Felt, model: ModelMetadata) {
+        self.model_cache.set(selector, model).await
+    }
+
+    async fn clear_models(&self) {
+        self.model_cache.clear().await
+    }
+
+    async fn mark_token_registered(&self, token_id: &str) {
+        self.erc_cache.mark_token_registered(token_id).await
+    }
+
+    async fn clear_balances_diff(&self) {
+        self.erc_cache.balances_diff.clear();
+        self.erc_cache.balances_diff.shrink_to_fit();
+    }
 }
 
 #[derive(Debug)]
 pub struct ModelCache {
-    pool: SqlitePool,
-    model_cache: RwLock<HashMap<Felt, Model>>,
+    storage: Arc<dyn ReadOnlyStorage>,
+    model_cache: RwLock<HashMap<Felt, ModelMetadata>>,
 }
 
 impl ModelCache {
-    pub async fn new(pool: SqlitePool) -> Result<Self, Error> {
-        let models_rows: Vec<torii_sqlite_types::Model> = sqlx::query_as(
-            "SELECT id, namespace, name, class_hash, contract_address, packed_size, \
-             unpacked_size, layout, schema, executed_at, created_at FROM models",
-        )
-        .fetch_all(&pool)
-        .await?;
+    pub async fn new(storage: Arc<dyn ReadOnlyStorage>) -> Result<Self, Error> {
+        let models = storage.models().await?;
 
         let mut model_cache = HashMap::new();
-        for model in models_rows {
-            let selector = Felt::from_hex(&model.id).map_err(ParseError::FromStr)?;
-            let class_hash = Felt::from_hex(&model.class_hash).map_err(ParseError::FromStr)?;
-            let contract_address =
-                Felt::from_hex(&model.contract_address).map_err(ParseError::FromStr)?;
-
-            let layout = serde_json::from_str(&model.layout).map_err(ParseError::FromJsonStr)?;
-            let schema = serde_json::from_str(&model.schema).map_err(ParseError::FromJsonStr)?;
-
+        for model in models {
+            let selector = naming::compute_selector_from_names(&model.namespace, &model.name);
             model_cache.insert(
                 selector,
-                Model {
-                    namespace: model.namespace,
-                    name: model.name,
-                    selector,
-                    class_hash,
-                    contract_address,
-                    packed_size: model.packed_size,
-                    unpacked_size: model.unpacked_size,
-                    layout,
-                    schema,
-                },
+                model,
             );
         }
 
         Ok(Self {
-            pool,
+            storage,
             model_cache: RwLock::new(model_cache),
         })
     }
 
-    pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, Error> {
+    pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<ModelMetadata>, Error> {
         if selectors.is_empty() {
             return Ok(self.model_cache.read().await.values().cloned().collect());
         }
@@ -112,7 +152,7 @@ impl ModelCache {
         Ok(schemas)
     }
 
-    pub async fn model(&self, selector: &Felt) -> Result<Model, Error> {
+    pub async fn model(&self, selector: &Felt) -> Result<ModelMetadata, Error> {
         {
             let cache = self.model_cache.read().await;
             if let Some(model) = cache.get(selector).cloned() {
@@ -123,49 +163,17 @@ impl ModelCache {
         self.update_model(selector).await
     }
 
-    async fn update_model(&self, selector: &Felt) -> Result<Model, Error> {
-        let (
-            namespace,
-            name,
-            class_hash,
-            contract_address,
-            packed_size,
-            unpacked_size,
-            layout,
-            schema,
-        ): (String, String, String, String, u32, u32, String, String) = sqlx::query_as(
-            "SELECT namespace, name, class_hash, contract_address, packed_size, unpacked_size, \
-             layout, schema FROM models WHERE id = ?",
-        )
-        .bind(format!("{:#x}", selector))
-        .fetch_one(&self.pool)
-        .await?;
-
-        let class_hash = Felt::from_hex(&class_hash).map_err(ParseError::FromStr)?;
-        let contract_address = Felt::from_hex(&contract_address).map_err(ParseError::FromStr)?;
-
-        let layout = serde_json::from_str(&layout).map_err(ParseError::FromJsonStr)?;
-        let schema = serde_json::from_str(&schema).map_err(ParseError::FromJsonStr)?;
+    async fn update_model(&self, selector: &Felt) -> Result<ModelMetadata, Error> {
+        let model = self.storage.model(selector).await?;
 
         let mut cache = self.model_cache.write().await;
-
-        let model = Model {
-            namespace,
-            name,
-            selector: *selector,
-            class_hash,
-            contract_address,
-            packed_size,
-            unpacked_size,
-            layout,
-            schema,
-        };
-        cache.insert(*selector, model.clone());
+        let s = naming::compute_selector_from_names(&model.namespace, &model.name);
+        cache.insert(s, model.clone());
 
         Ok(model)
     }
 
-    pub async fn set(&self, selector: Felt, model: Model) {
+    pub async fn set(&self, selector: Felt, model: ModelMetadata) {
         let mut cache = self.model_cache.write().await;
         cache.insert(selector, model);
     }

@@ -11054,8 +11054,9 @@ dependencies = [
 
 [[package]]
 name = "torii-cache"
-version = "1.5.8-preview.2"
+version = "1.5.8-preview.4"
 dependencies = [
+ "async-trait",
  "dashmap 6.1.0",
  "dojo-types 1.5.0-alpha.2",
  "dojo-world",
@@ -11066,6 +11067,7 @@ dependencies = [
  "tokio",
  "torii-math",
  "torii-sqlite-types",
+ "torii-storage",
 ]
 
 [[package]]
@@ -11363,7 +11365,7 @@ dependencies = [
 
 [[package]]
 name = "torii-math"
-version = "1.5.8-preview.2"
+version = "1.5.8-preview.4"
 dependencies = [
  "starknet-core 0.12.3",
 ]
@@ -11611,7 +11613,7 @@ dependencies = [
 
 [[package]]
 name = "torii-storage"
-version = "1.5.8-preview.2"
+version = "1.5.8-preview.4"
 dependencies = [
  "anyhow",
  "async-trait",

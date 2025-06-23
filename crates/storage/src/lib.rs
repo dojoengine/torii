@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use dojo_types::schema::Ty;
-use dojo_world::config::WorldMetadata;
+use dojo_types::schema::{Ty, ModelMetadata};
+use dojo_types::WorldMetadata;
 use dojo_world::contracts::abigen::model::Layout;
 use starknet::core::types::{Event, Felt, U256};
 use std::fmt::Debug;
@@ -17,10 +17,19 @@ pub mod types;
 pub type StorageError = Box<dyn Error + Send + Sync>;
 
 #[async_trait]
-pub trait Storage: Send + Sync + Debug {
+pub trait ReadOnlyStorage: Send + Sync + Debug {
     /// Returns the cursors for all contracts.
     async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, StorageError>;
 
+    /// Returns the model metadata for the storage.
+    async fn model(&self, model: &Felt) -> Result<ModelMetadata, StorageError>;
+
+    /// Returns the models for the storage.
+    async fn models(&self) -> Result<Vec<ModelMetadata>, StorageError>;
+}
+
+#[async_trait]
+pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     /// Updates the contract cursors with the storage.
     async fn update_cursors(
         &self,

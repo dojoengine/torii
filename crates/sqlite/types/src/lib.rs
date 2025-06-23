@@ -2,7 +2,7 @@ use core::fmt;
 use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
-use dojo_types::schema::Ty;
+use dojo_types::schema::{ModelMetadata, Ty};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use starknet::core::types::Felt;

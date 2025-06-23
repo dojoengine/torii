@@ -1,22 +1,23 @@
 use std::{
     collections::{HashMap, HashSet},
-    str::FromStr,
+    str::FromStr, sync::Arc,
 };
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dojo_types::{
     naming::{compute_selector_from_names, get_tag},
-    schema::{Struct, Ty},
+    schema::{ModelMetadata, Struct, Ty},
+    WorldMetadata,
 };
-use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
+use dojo_world::contracts::abigen::model::Layout;
 use starknet::core::types::{Event, U256};
 use starknet_crypto::{poseidon_hash_many, Felt};
+use torii_cache::Cache;
 use torii_math::I256;
-use torii_sqlite_types::{ContractCursor, HookEvent};
+use torii_sqlite_types::{ContractCursor, HookEvent, Model};
 use torii_storage::{
-    types::{Cursor, ParsedCall},
-    Storage, StorageError,
+    types::{Cursor, ParsedCall}, ReadOnlyStorage, Storage, StorageError
 };
 
 use crate::{
@@ -39,7 +40,7 @@ use crate::{
 };
 
 #[async_trait]
-impl Storage for Sql {
+impl ReadOnlyStorage for Sql {
     /// Returns the cursors for all contracts.
     async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, StorageError> {
         let cursors = sqlx::query_as::<_, ContractCursor>("SELECT * FROM contracts")
@@ -64,6 +65,60 @@ impl Storage for Sql {
         Ok(cursors_map)
     }
 
+    /// Returns the model metadata for the storage.
+    async fn model(&self, selector: &Felt) -> Result<ModelMetadata, StorageError> {
+        let model = sqlx::query_as::<_, Model>("SELECT * FROM models WHERE id = ?")
+            .bind(format!("{:#x}", selector))
+            .fetch_one(&self.pool)
+            .await?;
+
+        let layout = serde_json::from_str(&model.layout).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+        let schema = serde_json::from_str(&model.schema).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+
+        let model_metadata = ModelMetadata {
+            name: model.name,
+            namespace: model.namespace,
+            schema,
+            packed_size: model.packed_size,
+            unpacked_size: model.unpacked_size,
+            class_hash: Felt::from_str(&model.class_hash)?,
+            contract_address: Felt::from_str(&model.contract_address)?,
+            layout,
+        };
+        Ok(model_metadata)
+    }
+
+    /// Returns the models for the storage.
+    async fn models(&self) -> Result<Vec<ModelMetadata>, StorageError> {
+        let models = sqlx::query_as::<_, Model>("SELECT * FROM models")
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut models_metadata = Vec::with_capacity(models.len());
+        for model in models {
+            let layout = serde_json::from_str(&model.layout).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+            let schema = serde_json::from_str(&model.schema).map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
+
+            let model_metadata = ModelMetadata {
+                name: model.name,
+                namespace: model.namespace,
+                schema,
+                packed_size: model.packed_size,
+                unpacked_size: model.unpacked_size,
+                class_hash: Felt::from_str(&model.class_hash)?,
+                contract_address: Felt::from_str(&model.contract_address)?,
+                layout,
+            };
+
+            models_metadata.push(model_metadata);
+        }
+
+        Ok(models_metadata)
+    }
+}
+
+#[async_trait]
+impl Storage for Sql {
     /// Updates the contract cursors with the storage.
     async fn update_cursors(
         &self,
@@ -152,26 +207,6 @@ impl Storage for Sql {
             schema_diff,
             upgrade_diff,
         )?;
-
-        // we set the model in the cache directly
-        // because entities might be using it before the query queue is processed
-        self.cache
-            .model_cache
-            .set(
-                selector,
-                torii_cache::Model {
-                    namespace: namespace.to_string(),
-                    name: model.name().to_string(),
-                    selector,
-                    class_hash,
-                    contract_address,
-                    packed_size,
-                    unpacked_size,
-                    layout,
-                    schema: namespaced_schema,
-                },
-            )
-            .await;
 
         for hook in self.config.hooks.iter() {
             if let HookEvent::ModelRegistered { model_tag } = &hook.event {
@@ -700,23 +735,17 @@ impl Storage for Sql {
     async fn apply_balances_diff(
         &self,
         cursors: HashMap<Felt, Cursor>,
+        cache: Arc<dyn Cache + Send + Sync>,
     ) -> Result<(), StorageError> {
-        if !self.cache.erc_cache.balances_diff.is_empty() {
-            let erc_cache = self
-                .cache
-                .erc_cache
-                .balances_diff
-                .iter()
-                .map(|t| (t.key().clone(), *t.value()))
-                .collect::<HashMap<String, I256>>();
-            self.cache.erc_cache.balances_diff.clear();
-            self.cache.erc_cache.balances_diff.shrink_to_fit();
+        let balances_diff = cache.balances_diff().await;
+        if !balances_diff.is_empty() {
+            cache.clear_balances_diff().await;
 
             self.executor
                 .send(QueryMessage::new(
                     "".to_string(),
                     vec![],
-                    QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery { erc_cache, cursors }),
+                    QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery { balances_diff, cursors }),
                 ))
                 .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }
