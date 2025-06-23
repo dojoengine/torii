@@ -20,11 +20,13 @@ use starknet::providers::{JsonRpcClient, Provider};
 use starknet_crypto::poseidon_hash_many;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
-use torii_sqlite::cache::ModelCache;
+use torii_cache::Cache;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::{Contract, ContractType, Token};
+use torii_sqlite::types::{Contract, Token};
 use torii_sqlite::utils::u256_to_sql_string;
 use torii_sqlite::Sql;
+use torii_storage::types::ContractType;
+use torii_storage::Storage;
 
 use crate::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
@@ -32,7 +34,8 @@ use torii_processors::processors::Processors;
 
 pub async fn bootstrap_engine<P>(
     world: WorldContractReader<P>,
-    mut db: Sql,
+    db: Sql,
+    cache: Arc<Cache>,
     provider: P,
     contracts: &[Contract],
 ) -> Result<Engine<P>, Box<dyn std::error::Error>>
@@ -42,7 +45,8 @@ where
     let (shutdown_tx, _) = broadcast::channel(1);
     let mut engine = Engine::new(
         world,
-        db.clone(),
+        Arc::new(db.clone()),
+        cache,
         provider.clone(),
         Processors {
             ..Processors::default()
@@ -62,7 +66,7 @@ where
     let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();
 
-    db.apply_cache_diff(cursors).await.unwrap();
+    db.apply_balances_diff(cursors).await.unwrap();
     db.execute().await.unwrap();
 
     Ok(engine)
@@ -157,17 +161,12 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts, cache.clone())
+        .await
+        .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -335,17 +334,12 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
         r#type: ContractType::ERC20,
     }];
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts, cache.clone())
+        .await
+        .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -484,17 +478,12 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
         address: badge_address,
         r#type: ContractType::ERC721,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts, cache.clone())
+        .await
+        .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -690,17 +679,12 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
         address: rewards_address,
         r#type: ContractType::ERC1155,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts, cache.clone())
+        .await
+        .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -885,17 +869,12 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts, cache.clone())
+        .await
+        .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -1021,17 +1000,12 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts, cache.clone())
+        .await
+        .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 }
@@ -1141,17 +1115,12 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts, cache.clone())
+        .await
+        .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -1262,17 +1231,12 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
         address: rewards_address,
         r#type: ContractType::ERC1155,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts, cache.clone())
+        .await
+        .unwrap();
 
-    let _ = bootstrap_engine(world_reader, db.clone(), Arc::clone(&provider), &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 

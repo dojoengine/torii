@@ -8,10 +8,12 @@ mod tests {
     use starknet::providers::jsonrpc::HttpTransport;
     use starknet::providers::JsonRpcClient;
     use tokio::sync::broadcast;
-    use torii_sqlite::cache::ModelCache;
+    use torii_cache::Cache;
     use torii_sqlite::executor::Executor;
-    use torii_sqlite::types::{Contract, ContractType};
+    use torii_sqlite::types::Contract;
     use torii_sqlite::Sql;
+    use torii_storage::types::ContractType;
+    use torii_storage::Storage;
     use url::Url;
 
     use crate::schema::build_schema;
@@ -66,15 +68,15 @@ mod tests {
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
-        let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-        let mut db = Sql::new(
+        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+        let db = Sql::new(
             pool.clone(),
             sender,
             &[Contract {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            model_cache,
+            Arc::clone(&cache),
         )
         .await
         .unwrap();
@@ -99,7 +101,9 @@ mod tests {
         // TODO: we may want to store here the namespace and the seed. Check the
         // implementation to actually add those to the metadata table.
         let world_metadata: WorldMetadata = profile_config.world.into();
-        db.set_metadata(&RESOURCE, URI, BLOCK_TIMESTAMP).unwrap();
+        db.set_metadata(&RESOURCE, URI, BLOCK_TIMESTAMP)
+            .await
+            .unwrap();
         db.update_metadata(
             &RESOURCE,
             URI,
@@ -107,6 +111,7 @@ mod tests {
             &None,
             &Some(cover_img.to_string()),
         )
+        .await
         .unwrap();
         db.execute().await.unwrap();
 
@@ -150,21 +155,23 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-        let mut db = Sql::new(
+        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+        let db = Sql::new(
             pool.clone(),
             sender,
             &[Contract {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            model_cache,
+            Arc::clone(&cache),
         )
         .await
         .unwrap();
         let schema = build_schema(&pool).await.unwrap();
 
-        db.set_metadata(&RESOURCE, URI, BLOCK_TIMESTAMP).unwrap();
+        db.set_metadata(&RESOURCE, URI, BLOCK_TIMESTAMP)
+            .await
+            .unwrap();
         db.execute().await.unwrap();
 
         let result = run_graphql_query(&schema, QUERY).await;

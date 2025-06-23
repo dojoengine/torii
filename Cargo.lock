@@ -11053,6 +11053,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "torii-cache"
+version = "1.5.8-preview.2"
+dependencies = [
+ "dashmap 6.1.0",
+ "dojo-types 1.5.0-alpha.2",
+ "dojo-world",
+ "serde_json",
+ "sqlx",
+ "starknet 0.12.0",
+ "thiserror 1.0.63",
+ "tokio",
+ "torii-math",
+ "torii-sqlite-types",
+]
+
+[[package]]
 name = "torii-cli"
 version = "1.5.8-preview.4"
 dependencies = [
@@ -11066,6 +11082,7 @@ dependencies = [
  "starknet 0.12.0",
  "toml 0.8.19",
  "torii-sqlite-types",
+ "torii-storage",
  "url",
 ]
 
@@ -11126,10 +11143,12 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml 0.8.19",
+ "torii-cache",
  "torii-indexer",
  "torii-indexer-fetcher",
  "torii-processors",
  "torii-sqlite",
+ "torii-storage",
  "tracing",
  "url",
  "warp",
@@ -11202,6 +11221,7 @@ dependencies = [
  "tonic-build 0.12.3",
  "tonic-reflection",
  "tonic-web",
+ "torii-cache",
  "torii-indexer",
  "torii-indexer-fetcher",
  "torii-libp2p-relay",
@@ -11209,6 +11229,7 @@ dependencies = [
  "torii-processors",
  "torii-proto",
  "torii-sqlite",
+ "torii-storage",
  "torii-typed-data",
  "tower",
  "tower-http",
@@ -11254,9 +11275,11 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "tokio-util",
+ "torii-cache",
  "torii-indexer-fetcher",
  "torii-processors",
  "torii-sqlite",
+ "torii-storage",
  "tracing",
  "url",
 ]
@@ -11302,6 +11325,7 @@ dependencies = [
  "tokio-util",
  "torii-processors",
  "torii-sqlite",
+ "torii-storage",
  "tracing",
  "url",
 ]
@@ -11338,6 +11362,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "torii-math"
+version = "1.5.8-preview.2"
+dependencies = [
+ "starknet-core 0.12.3",
+]
+
+[[package]]
 name = "torii-mcp"
 version = "1.5.8-preview.4"
 dependencies = [
@@ -11365,6 +11396,7 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "torii-sqlite",
+ "torii-storage",
  "tracing",
 ]
 
@@ -11378,12 +11410,14 @@ dependencies = [
  "cainome",
  "cainome-cairo-serde",
  "cainome-cairo-serde-derive",
+ "chrono",
+ "data-url",
  "dojo-types 1.5.0-alpha.2",
  "dojo-world",
  "futures-util",
  "hashlink",
  "ipfs-api-backend-hyper",
- "lazy_static",
+ "once_cell",
  "reqwest",
  "serde",
  "serde_json",
@@ -11391,7 +11425,10 @@ dependencies = [
  "starknet-crypto 0.7.4",
  "thiserror 1.0.63",
  "tokio",
- "torii-sqlite",
+ "tokio-util",
+ "torii-cache",
+ "torii-math",
+ "torii-storage",
  "torii-task-network",
  "tracing",
 ]
@@ -11454,6 +11491,7 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "toml 0.8.19",
+ "torii-cache",
  "torii-cli",
  "torii-graphql",
  "torii-grpc-server",
@@ -11462,6 +11500,7 @@ dependencies = [
  "torii-processors",
  "torii-server",
  "torii-sqlite",
+ "torii-storage",
  "tower",
  "tower-http",
  "tracing",
@@ -11501,6 +11540,7 @@ dependencies = [
  "tokio-tungstenite 0.20.1",
  "tokio-util",
  "torii-mcp",
+ "torii-processors",
  "torii-sqlite",
  "tower",
  "tower-http",
@@ -11547,8 +11587,11 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "tokio-util",
+ "torii-cache",
  "torii-indexer",
+ "torii-math",
  "torii-sqlite-types",
+ "torii-storage",
  "tracing",
  "url",
 ]
@@ -11562,6 +11605,20 @@ dependencies = [
  "dojo-types 1.5.0-alpha.2",
  "serde",
  "sqlx",
+ "starknet 0.12.0",
+ "torii-storage",
+]
+
+[[package]]
+name = "torii-storage"
+version = "1.5.8-preview.2"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "dojo-types 1.5.0-alpha.2",
+ "dojo-world",
+ "serde",
  "starknet 0.12.0",
 ]
 

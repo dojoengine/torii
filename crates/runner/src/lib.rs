@@ -36,6 +36,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
+use torii_cache::Cache;
 use torii_cli::ToriiArgs;
 use torii_grpc_server::GrpcConfig;
 use torii_indexer::engine::{Engine, EngineConfig};
@@ -43,12 +44,12 @@ use torii_indexer::{FetcherConfig, FetchingFlags, IndexingFlags};
 use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
-use torii_sqlite::cache::ModelCache;
 use torii_sqlite::controllers::ControllersSync;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::simple_broker::SimpleBroker;
-use torii_sqlite::types::{Contract, ContractType, Model};
+use torii_sqlite::types::{Contract, Model};
 use torii_sqlite::{Sql, SqlConfig};
+use torii_storage::types::ContractType;
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
@@ -238,7 +239,7 @@ impl Runner {
             Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
 
-        let model_cache = Arc::new(ModelCache::new(readonly_pool.clone()).await?);
+        let cache = Arc::new(Cache::new(readonly_pool.clone()).await?);
 
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
             warn!(
@@ -259,13 +260,12 @@ impl Runner {
             readonly_pool.clone(),
             sender.clone(),
             &self.args.indexing.contracts,
-            model_cache.clone(),
+            cache.clone(),
             SqlConfig {
                 all_model_indices: self.args.sql.all_model_indices,
                 model_indices: self.args.sql.model_indices.clone(),
                 historical_models: historical_models.clone(),
                 hooks: self.args.sql.hooks.clone(),
-                max_metadata_tasks: self.args.erc.max_metadata_tasks,
             },
         )
         .await?;
@@ -290,9 +290,11 @@ impl Runner {
             None
         };
 
+        let storage = Arc::new(db.clone());
         let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new_with_controllers(
             world,
-            db.clone(),
+            storage.clone(),
+            cache.clone(),
             provider.clone(),
             processors,
             EngineConfig {
@@ -310,6 +312,7 @@ impl Runner {
                     strict_model_reader: self.args.indexing.strict_model_reader,
                     namespaces: self.args.indexing.namespaces.into_iter().collect(),
                     historical_models,
+                    max_metadata_tasks: self.args.erc.max_metadata_tasks,
                 },
                 world_block: self.args.indexing.world_block,
             },
@@ -353,7 +356,6 @@ impl Runner {
             db.clone(),
             provider.clone(),
             world_address,
-            model_cache,
             cross_messaging_tx,
             GrpcConfig {
                 subscription_buffer_size: self.args.grpc.subscription_buffer_size,

@@ -15,7 +15,9 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
+use torii_math::I256;
 use torii_sqlite_types::OptimisticToken;
+use torii_storage::types::ParsedCall;
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
@@ -25,9 +27,11 @@ use crate::simple_broker::SimpleBroker;
 use crate::types::{
     ContractCursor, Entity as EntityUpdated, Event as EventEmitted,
     EventMessage as EventMessageUpdated, Model as ModelRegistered, OptimisticEntity,
-    OptimisticEventMessage, ParsedCall, Token, TokenBalance, Transaction,
+    OptimisticEventMessage, Token, TokenBalance, Transaction,
 };
-use crate::utils::{felt_to_sql_string, felts_to_sql_string, u256_to_sql_string, I256};
+use crate::utils::{
+    felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, u256_to_sql_string,
+};
 use crate::Cursor;
 
 pub mod erc;
@@ -715,7 +719,10 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     "INSERT INTO tokens (id, contract_address, token_id, name, symbol, decimals, \
                      metadata) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
                 )
-                .bind(&register_nft_token.id)
+                .bind(felt_and_u256_to_sql_string(
+                    &register_nft_token.contract_address,
+                    &register_nft_token.token_id,
+                ))
                 .bind(felt_to_sql_string(&register_nft_token.contract_address))
                 .bind(u256_to_sql_string(&register_nft_token.token_id))
                 .bind(&name)
@@ -737,7 +744,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     "INSERT INTO tokens (id, contract_address, name, symbol, decimals) VALUES (?, \
                      ?, ?, ?, ?) RETURNING *",
                 )
-                .bind(&register_erc20_token.token_id)
+                .bind(felt_to_sql_string(&register_erc20_token.contract_address))
                 .bind(felt_to_sql_string(&register_erc20_token.contract_address))
                 .bind(&register_erc20_token.name)
                 .bind(&register_erc20_token.symbol)

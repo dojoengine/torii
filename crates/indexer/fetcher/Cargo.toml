@@ -42,6 +42,7 @@ torii-sqlite.workspace = true
 lazy_static.workspace = true
 torii-processors.workspace = true
 bitflags.workspace = true
+torii-storage.workspace = true
 
 [dev-dependencies]
 dojo-test-utils.workspace = true

@@ -9,6 +9,10 @@ pub enum Error {
     #[error(transparent)]
     SqliteError(#[from] torii_sqlite::error::Error),
     #[error(transparent)]
+    Cache(#[from] torii_cache::error::Error),
+    #[error(transparent)]
+    Storage(#[from] torii_storage::StorageError),
+    #[error(transparent)]
     ProviderError(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
     AnyhowError(#[from] anyhow::Error),
@@ -24,4 +28,8 @@ pub enum ProcessError {
     Sqlite(#[from] torii_sqlite::error::Error),
     #[error(transparent)]
     Processors(#[from] torii_processors::error::Error),
+    #[error(transparent)]
+    Cache(#[from] torii_cache::error::Error),
+    #[error(transparent)]
+    Storage(#[from] torii_storage::StorageError),
 }

@@ -17,11 +17,12 @@ mod tests {
     use starknet::providers::JsonRpcClient;
     use starknet_crypto::{poseidon_hash_many, Felt};
     use tokio::sync::{broadcast, mpsc};
-    use torii_sqlite::cache::ModelCache;
+    use torii_cache::Cache;
     use torii_sqlite::executor::Executor;
-    use torii_sqlite::types::{Contract, ContractType};
-    use torii_sqlite::utils::felts_to_sql_string;
+    use torii_sqlite::types::Contract;
     use torii_sqlite::Sql;
+    use torii_storage::types::ContractType;
+    use torii_storage::Storage;
     use url::Url;
 
     use crate::tests::{model_fixtures, run_graphql_subscription};
@@ -41,20 +42,20 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-        let mut db = Sql::new(
+        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+        let db = Sql::new(
             pool.clone(),
             sender,
             &[Contract {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            model_cache,
+            Arc::clone(&cache),
         )
         .await
         .unwrap();
 
-        model_fixtures(&mut db).await;
+        model_fixtures(&db).await;
         // 0. Preprocess expected entity value
         let namespace = "types_test".to_string();
         let model_name = "Record".to_string();
@@ -151,7 +152,6 @@ mod tests {
                 ],
             });
             let keys = keys_from_ty(&ty).unwrap();
-            let keys_str = felts_to_sql_string(&keys);
             let entity_id = poseidon_hash_many(&keys);
             let model_id = model_id_from_ty(&ty);
 
@@ -162,7 +162,7 @@ mod tests {
                 block_timestamp,
                 entity_id,
                 model_id,
-                Some(&keys_str),
+                Some(keys),
             )
             .await
             .unwrap();
@@ -216,20 +216,20 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-        let mut db = Sql::new(
+        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+        let db = Sql::new(
             pool.clone(),
             sender,
             &[Contract {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            model_cache,
+            Arc::clone(&cache),
         )
         .await
         .unwrap();
 
-        model_fixtures(&mut db).await;
+        model_fixtures(&db).await;
         // 0. Preprocess expected entity value
         let namespace = "types_test".to_string();
         let model_name = "Record".to_string();
@@ -309,7 +309,6 @@ mod tests {
             });
 
             let keys = keys_from_ty(&ty).unwrap();
-            let keys_str = felts_to_sql_string(&keys);
             let entity_id = poseidon_hash_many(&keys);
             let model_id = model_id_from_ty(&ty);
 
@@ -320,7 +319,7 @@ mod tests {
                 block_timestamp,
                 entity_id,
                 model_id,
-                Some(&keys_str),
+                Some(keys),
             )
             .await
             .unwrap();
@@ -369,15 +368,15 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-        let mut db = Sql::new(
+        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+        let db = Sql::new(
             pool.clone(),
             sender,
             &[Contract {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            model_cache,
+            Arc::clone(&cache),
         )
         .await
         .unwrap();
@@ -461,15 +460,15 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-        let mut db = Sql::new(
+        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+        let db = Sql::new(
             pool.clone(),
             sender,
             &[Contract {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            model_cache,
+            Arc::clone(&cache),
         )
         .await
         .unwrap();
@@ -554,15 +553,15 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-        let mut db = Sql::new(
+        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
+        let db = Sql::new(
             pool.clone(),
             sender,
             &[Contract {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            model_cache,
+            Arc::clone(&cache),
         )
         .await
         .unwrap();
@@ -587,6 +586,7 @@ mod tests {
                 Felt::ZERO,
                 block_timestamp,
             )
+            .await
             .unwrap();
             db.execute().await.unwrap();
 

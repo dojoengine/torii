@@ -51,3 +51,5 @@ sozo-scarbext.workspace = true
 torii-processors = { workspace = true }
 torii-indexer.workspace = true
 torii-indexer-fetcher.workspace = true
+torii-cache.workspace = true
+torii-storage.workspace = true

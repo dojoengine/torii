@@ -21,16 +21,18 @@ use starknet::providers::JsonRpcClient;
 use starknet_crypto::poseidon_hash_many;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
+use torii_cache::Cache;
 use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
-use torii_sqlite::cache::ModelCache;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::{Contract, ContractType, Pagination, PaginationDirection};
+use torii_sqlite::types::{Contract, Pagination, PaginationDirection};
 use torii_sqlite::Sql;
 
 use torii_proto::proto::types::KeysClause;
 use torii_proto::schema::Entity;
+use torii_storage::types::ContractType;
+use torii_storage::Storage;
 
 use crate::{DojoWorld, GrpcConfig};
 
@@ -107,7 +109,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
+    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender,
@@ -115,7 +117,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
             address: world_address,
             r#type: ContractType::WORLD,
         }],
-        model_cache,
+        Arc::clone(&cache),
     )
     .await
     .unwrap();
@@ -128,7 +130,8 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     }];
     let mut engine = Engine::new(
         world_reader,
-        db.clone(),
+        Arc::new(db.clone()),
+        Arc::clone(&cache),
         Arc::clone(&provider),
         Processors {
             ..Processors::default()
@@ -150,12 +153,10 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
 
     db.execute().await.unwrap();
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let grpc = DojoWorld::new(
         db,
         provider.clone(),
         world_address,
-        model_cache,
         None,
         GrpcConfig::default(),
     );

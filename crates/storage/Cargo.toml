@@ -1,0 +1,14 @@
+[package]
+name = "torii-storage"
+edition.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+dojo-types.workspace = true
+dojo-world.workspace = true
+serde.workspace = true
+starknet.workspace = true
+anyhow.workspace = true

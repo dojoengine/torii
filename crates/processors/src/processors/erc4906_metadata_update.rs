@@ -1,17 +1,15 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
-use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::error::Error;
+use crate::erc::{felt_and_u256_to_sql_string, fetch_token_metadata};
+use crate::error::{Error, TokenMetadataError};
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig, IndexingMode};
+use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc4906_metadata_update";
 #[derive(Default, Debug)]
@@ -53,21 +51,26 @@ where
         IndexingMode::Latest(hasher.finish())
     }
 
-    async fn process(
-        &self,
-        world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        _block_number: u64,
-        _block_timestamp: u64,
-        _event_id: &str,
-        event: &Event,
-        _config: &EventProcessorConfig,
-    ) -> Result<(), Error> {
-        let token_address = event.from_address;
-        let token_id = U256Cainome::cairo_deserialize(&event.keys, 1)?;
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
+        let token_address = ctx.event.from_address;
+        let token_id = U256Cainome::cairo_deserialize(&ctx.event.keys, 1)?;
         let token_id = U256::from_words(token_id.low, token_id.high);
 
-        db.update_nft_metadata(world.provider(), token_address, token_id)
+        let id = felt_and_u256_to_sql_string(&token_address, &token_id);
+        if !ctx.cache.erc_cache.is_token_registered(&id).await {
+            return Ok(());
+        }
+
+        let _permit = ctx
+            .nft_metadata_semaphore
+            .acquire()
+            .await
+            .map_err(TokenMetadataError::AcquireError)?;
+
+        let metadata = fetch_token_metadata(token_address, token_id, ctx.world.provider()).await?;
+
+        ctx.storage
+            .update_nft_metadata(token_address, token_id, metadata)
             .await?;
 
         debug!(

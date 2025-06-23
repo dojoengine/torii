@@ -1,15 +1,13 @@
-use std::collections::HashSet;
-
 use async_trait::async_trait;
 use cainome::cairo_serde_derive::CairoSerde;
 use cainome_cairo_serde::CairoSerde;
 use starknet::core::types::{BlockId, BlockTag, Felt, InvokeTransaction, Transaction};
 use starknet::providers::Provider;
-use torii_sqlite::cache::{get_entrypoint_name_from_class, ContractClassCache};
-use torii_sqlite::types::{CallType, ParsedCall};
-use torii_sqlite::Sql;
+use torii_cache::{get_entrypoint_name_from_class, ContractClassCache};
+use torii_storage::types::{CallType, ParsedCall};
 
 use crate::error::Error;
+use crate::TransactionProcessorContext;
 
 use super::TransactionProcessor;
 
@@ -268,19 +266,8 @@ impl StoreTransactionProcessor {
 impl<P: Provider + Send + Sync + std::fmt::Debug> TransactionProcessor<P>
     for StoreTransactionProcessor
 {
-    async fn process(
-        &self,
-        db: &mut Sql,
-        _provider: &P,
-        block_number: u64,
-        block_timestamp: u64,
-        _transaction_hash: Felt,
-        contract_addresses: &HashSet<Felt>,
-        transaction: &Transaction,
-        contract_class_cache: &ContractClassCache<P>,
-        unique_models: &HashSet<Felt>,
-    ) -> Result<(), Error> {
-        let Some(tx_info) = Self::extract_transaction_info(transaction) else {
+    async fn process(&self, ctx: &TransactionProcessorContext<P>) -> Result<(), Error> {
+        let Some(tx_info) = Self::extract_transaction_info(&ctx.transaction) else {
             return Ok(());
         };
 
@@ -297,7 +284,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug> TransactionProcessor<P>
                 };
 
             if let Some(execute) = execute {
-                Self::parse_execute(execute, tx_info.sender_address, contract_class_cache).await?
+                Self::parse_execute(execute, tx_info.sender_address, &ctx.cache).await?
             } else {
                 vec![]
             }
@@ -305,20 +292,22 @@ impl<P: Provider + Send + Sync + std::fmt::Debug> TransactionProcessor<P>
             vec![]
         };
 
-        db.store_transaction(
-            tx_info.transaction_hash,
-            tx_info.sender_address,
-            &tx_info.calldata,
-            tx_info.max_fee,
-            &tx_info.signature,
-            tx_info.nonce,
-            block_number,
-            contract_addresses,
-            tx_info.transaction_type,
-            block_timestamp,
-            &calls,
-            unique_models,
-        )?;
+        ctx.storage
+            .store_transaction(
+                tx_info.transaction_hash,
+                tx_info.sender_address,
+                &tx_info.calldata,
+                tx_info.max_fee,
+                &tx_info.signature,
+                tx_info.nonce,
+                ctx.block_number,
+                &ctx.contract_addresses,
+                tx_info.transaction_type,
+                ctx.block_timestamp,
+                &calls,
+                &ctx.unique_models,
+            )
+            .await?;
 
         Ok(())
     }

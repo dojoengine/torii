@@ -1,19 +1,16 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use cainome::cairo_serde::CairoSerde;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt};
 use starknet::providers::Provider;
 use starknet_crypto::poseidon_hash_many;
-use torii_sqlite::Sql;
 use tracing::info;
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig, IndexingMode};
+use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::event_message";
 
@@ -65,19 +62,10 @@ where
         }
     }
 
-    async fn process(
-        &self,
-        _world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        _block_number: u64,
-        block_timestamp: u64,
-        event_id: &str,
-        event: &Event,
-        _config: &EventProcessorConfig,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
-        let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
+        let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
             panic!(
                 "Expected {} event to be well formed.",
                 <EventMessageProcessor as EventProcessor<P>>::event_key(self)
@@ -90,7 +78,7 @@ where
         };
 
         // silently ignore if the model is not found
-        let model = match db.model(event.selector).await {
+        let model = match ctx.cache.model_cache.model(&event.selector).await {
             Ok(model) => model,
             Err(_) => return Ok(()),
         };
@@ -108,7 +96,8 @@ where
         let mut entity = model.schema.clone();
         entity.deserialize(&mut keys_and_unpacked)?;
 
-        db.set_event_message(entity, event_id, block_timestamp)
+        ctx.storage
+            .set_event_message(entity, &ctx.event_id, ctx.block_timestamp)
             .await?;
         Ok(())
     }

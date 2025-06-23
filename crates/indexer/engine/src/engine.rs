@@ -11,13 +11,18 @@ use starknet::macros::selector;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use tokio::sync::broadcast::Sender;
+use tokio::sync::Semaphore;
 use tokio::time::{sleep, Instant};
-use torii_processors::{EventProcessorConfig, Processors};
-use torii_sqlite::cache::ContractClassCache;
+use torii_cache::{Cache, ContractClassCache};
+use torii_processors::{
+    BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors,
+    TransactionProcessorContext,
+};
 use torii_sqlite::controllers::ControllersSync;
-use torii_sqlite::types::{Contract, ContractType};
+use torii_sqlite::types::Contract;
 use torii_sqlite::utils::format_event_id;
-use torii_sqlite::Sql;
+use torii_storage::types::ContractType;
+use torii_storage::Storage;
 use tracing::{debug, error, info, trace};
 
 use crate::constants::LOG_TARGET;
@@ -53,7 +58,8 @@ pub struct EngineConfig {
 #[allow(missing_debug_implementations)]
 pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     world: Arc<WorldContractReader<P>>,
-    db: Sql,
+    cache: Arc<Cache>,
+    storage: Arc<dyn Storage>,
     provider: Arc<P>,
     processors: Arc<Processors<P>>,
     config: EngineConfig,
@@ -63,6 +69,7 @@ pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
     contract_class_cache: Arc<ContractClassCache<P>>,
     controllers: Option<Arc<ControllersSync>>,
     fetcher: Fetcher<P>,
+    nft_metadata_semaphore: Arc<Semaphore>,
 }
 
 impl Default for EngineConfig {
@@ -87,7 +94,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         world: WorldContractReader<P>,
-        db: Sql,
+        storage: Arc<dyn Storage>,
+        cache: Arc<Cache>,
         provider: P,
         processors: Processors<P>,
         config: EngineConfig,
@@ -96,7 +104,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     ) -> Self {
         Self::new_with_controllers(
             world,
-            db,
+            storage,
+            cache,
             provider,
             processors,
             config,
@@ -109,7 +118,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_controllers(
         world: WorldContractReader<P>,
-        db: Sql,
+        storage: Arc<dyn Storage>,
+        cache: Arc<Cache>,
         provider: P,
         processors: Processors<P>,
         config: EngineConfig,
@@ -129,17 +139,21 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let event_processor_config = config.event_processor_config.clone();
         let fetcher_config = config.fetcher_config.clone();
         let provider = Arc::new(provider);
+        let nft_metadata_semaphore =
+            Arc::new(Semaphore::new(event_processor_config.max_metadata_tasks));
 
         Self {
             world: world.clone(),
-            db: db.clone(),
+            storage: storage.clone(),
+            cache: cache.clone(),
             provider: provider.clone(),
             processors: processors.clone(),
             config,
             shutdown_tx,
             contracts,
             task_manager: TaskManager::new(
-                db,
+                storage,
+                cache,
                 world,
                 processors,
                 max_concurrent_tasks,
@@ -148,6 +162,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             contract_class_cache: Arc::new(ContractClassCache::new(provider.clone())),
             controllers,
             fetcher: Fetcher::new(provider.clone(), fetcher_config),
+            nft_metadata_semaphore,
         }
     }
 
@@ -178,7 +193,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     if let Some(last_fetch_result) = cached_data.as_ref() {
                         Result::<_, Error>::Ok(last_fetch_result.clone())
                     } else {
-                        let cursors = self.db.cursors().await?;
+                        let cursors = self.storage.cursors().await?;
                         let fetch_result = self.fetcher.fetch(&cursors).await?;
                         Ok(Arc::new(fetch_result))
                     }
@@ -215,12 +230,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                             info!(target: LOG_TARGET, num_controllers = num_controllers, "Synced controllers.");
                                         }
                                     }
-                                    self.db.execute().await?;
+                                    self.storage.execute().await?;
                                 },
                                 Err(e) => {
                                     error!(target: LOG_TARGET, error = ?e, "Processing fetched data.");
                                     processing_erroring_out = true;
-                                    self.db.rollback().await?;
+                                    self.storage.rollback().await?;
                                     self.task_manager.clear_tasks();
                                     sleep(processing_backoff_delay).await;
                                     if processing_backoff_delay < max_backoff_delay {
@@ -300,13 +315,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Apply ERC balances cache diff
         debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
         let instant = Instant::now();
-        self.db.apply_cache_diff(range.cursors.clone()).await?;
+        self.storage
+            .apply_balances_diff(range.cursors.clone())
+            .await?;
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
 
         // Update cursors
         // The update cursors query should absolutely succeed, otherwise we will rollback.
         debug!(target: LOG_TARGET, cursors = ?range.cursors, "Updating cursors.");
-        self.db
+        self.storage
             .update_cursors(range.cursors.clone(), range.cursor_transactions.clone())
             .await?;
 
@@ -337,10 +354,21 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
 
         // Process parallelized events
+        debug!(target: LOG_TARGET, "Processing parallelized events.");
+        let instant = Instant::now();
         self.task_manager.process_tasks().await?;
+        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed parallelized events.");
+
+        // Apply ERC balances cache diff
+        debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
+        let instant = Instant::now();
+        self.storage
+            .apply_balances_diff(data.cursors.clone())
+            .await?;
+        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
 
         // The update cursors query should absolutely succeed, otherwise we will rollback.
-        self.db
+        self.storage
             .update_cursors(data.cursors.clone(), data.cursor_transactions.clone())
             .await?;
 
@@ -410,15 +438,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         block_number: u64,
         block_timestamp: u64,
     ) -> Result<(), ProcessError> {
+        let ctx = BlockProcessorContext {
+            storage: self.storage.clone(),
+            provider: self.provider.clone(),
+            block_number,
+            block_timestamp,
+        };
+
         for processor in &self.processors.block {
-            processor
-                .process(
-                    &mut self.db,
-                    self.provider.as_ref(),
-                    block_number,
-                    block_timestamp,
-                )
-                .await?
+            processor.process(&ctx).await?
         }
 
         trace!(target: LOG_TARGET, block_number = %block_number, "Processed block.");
@@ -434,20 +462,20 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         transaction: &Transaction,
         unique_models: &HashSet<Felt>,
     ) -> Result<(), ProcessError> {
+        let ctx = TransactionProcessorContext {
+            storage: self.storage.clone(),
+            cache: self.contract_class_cache.clone(),
+            provider: self.provider.clone(),
+            block_number,
+            block_timestamp,
+            transaction_hash,
+            transaction: transaction.clone(),
+            contract_addresses: contract_addresses.clone(),
+            contract_class_cache: self.contract_class_cache.clone(),
+            unique_models: unique_models.clone(),
+        };
         for processor in &self.processors.transaction {
-            processor
-                .process(
-                    &mut self.db,
-                    self.provider.as_ref(),
-                    block_number,
-                    block_timestamp,
-                    transaction_hash,
-                    contract_addresses,
-                    transaction,
-                    self.contract_class_cache.as_ref(),
-                    unique_models,
-                )
-                .await?
+            processor.process(&ctx).await?
         }
 
         Ok(())
@@ -463,9 +491,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         contract_type: ContractType,
     ) -> Result<(), ProcessError> {
         if self.config.flags.contains(IndexingFlags::RAW_EVENTS) {
-            self.db
+            self.storage
                 .store_event(event_id, event, transaction_hash, block_timestamp)
-                .map_err(ProcessError::Sqlite)?;
+                .await?;
         }
 
         let event_key = event.keys[0];
@@ -473,21 +501,19 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         let processors = self.processors.get_event_processors(contract_type);
         let Some(processors) = processors.get(&event_key) else {
             // if we dont have a processor for this event, we try the catch all processor
+            let ctx = EventProcessorContext {
+                storage: self.storage.clone(),
+                world: self.world.clone(),
+                cache: self.cache.clone(),
+                config: self.config.event_processor_config.clone(),
+                block_number,
+                block_timestamp,
+                event_id: event_id.to_string(),
+                event: event.clone(),
+                nft_metadata_semaphore: self.nft_metadata_semaphore.clone(),
+            };
             if self.processors.catch_all_event.validate(event) {
-                if let Err(e) = self
-                    .processors
-                    .catch_all_event
-                    .process(
-                        self.world.clone(),
-                        &mut self.db,
-                        block_number,
-                        block_timestamp,
-                        event_id,
-                        event,
-                        &self.config.event_processor_config,
-                    )
-                    .await
-                {
+                if let Err(e) = self.processors.catch_all_event.process(&ctx).await {
                     error!(target: LOG_TARGET, error = ?e, "Processing catch all event processor.");
                     return Err(e.into());
                 }

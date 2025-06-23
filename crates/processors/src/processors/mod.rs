@@ -21,7 +21,7 @@ use store_set_record::StoreSetRecordProcessor;
 use store_transaction::StoreTransactionProcessor;
 use store_update_member::StoreUpdateMemberProcessor;
 use store_update_record::StoreUpdateRecordProcessor;
-use torii_sqlite::types::ContractType;
+use torii_storage::types::ContractType;
 use upgrade_event::UpgradeEventProcessor;
 use upgrade_model::UpgradeModelProcessor;
 
