@@ -417,7 +417,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                                 if event.transaction_hash == last_pending_block_tx {
                                     continue;
                                 }
-                                
                             }
 
                             events.push(event);
