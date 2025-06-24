@@ -17,7 +17,7 @@ pub enum Error {
     #[error(transparent)]
     AnyhowError(#[from] anyhow::Error),
     #[error(transparent)]
-    ControllerSync(#[from] torii_sqlite::error::ControllerSyncError),
+    ControllerSync(#[from] torii_controllers::error::Error),
 }
 
 #[derive(Error, Debug)]

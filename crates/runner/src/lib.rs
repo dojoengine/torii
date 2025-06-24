@@ -38,13 +38,13 @@ use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
 use torii_cache::InMemoryCache;
 use torii_cli::ToriiArgs;
+use torii_controllers::sync::ControllersSync;
 use torii_grpc_server::GrpcConfig;
 use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer::{FetcherConfig, FetchingFlags, IndexingFlags};
 use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
-use torii_sqlite::controllers::ControllersSync;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::{Contract, Model};
@@ -282,13 +282,13 @@ impl Runner {
             fetching_flags.insert(FetchingFlags::PENDING_BLOCKS);
         }
 
+        let storage = Arc::new(db.clone());
         let controllers = if self.args.indexing.controllers {
-            Some(Arc::new(ControllersSync::new(db.clone()).await))
+            Some(Arc::new(ControllersSync::new(storage.clone()).await.unwrap()))
         } else {
             None
         };
 
-        let storage = Arc::new(db.clone());
         let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new_with_controllers(
             world,
             storage.clone(),

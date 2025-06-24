@@ -98,6 +98,7 @@ impl ControllersSync {
         }}"#,
             self.cursor.read().await.unwrap_or_default().to_rfc3339()
         );
+        println!("query: {}", query);
 
         let mut attempts = 0;
         const MAX_RETRIES: u32 = 3;
@@ -372,5 +373,113 @@ mod tests {
         assert!(result.is_ok());
         let controllers = result.unwrap();
         assert!(controllers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_sync_incremental() {
+        let mut server = Server::new_async().await;
+        
+        // First sync - mock initial controller
+        server
+            .mock("POST", "/query")
+            .match_body(mockito::Matcher::Regex(".*createdAtGT.*1970-01-01T00:00:00\\+00:00.*".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "data": {
+                        "controllers": {
+                            "edges": [
+                                {
+                                    "node": {
+                                        "address": "0x123",
+                                        "createdAt": "2024-03-20T12:00:00Z",
+                                        "account": {
+                                            "username": "user1"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+        
+        // Second sync - mock new controller (should use cursor from first sync)
+        server
+            .mock("POST", "/query")
+            .match_body(mockito::Matcher::Regex(".*createdAtGT.*2024-03-20T12:00:00\\+00:00.*".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "data": {
+                        "controllers": {
+                            "edges": [
+                                {
+                                    "node": {
+                                        "address": "0x456",
+                                        "createdAt": "2024-03-20T13:00:00Z",
+                                        "account": {
+                                            "username": "user2"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let (shutdown_tx, _) = broadcast::channel(1);
+        let tempfile = NamedTempFile::new().unwrap();
+        let path = tempfile.path().to_string_lossy();
+        let sql = bootstrap_sql(
+            &path,
+            shutdown_tx.clone(),
+            Arc::new(JsonRpcClient::new(HttpTransport::new(
+                Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
+            ))),
+        )
+        .await;
+
+        let sync = ControllersSync::new(Arc::new(sql))
+            .await
+            .unwrap()
+            .with_api_url(server.url() + "/query");
+
+        // First sync - should fetch 1 controller
+        let num_controllers_1 = sync.sync().await.unwrap();
+        assert_eq!(num_controllers_1, 1);
+
+        // Second sync - should only fetch the new controller (cursor filters out the first one)
+        let num_controllers_2 = sync.sync().await.unwrap();
+        assert_eq!(num_controllers_2, 1);
+
+        // Execute to persist to database
+        sync.storage.execute().await.unwrap();
+
+        // Verify total controllers in database (should be 2 total)
+        let stored_controllers = sync
+            .storage
+            .controllers(&[], &[], None, None)
+            .await
+            .unwrap()
+            .items;
+
+        assert_eq!(stored_controllers.len(), 2);
+        
+        // Verify the controllers are the ones we expect
+        let usernames: Vec<&str> = stored_controllers.iter().map(|c| c.username.as_str()).collect();
+        assert!(usernames.contains(&"user1"));
+        assert!(usernames.contains(&"user2"));
     }
 }
