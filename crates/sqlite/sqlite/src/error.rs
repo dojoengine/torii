@@ -73,13 +73,3 @@ pub enum QueryError {
     #[error("Invalid cursor: {0}")]
     InvalidCursor(String),
 }
-
-#[derive(Debug, thiserror::Error)]
-pub enum ControllerSyncError {
-    #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
-    #[error("API error: {0}")]
-    ApiError(String),
-    #[error(transparent)]
-    Storage(#[from] torii_storage::StorageError),
-}

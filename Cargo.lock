@@ -11113,6 +11113,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "torii-controllers"
+version = "1.5.8-preview.4"
+dependencies = [
+ "chrono",
+ "mockito",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "starknet 0.12.0",
+ "starknet-crypto 0.7.4",
+ "tempfile",
+ "thiserror 1.0.63",
+ "tokio",
+ "torii-sqlite",
+ "torii-storage",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "torii-graphql"
 version = "1.5.8-preview.4"
 dependencies = [
@@ -11576,7 +11597,6 @@ dependencies = [
  "hashlink",
  "ipfs-api-backend-hyper",
  "katana-runner",
- "mockito",
  "once_cell",
  "reqwest",
  "scarb",
@@ -11598,7 +11618,6 @@ dependencies = [
  "torii-sqlite-types",
  "torii-storage",
  "tracing",
- "url",
 ]
 
 [[package]]
