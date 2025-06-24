@@ -1408,13 +1408,35 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<RetrieveControllersRequest>,
     ) -> Result<Response<RetrieveControllersResponse>, Status> {
-        let RetrieveControllersRequest { contract_addresses, usernames, limit, cursor } = request.into_inner();
+        let RetrieveControllersRequest {
+            contract_addresses,
+            usernames,
+            limit,
+            cursor,
+        } = request.into_inner();
         let contract_addresses = contract_addresses
             .iter()
             .map(|address| Felt::from_bytes_be_slice(address))
             .collect::<Vec<_>>();
 
-        let controllers = self.sql.controllers(&contract_addresses, &usernames, if !cursor.is_empty() { Some(cursor) } else { None }, if limit > 0 { Some(limit as usize) } else { None }).await.map_err(|e| Status::internal(e.to_string()))?;
+        let controllers = self
+            .sql
+            .controllers(
+                &contract_addresses,
+                &usernames,
+                if !cursor.is_empty() {
+                    Some(cursor)
+                } else {
+                    None
+                },
+                if limit > 0 {
+                    Some(limit as usize)
+                } else {
+                    None
+                },
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(RetrieveControllersResponse {
             next_cursor: controllers.next_cursor.unwrap_or_default(),

@@ -63,14 +63,28 @@ impl Client {
     pub async fn controllers(
         &self,
         contract_addresses: Vec<Felt>,
-    ) -> Result<Vec<Controller>, Error> {
+        usernames: Vec<String>,
+        limit: Option<u32>,
+        cursor: Option<String>,
+    ) -> Result<Page<Controller>, Error> {
         let mut grpc_client = self.inner.write().await;
-        let RetrieveControllersResponse { controllers } =
-            grpc_client.retrieve_controllers(contract_addresses).await?;
-        Ok(controllers
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<Vec<Controller>, _>>()?)
+        let RetrieveControllersResponse {
+            controllers,
+            next_cursor,
+        } = grpc_client
+            .retrieve_controllers(contract_addresses, usernames, limit, cursor)
+            .await?;
+        Ok(Page {
+            items: controllers
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<Controller>, _>>()?,
+            next_cursor: if next_cursor.is_empty() {
+                None
+            } else {
+                Some(next_cursor)
+            },
+        })
     }
 
     /// Retrieves tokens matching contract addresses.

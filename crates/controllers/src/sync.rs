@@ -57,8 +57,7 @@ impl ControllersSync {
         // Our controllers are sorted by deployed_at in descending order, so we can use the first one as the cursor.
         let cursor: Option<DateTime<Utc>> = storage
             .controllers(&[], &[], None, Some(1))
-            .await
-            .map_err(|e| Error::Storage(e))?
+            .await?
             .items
             .first()
             .map(|c| c.deployed_at);
@@ -186,8 +185,8 @@ mod tests {
     use starknet::providers::{jsonrpc::HttpTransport, JsonRpcClient};
     use tempfile::NamedTempFile;
     use tokio::sync::broadcast;
-    use url::Url;
     use torii_sqlite::{executor::Executor, Sql};
+    use url::Url;
 
     const CARTRIDGE_NODE_MAINNET: &str = "https://api.cartridge.gg/x/starknet/mainnet";
 
@@ -378,11 +377,13 @@ mod tests {
     #[tokio::test]
     async fn test_sync_incremental() {
         let mut server = Server::new_async().await;
-        
+
         // First sync - mock initial controller
         server
             .mock("POST", "/query")
-            .match_body(mockito::Matcher::Regex(".*createdAtGT.*1970-01-01T00:00:00\\+00:00.*".to_string()))
+            .match_body(mockito::Matcher::Regex(
+                ".*createdAtGT.*1970-01-01T00:00:00\\+00:00.*".to_string(),
+            ))
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
@@ -408,11 +409,13 @@ mod tests {
             .expect(1)
             .create_async()
             .await;
-        
+
         // Second sync - mock new controller (should use cursor from first sync)
         server
             .mock("POST", "/query")
-            .match_body(mockito::Matcher::Regex(".*createdAtGT.*2024-03-20T12:00:00\\+00:00.*".to_string()))
+            .match_body(mockito::Matcher::Regex(
+                ".*createdAtGT.*2024-03-20T12:00:00\\+00:00.*".to_string(),
+            ))
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(
@@ -476,9 +479,12 @@ mod tests {
             .items;
 
         assert_eq!(stored_controllers.len(), 2);
-        
+
         // Verify the controllers are the ones we expect
-        let usernames: Vec<&str> = stored_controllers.iter().map(|c| c.username.as_str()).collect();
+        let usernames: Vec<&str> = stored_controllers
+            .iter()
+            .map(|c| c.username.as_str())
+            .collect();
         assert!(usernames.contains(&"user1"));
         assert!(usernames.contains(&"user2"));
     }

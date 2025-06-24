@@ -284,7 +284,9 @@ impl Runner {
 
         let storage = Arc::new(db.clone());
         let controllers = if self.args.indexing.controllers {
-            Some(Arc::new(ControllersSync::new(storage.clone()).await.unwrap()))
+            Some(Arc::new(
+                ControllersSync::new(storage.clone()).await.unwrap(),
+            ))
         } else {
             None
         };

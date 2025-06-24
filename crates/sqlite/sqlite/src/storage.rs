@@ -138,11 +138,11 @@ impl ReadOnlyStorage for Sql {
         let mut query =
             "SELECT address, username, deployed_at FROM controllers WHERE 1=1".to_string();
         let mut args = vec![];
-        
+
         if !usernames.is_empty() {
             let placeholders = vec!["?"; usernames.len()].join(", ");
             query += &format!(" AND id IN ({})", placeholders);
-            args.extend(usernames.iter().map(|u| u.clone()));
+            args.extend(usernames.iter().cloned());
         }
 
         if !contract_addresses.is_empty() {

@@ -112,6 +112,9 @@ impl WorldClient {
     pub async fn retrieve_controllers(
         &mut self,
         contract_addresses: Vec<Felt>,
+        usernames: Vec<String>,
+        limit: Option<u32>,
+        cursor: Option<String>,
     ) -> Result<RetrieveControllersResponse, Error> {
         self.inner
             .retrieve_controllers(RetrieveControllersRequest {
@@ -119,6 +122,9 @@ impl WorldClient {
                     .into_iter()
                     .map(|c| c.to_bytes_be().to_vec())
                     .collect(),
+                usernames: usernames.into_iter().map(|u| u.to_string()).collect(),
+                limit: limit.unwrap_or_default(),
+                cursor: cursor.unwrap_or_default(),
             })
             .await
             .map_err(Error::Grpc)
