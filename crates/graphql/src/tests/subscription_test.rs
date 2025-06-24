@@ -464,8 +464,7 @@ mod tests {
         // 0. Preprocess model value
         let namespace = "types_test".to_string();
         let model_name = "Subrecord".to_string();
-        let tag = get_tag(&namespace, &model_name);
-        let selector = compute_selector_from_names(&tag, &model_name);
+        let selector = compute_selector_from_names(&namespace, &model_name);
         let model_id = format!("{:#x}", selector);
         let class_hash = Felt::TWO;
         let contract_address = Felt::THREE;
@@ -480,7 +479,7 @@ mod tests {
             tokio::time::sleep(Duration::from_secs(1)).await;
 
             let model = Ty::Struct(Struct {
-                name: model_name,
+                name: get_tag(&namespace, &model_name),
                 children: vec![Member {
                     name: "type_u8".into(),
                     key: false,
