@@ -210,7 +210,7 @@ message WorldMetadataRequest {
 
 // The metadata response contains addresses and class hashes for the world.
 message WorldMetadataResponse {
-   types.WorldMetadata metadata = 1;
+   types.World world = 1;
 }
 
 message SubscribeEntitiesRequest {

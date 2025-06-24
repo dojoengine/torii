@@ -11066,6 +11066,7 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "torii-math",
+ "torii-proto",
  "torii-sqlite-types",
  "torii-storage",
 ]
@@ -11430,6 +11431,7 @@ dependencies = [
  "tokio-util",
  "torii-cache",
  "torii-math",
+ "torii-proto",
  "torii-storage",
  "torii-task-network",
  "tracing",
@@ -11454,7 +11456,6 @@ dependencies = [
  "tonic 0.12.3",
  "tonic-build 0.11.0",
  "tonic-build 0.12.3",
- "torii-sqlite-types",
 ]
 
 [[package]]
@@ -11592,6 +11593,7 @@ dependencies = [
  "torii-cache",
  "torii-indexer",
  "torii-math",
+ "torii-proto",
  "torii-sqlite-types",
  "torii-storage",
  "tracing",
@@ -11604,10 +11606,12 @@ version = "1.5.8-preview.4"
 dependencies = [
  "anyhow",
  "chrono",
+ "crypto-bigint",
  "dojo-types 1.5.0-alpha.2",
  "serde",
  "sqlx",
  "starknet 0.12.0",
+ "torii-proto",
  "torii-storage",
 ]
 
@@ -11623,6 +11627,7 @@ dependencies = [
  "serde",
  "starknet 0.12.0",
  "torii-math",
+ "torii-proto",
 ]
 
 [[package]]

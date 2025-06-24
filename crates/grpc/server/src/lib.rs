@@ -23,7 +23,6 @@ use proto::world::{
     RetrieveEventsResponse, UpdateEntitiesSubscriptionRequest,
 };
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use sqlx::prelude::FromRow;
 use sqlx::sqlite::SqliteRow;
 use sqlx::types::chrono::{DateTime, Utc};
 use sqlx::Row;
@@ -165,7 +164,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
 }
 
 impl<P: Provider + Sync> DojoWorld<P> {
-    pub async fn world(&self) -> Result<proto::types::WorldMetadata, Error> {
+    pub async fn world(&self) -> Result<proto::types::World, Error> {
         let world_address = sqlx::query_scalar(&format!(
             "SELECT contract_address FROM contracts WHERE id = '{:#x}'",
             self.world_address
@@ -173,40 +172,24 @@ impl<P: Provider + Sync> DojoWorld<P> {
         .fetch_one(&self.sql.pool)
         .await?;
 
-        #[derive(FromRow)]
-        struct ModelDb {
-            namespace: String,
-            name: String,
-            class_hash: String,
-            contract_address: String,
-            packed_size: u32,
-            unpacked_size: u32,
-            layout: String,
-            schema: String,
-        }
-
-        let models: Vec<ModelDb> = sqlx::query_as(
-            "SELECT id, namespace, name, class_hash, contract_address, packed_size, \
-             unpacked_size, layout, schema FROM models",
-        )
-        .fetch_all(&self.sql.pool)
-        .await?;
+        let models = self.cache.models(&[]).await.map_err(|e| anyhow!("Failed to get models from cache: {}", e))?;
 
         let mut models_metadata = Vec::with_capacity(models.len());
         for model in models {
-            models_metadata.push(proto::types::ModelMetadata {
+            models_metadata.push(proto::types::Model {
+                selector: model.selector.to_bytes_be().to_vec(),
                 namespace: model.namespace,
                 name: model.name,
-                class_hash: model.class_hash,
-                contract_address: model.contract_address,
+                class_hash: model.class_hash.to_bytes_be().to_vec(),
+                contract_address: model.contract_address.to_bytes_be().to_vec(),
                 packed_size: model.packed_size,
                 unpacked_size: model.unpacked_size,
-                layout: model.layout.as_bytes().to_vec(),
-                schema: model.schema.as_bytes().to_vec(),
+                layout: serde_json::to_vec(&model.layout).unwrap(),
+                schema: serde_json::to_vec(&model.schema).unwrap(),
             });
         }
 
-        Ok(proto::types::WorldMetadata {
+        Ok(proto::types::World {
             world_address,
             models: models_metadata,
         })
@@ -749,7 +732,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         &self,
         namespace: &str,
         name: &str,
-    ) -> Result<proto::types::ModelMetadata, Error> {
+    ) -> Result<proto::types::Model, Error> {
         // selector
         let model = compute_selector_from_names(namespace, name);
 
@@ -759,11 +742,12 @@ impl<P: Provider + Sync> DojoWorld<P> {
             .await
             .map_err(|e| anyhow!("Failed to get model from cache: {}", e))?;
 
-        Ok(proto::types::ModelMetadata {
+        Ok(proto::types::Model {
+            selector: model.selector.to_bytes_be().to_vec(),
             namespace: namespace.to_string(),
             name: name.to_string(),
-            class_hash: format!("{:#x}", model.class_hash),
-            contract_address: format!("{:#x}", model.contract_address),
+            class_hash: model.class_hash.to_bytes_be().to_vec(),
+            contract_address: model.contract_address.to_bytes_be().to_vec(),
             packed_size: model.packed_size,
             unpacked_size: model.unpacked_size,
             layout: serde_json::to_vec(&model.layout).unwrap(),
@@ -1386,7 +1370,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(WorldMetadataResponse {
-            metadata: Some(metadata),
+            world: Some(metadata),
         }))
     }
 

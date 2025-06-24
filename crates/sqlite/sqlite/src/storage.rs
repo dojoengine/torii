@@ -12,9 +12,10 @@ use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
-    types::{Cursor, Model, ParsedCall},
+    types::{Cursor, ParsedCall},
     ReadOnlyStorage, Storage, StorageError,
 };
+use torii_proto::Model;
 
 use crate::{
     constants::TOKEN_TRANSFER_TABLE,
