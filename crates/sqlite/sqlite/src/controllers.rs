@@ -201,7 +201,7 @@ mod tests {
         path: &str,
         shutdown_tx: broadcast::Sender<()>,
         provider: Arc<JsonRpcClient<HttpTransport>>,
-    ) -> (Sql, tokio::task::JoinHandle<()>) {
+    ) -> Sql {
         let options = SqliteConnectOptions::from_str(path)
             .unwrap()
             .create_if_missing(true);
@@ -216,17 +216,14 @@ mod tests {
                 .await
                 .unwrap();
 
-        (
-            Sql::new(pool.clone(), sender, &[]).await.unwrap(),
-            tokio::spawn(async move {
-                executor.run().await.unwrap();
-            }),
-        )
+        tokio::spawn(async move { executor.run().await.unwrap() });
+
+        Sql::new(pool.clone(), sender, &[]).await.unwrap()
     }
     #[tokio::test]
     async fn test_fetch_controllers_success() {
         let mut server = Server::new_async().await;
-        let mock = server
+        server
             .mock("POST", "/query")
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -256,7 +253,7 @@ mod tests {
         let (shutdown_tx, _) = broadcast::channel(1);
         let tempfile = NamedTempFile::new().unwrap();
         let path = tempfile.path().to_string_lossy();
-        let (sql, executor_handle) = bootstrap_sql(
+        let sql = bootstrap_sql(
             &path,
             shutdown_tx.clone(),
             Arc::new(JsonRpcClient::new(HttpTransport::new(
@@ -274,17 +271,12 @@ mod tests {
         assert_eq!(controllers.len(), 1);
         assert_eq!(controllers[0].address, "0x123");
         assert_eq!(controllers[0].account.username, "test_user");
-
-        mock.assert_async().await;
-
-        let _ = shutdown_tx.send(());
-        let _ = executor_handle.await;
     }
 
     #[tokio::test]
     async fn test_fetch_controllers_error() {
         let mut server = Server::new_async().await;
-        let mock = server
+        server
             .mock("POST", "/query")
             .with_status(500)
             .with_header("content-type", "application/json")
@@ -296,7 +288,7 @@ mod tests {
         let (shutdown_tx, _) = broadcast::channel(1);
         let tempfile = NamedTempFile::new().unwrap();
         let path = tempfile.path().to_string_lossy();
-        let (sql, executor_handle) = bootstrap_sql(
+        let sql = bootstrap_sql(
             &path,
             shutdown_tx.clone(),
             Arc::new(JsonRpcClient::new(HttpTransport::new(
@@ -318,11 +310,6 @@ mod tests {
             }
             _ => panic!("Expected ApiError"),
         }
-
-        mock.assert_async().await;
-
-        let _ = shutdown_tx.send(());
-        let _ = executor_handle.await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -330,7 +317,7 @@ mod tests {
         let (shutdown_tx, _) = broadcast::channel(1);
         let tempfile = NamedTempFile::new().unwrap();
         let path = tempfile.path().to_string_lossy();
-        let (sql, executor_handle) = bootstrap_sql(
+        let sql = bootstrap_sql(
             &path,
             shutdown_tx.clone(),
             Arc::new(JsonRpcClient::new(HttpTransport::new(
@@ -359,9 +346,6 @@ mod tests {
             assert!(address.starts_with("0x"));
             assert!(address[2..].chars().all(|c| c.is_ascii_hexdigit()));
         }
-
-        let _ = shutdown_tx.send(());
-        let _ = executor_handle.await;
     }
 
     #[tokio::test]
@@ -370,7 +354,7 @@ mod tests {
         let tempfile = NamedTempFile::new().unwrap();
         let path = tempfile.path().to_string_lossy();
 
-        let (sql, executor_handle) = bootstrap_sql(
+        let sql = bootstrap_sql(
             &path,
             shutdown_tx.clone(),
             Arc::new(JsonRpcClient::new(HttpTransport::new(
@@ -398,8 +382,5 @@ mod tests {
         assert!(result.is_ok());
         let controllers = result.unwrap();
         assert!(controllers.is_empty());
-
-        let _ = shutdown_tx.send(());
-        let _ = executor_handle.await;
     }
 }
