@@ -2,13 +2,13 @@ use core::fmt;
 use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
+use crypto_bigint::{Encoding, U256};
 use dojo_types::schema::Ty;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use starknet::core::types::Felt;
-use torii_storage::types::{ContractType, ParsedCall};
-use crypto_bigint::{U256, Encoding};
 use std::str::FromStr;
+use torii_storage::types::{ContractType, ParsedCall};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SQLFelt(pub Felt);

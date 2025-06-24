@@ -172,7 +172,11 @@ impl<P: Provider + Sync> DojoWorld<P> {
         .fetch_one(&self.sql.pool)
         .await?;
 
-        let models = self.cache.models(&[]).await.map_err(|e| anyhow!("Failed to get models from cache: {}", e))?;
+        let models = self
+            .cache
+            .models(&[])
+            .await
+            .map_err(|e| anyhow!("Failed to get models from cache: {}", e))?;
 
         let mut models_metadata = Vec::with_capacity(models.len());
         for model in models {

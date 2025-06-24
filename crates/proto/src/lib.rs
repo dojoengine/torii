@@ -189,7 +189,6 @@ impl TryFrom<proto::types::TokenBalance> for TokenBalance {
     }
 }
 
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct IndexerUpdate {
     pub head: i64,
