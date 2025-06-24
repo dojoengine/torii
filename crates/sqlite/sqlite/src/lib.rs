@@ -15,7 +15,6 @@ use crate::utils::utc_dt_string_from_timestamp;
 use torii_sqlite_types::{Contract, Hook, ModelIndices};
 
 pub mod constants;
-pub mod controllers;
 pub mod error;
 pub mod executor;
 pub mod model;

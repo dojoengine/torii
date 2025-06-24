@@ -1,21 +1,20 @@
-use std::{str::FromStr, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
-use sqlx::SqlitePool;
 use starknet_crypto::Felt;
 use tokio::sync::RwLock;
 use torii_storage::Storage;
 use tracing::warn;
 
-use crate::{error::ControllerSyncError, Sql};
+use crate::error::Error;
 
 const CARTRIDGE_API_QUERY_URL: &str = "https://api.cartridge.gg/query";
 
 #[derive(Debug)]
 pub struct ControllersSync {
-    sql: Sql,
+    storage: Arc<dyn Storage>,
     cursor: RwLock<Option<DateTime<Utc>>>,
     api_url: String,
 }
@@ -54,19 +53,20 @@ pub struct ControllersResponse {
 }
 
 impl ControllersSync {
-    pub async fn new(sql: Sql) -> Self {
-        let cursor: Option<DateTime<Utc>> = sqlx::query_scalar(
-            "SELECT deployed_at FROM controllers ORDER BY deployed_at DESC LIMIT 1",
-        )
-        .fetch_optional(&sql.pool)
-        .await
-        .expect("Should be able to read cursor from controllers table");
+    pub async fn new(storage: Arc<dyn Storage>) -> Result<Self, Error> {
+        // Our controllers are sorted by deployed_at in descending order, so we can use the first one as the cursor.
+        let cursor: Option<DateTime<Utc>> = storage
+            .controllers(&[], &[], None, Some(1))
+            .await?
+            .items
+            .first()
+            .map(|c| c.deployed_at);
 
-        Self {
-            sql,
+        Ok(Self {
+            storage,
             cursor: RwLock::new(cursor),
             api_url: CARTRIDGE_API_QUERY_URL.to_string(),
-        }
+        })
     }
 
     pub fn with_api_url(mut self, url: String) -> Self {
@@ -74,11 +74,7 @@ impl ControllersSync {
         self
     }
 
-    pub fn pool(&self) -> &SqlitePool {
-        &self.sql.pool
-    }
-
-    async fn fetch_controllers(&self) -> Result<Vec<Controller>, ControllerSyncError> {
+    async fn fetch_controllers(&self) -> Result<Vec<Controller>, Error> {
         let query = format!(
             r#"
         query {{
@@ -101,6 +97,7 @@ impl ControllersSync {
         }}"#,
             self.cursor.read().await.unwrap_or_default().to_rfc3339()
         );
+        println!("query: {}", query);
 
         let mut attempts = 0;
         const MAX_RETRIES: u32 = 3;
@@ -126,14 +123,14 @@ impl ControllersSync {
                 }
                 Ok(resp) => {
                     let error_text = resp.text().await?;
-                    return Err(ControllerSyncError::ApiError(error_text));
+                    return Err(Error::ApiError(error_text));
                 }
                 Err(_) if attempts < MAX_RETRIES => {
                     let backoff = INITIAL_BACKOFF * (1 << (attempts - 1));
                     tokio::time::sleep(backoff).await;
                     continue;
                 }
-                Err(e) => return Err(ControllerSyncError::Reqwest(e)),
+                Err(e) => return Err(Error::Reqwest(e)),
             }
         };
 
@@ -151,7 +148,7 @@ impl ControllersSync {
     /// Syncs the controllers from the Cartridge API to the database.
     ///
     /// Returns the number of controllers synced.
-    pub async fn sync(&self) -> Result<usize, ControllerSyncError> {
+    pub async fn sync(&self) -> Result<usize, Error> {
         let controllers = self.fetch_controllers().await?;
         let num_controllers = controllers.len();
 
@@ -160,7 +157,7 @@ impl ControllersSync {
             let padded_address = format!("{:#066x}", felt_addr);
 
             let e = self
-                .sql
+                .storage
                 .add_controller(
                     &controller.account.username,
                     &padded_address,
@@ -168,7 +165,7 @@ impl ControllersSync {
                 )
                 .await;
 
-            e.map_err(ControllerSyncError::Storage)?;
+            e.map_err(Error::Storage)?;
 
             *self.cursor.write().await = Some(controller.created_at);
         }
@@ -181,18 +178,14 @@ impl ControllersSync {
 mod tests {
     use std::sync::Arc;
 
-    use crate::executor::Executor;
-
     use super::*;
     use mockito::Server;
     use serde_json::json;
-    use sqlx::{
-        sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-        Row,
-    };
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use starknet::providers::{jsonrpc::HttpTransport, JsonRpcClient};
     use tempfile::NamedTempFile;
     use tokio::sync::broadcast;
+    use torii_sqlite::{executor::Executor, Sql};
     use url::Url;
 
     const CARTRIDGE_NODE_MAINNET: &str = "https://api.cartridge.gg/x/starknet/mainnet";
@@ -209,7 +202,7 @@ mod tests {
             .connect_with(options)
             .await
             .unwrap();
-        sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+        sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
         let (mut executor, sender) =
             Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
@@ -261,8 +254,9 @@ mod tests {
             ))),
         )
         .await;
-        let sync = ControllersSync::new(sql)
+        let sync = ControllersSync::new(Arc::new(sql))
             .await
+            .unwrap()
             .with_api_url(server.url() + "/query");
 
         let result = sync.fetch_controllers().await;
@@ -297,15 +291,16 @@ mod tests {
         )
         .await;
 
-        let sync = ControllersSync::new(sql)
+        let sync = ControllersSync::new(Arc::new(sql))
             .await
+            .unwrap()
             .with_api_url(server.url() + "/query");
 
         let result = sync.fetch_controllers().await;
         assert!(result.is_err());
 
         match result {
-            Err(ControllerSyncError::ApiError(msg)) => {
+            Err(Error::ApiError(msg)) => {
                 assert_eq!(msg, "Internal Server Error");
             }
             _ => panic!("Expected ApiError"),
@@ -326,26 +321,21 @@ mod tests {
         )
         .await;
 
-        let ctrls = ControllersSync::new(sql).await;
+        let ctrls = ControllersSync::new(Arc::new(sql)).await.unwrap();
 
         let num_controllers = ctrls.sync().await.unwrap();
         assert!(num_controllers > 0);
 
-        ctrls.sql.execute().await.unwrap();
+        ctrls.storage.execute().await.unwrap();
 
-        let stored_controllers = sqlx::query("SELECT address FROM controllers")
-            .fetch_all(ctrls.pool())
+        let stored_controllers = ctrls
+            .storage
+            .controllers(&[], &[], None, None)
             .await
-            .unwrap();
+            .unwrap()
+            .items;
 
-        assert!(stored_controllers.len() == num_controllers);
-
-        for row in stored_controllers {
-            let address: String = row.get("address");
-            assert_eq!(address.len(), 66);
-            assert!(address.starts_with("0x"));
-            assert!(address[2..].chars().all(|c| c.is_ascii_hexdigit()));
-        }
+        assert_eq!(stored_controllers.len(), num_controllers);
     }
 
     #[tokio::test]
@@ -376,11 +366,126 @@ mod tests {
         .await
         .unwrap();
 
-        let sync = ControllersSync::new(sql).await;
+        let sync = ControllersSync::new(Arc::new(sql)).await.unwrap();
 
         let result = sync.fetch_controllers().await;
         assert!(result.is_ok());
         let controllers = result.unwrap();
         assert!(controllers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_sync_incremental() {
+        let mut server = Server::new_async().await;
+
+        // First sync - mock initial controller
+        server
+            .mock("POST", "/query")
+            .match_body(mockito::Matcher::Regex(
+                ".*createdAtGT.*1970-01-01T00:00:00\\+00:00.*".to_string(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "data": {
+                        "controllers": {
+                            "edges": [
+                                {
+                                    "node": {
+                                        "address": "0x123",
+                                        "createdAt": "2024-03-20T12:00:00Z",
+                                        "account": {
+                                            "username": "user1"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        // Second sync - mock new controller (should use cursor from first sync)
+        server
+            .mock("POST", "/query")
+            .match_body(mockito::Matcher::Regex(
+                ".*createdAtGT.*2024-03-20T12:00:00\\+00:00.*".to_string(),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "data": {
+                        "controllers": {
+                            "edges": [
+                                {
+                                    "node": {
+                                        "address": "0x456",
+                                        "createdAt": "2024-03-20T13:00:00Z",
+                                        "account": {
+                                            "username": "user2"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                })
+                .to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        let (shutdown_tx, _) = broadcast::channel(1);
+        let tempfile = NamedTempFile::new().unwrap();
+        let path = tempfile.path().to_string_lossy();
+        let sql = bootstrap_sql(
+            &path,
+            shutdown_tx.clone(),
+            Arc::new(JsonRpcClient::new(HttpTransport::new(
+                Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
+            ))),
+        )
+        .await;
+
+        let sync = ControllersSync::new(Arc::new(sql))
+            .await
+            .unwrap()
+            .with_api_url(server.url() + "/query");
+
+        // First sync - should fetch 1 controller
+        let num_controllers_1 = sync.sync().await.unwrap();
+        assert_eq!(num_controllers_1, 1);
+
+        // Second sync - should only fetch the new controller (cursor filters out the first one)
+        let num_controllers_2 = sync.sync().await.unwrap();
+        assert_eq!(num_controllers_2, 1);
+
+        // Execute to persist to database
+        sync.storage.execute().await.unwrap();
+
+        // Verify total controllers in database (should be 2 total)
+        let stored_controllers = sync
+            .storage
+            .controllers(&[], &[], None, None)
+            .await
+            .unwrap()
+            .items;
+
+        assert_eq!(stored_controllers.len(), 2);
+
+        // Verify the controllers are the ones we expect
+        let usernames: Vec<&str> = stored_controllers
+            .iter()
+            .map(|c| c.username.as_str())
+            .collect();
+        assert!(usernames.contains(&"user1"));
+        assert!(usernames.contains(&"user2"));
     }
 }

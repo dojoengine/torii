@@ -14,11 +14,11 @@ use tokio::sync::broadcast::Sender;
 use tokio::sync::Semaphore;
 use tokio::time::{sleep, Instant};
 use torii_cache::{Cache, ContractClassCache};
+use torii_controllers::sync::ControllersSync;
 use torii_processors::{
     BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors,
     TransactionProcessorContext,
 };
-use torii_sqlite::controllers::ControllersSync;
 use torii_sqlite::types::Contract;
 use torii_sqlite::utils::format_event_id;
 use torii_storage::types::ContractType;

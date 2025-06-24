@@ -11113,6 +11113,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "torii-controllers"
+version = "1.5.8-preview.4"
+dependencies = [
+ "chrono",
+ "mockito",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "starknet 0.12.0",
+ "starknet-crypto 0.7.4",
+ "tempfile",
+ "thiserror 1.0.63",
+ "tokio",
+ "torii-sqlite",
+ "torii-storage",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "torii-graphql"
 version = "1.5.8-preview.4"
 dependencies = [
@@ -11279,6 +11300,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "torii-cache",
+ "torii-controllers",
  "torii-indexer-fetcher",
  "torii-processors",
  "torii-sqlite",
@@ -11441,6 +11463,7 @@ dependencies = [
 name = "torii-proto"
 version = "1.5.8-preview.4"
 dependencies = [
+ "chrono",
  "crypto-bigint",
  "dojo-types 1.5.0-alpha.2",
  "dojo-world",
@@ -11496,6 +11519,7 @@ dependencies = [
  "toml 0.8.19",
  "torii-cache",
  "torii-cli",
+ "torii-controllers",
  "torii-graphql",
  "torii-grpc-server",
  "torii-indexer",
@@ -11575,7 +11599,6 @@ dependencies = [
  "hashlink",
  "ipfs-api-backend-hyper",
  "katana-runner",
- "mockito",
  "once_cell",
  "reqwest",
  "scarb",
@@ -11597,7 +11620,6 @@ dependencies = [
  "torii-sqlite-types",
  "torii-storage",
  "tracing",
- "url",
 ]
 
 [[package]]

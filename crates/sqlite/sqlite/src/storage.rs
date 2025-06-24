@@ -10,7 +10,7 @@ use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
 use starknet::core::types::{Event, U256};
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
-use torii_proto::Model;
+use torii_proto::{Controller, Model, Page};
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
     types::{Cursor, ParsedCall},
@@ -20,6 +20,7 @@ use torii_storage::{
 use crate::{
     constants::TOKEN_TRANSFER_TABLE,
     executor::{RegisterErc20TokenQuery, RegisterNftTokenQuery},
+    model::{decode_cursor, encode_cursor},
     utils::u256_to_sql_string,
 };
 use crate::{
@@ -124,6 +125,62 @@ impl ReadOnlyStorage for Sql {
             .fetch_all(&self.pool)
             .await?;
         Ok(token_ids.into_iter().collect())
+    }
+
+    /// Returns the controllers for the storage.
+    async fn controllers(
+        &self,
+        contract_addresses: &[Felt],
+        usernames: &[String],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<Controller>, StorageError> {
+        let mut query =
+            "SELECT address, username, deployed_at FROM controllers WHERE 1=1".to_string();
+        let mut args = vec![];
+
+        if !usernames.is_empty() {
+            let placeholders = vec!["?"; usernames.len()].join(", ");
+            query += &format!(" AND id IN ({})", placeholders);
+            args.extend(usernames.iter().cloned());
+        }
+
+        if !contract_addresses.is_empty() {
+            let placeholders = vec!["?"; contract_addresses.len()].join(", ");
+            query += &format!(" AND address IN ({})", placeholders);
+            args.extend(contract_addresses.iter().map(|a| format!("{:#064x}", a)));
+        }
+
+        if let Some(cursor) = cursor {
+            query += " AND deployed_at < ?";
+            args.push(decode_cursor(&cursor)?);
+        }
+
+        query += " ORDER BY deployed_at DESC";
+
+        if let Some(limit) = limit {
+            query += " LIMIT ?";
+            args.push((limit + 1).to_string());
+        }
+
+        let mut query = sqlx::query_as::<_, torii_sqlite_types::Controller>(&query);
+        for arg in args {
+            query = query.bind(arg);
+        }
+
+        let mut controllers = query.fetch_all(&self.pool).await?;
+        let next_cursor = if limit.is_some() && controllers.len() > limit.unwrap() {
+            Some(encode_cursor(
+                &controllers.pop().unwrap().deployed_at.to_rfc3339(),
+            )?)
+        } else {
+            None
+        };
+
+        Ok(Page {
+            items: controllers.into_iter().map(|c| c.into()).collect(),
+            next_cursor,
+        })
     }
 }
 

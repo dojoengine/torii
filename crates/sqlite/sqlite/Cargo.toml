@@ -54,5 +54,3 @@ scarb.workspace = true
 sozo-scarbext.workspace = true
 tempfile.workspace = true
 torii-indexer.workspace = true
-mockito = "1.2"
-url.workspace = true

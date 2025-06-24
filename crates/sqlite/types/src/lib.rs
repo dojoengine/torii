@@ -379,3 +379,21 @@ impl From<torii_proto::proto::types::OrderBy> for OrderBy {
         }
     }
 }
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Controller {
+    pub address: String,
+    pub username: String,
+    pub deployed_at: DateTime<Utc>,
+}
+
+impl From<Controller> for torii_proto::Controller {
+    fn from(value: Controller) -> Self {
+        Self {
+            address: Felt::from_str(&value.address).unwrap(),
+            username: value.username,
+            deployed_at: value.deployed_at,
+        }
+    }
+}

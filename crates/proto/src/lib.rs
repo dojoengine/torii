@@ -24,6 +24,7 @@ use core::fmt;
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use chrono::{DateTime, Utc};
 use crypto_bigint::U256;
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::Ty;
@@ -94,7 +95,17 @@ impl From<proto::types::Pagination> for Pagination {
 pub struct Controller {
     pub address: Felt,
     pub username: String,
-    pub deployed_at: u64,
+    pub deployed_at: DateTime<Utc>,
+}
+
+impl From<Controller> for proto::types::Controller {
+    fn from(value: Controller) -> Self {
+        Self {
+            address: value.address.to_bytes_be().into(),
+            username: value.username,
+            deployed_at_timestamp: value.deployed_at.timestamp() as u64,
+        }
+    }
 }
 
 impl TryFrom<proto::types::Controller> for Controller {
@@ -103,7 +114,7 @@ impl TryFrom<proto::types::Controller> for Controller {
         Ok(Self {
             address: Felt::from_bytes_be_slice(&value.address),
             username: value.username,
-            deployed_at: value.deployed_at_timestamp,
+            deployed_at: DateTime::from_timestamp(value.deployed_at_timestamp as i64, 0).unwrap(),
         })
     }
 }

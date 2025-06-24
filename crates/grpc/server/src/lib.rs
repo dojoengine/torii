@@ -24,7 +24,6 @@ use proto::world::{
 };
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use sqlx::sqlite::SqliteRow;
-use sqlx::types::chrono::{DateTime, Utc};
 use sqlx::Row;
 use starknet::core::types::{Felt, TypedData};
 use starknet::providers::Provider;
@@ -1102,44 +1101,6 @@ impl<P: Provider + Sync> DojoWorld<P> {
             next_cursor,
         })
     }
-
-    async fn retrieve_controllers(
-        &self,
-        contract_addresses: Vec<Felt>,
-    ) -> Result<proto::world::RetrieveControllersResponse, Error> {
-        let query = if contract_addresses.is_empty() {
-            "SELECT address, username, deployed_at FROM controllers".to_string()
-        } else {
-            format!(
-                "SELECT address, username, deployed_at FROM controllers WHERE address IN ({})",
-                contract_addresses
-                    .iter()
-                    .map(|_| "?".to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        };
-
-        let mut db_query = sqlx::query_as::<_, (String, String, DateTime<Utc>)>(&query);
-        for address in &contract_addresses {
-            db_query = db_query.bind(format!("{:#x}", address));
-        }
-
-        let rows = db_query.fetch_all(&self.sql.pool).await?;
-
-        let controllers = rows
-            .into_iter()
-            .map(
-                |(address, username, deployed_at)| proto::types::Controller {
-                    address: address.parse::<Felt>().unwrap().to_bytes_be().to_vec(),
-                    username,
-                    deployed_at_timestamp: deployed_at.timestamp() as u64,
-                },
-            )
-            .collect();
-
-        Ok(RetrieveControllersResponse { controllers })
-    }
 }
 
 fn process_event_field(data: &str) -> Result<Vec<Vec<u8>>, Error> {
@@ -1447,17 +1408,40 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<RetrieveControllersRequest>,
     ) -> Result<Response<RetrieveControllersResponse>, Status> {
-        let RetrieveControllersRequest { contract_addresses } = request.into_inner();
+        let RetrieveControllersRequest {
+            contract_addresses,
+            usernames,
+            limit,
+            cursor,
+        } = request.into_inner();
         let contract_addresses = contract_addresses
             .iter()
             .map(|address| Felt::from_bytes_be_slice(address))
             .collect::<Vec<_>>();
 
         let controllers = self
-            .retrieve_controllers(contract_addresses)
+            .sql
+            .controllers(
+                &contract_addresses,
+                &usernames,
+                if !cursor.is_empty() {
+                    Some(cursor)
+                } else {
+                    None
+                },
+                if limit > 0 {
+                    Some(limit as usize)
+                } else {
+                    None
+                },
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        Ok(Response::new(controllers))
+
+        Ok(Response::new(RetrieveControllersResponse {
+            next_cursor: controllers.next_cursor.unwrap_or_default(),
+            controllers: controllers.items.into_iter().map(|c| c.into()).collect(),
+        }))
     }
 
     async fn retrieve_tokens(
