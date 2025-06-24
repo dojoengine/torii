@@ -12,7 +12,7 @@ use std::{
 use torii_math::I256;
 
 use crate::types::{Cursor, ParsedCall};
-use torii_proto::Model;
+use torii_proto::{Controller, Model, Page};
 
 pub mod types;
 
@@ -31,6 +31,15 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
 
     /// Returns the IDs of all the registered tokens
     async fn token_ids(&self) -> Result<HashSet<String>, StorageError>;
+
+    /// Returns the controllers for the storage.
+    async fn controllers(
+        &self,
+        contract_addresses: &[Felt],
+        usernames: &[String],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<Controller>, StorageError>;
 }
 
 #[async_trait]

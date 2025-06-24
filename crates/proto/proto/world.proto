@@ -69,11 +69,19 @@ service World {
 }
 
 message RetrieveControllersRequest {
+    // The list of contract addresses to retrieve controllers for
     repeated bytes contract_addresses = 1;
+    // The list of usernames to retrieve controllers for
+    repeated string usernames = 2;
+    // The number of controllers to retrieve
+    uint32 limit = 3;
+    // The cursor to start the query from
+    string cursor = 4;
 }
 
 message RetrieveControllersResponse {
-    repeated types.Controller controllers = 1;
+    string next_cursor = 1;
+    repeated types.Controller controllers = 2;
 }
 
 // A request to update a token balance subscription
