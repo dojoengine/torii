@@ -181,38 +181,49 @@ impl ControllersSync {
 mod tests {
     use std::sync::Arc;
 
+    use crate::executor::Executor;
+
     use super::*;
     use mockito::Server;
     use serde_json::json;
-    use sqlx::Row;
-    use starknet::{
-        macros::felt,
-        providers::{jsonrpc::HttpTransport, JsonRpcClient},
+    use sqlx::{
+        sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+        Row,
     };
-    use starknet_crypto::Felt;
+    use starknet::providers::{jsonrpc::HttpTransport, JsonRpcClient};
+    use tempfile::NamedTempFile;
     use tokio::sync::broadcast;
     use url::Url;
 
     const CARTRIDGE_NODE_MAINNET: &str = "https://api.cartridge.gg/x/starknet/mainnet";
 
-    /// Creates a new Sql instance with a temporary file.
-    ///
-    /// Returns the Sql instance and a handle to the executor task.
-    async fn new_sql_test(
-        world_address: Felt,
+    async fn bootstrap_sql(
+        path: &str,
         shutdown_tx: broadcast::Sender<()>,
-    ) -> (Sql, tokio::task::JoinHandle<()>) {
-        let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(
-            Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
-        )));
+        provider: Arc<JsonRpcClient<HttpTransport>>,
+    ) -> Sql {
+        let options = SqliteConnectOptions::from_str(path)
+            .unwrap()
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
-        Sql::new_tmp_file(world_address, provider.clone(), shutdown_tx).await
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+                .await
+                .unwrap();
+
+        tokio::spawn(async move { executor.run().await.unwrap() });
+
+        Sql::new(pool.clone(), sender, &[]).await.unwrap()
     }
-
     #[tokio::test]
     async fn test_fetch_controllers_success() {
         let mut server = Server::new_async().await;
-        let mock = server
+        server
             .mock("POST", "/query")
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -240,8 +251,16 @@ mod tests {
             .await;
 
         let (shutdown_tx, _) = broadcast::channel(1);
-
-        let (sql, executor_handle) = new_sql_test(felt!("0x123"), shutdown_tx.clone()).await;
+        let tempfile = NamedTempFile::new().unwrap();
+        let path = tempfile.path().to_string_lossy();
+        let sql = bootstrap_sql(
+            &path,
+            shutdown_tx.clone(),
+            Arc::new(JsonRpcClient::new(HttpTransport::new(
+                Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
+            ))),
+        )
+        .await;
         let sync = ControllersSync::new(sql)
             .await
             .with_api_url(server.url() + "/query");
@@ -252,17 +271,12 @@ mod tests {
         assert_eq!(controllers.len(), 1);
         assert_eq!(controllers[0].address, "0x123");
         assert_eq!(controllers[0].account.username, "test_user");
-
-        mock.assert_async().await;
-
-        let _ = shutdown_tx.send(());
-        let _ = executor_handle.await;
     }
 
     #[tokio::test]
     async fn test_fetch_controllers_error() {
         let mut server = Server::new_async().await;
-        let mock = server
+        server
             .mock("POST", "/query")
             .with_status(500)
             .with_header("content-type", "application/json")
@@ -272,7 +286,16 @@ mod tests {
             .await;
 
         let (shutdown_tx, _) = broadcast::channel(1);
-        let (sql, executor_handle) = new_sql_test(felt!("0x1234"), shutdown_tx.clone()).await;
+        let tempfile = NamedTempFile::new().unwrap();
+        let path = tempfile.path().to_string_lossy();
+        let sql = bootstrap_sql(
+            &path,
+            shutdown_tx.clone(),
+            Arc::new(JsonRpcClient::new(HttpTransport::new(
+                Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
+            ))),
+        )
+        .await;
 
         let sync = ControllersSync::new(sql)
             .await
@@ -287,17 +310,21 @@ mod tests {
             }
             _ => panic!("Expected ApiError"),
         }
-
-        mock.assert_async().await;
-
-        let _ = shutdown_tx.send(());
-        let _ = executor_handle.await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_sync() {
         let (shutdown_tx, _) = broadcast::channel(1);
-        let (sql, executor_handle) = new_sql_test(felt!("0x123"), shutdown_tx.clone()).await;
+        let tempfile = NamedTempFile::new().unwrap();
+        let path = tempfile.path().to_string_lossy();
+        let sql = bootstrap_sql(
+            &path,
+            shutdown_tx.clone(),
+            Arc::new(JsonRpcClient::new(HttpTransport::new(
+                Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
+            ))),
+        )
+        .await;
 
         let ctrls = ControllersSync::new(sql).await;
 
@@ -319,15 +346,22 @@ mod tests {
             assert!(address.starts_with("0x"));
             assert!(address[2..].chars().all(|c| c.is_ascii_hexdigit()));
         }
-
-        let _ = shutdown_tx.send(());
-        let _ = executor_handle.await;
     }
 
     #[tokio::test]
     async fn test_fetch_controllers_api_empty_future() {
         let (shutdown_tx, _) = broadcast::channel(1);
-        let (sql, executor_handle) = new_sql_test(felt!("0x123"), shutdown_tx.clone()).await;
+        let tempfile = NamedTempFile::new().unwrap();
+        let path = tempfile.path().to_string_lossy();
+
+        let sql = bootstrap_sql(
+            &path,
+            shutdown_tx.clone(),
+            Arc::new(JsonRpcClient::new(HttpTransport::new(
+                Url::parse(CARTRIDGE_NODE_MAINNET).unwrap(),
+            ))),
+        )
+        .await;
 
         // Insert a controller in the future which should always yield an empty result.
         let timestamp = chrono::Utc::now() + chrono::Duration::days(10);
@@ -348,8 +382,5 @@ mod tests {
         assert!(result.is_ok());
         let controllers = result.unwrap();
         assert!(controllers.is_empty());
-
-        let _ = shutdown_tx.send(());
-        let _ = executor_handle.await;
     }
 }

@@ -1,7 +1,27 @@
 use std::str::FromStr;
 
+use dojo_types::schema::Ty;
+use dojo_world::contracts::abigen::model::Layout;
 use serde::Deserialize;
 use starknet::core::types::Felt;
+
+#[derive(Debug, Clone)]
+pub struct Model {
+    /// Namespace of the model
+    pub namespace: String,
+    /// The name of the model
+    pub name: String,
+    /// The selector of the model
+    pub selector: Felt,
+    /// The class hash of the model
+    pub class_hash: Felt,
+    /// The contract address of the model
+    pub contract_address: Felt,
+    pub packed_size: u32,
+    pub unpacked_size: u32,
+    pub layout: Layout,
+    pub schema: Ty,
+}
 
 /// Represents a cursor for tracking blockchain state
 #[derive(Default, Debug, Clone)]

@@ -17,7 +17,6 @@ mod tests {
     use starknet::providers::JsonRpcClient;
     use starknet_crypto::{poseidon_hash_many, Felt};
     use tokio::sync::{broadcast, mpsc};
-    use torii_cache::Cache;
     use torii_sqlite::executor::Executor;
     use torii_sqlite::types::Contract;
     use torii_sqlite::Sql;
@@ -42,7 +41,6 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -50,7 +48,6 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();
@@ -216,7 +213,6 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -224,11 +220,9 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();
-
         model_fixtures(&db).await;
         // 0. Preprocess expected entity value
         let namespace = "types_test".to_string();
@@ -368,7 +362,6 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -376,17 +369,15 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();
         // 0. Preprocess model value
         let namespace = "types_test".to_string();
         let model_name = "Subrecord".to_string();
-        let model_id = format!(
-            "{:#x}",
-            compute_selector_from_names(&namespace, &model_name)
-        );
+        let tag = get_tag(&namespace, &model_name);
+        let selector = compute_selector_from_names(&tag, &model_name);
+        let model_id = format!("{:#x}", selector);
         let class_hash = Felt::TWO;
         let contract_address = Felt::THREE;
         let block_timestamp: u64 = 1710754478_u64;
@@ -401,7 +392,7 @@ mod tests {
             tokio::time::sleep(Duration::from_secs(1)).await;
 
             let model = Ty::Struct(Struct {
-                name: model_name,
+                name: tag,
                 children: vec![Member {
                     name: "subrecordId".to_string(),
                     key: true,
@@ -409,9 +400,9 @@ mod tests {
                 }],
             });
             db.register_model(
-                &namespace,
+                selector,
                 &model,
-                Layout::Fixed(vec![]),
+                &Layout::Fixed(vec![]),
                 class_hash,
                 contract_address,
                 0,
@@ -460,7 +451,6 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -468,17 +458,14 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();
         // 0. Preprocess model value
         let namespace = "types_test".to_string();
         let model_name = "Subrecord".to_string();
-        let model_id = format!(
-            "{:#x}",
-            compute_selector_from_names(&namespace, &model_name)
-        );
+        let selector = compute_selector_from_names(&namespace, &model_name);
+        let model_id = format!("{:#x}", selector);
         let class_hash = Felt::TWO;
         let contract_address = Felt::THREE;
         let block_timestamp: u64 = 1710754478_u64;
@@ -492,7 +479,7 @@ mod tests {
             tokio::time::sleep(Duration::from_secs(1)).await;
 
             let model = Ty::Struct(Struct {
-                name: model_name,
+                name: get_tag(&namespace, &model_name),
                 children: vec![Member {
                     name: "type_u8".into(),
                     key: false,
@@ -500,9 +487,9 @@ mod tests {
                 }],
             });
             db.register_model(
-                &namespace,
+                selector,
                 &model,
-                Layout::Fixed(vec![]),
+                &Layout::Fixed(vec![]),
                 class_hash,
                 contract_address,
                 0,
@@ -553,7 +540,6 @@ mod tests {
             executor.run().await.unwrap();
         });
 
-        let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
         let db = Sql::new(
             pool.clone(),
             sender,
@@ -561,7 +547,6 @@ mod tests {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
-            Arc::clone(&cache),
         )
         .await
         .unwrap();

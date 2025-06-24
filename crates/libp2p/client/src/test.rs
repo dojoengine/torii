@@ -5,6 +5,7 @@ use crate::client::RelayClient;
 #[cfg(target_arch = "wasm32")]
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 use dojo_types::primitive::Primitive;
+use dojo_types::naming::compute_selector_from_names;
 use katana_runner::KatanaRunner;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::*;
@@ -81,9 +82,9 @@ async fn test_client_messaging() -> Result<(), Box<dyn Error>> {
 
     // Register the model of our Message
     db.register_model(
-        "types_test",
+        compute_selector_from_names("types_test", "Message"),
         &Ty::Struct(Struct {
-            name: "Message".to_string(),
+            name: "types_test-Message".to_string(),
             children: vec![
                 Member {
                     name: "identity".to_string(),

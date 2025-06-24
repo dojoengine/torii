@@ -6,9 +6,7 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{
-    felt_and_u256_to_sql_string, try_register_nft_token_metadata, update_erc_balance_diff,
-};
+use crate::erc::{felt_and_u256_to_sql_string, try_register_nft_token_metadata};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
@@ -62,8 +60,9 @@ where
         let token_id = U256Cainome::cairo_deserialize(&ctx.event.keys, 3)?;
         let token_id = U256::from_words(token_id.low, token_id.high);
 
+        let id = felt_and_u256_to_sql_string(&token_address, &token_id);
         try_register_nft_token_metadata(
-            &felt_and_u256_to_sql_string(&token_address, &token_id),
+            &id,
             token_address,
             token_id,
             ctx.world.provider(),
@@ -73,14 +72,9 @@ where
         )
         .await?;
 
-        update_erc_balance_diff(
-            ctx.cache.clone(),
-            token_address,
-            Some(token_id),
-            from,
-            to,
-            U256::from(1u8),
-        )?;
+        ctx.cache
+            .update_balance_diff(&id, from, to, U256::from(1u8))
+            .await;
 
         ctx.storage
             .store_erc_transfer_event(

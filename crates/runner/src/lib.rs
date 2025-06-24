@@ -36,7 +36,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
-use torii_cache::Cache;
+use torii_cache::InMemoryCache;
 use torii_cli::ToriiArgs;
 use torii_grpc_server::GrpcConfig;
 use torii_indexer::engine::{Engine, EngineConfig};
@@ -239,8 +239,6 @@ impl Runner {
             Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
 
-        let cache = Arc::new(Cache::new(readonly_pool.clone()).await?);
-
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
             warn!(
                 target: LOG_TARGET,
@@ -260,7 +258,6 @@ impl Runner {
             readonly_pool.clone(),
             sender.clone(),
             &self.args.indexing.contracts,
-            cache.clone(),
             SqlConfig {
                 all_model_indices: self.args.sql.all_model_indices,
                 model_indices: self.args.sql.model_indices.clone(),
@@ -269,6 +266,7 @@ impl Runner {
             },
         )
         .await?;
+        let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
         let processors = Processors::default();
 
@@ -354,6 +352,7 @@ impl Runner {
         let (grpc_addr, grpc_server) = torii_grpc_server::new(
             shutdown_rx,
             db.clone(),
+            cache.clone(),
             provider.clone(),
             world_address,
             cross_messaging_tx,

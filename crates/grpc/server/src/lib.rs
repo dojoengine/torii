@@ -40,6 +40,7 @@ use tonic::codec::CompressionEncoding;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
+use torii_cache::Cache;
 use torii_messaging::validate_and_set_entity;
 use torii_proto::error::ProtoError;
 use torii_sqlite::constants::SQL_DEFAULT_LIMIT;
@@ -50,6 +51,7 @@ use torii_sqlite::types::{
 };
 use torii_sqlite::utils::u256_to_sql_string;
 use torii_sqlite::Sql;
+use torii_storage::ReadOnlyStorage;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use self::subscriptions::entity::EntityManager;
@@ -73,7 +75,7 @@ use torii_proto::proto::world::{
 use torii_proto::proto::{self};
 use torii_proto::{ComparisonOperator, Message};
 
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 
 pub(crate) static ENTITIES_TABLE: &str = "entities";
 pub(crate) static ENTITIES_MODEL_RELATION_TABLE: &str = "entity_model";
@@ -90,6 +92,7 @@ pub(crate) static EVENT_MESSAGES_HISTORICAL_TABLE: &str = "event_messages_histor
 #[derive(Debug, Clone)]
 pub struct DojoWorld<P: Provider + Sync> {
     sql: Sql,
+    cache: Arc<dyn Cache>,
     provider: Arc<P>,
     world_address: Felt,
     cross_messaging_tx: Option<UnboundedSender<Message>>,
@@ -105,6 +108,7 @@ pub struct DojoWorld<P: Provider + Sync> {
 impl<P: Provider + Sync> DojoWorld<P> {
     pub fn new(
         sql: Sql,
+        cache: Arc<dyn Cache>,
         provider: Arc<P>,
         world_address: Felt,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
@@ -145,6 +149,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
 
         Self {
             sql,
+            cache,
             provider,
             world_address,
             cross_messaging_tx,
@@ -170,7 +175,6 @@ impl<P: Provider + Sync> DojoWorld<P> {
 
         #[derive(FromRow)]
         struct ModelDb {
-            id: String,
             namespace: String,
             name: String,
             class_hash: String,
@@ -178,22 +182,18 @@ impl<P: Provider + Sync> DojoWorld<P> {
             packed_size: u32,
             unpacked_size: u32,
             layout: String,
+            schema: String,
         }
 
         let models: Vec<ModelDb> = sqlx::query_as(
             "SELECT id, namespace, name, class_hash, contract_address, packed_size, \
-             unpacked_size, layout FROM models",
+             unpacked_size, layout, schema FROM models",
         )
         .fetch_all(&self.sql.pool)
         .await?;
 
         let mut models_metadata = Vec::with_capacity(models.len());
         for model in models {
-            let schema = self
-                .sql
-                .model(Felt::from_str(&model.id).map_err(ParseError::FromStr)?)
-                .await?
-                .schema;
             models_metadata.push(proto::types::ModelMetadata {
                 namespace: model.namespace,
                 name: model.name,
@@ -202,7 +202,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
                 packed_size: model.packed_size,
                 unpacked_size: model.unpacked_size,
                 layout: model.layout.as_bytes().to_vec(),
-                schema: serde_json::to_vec(&schema).unwrap(),
+                schema: model.schema.as_bytes().to_vec(),
             });
         }
 
@@ -326,7 +326,8 @@ impl<P: Provider + Sync> DojoWorld<P> {
                 let model = self
                     .sql
                     .model(Felt::from_str(model_id).map_err(ParseError::FromStr)?)
-                    .await?;
+                    .await
+                    .map_err(|e| anyhow!("Failed to get model from cache: {}", e))?;
                 let mut schema = model.schema;
                 schema.from_json_value(
                     serde_json::from_str(data).map_err(ParseError::FromJsonStr)?,
@@ -396,9 +397,10 @@ impl<P: Provider + Sync> DojoWorld<P> {
             .map(|model| compute_selector_from_tag(model))
             .collect::<Vec<_>>();
         let schemas = self
-            .sql
+            .cache
             .models(&models)
-            .await?
+            .await
+            .map_err(|e| anyhow!("Failed to get models from cache: {}", e))?
             .iter()
             .map(|m| m.schema.clone())
             .collect::<Vec<_>>();
@@ -492,9 +494,10 @@ impl<P: Provider + Sync> DojoWorld<P> {
             .map(|model| compute_selector_from_tag(model))
             .collect::<Vec<_>>();
         let schemas = self
-            .sql
+            .cache
             .models(&models)
-            .await?
+            .await
+            .map_err(|e| anyhow!("Failed to get models from cache: {}", e))?
             .iter()
             .map(|m| m.schema.clone())
             .collect::<Vec<_>>();
@@ -633,9 +636,10 @@ impl<P: Provider + Sync> DojoWorld<P> {
             })
             .collect::<Vec<_>>();
         let schemas = self
-            .sql
+            .cache
             .models(&model_ids)
-            .await?
+            .await
+            .map_err(|e| anyhow!("Failed to get models from cache: {}", e))?
             .into_iter()
             .map(|m| m.schema)
             .collect::<Vec<_>>();
@@ -696,9 +700,10 @@ impl<P: Provider + Sync> DojoWorld<P> {
             .map(|model| compute_selector_from_tag(model))
             .collect::<Vec<_>>();
         let schemas = self
-            .sql
+            .cache
             .models(&models)
-            .await?
+            .await
+            .map_err(|e| anyhow!("Failed to get models from cache: {}", e))?
             .iter()
             .map(|m| m.schema.clone())
             .collect::<Vec<_>>();
@@ -748,7 +753,11 @@ impl<P: Provider + Sync> DojoWorld<P> {
         // selector
         let model = compute_selector_from_names(namespace, name);
 
-        let model = self.sql.model(model).await?;
+        let model = self
+            .cache
+            .model(model)
+            .await
+            .map_err(|e| anyhow!("Failed to get model from cache: {}", e))?;
 
         Ok(proto::types::ModelMetadata {
             namespace: namespace.to_string(),
@@ -1898,6 +1907,7 @@ impl Default for GrpcConfig {
 pub async fn new<P: Provider + Sync + Send + 'static>(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     sql: Sql,
+    cache: Arc<dyn Cache>,
     provider: Arc<P>,
     world_address: Felt,
     cross_messaging_tx: UnboundedSender<Message>,
@@ -1919,6 +1929,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
 
     let world = DojoWorld::new(
         sql,
+        cache,
         provider,
         world_address,
         Some(cross_messaging_tx),

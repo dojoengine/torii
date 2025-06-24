@@ -6,9 +6,7 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{
-    felt_and_u256_to_sql_string, try_register_nft_token_metadata, update_erc_balance_diff,
-};
+use crate::erc::{felt_and_u256_to_sql_string, try_register_nft_token_metadata};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
@@ -62,14 +60,7 @@ where
         )
         .await?;
 
-        update_erc_balance_diff(
-            ctx.cache.clone(),
-            token_address,
-            Some(token_id),
-            from,
-            to,
-            amount,
-        )?;
+        ctx.cache.update_balance_diff(&id, from, to, amount).await;
 
         ctx.storage
             .store_erc_transfer_event(

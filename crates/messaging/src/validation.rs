@@ -7,6 +7,7 @@ use starknet::providers::Provider;
 use starknet_core::types::typed_data::TypeReference;
 use starknet_core::types::TypedData;
 use torii_sqlite::Sql;
+use torii_storage::ReadOnlyStorage;
 
 use crate::error::MessagingError;
 use crate::parsing::parse_value_to_ty;

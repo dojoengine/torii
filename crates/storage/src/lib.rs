@@ -9,18 +9,31 @@ use std::{
     collections::{HashMap, HashSet},
     error::Error,
 };
+use torii_math::I256;
 
-use crate::types::{Cursor, ParsedCall};
+use crate::types::{Cursor, Model, ParsedCall};
 
 pub mod types;
 
 pub type StorageError = Box<dyn Error + Send + Sync>;
 
 #[async_trait]
-pub trait Storage: Send + Sync + Debug {
+pub trait ReadOnlyStorage: Send + Sync + Debug {
     /// Returns the cursors for all contracts.
     async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, StorageError>;
 
+    /// Returns the model metadata for the storage.
+    async fn model(&self, model: Felt) -> Result<Model, StorageError>;
+
+    /// Returns the models for the storage.
+    async fn models(&self) -> Result<Vec<Model>, StorageError>;
+
+    /// Returns the IDs of all the registered tokens
+    async fn token_ids(&self) -> Result<HashSet<String>, StorageError>;
+}
+
+#[async_trait]
+pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     /// Updates the contract cursors with the storage.
     async fn update_cursors(
         &self,
@@ -34,9 +47,9 @@ pub trait Storage: Send + Sync + Debug {
     #[allow(clippy::too_many_arguments)]
     async fn register_model(
         &self,
-        namespace: &str,
+        selector: Felt,
         model: &Ty,
-        layout: Layout,
+        layout: &Layout,
         class_hash: Felt,
         contract_address: Felt,
         packed_size: u32,
@@ -180,8 +193,11 @@ pub trait Storage: Send + Sync + Debug {
     ) -> Result<(), StorageError>;
 
     /// Applies cached balance differences to the storage.
-    async fn apply_balances_diff(&self, cursors: HashMap<Felt, Cursor>)
-        -> Result<(), StorageError>;
+    async fn apply_balances_diff(
+        &self,
+        balances_diff: HashMap<String, I256>,
+        cursors: HashMap<Felt, Cursor>,
+    ) -> Result<(), StorageError>;
 
     /// Executes pending operations and commits the current transaction.
     async fn execute(&self) -> Result<(), StorageError>;

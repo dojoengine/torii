@@ -5,6 +5,7 @@ use anyhow::Result;
 use async_graphql::dynamic::Schema;
 use dojo_test_utils::compiler::CompilerTestSetup;
 use dojo_test_utils::migration::copy_types_test_db;
+use dojo_types::naming::get_tag;
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Enum, EnumOption, Member, Struct, Ty};
 use dojo_utils::{TransactionExt, TransactionWaiter, TxnConfig};
@@ -26,7 +27,7 @@ use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::JsonRpcClient;
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
-use torii_cache::Cache;
+use torii_cache::InMemoryCache;
 use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
@@ -224,10 +225,11 @@ pub async fn run_graphql_subscription(
 }
 
 pub async fn model_fixtures(db: &Sql) {
+    let tag = get_tag("types_test", "Record");
     db.register_model(
-        "types_test",
+        compute_selector_from_tag(&tag),
         &Ty::Struct(Struct {
-            name: "Record".to_string(),
+            name: tag,
             children: vec![
                 Member {
                     name: "depth".to_string(),
@@ -287,7 +289,7 @@ pub async fn model_fixtures(db: &Sql) {
                 },
             ],
         }),
-        Layout::Fixed(vec![]),
+        &Layout::Fixed(vec![]),
         Felt::ONE,
         Felt::TWO,
         0,
@@ -389,7 +391,6 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         executor.run().await.unwrap();
     });
 
-    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender,
@@ -397,10 +398,10 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
             address: world_address,
             r#type: ContractType::WORLD,
         }],
-        Arc::clone(&cache),
     )
     .await
     .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let contracts = &[Contract {
@@ -410,7 +411,7 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
     let mut engine = Engine::new(
         world,
         Arc::new(db.clone()),
-        Arc::clone(&cache),
+        cache.clone(),
         Arc::clone(&provider),
         Processors {
             ..Processors::default()

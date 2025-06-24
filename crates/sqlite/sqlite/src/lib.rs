@@ -1,12 +1,10 @@
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use dojo_types::primitive::SqlType;
 use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
-use torii_cache::Cache;
 use torii_storage::types::Cursor;
 use torii_storage::Storage;
 
@@ -24,9 +22,6 @@ pub mod model;
 pub mod simple_broker;
 pub mod storage;
 pub mod utils;
-
-#[cfg(test)]
-pub mod test_utils;
 
 pub use torii_sqlite_types as types;
 
@@ -48,7 +43,6 @@ impl SqlConfig {
 pub struct Sql {
     pub pool: Pool<Sqlite>,
     pub executor: UnboundedSender<QueryMessage>,
-    cache: Arc<Cache>,
     pub config: SqlConfig,
 }
 
@@ -57,16 +51,14 @@ impl Sql {
         pool: Pool<Sqlite>,
         executor: UnboundedSender<QueryMessage>,
         contracts: &[Contract],
-        cache: Arc<Cache>,
     ) -> Result<Self, Error> {
-        Self::new_with_config(pool, executor, contracts, cache, Default::default()).await
+        Self::new_with_config(pool, executor, contracts, Default::default()).await
     }
 
     pub async fn new_with_config(
         pool: Pool<Sqlite>,
         executor: UnboundedSender<QueryMessage>,
         contracts: &[Contract],
-        cache: Arc<Cache>,
         config: SqlConfig,
     ) -> Result<Self, Error> {
         for contract in contracts {
@@ -85,29 +77,12 @@ impl Sql {
         let db = Self {
             pool: pool.clone(),
             executor,
-            cache,
             config,
         };
 
         db.execute().await?;
 
         Ok(db)
-    }
-
-    pub async fn model(&self, selector: Felt) -> Result<torii_cache::Model, Error> {
-        self.cache
-            .model_cache
-            .model(&selector)
-            .await
-            .map_err(Error::Cache)
-    }
-
-    pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<torii_cache::Model>, Error> {
-        self.cache
-            .model_cache
-            .models(selectors)
-            .await
-            .map_err(Error::Cache)
     }
 
     fn set_entity_model(

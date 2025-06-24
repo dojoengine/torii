@@ -21,7 +21,7 @@ use starknet::providers::JsonRpcClient;
 use starknet_crypto::poseidon_hash_many;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
-use torii_cache::Cache;
+use torii_cache::InMemoryCache;
 use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
@@ -109,7 +109,6 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender,
@@ -117,10 +116,11 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
             address: world_address,
             r#type: ContractType::WORLD,
         }],
-        Arc::clone(&cache),
     )
     .await
     .unwrap();
+
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
     let (shutdown_tx, _) = broadcast::channel(1);
 
@@ -131,7 +131,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     let mut engine = Engine::new(
         world_reader,
         Arc::new(db.clone()),
-        Arc::clone(&cache),
+        cache.clone(),
         Arc::clone(&provider),
         Processors {
             ..Processors::default()
@@ -155,6 +155,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
 
     let grpc = DojoWorld::new(
         db,
+        cache,
         provider.clone(),
         world_address,
         None,

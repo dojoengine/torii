@@ -1,10 +1,11 @@
 use starknet::{core::types::FromStrError, providers::ProviderError};
 use thiserror::Error;
+use torii_storage::StorageError;
 
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
-    Sqlx(#[from] sqlx::Error),
+    Storage(#[from] StorageError),
     #[error(transparent)]
     Parse(#[from] ParseError),
     #[error(transparent)]

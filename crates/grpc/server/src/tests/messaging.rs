@@ -1,6 +1,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
+use dojo_types::naming::compute_selector_from_names;
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Member, Struct, Ty};
 use dojo_world::contracts::abigen::model::Layout;
@@ -15,7 +16,7 @@ use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
 use tokio::time::{sleep, Duration};
 use tonic::Request;
-use torii_cache::Cache;
+use torii_cache::InMemoryCache;
 use torii_libp2p_relay::Relay;
 use torii_proto::proto::world::PublishMessageRequest;
 use torii_sqlite::executor::Executor;
@@ -57,7 +58,6 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let cache = Arc::new(Cache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender,
@@ -65,16 +65,16 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
             address: Felt::ZERO,
             r#type: ContractType::WORLD,
         }],
-        cache.clone(),
     )
     .await
     .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
     // Register the model for our Message
     db.register_model(
-        "types_test",
+        compute_selector_from_names("types_test", "Message"),
         &Ty::Struct(Struct {
-            name: "Message".to_string(),
+            name: "types_test-Message".to_string(),
             children: vec![
                 Member {
                     name: "identity".to_string(),
@@ -88,7 +88,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
                 },
             ],
         }),
-        Layout::Fixed(vec![]),
+        &Layout::Fixed(vec![]),
         Felt::ZERO,
         Felt::ZERO,
         0,
@@ -104,6 +104,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     // Create DojoWorld instance
     let grpc = DojoWorld::new(
         db,
+        cache,
         provider.clone(),
         Felt::ZERO, // world_address
         None,
@@ -254,7 +255,6 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         executor1.run().await.unwrap();
     });
 
-    let cache1 = Arc::new(Cache::new(pool1.clone()).await.unwrap());
     let mut db1 = Sql::new(
         pool1.clone(),
         sender1,
@@ -262,10 +262,10 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
             address: Felt::ZERO,
             r#type: ContractType::WORLD,
         }],
-        cache1.clone(),
     )
     .await
     .unwrap();
+    let cache1 = Arc::new(InMemoryCache::new(Arc::new(db1.clone())).await.unwrap());
 
     // Setup second server components
     let (shutdown_tx2, _) = broadcast::channel(1);
@@ -277,7 +277,6 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         executor2.run().await.unwrap();
     });
 
-    let cache2 = Arc::new(Cache::new(pool2.clone()).await.unwrap());
     let mut db2 = Sql::new(
         pool2.clone(),
         sender2,
@@ -285,14 +284,13 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
             address: Felt::ZERO,
             r#type: ContractType::WORLD,
         }],
-        cache2.clone(),
     )
     .await
     .unwrap();
 
     // Register the message model on both databases
     let message_model = Ty::Struct(Struct {
-        name: "Message".to_string(),
+        name: "types_test-Message".to_string(),
         children: vec![
             Member {
                 name: "identity".to_string(),
@@ -309,9 +307,9 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
 
     for db in [&mut db1, &mut db2] {
         db.register_model(
-            "types_test",
+            compute_selector_from_names("types_test", "Message"),
             &message_model,
-            Layout::Fixed(vec![]),
+            &Layout::Fixed(vec![]),
             Felt::ZERO,
             Felt::ZERO,
             0,
@@ -365,6 +363,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     // Create DojoWorld instance with cross messaging
     let grpc = DojoWorld::new(
         db1,
+        cache1,
         provider.clone(),
         Felt::ZERO, // world_address
         Some(cross_messaging_tx1),

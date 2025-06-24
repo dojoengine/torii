@@ -1,10 +1,12 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use async_trait::async_trait;
+use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
 use starknet::core::types::{BlockId, Event};
 use starknet::providers::Provider;
+use torii_storage::types::Model;
 use tracing::{debug, info};
 
 use crate::task_manager::TaskId;
@@ -54,7 +56,7 @@ where
 
         // If the model does not exist, silently ignore it.
         // This can happen if only specific namespaces are indexed.
-        let model = match ctx.cache.model_cache.model(&event.selector).await {
+        let model = match ctx.cache.model(event.selector).await {
             Ok(m) => m,
             Err(e) if e.to_string().contains("no rows") => {
                 debug!(
@@ -82,7 +84,13 @@ where
         if ctx.config.strict_model_reader {
             model.set_block(BlockId::Number(ctx.block_number)).await;
         }
-        let new_schema = model.schema().await?;
+        let mut new_schema = model.schema().await?;
+        match &mut new_schema {
+            Ty::Struct(struct_ty) => {
+                struct_ty.name = format!("{}-{}", namespace, struct_ty.name);
+            }
+            _ => unreachable!(),
+        }
         let schema_diff = new_schema.diff(&prev_schema);
         // // No changes to the schema. This can happen if torii is re-run with a fresh database.
         // // As the register model fetches the latest schema from the chain.
@@ -117,9 +125,9 @@ where
 
         ctx.storage
             .register_model(
-                &namespace,
+                event.selector,
                 &new_schema,
-                layout,
+                &layout,
                 event.class_hash.into(),
                 event.address.into(),
                 packed_size,
@@ -131,6 +139,23 @@ where
                 prev_schema.diff(&new_schema).as_ref(),
             )
             .await?;
+
+        ctx.cache
+            .register_model(
+                event.selector,
+                Model {
+                    selector: event.selector,
+                    namespace,
+                    name,
+                    class_hash: event.class_hash.into(),
+                    contract_address: event.address.into(),
+                    packed_size,
+                    unpacked_size,
+                    layout,
+                    schema: new_schema,
+                },
+            )
+            .await;
 
         Ok(())
     }

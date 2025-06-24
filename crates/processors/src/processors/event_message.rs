@@ -78,7 +78,7 @@ where
         };
 
         // silently ignore if the model is not found
-        let model = match ctx.cache.model_cache.model(&event.selector).await {
+        let model = match ctx.cache.model(event.selector).await {
             Ok(model) => model,
             Err(_) => return Ok(()),
         };
