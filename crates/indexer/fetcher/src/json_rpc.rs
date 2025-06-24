@@ -413,13 +413,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
 
                             // Skip the latest pending block transaction events
                             // * as we might have multiple events for the same transaction
-                            if let Some(last_pending_block_tx) =
-                                old_cursor.last_pending_block_tx.take()
-                            {
+                            if let Some(last_pending_block_tx) = old_cursor.last_pending_block_tx {
                                 if event.transaction_hash == last_pending_block_tx {
                                     continue;
                                 }
-                                new_cursor.last_pending_block_tx = None;
                             }
 
                             events.push(event);
