@@ -3,30 +3,32 @@ package types;
 
 import "schema.proto";
 
-message WorldMetadata {
+message World {
     // The hex-encoded address of the world.
     string world_address = 1;
     // A list of metadata for all registered components in the world. 
-    repeated ModelMetadata models = 5;
+    repeated Model models = 5;
 }
 
-message ModelMetadata {
+message Model {
+    // Model selector
+    bytes selector = 1;
     // Model namespace
-    string namespace = 1;
+    string namespace = 2;
     // Model name
-    string name = 2;
+    string name = 3;
     // Model size when it is packed for storage
-    uint32 packed_size = 3;
+    uint32 packed_size = 4;
     // Model size when it is unpacked
-    uint32 unpacked_size = 4;
-    // hex-encoded class hash of the component
-    string class_hash = 5;
+    uint32 unpacked_size = 5;
+    // felt bytes of the class hash of the component
+    bytes class_hash = 6;
     // The layout of the component in bytes
-    bytes layout = 6;
+    bytes layout = 7;
     // The schema of the component serialized in bytes (for simplicity sake)
-    bytes schema = 7;
-    // hex-encoded contract address of the component
-    string contract_address = 8;
+    bytes schema = 8;
+    // felt bytes of the contract address of the component
+    bytes contract_address = 9;
 }
 
 message Entity {

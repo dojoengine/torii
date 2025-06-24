@@ -7,7 +7,7 @@ use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
 use starknet::core::types::{BlockId, Event};
 use starknet::providers::Provider;
-use torii_storage::types::Model;
+use torii_proto::Model;
 use tracing::{debug, info};
 
 use crate::error::Error;

@@ -2,10 +2,12 @@ use core::fmt;
 use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
+use crypto_bigint::{Encoding, U256};
 use dojo_types::schema::Ty;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use starknet::core::types::Felt;
+use std::str::FromStr;
 use torii_storage::types::{ContractType, ParsedCall};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -146,6 +148,28 @@ pub struct Token {
     pub metadata: String,
 }
 
+impl From<Token> for torii_proto::proto::types::Token {
+    fn from(value: Token) -> Self {
+        Self {
+            token_id: if value.token_id.is_empty() {
+                U256::ZERO.to_be_bytes().to_vec()
+            } else {
+                U256::from_be_hex(value.token_id.trim_start_matches("0x"))
+                    .to_be_bytes()
+                    .to_vec()
+            },
+            contract_address: Felt::from_str(&value.contract_address)
+                .unwrap()
+                .to_bytes_be()
+                .to_vec(),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u32,
+            metadata: value.metadata.as_bytes().to_vec(),
+        }
+    }
+}
+
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenCollection {
@@ -155,6 +179,22 @@ pub struct TokenCollection {
     pub decimals: u8,
     pub count: u32,
     pub metadata: String,
+}
+
+impl From<TokenCollection> for torii_proto::proto::types::TokenCollection {
+    fn from(value: TokenCollection) -> Self {
+        Self {
+            contract_address: Felt::from_str(&value.contract_address)
+                .unwrap()
+                .to_bytes_be()
+                .to_vec(),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u32,
+            count: value.count,
+            metadata: value.metadata.as_bytes().to_vec(),
+        }
+    }
 }
 
 #[derive(FromRow, Deserialize, Debug, Clone)]
@@ -175,6 +215,33 @@ pub struct TokenBalance {
     pub account_address: String,
     pub contract_address: String,
     pub token_id: String,
+}
+
+impl From<TokenBalance> for torii_proto::proto::types::TokenBalance {
+    fn from(value: TokenBalance) -> Self {
+        let id = value.token_id.split(':').collect::<Vec<&str>>();
+
+        Self {
+            balance: U256::from_be_hex(value.balance.trim_start_matches("0x"))
+                .to_be_bytes()
+                .to_vec(),
+            account_address: Felt::from_str(&value.account_address)
+                .unwrap()
+                .to_bytes_be()
+                .to_vec(),
+            contract_address: Felt::from_str(&value.contract_address)
+                .unwrap()
+                .to_bytes_be()
+                .to_vec(),
+            token_id: if id.len() == 2 {
+                U256::from_be_hex(id[1].trim_start_matches("0x"))
+                    .to_be_bytes()
+                    .to_vec()
+            } else {
+                U256::ZERO.to_be_bytes().to_vec()
+            },
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -259,6 +326,33 @@ pub struct Pagination {
     pub order_by: Vec<OrderBy>,
 }
 
+impl From<torii_proto::proto::types::Pagination> for Pagination {
+    fn from(value: torii_proto::proto::types::Pagination) -> Self {
+        Pagination {
+            cursor: if value.cursor.is_empty() {
+                None
+            } else {
+                Some(value.cursor)
+            },
+            limit: if value.limit == 0 {
+                None
+            } else {
+                Some(value.limit)
+            },
+            direction: match value.direction {
+                0 => PaginationDirection::Forward,
+                1 => PaginationDirection::Backward,
+                _ => unreachable!(),
+            },
+            order_by: value
+                .order_by
+                .into_iter()
+                .map(|order_by| order_by.into())
+                .collect(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum OrderDirection {
     Asc,
@@ -270,4 +364,18 @@ pub struct OrderBy {
     pub model: String,
     pub member: String,
     pub direction: OrderDirection,
+}
+
+impl From<torii_proto::proto::types::OrderBy> for OrderBy {
+    fn from(value: torii_proto::proto::types::OrderBy) -> Self {
+        OrderBy {
+            model: value.model,
+            member: value.member,
+            direction: match value.direction {
+                0 => OrderDirection::Asc,
+                1 => OrderDirection::Desc,
+                _ => unreachable!(),
+            },
+        }
+    }
 }

@@ -33,3 +33,4 @@ tokio-util.workspace = true
 once_cell.workspace = true
 torii-math.workspace = true
 chrono.workspace = true
+torii-proto.workspace = true

@@ -11,7 +11,8 @@ use std::{
 };
 use torii_math::I256;
 
-use crate::types::{Cursor, Model, ParsedCall};
+use crate::types::{Cursor, ParsedCall};
+use torii_proto::Model;
 
 pub mod types;
 

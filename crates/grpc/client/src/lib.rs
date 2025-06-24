@@ -94,19 +94,19 @@ impl WorldClient {
     }
 
     /// Retrieve the metadata of the World.
-    pub async fn metadata(&mut self) -> Result<dojo_types::WorldMetadata, Error> {
+    pub async fn metadata(&mut self) -> Result<torii_proto::World, Error> {
         self.inner
             .world_metadata(WorldMetadataRequest {})
             .await
             .map_err(Error::Grpc)
             .and_then(|res| {
                 res.into_inner()
-                    .metadata
+                    .world
                     .ok_or(Error::Proto(ProtoError::MissingExpectedData(
-                        "metadata".to_string(),
+                        "world".to_string(),
                     )))
             })
-            .and_then(|metadata| metadata.try_into().map_err(Error::Proto))
+            .and_then(|world| world.try_into().map_err(Error::Proto))
     }
 
     pub async fn retrieve_controllers(

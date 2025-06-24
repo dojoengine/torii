@@ -1,7 +1,6 @@
 pub mod error;
 
 use crypto_bigint::U256;
-use dojo_types::WorldMetadata;
 use starknet::core::types::Felt;
 use tokio::sync::RwLock;
 use torii_grpc_client::{
@@ -15,6 +14,7 @@ use torii_proto::proto::world::{
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Controller, Event, EventQuery, KeysClause, Message, Page, Query, Token, TokenBalance,
+    World,
 };
 
 use crate::error::Error;
@@ -53,10 +53,10 @@ impl Client {
     }
 
     /// Returns a read lock on the World metadata that the client is connected to.
-    pub async fn metadata(&self) -> Result<WorldMetadata, Error> {
+    pub async fn metadata(&self) -> Result<World, Error> {
         let mut grpc_client = self.inner.write().await;
-        let metadata = grpc_client.metadata().await?;
-        Ok(metadata)
+        let world = grpc_client.metadata().await?;
+        Ok(world)
     }
 
     /// Retrieves controllers matching contract addresses.

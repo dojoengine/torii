@@ -10,9 +10,10 @@ use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
 use starknet::core::types::{Event, U256};
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
+use torii_proto::Model;
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
-    types::{Cursor, Model, ParsedCall},
+    types::{Cursor, ParsedCall},
     ReadOnlyStorage, Storage, StorageError,
 };
 

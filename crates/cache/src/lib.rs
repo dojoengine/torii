@@ -13,7 +13,7 @@ use starknet::core::utils::get_selector_from_name;
 use starknet::providers::{Provider, ProviderError};
 use tokio::sync::{Mutex, RwLock};
 use torii_math::I256;
-use torii_storage::types::Model;
+use torii_proto::Model;
 use torii_storage::ReadOnlyStorage;
 
 use crate::error::Error;
