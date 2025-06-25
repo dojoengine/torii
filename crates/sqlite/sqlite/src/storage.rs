@@ -10,7 +10,7 @@ use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
 use starknet::core::types::{Event, U256};
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
-use torii_proto::{Controller, Model, Page};
+use torii_proto::{Controller, Model, Page, Token, TokenBalance, TokenCollection};
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
     types::{Cursor, ParsedCall},
@@ -179,6 +179,197 @@ impl ReadOnlyStorage for Sql {
 
         Ok(Page {
             items: controllers.into_iter().map(|c| c.into()).collect(),
+            next_cursor,
+        })
+    }
+
+    async fn tokens(
+        &self,
+        contract_addresses: &[Felt],
+        token_ids: &[U256],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<Token>, StorageError> {
+        let mut query = "SELECT * FROM tokens".to_string();
+        let mut bind_values = Vec::new();
+        let mut conditions = Vec::new();
+
+        if !contract_addresses.is_empty() {
+            let placeholders = vec!["?"; contract_addresses.len()].join(", ");
+            conditions.push(format!("contract_address IN ({})", placeholders));
+            bind_values.extend(contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+        if !token_ids.is_empty() {
+            let placeholders = vec!["?"; token_ids.len()].join(", ");
+            conditions.push(format!("token_id IN ({})", placeholders));
+            bind_values.extend(token_ids.iter().map(|id| u256_to_sql_string(&(*id).into())));
+        }
+
+        if let Some(cursor) = cursor {
+            bind_values.push(decode_cursor(&cursor)?);
+            conditions.push("id >= ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            query += &format!(" WHERE {}", conditions.join(" AND "));
+        }
+
+        query += " ORDER BY id";
+
+        if let Some(limit) = limit {
+            query += " LIMIT ?";
+            bind_values.push((limit + 1).to_string());
+        }
+
+        let mut query = sqlx::query_as(&query);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+
+        let mut tokens: Vec<torii_sqlite_types::Token> = query.fetch_all(&self.pool).await?;
+        let next_cursor = if limit.is_some() && tokens.len() > limit.unwrap() {
+            Some(encode_cursor(&tokens.pop().unwrap().id)?)
+        } else {
+            None
+        };
+
+        let tokens = tokens.into_iter().map(|token| token.into()).collect();
+        Ok(Page {
+            items: tokens,
+            next_cursor,
+        })
+    }
+
+    async fn token_balances(
+        &self,
+        account_addresses: &[Felt],
+        contract_addresses: &[Felt],
+        token_ids: &[U256],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<TokenBalance>, StorageError> {
+        let mut query = "SELECT * FROM token_balances".to_string();
+        let mut bind_values = Vec::new();
+        let mut conditions = Vec::new();
+
+        if !account_addresses.is_empty() {
+            let placeholders = vec!["?"; account_addresses.len()].join(", ");
+            conditions.push(format!("account_address IN ({})", placeholders));
+            bind_values.extend(account_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+
+        if !contract_addresses.is_empty() {
+            let placeholders = vec!["?"; contract_addresses.len()].join(", ");
+            conditions.push(format!("contract_address IN ({})", placeholders));
+            bind_values.extend(contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+
+        if !token_ids.is_empty() {
+            let placeholders = vec!["?"; token_ids.len()].join(", ");
+            conditions.push(format!(
+                "SUBSTR(token_id, INSTR(token_id, ':') + 1) IN ({})",
+                placeholders
+            ));
+            bind_values.extend(token_ids.iter().map(|id| u256_to_sql_string(&(*id).into())));
+        }
+
+        if let Some(cursor) = cursor {
+            bind_values.push(decode_cursor(&cursor)?);
+            conditions.push("id >= ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            query += &format!(" WHERE {}", conditions.join(" AND "));
+        }
+
+        query += " ORDER BY id";
+        if let Some(limit) = limit {
+            query += " LIMIT ?";
+            bind_values.push((limit + 1).to_string());
+        }
+
+        let mut query = sqlx::query_as(&query);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+
+        let mut balances: Vec<torii_sqlite_types::TokenBalance> = query.fetch_all(&self.pool).await?;
+        let next_cursor = if limit.is_some() && balances.len() > limit.unwrap() {
+            Some(encode_cursor(&balances.pop().unwrap().id)?)
+        } else {
+            None
+        };
+
+        let balances = balances.into_iter().map(|balance| balance.into()).collect();
+        Ok(Page {
+            items: balances,
+            next_cursor,
+        })
+    }
+
+    async fn token_collections(
+        &self,
+        account_addresses: &[Felt],
+        contract_addresses: &[Felt],
+        token_ids: &[U256],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<TokenCollection>, StorageError> {
+        let mut query =
+            "SELECT t.contract_address as contract_address, t.name as name, t.symbol as symbol, t.decimals as decimals, t.metadata as metadata, count(t.contract_address) as count FROM tokens t".to_owned();
+
+        let mut bind_values = Vec::new();
+        let mut conditions = Vec::new();
+
+        if !account_addresses.is_empty() {
+            query += "  JOIN token_balances tb ON tb.token_id = CONCAT(t.contract_address, ':', t.token_id)";
+
+            let placeholders = vec!["?"; account_addresses.len()].join(", ");
+            conditions.push(format!("tb.account_address IN ({})", placeholders));
+            bind_values.extend(account_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+
+        if !contract_addresses.is_empty() {
+            let placeholders = vec!["?"; contract_addresses.len()].join(", ");
+            conditions.push(format!("t.contract_address IN ({})", placeholders));
+            bind_values.extend(contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+        if !token_ids.is_empty() {
+            let placeholders = vec!["?"; token_ids.len()].join(", ");
+            conditions.push(format!("t.token_id IN ({})", placeholders));
+            bind_values.extend(token_ids.iter().map(|id| u256_to_sql_string(&(*id).into())));
+        }
+
+        if let Some(cursor) = cursor {
+            bind_values.push(decode_cursor(&cursor)?);
+            conditions.push("t.id >= ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            query += &format!(" WHERE {}", conditions.join(" AND "));
+        }
+
+        query += " GROUP BY t.contract_address ORDER BY t.id";
+        if let Some(limit) = limit {
+            query += " LIMIT ?";
+            bind_values.push((limit + 1).to_string());
+        }
+
+        let mut query = sqlx::query_as(&query);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+
+        let mut tokens: Vec<torii_sqlite_types::TokenCollection> = query.fetch_all(&self.pool).await?;
+        let next_cursor = if limit.is_some() && tokens.len() > limit.unwrap() {
+            Some(encode_cursor(&tokens.pop().unwrap().contract_address)?)
+        } else {
+            None
+        };
+
+        let tokens = tokens.into_iter().map(|token| token.into()).collect();
+        Ok(Page {
+            items: tokens,
             next_cursor,
         })
     }
