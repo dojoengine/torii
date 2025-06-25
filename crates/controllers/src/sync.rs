@@ -97,7 +97,6 @@ impl ControllersSync {
         }}"#,
             self.cursor.read().await.unwrap_or_default().to_rfc3339()
         );
-        println!("query: {}", query);
 
         let mut attempts = 0;
         const MAX_RETRIES: u32 = 3;
