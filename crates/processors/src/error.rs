@@ -30,7 +30,7 @@ pub enum Error {
     #[error(transparent)]
     TokenMetadataError(#[from] TokenMetadataError),
     #[error(transparent)]
-    CacheError(#[from] torii_cache::error::Error),
+    InMemoryCacheError(#[from] torii_cache::inmemory::error::Error),
 }
 
 #[derive(Error, Debug)]

@@ -6,7 +6,7 @@ use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, Transaction};
 use starknet::providers::Provider;
 use tokio::sync::Semaphore;
-use torii_cache::{Cache, ContractClassCache};
+use torii_cache::{Cache, inmemory::ContractClassCache};
 use torii_storage::Storage;
 
 mod constants;

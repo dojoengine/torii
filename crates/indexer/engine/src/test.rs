@@ -20,7 +20,7 @@ use starknet::providers::{JsonRpcClient, Provider};
 use starknet_crypto::poseidon_hash_many;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
-use torii_cache::{Cache, InMemoryCache};
+use torii_cache::{Cache, inmemory::InMemoryCache};
 use torii_sqlite::executor::Executor;
 use torii_sqlite::types::Token;
 use torii_sqlite::utils::u256_to_sql_string;
