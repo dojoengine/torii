@@ -13,7 +13,7 @@ use starknet_crypto::Felt;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Semaphore;
 use tokio::time::{sleep, Instant};
-use torii_cache::{Cache, ContractClassCache};
+use torii_cache::{Cache, inmemory::ContractClassCache};
 use torii_controllers::sync::ControllersSync;
 use torii_processors::{
     BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors,
@@ -192,7 +192,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     if let Some(last_fetch_result) = cached_data.as_ref() {
                         Result::<_, Error>::Ok(last_fetch_result.clone())
                     } else {
-                        let cursors = self.storage.cursors().await?;
+                        let cursors = self.storage.cursors().await.map_err(Error::Storage)?;
                         let fetch_result = self.fetcher.fetch(&cursors).await?;
                         Ok(Arc::new(fetch_result))
                     }

@@ -3,7 +3,7 @@ use cainome::cairo_serde_derive::CairoSerde;
 use cainome_cairo_serde::CairoSerde;
 use starknet::core::types::{BlockId, BlockTag, Felt, InvokeTransaction, Transaction};
 use starknet::providers::Provider;
-use torii_cache::{get_entrypoint_name_from_class, ContractClassCache};
+use torii_cache::inmemory::{get_entrypoint_name_from_class, ContractClassCache};
 use torii_storage::types::{CallType, ParsedCall};
 
 use crate::error::Error;

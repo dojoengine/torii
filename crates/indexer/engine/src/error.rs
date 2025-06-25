@@ -7,9 +7,9 @@ pub enum Error {
     #[error(transparent)]
     ProcessError(#[from] ProcessError),
     #[error(transparent)]
-    Cache(#[from] torii_cache::error::Error),
+    Cache(torii_cache::CacheError),
     #[error(transparent)]
-    Storage(#[from] torii_storage::StorageError),
+    Storage(torii_storage::StorageError),
     #[error(transparent)]
     ProviderError(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
@@ -25,7 +25,7 @@ pub enum ProcessError {
     #[error(transparent)]
     Processors(#[from] torii_processors::error::Error),
     #[error(transparent)]
-    Cache(#[from] torii_cache::error::Error),
+    Cache(torii_cache::CacheError),
     #[error(transparent)]
-    Storage(#[from] torii_storage::StorageError),
+    Storage(torii_storage::StorageError),
 }

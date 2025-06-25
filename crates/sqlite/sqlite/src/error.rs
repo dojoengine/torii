@@ -26,8 +26,6 @@ pub enum Error {
     ExecutorQuery(#[from] Box<crate::executor::error::ExecutorQueryError>),
     #[error(transparent)]
     Storage(#[from] torii_storage::StorageError),
-    #[error(transparent)]
-    Cache(#[from] torii_cache::error::Error),
 }
 
 #[derive(Debug, thiserror::Error)]
