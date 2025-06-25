@@ -11600,6 +11600,7 @@ dependencies = [
  "ipfs-api-backend-hyper",
  "katana-runner",
  "once_cell",
+ "rayon",
  "reqwest",
  "scarb",
  "serde",

@@ -3,7 +3,8 @@ use chrono::{DateTime, Utc};
 use dojo_types::schema::Ty;
 use dojo_world::config::WorldMetadata;
 use dojo_world::contracts::abigen::model::Layout;
-use starknet::core::types::{Event, Felt, U256};
+use starknet::core::types::{Felt, U256};
+use torii_proto::schema::Entity;
 use std::fmt::Debug;
 use std::{
     collections::{HashMap, HashSet},
@@ -12,7 +13,7 @@ use std::{
 use torii_math::I256;
 
 use crate::types::{Cursor, ParsedCall};
-use torii_proto::{Controller, Model, Page, Token, TokenBalance, TokenCollection};
+use torii_proto::{Controller, Event, KeysClause, Model, Page, Query, Token, TokenBalance, TokenCollection};
 
 pub mod types;
 pub mod utils;
@@ -70,6 +71,26 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
         cursor: Option<String>,
         limit: Option<usize>,
     ) -> Result<Page<TokenCollection>, StorageError>;
+
+    /// Returns events for the storage.
+    async fn events(
+        &self,
+        keys: &KeysClause,
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<Event>, StorageError>;
+
+    /// Returns entities for the storage.
+    async fn entities(
+        &self,
+        query: &Query,
+    ) -> Result<Page<Entity>, StorageError>;
+
+    /// Returns event messages for the storage.
+    async fn event_messages(
+        &self,
+        query: &Query,
+    ) -> Result<Page<Entity>, StorageError>;
 }
 
 #[async_trait]
@@ -181,7 +202,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     async fn store_event(
         &self,
         event_id: &str,
-        event: &Event,
+        event: &starknet::core::types::Event,
         transaction_hash: Felt,
         block_timestamp: u64,
     ) -> Result<(), StorageError>;

@@ -45,6 +45,34 @@ pub fn sql_string_to_u256(sql_string: &str) -> U256 {
     U256::from(crypto_bigint::U256::from_be_hex(sql_string))
 }
 
+pub fn build_keys_pattern(clause: &torii_proto::KeysClause) -> String {
+    const KEY_PATTERN: &str = "0x[0-9a-fA-F]+";
+
+    let keys = if clause.keys.is_empty() {
+        vec![KEY_PATTERN.to_string()]
+    } else {
+        clause
+            .keys
+            .iter()
+            .map(|felt| {
+                if let Some(felt) = felt {
+                    format!("{:#x}", felt)
+                } else {
+                    KEY_PATTERN.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut keys_pattern = format!("^{}", keys.join("/"));
+
+    if clause.pattern_matching == torii_proto::PatternMatching::VariableLen {
+        keys_pattern += &format!("(/{})*", KEY_PATTERN);
+    }
+    keys_pattern += "/$";
+
+    keys_pattern
+}
+
 pub fn sql_string_to_felts(sql_string: &str) -> Vec<Felt> {
     sql_string
         .split(SQL_FELT_DELIMITER)

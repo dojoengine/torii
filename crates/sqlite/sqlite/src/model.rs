@@ -1,11 +1,17 @@
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
+use dojo_types::naming::compute_selector_from_tag;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use torii_cache::Cache;
+use torii_proto::schema::Entity;
+use torii_proto::{Clause, CompositeClause, LogicalOperator, MemberValue, Pagination, Page, OrderDirection, PaginationDirection};
 use std::collections::HashSet;
 use std::io::prelude::*;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use crypto_bigint::U256;
@@ -21,7 +27,7 @@ use starknet::core::types::Felt;
 use super::error::{self, Error};
 use crate::constants::{SQL_DEFAULT_LIMIT, SQL_MAX_JOINS};
 use crate::error::{ParseError, QueryError};
-use crate::types::{OrderDirection, Page, Pagination, PaginationDirection};
+use crate::utils::build_keys_pattern;
 
 #[derive(Debug)]
 pub struct ModelSQLReader {
@@ -294,6 +300,204 @@ pub fn map_row_to_ty(
     };
 
     Ok(())
+}
+
+fn map_row_to_entity(
+    row: &SqliteRow,
+    schemas: &[Ty],
+    dont_include_hashed_keys: bool,
+) -> Result<Entity, Error> {
+    let hashed_keys = Felt::from_str(&row.get::<String, _>("id")).map_err(ParseError::FromStr)?;
+    let model_ids = row
+        .get::<String, _>("model_ids")
+        .split(',')
+        .map(|id| Felt::from_str(id).map_err(ParseError::FromStr))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let models = schemas
+        .iter()
+        .filter(|schema| model_ids.contains(&compute_selector_from_tag(&schema.name())))
+        .map(|schema| {
+            let mut ty = schema.clone();
+            map_row_to_ty("", &schema.name(), &mut ty, row)?;
+            Ok(ty.as_struct().unwrap().clone().into())
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    Ok(Entity {
+        hashed_keys: if !dont_include_hashed_keys {
+            hashed_keys
+        } else {
+            Felt::ZERO
+        },
+        models,
+    })
+}
+
+// builds a composite clause for a query
+fn build_composite_clause(
+    table: &str,
+    model_relation_table: &str,
+    composite: &torii_proto::CompositeClause,
+) -> Result<(String, Vec<String>), Error> {
+    let is_or = composite.operator == LogicalOperator::Or;
+    let mut where_clauses = Vec::new();
+    let mut bind_values = Vec::new();
+
+    for clause in &composite.clauses {
+        match clause {
+            Clause::HashedKeys(hashed_keys) => {
+                let ids = hashed_keys
+                    .iter()
+                    .map(|id| {
+                        bind_values.push(format!("{:#x}", id));
+                        "?".to_string()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                where_clauses.push(format!("({table}.id IN ({}))", ids));
+            }
+            Clause::Keys(keys) => {
+                let keys_pattern = build_keys_pattern(keys);
+                bind_values.push(keys_pattern);
+                let model_selectors: Vec<String> = keys
+                    .models
+                    .iter()
+                    .map(|model| format!("{:#x}", compute_selector_from_tag(model)))
+                    .collect();
+
+                if model_selectors.is_empty() {
+                    where_clauses.push(format!("({table}.keys REGEXP ?)"));
+                } else {
+                    // Add bind value placeholders for each model selector
+                    let placeholders = vec!["?"; model_selectors.len()].join(", ");
+                    where_clauses.push(format!(
+                        "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
+                         {model_relation_table}.model_id NOT IN ({}))",
+                        placeholders, placeholders
+                    ));
+                    // Add each model selector twice (once for IN and once for NOT IN)
+                    bind_values.extend(model_selectors.clone());
+                    bind_values.extend(model_selectors);
+                }
+            }
+            Clause::Member(member) => {
+                fn prepare_comparison(
+                    value: &MemberValue,
+                    bind_values: &mut Vec<String>,
+                ) -> Result<String, Error> {
+                    match value {
+                        MemberValue::String(value) => {
+                            bind_values.push(value.to_string());
+                            Ok("?".to_string())
+                        }
+                        MemberValue::Primitive(value) => {
+                            bind_values.push(value.to_sql_value());
+                            Ok("?".to_string())
+                        }
+                        MemberValue::List(values) => Ok(format!(
+                            "({})",
+                            values
+                                .iter()
+                                .map(|v| prepare_comparison(v, bind_values))
+                                .collect::<Result<Vec<String>, Error>>()?
+                                .join(", ")
+                        )),
+                    }
+                }
+                let value = prepare_comparison(&member.value, &mut bind_values)?;
+
+                let model = member.model.clone();
+                let operator = member.operator.clone();
+                // Use the column name directly since it's already flattened
+                where_clauses.push(format!(
+                    "([{model}].[{}] {operator} {value})",
+                    member.member
+                ));
+            }
+            Clause::Composite(nested) => {
+                // Handle nested composite by recursively building the clause
+                let (nested_where, nested_values) =
+                    build_composite_clause(table, model_relation_table, nested)?;
+
+                if !nested_where.is_empty() {
+                    where_clauses.push(nested_where);
+                }
+                bind_values.extend(nested_values);
+            }
+        }
+    }
+
+    let where_clause = if !where_clauses.is_empty() {
+        where_clauses.join(if is_or { " OR " } else { " AND " })
+    } else {
+        String::new()
+    };
+
+    Ok((where_clause, bind_values))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn query_by_composite(
+    pool: &Pool<Sqlite>,
+    cache: Arc<dyn Cache>,
+    table: &str,
+    model_relation_table: &str,
+    entity_relation_column: &str,
+    composite: &CompositeClause,
+    pagination: Pagination,
+    no_hashed_keys: bool,
+    models: Vec<String>,
+) -> Result<Page<Entity>, Error> {
+    let (where_clause, bind_values) =
+        build_composite_clause(table, model_relation_table, &composite)?;
+
+    let models = models
+        .iter()
+        .map(|model| compute_selector_from_tag(model))
+        .collect::<Vec<_>>();
+    let schemas = cache
+        .models(&models)
+        .await?
+        .iter()
+        .map(|m| m.schema.clone())
+        .collect::<Vec<_>>();
+
+    let having_clause = models
+        .iter()
+        .map(|model| format!("INSTR(model_ids, '{:#x}') > 0", model))
+        .collect::<Vec<_>>()
+        .join(" OR ");
+
+    let page = fetch_entities(
+        pool,
+        &schemas,
+        table,
+        model_relation_table,
+        entity_relation_column,
+        if where_clause.is_empty() {
+            None
+        } else {
+            Some(&where_clause)
+        },
+        if having_clause.is_empty() {
+            None
+        } else {
+            Some(&having_clause)
+        },
+        pagination,
+        bind_values,
+    )
+    .await?;
+
+    Ok(Page {
+        items: page
+            .items
+            .par_iter()
+            .map(|row| map_row_to_entity(row, &schemas, no_hashed_keys))
+            .collect::<Result<Vec<_>, Error>>()?,
+        next_cursor: page.next_cursor,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]

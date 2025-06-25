@@ -1,10 +1,12 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use dojo_types::primitive::SqlType;
 use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
+use torii_cache::Cache;
 use torii_storage::types::{Contract, Cursor};
 use torii_storage::Storage;
 
@@ -43,6 +45,7 @@ pub struct Sql {
     pub pool: Pool<Sqlite>,
     pub executor: UnboundedSender<QueryMessage>,
     pub config: SqlConfig,
+    pub cache: Arc<dyn Cache>,
 }
 
 impl Sql {
@@ -50,8 +53,9 @@ impl Sql {
         pool: Pool<Sqlite>,
         executor: UnboundedSender<QueryMessage>,
         contracts: &[Contract],
+        cache: Arc<dyn Cache>,
     ) -> Result<Self, Error> {
-        Self::new_with_config(pool, executor, contracts, Default::default()).await
+        Self::new_with_config(pool, executor, contracts, Default::default(), cache).await
     }
 
     pub async fn new_with_config(
@@ -59,6 +63,7 @@ impl Sql {
         executor: UnboundedSender<QueryMessage>,
         contracts: &[Contract],
         config: SqlConfig,
+        cache: Arc<dyn Cache>,
     ) -> Result<Self, Error> {
         for contract in contracts {
             executor.send(QueryMessage::other(
@@ -77,6 +82,7 @@ impl Sql {
             pool: pool.clone(),
             executor,
             config,
+            cache,
         };
 
         db.execute().await?;

@@ -56,7 +56,7 @@ pub struct Message {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Pagination {
     pub cursor: Option<String>,
-    pub limit: u32,
+    pub limit: Option<u32>,
     pub direction: PaginationDirection,
     pub order_by: Vec<OrderBy>,
 }
@@ -65,7 +65,7 @@ impl From<Pagination> for proto::types::Pagination {
     fn from(value: Pagination) -> Self {
         Self {
             cursor: value.cursor.unwrap_or_default(),
-            limit: value.limit,
+            limit: value.limit.unwrap_or_default(),
             direction: value.direction as i32,
             order_by: value.order_by.into_iter().map(|o| o.into()).collect(),
         }
@@ -80,7 +80,11 @@ impl From<proto::types::Pagination> for Pagination {
             } else {
                 Some(value.cursor)
             },
-            limit: value.limit,
+            limit: if value.limit == 0 {
+                None
+            } else {
+                Some(value.limit)
+            },
             direction: match value.direction {
                 0 => PaginationDirection::Forward,
                 1 => PaginationDirection::Backward,
@@ -710,23 +714,6 @@ impl From<proto::types::Event> for Event {
             keys,
             data,
             transaction_hash,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
-pub struct EventQuery {
-    pub keys: KeysClause,
-    pub limit: u32,
-    pub cursor: Option<String>,
-}
-
-impl From<EventQuery> for proto::types::EventQuery {
-    fn from(value: EventQuery) -> Self {
-        Self {
-            keys: Some(value.keys.into()),
-            limit: value.limit,
-            cursor: value.cursor.unwrap_or_default(),
         }
     }
 }

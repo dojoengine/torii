@@ -124,6 +124,28 @@ pub struct Event {
     pub created_at: DateTime<Utc>,
 }
 
+impl From<Event> for torii_proto::Event {
+    fn from(value: Event) -> Self {
+        Self {
+            keys: value
+                .keys
+                .trim_end_matches('/')
+                .split('/')
+                .filter(|k| !k.is_empty())
+                .map(|k| Felt::from_str(k).unwrap())
+                .collect(),
+            data: value
+                .data
+                .trim_end_matches('/')
+                .split('/')
+                .filter(|d| !d.is_empty())
+                .map(|d| Felt::from_str(d).unwrap())
+                .collect(),
+            transaction_hash: Felt::from_str(&value.transaction_hash).unwrap(),
+        }
+    }
+}
+
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OptimisticToken {
