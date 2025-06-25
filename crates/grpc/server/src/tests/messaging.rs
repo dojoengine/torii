@@ -20,9 +20,8 @@ use torii_cache::InMemoryCache;
 use torii_libp2p_relay::Relay;
 use torii_proto::proto::world::PublishMessageRequest;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::Contract;
 use torii_sqlite::Sql;
-use torii_storage::types::ContractType;
+use torii_storage::types::{Contract, ContractType};
 use torii_storage::Storage;
 use torii_typed_data::typed_data::{Domain, Field, SimpleField, TypedData};
 

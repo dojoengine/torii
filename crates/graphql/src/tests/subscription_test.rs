@@ -18,9 +18,8 @@ mod tests {
     use starknet_crypto::{poseidon_hash_many, Felt};
     use tokio::sync::{broadcast, mpsc};
     use torii_sqlite::executor::Executor;
-    use torii_sqlite::types::Contract;
     use torii_sqlite::Sql;
-    use torii_storage::types::ContractType;
+    use torii_storage::types::{Contract, ContractType};
     use torii_storage::Storage;
     use url::Url;
 

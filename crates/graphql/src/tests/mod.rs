@@ -32,9 +32,8 @@ use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::Contract;
 use torii_sqlite::Sql;
-use torii_storage::types::ContractType;
+use torii_storage::types::{Contract, ContractType};
 use torii_storage::Storage;
 
 mod entities_test;

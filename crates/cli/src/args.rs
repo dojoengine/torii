@@ -133,8 +133,8 @@ mod test {
     use std::net::{IpAddr, Ipv4Addr};
     use std::str::FromStr;
 
-    use torii_sqlite_types::{Contract, ModelIndices};
-    use torii_storage::types::ContractType;
+    use torii_sqlite_types::ModelIndices;
+    use torii_storage::types::{Contract, ContractType};
 
     use super::*;
 
