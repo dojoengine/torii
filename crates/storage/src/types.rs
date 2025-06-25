@@ -71,3 +71,15 @@ impl std::fmt::Display for ContractType {
         }
     }
 }
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub struct Contract {
+    pub address: Felt,
+    pub r#type: ContractType,
+}
+
+impl std::fmt::Display for Contract {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{:#x}", self.r#type, self.address)
+    }
+}

@@ -5,14 +5,14 @@ use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
-use torii_storage::types::Cursor;
+use torii_storage::types::{Contract, Cursor};
 use torii_storage::Storage;
 
 use crate::error::{Error, ParseError};
 use crate::executor::error::ExecutorQueryError;
 use crate::executor::{Argument, QueryMessage};
 use crate::utils::utc_dt_string_from_timestamp;
-use torii_sqlite_types::{Contract, Hook, ModelIndices};
+use torii_sqlite_types::{Hook, ModelIndices};
 
 pub mod constants;
 pub mod error;

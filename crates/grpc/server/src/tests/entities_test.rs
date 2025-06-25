@@ -26,12 +26,12 @@ use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::{Contract, Pagination, PaginationDirection};
+use torii_sqlite::types::{Pagination, PaginationDirection};
 use torii_sqlite::Sql;
 
 use torii_proto::proto::types::KeysClause;
 use torii_proto::schema::Entity;
-use torii_storage::types::ContractType;
+use torii_storage::types::{Contract, ContractType};
 use torii_storage::Storage;
 
 use crate::{DojoWorld, GrpcConfig};

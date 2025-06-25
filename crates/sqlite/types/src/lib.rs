@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use starknet::core::types::Felt;
 use std::str::FromStr;
-use torii_storage::types::{ContractType, ParsedCall};
+use torii_storage::types::ParsedCall;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SQLFelt(pub Felt);
@@ -241,18 +241,6 @@ impl From<TokenBalance> for torii_proto::proto::types::TokenBalance {
                 U256::ZERO.to_be_bytes().to_vec()
             },
         }
-    }
-}
-
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub struct Contract {
-    pub address: Felt,
-    pub r#type: ContractType,
-}
-
-impl std::fmt::Display for Contract {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{:#x}", self.r#type, self.address)
     }
 }
 

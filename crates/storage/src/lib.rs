@@ -15,6 +15,7 @@ use crate::types::{Cursor, ParsedCall};
 use torii_proto::{Controller, Model, Page};
 
 pub mod types;
+pub mod utils;
 
 pub type StorageError = Box<dyn Error + Send + Sync>;
 
