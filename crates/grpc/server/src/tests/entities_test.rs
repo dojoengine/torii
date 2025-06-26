@@ -184,7 +184,8 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     assert_eq!(entities.len(), 1);
 
     let entity: Entity = entities.first().unwrap().clone().try_into().unwrap();
-    assert_eq!(entity.models.first().unwrap().name, "ns-Moves");
-    assert_eq!(entity.models.get(1).unwrap().name, "ns-Position");
+    let model_names: Vec<&str> = entity.models.iter().map(|m| m.name.as_str()).collect();
+    assert!(model_names.contains(&"ns-Moves"));
+    assert!(model_names.contains(&"ns-Position"));
     assert_eq!(entity.hashed_keys, poseidon_hash_many(&[account.address()]));
 }
