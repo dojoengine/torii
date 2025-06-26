@@ -19,6 +19,7 @@ use torii_storage::{
     types::{Cursor, ParsedCall},
     ReadOnlyStorage, Storage, StorageError,
 };
+use tracing::warn;
 
 use crate::{
     constants::{
@@ -43,6 +44,8 @@ use crate::{
     },
     Sql,
 };
+
+pub const LOG_TARGET: &str = "torii::sqlite::storage";
 
 #[async_trait]
 impl ReadOnlyStorage for Sql {
@@ -72,6 +75,18 @@ impl ReadOnlyStorage for Sql {
 
     /// Returns the model metadata for the storage.
     async fn model(&self, selector: Felt) -> Result<Model, StorageError> {
+        if let Some(cache) = &self.cache {
+            if let Ok(model) = cache.model(selector).await {
+                return Ok(model);
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    model_selector = %format!("{:#x}", selector),
+                    "Failed to get model from cache, falling back to database."
+                );
+            }
+        }
+
         let model = sqlx::query_as::<_, SQLModel>("SELECT * FROM models WHERE id = ?")
             .bind(format!("{:#x}", selector))
             .fetch_one(&self.pool)
@@ -97,10 +112,33 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Returns the models for the storage.
-    async fn models(&self) -> Result<Vec<Model>, StorageError> {
-        let models = sqlx::query_as::<_, SQLModel>("SELECT * FROM models")
-            .fetch_all(&self.pool)
-            .await?;
+    /// If selectors is empty, returns all models.
+    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, StorageError> {
+        if let Some(cache) = &self.cache {
+            if let Ok(models) = cache.models(selectors).await {
+                return Ok(models);
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    selectors = ?selectors.iter().map(|s| format!("{:#x}", s)).collect::<Vec<_>>(),
+                    "Failed to get models from cache, falling back to database.",
+                );
+            }
+        }
+
+        let mut query = "SELECT * FROM models".to_string();
+        let mut bind_values = vec![];
+        if !selectors.is_empty() {
+            let placeholders = vec!["?"; selectors.len()].join(", ");
+            query += &format!(" WHERE id IN ({})", placeholders);
+            bind_values.extend(selectors.iter().map(|s| format!("{:#x}", s)));
+        }
+
+        let mut query = sqlx::query_as::<_, SQLModel>(&query);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+        let models = query.fetch_all(&self.pool).await?;
 
         let mut models_metadata = Vec::with_capacity(models.len());
         for model in models {

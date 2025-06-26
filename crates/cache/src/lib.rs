@@ -158,7 +158,7 @@ pub struct ModelCache {
 
 impl ModelCache {
     pub async fn new(storage: Arc<dyn ReadOnlyStorage>) -> Result<Self, Error> {
-        let models = storage.models().await?;
+        let models = storage.models(&[]).await?;
 
         let mut model_cache = HashMap::new();
         for model in models {

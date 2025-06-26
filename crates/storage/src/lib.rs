@@ -31,7 +31,8 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     async fn model(&self, model: Felt) -> Result<Model, StorageError>;
 
     /// Returns the models for the storage.
-    async fn models(&self) -> Result<Vec<Model>, StorageError>;
+    /// If selectors is empty, returns all models.
+    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, StorageError>;
 
     /// Returns the IDs of all the registered tokens
     async fn token_ids(&self) -> Result<HashSet<String>, StorageError>;

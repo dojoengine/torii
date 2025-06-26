@@ -13,6 +13,7 @@ use torii_proto::{
     Clause, CompositeClause, LogicalOperator, MemberValue, OrderDirection, Page, Pagination,
     PaginationDirection,
 };
+use torii_storage::ReadOnlyStorage;
 
 use async_trait::async_trait;
 use crypto_bigint::U256;
@@ -476,9 +477,6 @@ impl Sql {
             .map(|model| compute_selector_from_tag(model))
             .collect::<Vec<_>>();
         let schemas = self
-            .cache
-            .as_ref()
-            .expect("Expected cache to be set")
             .models(&models)
             .await?
             .iter()
