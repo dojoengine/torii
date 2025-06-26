@@ -523,7 +523,8 @@ impl Sql {
                 )
                 .await?;
             Page {
-                items: page.items
+                items: page
+                    .items
                     .par_iter()
                     .map(|row| map_row_to_entity(row, &schemas, no_hashed_keys))
                     .collect::<Result<Vec<_>, Error>>()?,

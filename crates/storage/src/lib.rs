@@ -4,16 +4,18 @@ use dojo_types::schema::Ty;
 use dojo_world::config::WorldMetadata;
 use dojo_world::contracts::abigen::model::Layout;
 use starknet::core::types::{Felt, U256};
-use torii_proto::schema::Entity;
 use std::fmt::Debug;
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
 };
 use torii_math::I256;
+use torii_proto::schema::Entity;
 
 use crate::types::{Cursor, ParsedCall};
-use torii_proto::{Controller, Event, KeysClause, Model, Page, Query, Token, TokenBalance, TokenCollection};
+use torii_proto::{
+    Controller, Event, KeysClause, Model, Page, Query, Token, TokenBalance, TokenCollection,
+};
 
 pub mod types;
 pub mod utils;
@@ -81,16 +83,10 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     ) -> Result<Page<Event>, StorageError>;
 
     /// Returns entities for the storage.
-    async fn entities(
-        &self,
-        query: &Query,
-    ) -> Result<Page<Entity>, StorageError>;
+    async fn entities(&self, query: &Query) -> Result<Page<Entity>, StorageError>;
 
     /// Returns event messages for the storage.
-    async fn event_messages(
-        &self,
-        query: &Query,
-    ) -> Result<Page<Entity>, StorageError>;
+    async fn event_messages(&self, query: &Query) -> Result<Page<Entity>, StorageError>;
 }
 
 #[async_trait]

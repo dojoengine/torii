@@ -762,8 +762,16 @@ pub struct Event {
 impl From<Event> for proto::types::Event {
     fn from(value: Event) -> Self {
         Self {
-            keys: value.keys.into_iter().map(|k| k.to_bytes_be().into()).collect(),
-            data: value.data.into_iter().map(|d| d.to_bytes_be().into()).collect(),
+            keys: value
+                .keys
+                .into_iter()
+                .map(|k| k.to_bytes_be().into())
+                .collect(),
+            data: value
+                .data
+                .into_iter()
+                .map(|d| d.to_bytes_be().into())
+                .collect(),
             transaction_hash: value.transaction_hash.to_bytes_be().into(),
         }
     }

@@ -22,4 +22,3 @@ pub const EVENT_MESSAGES_ENTITY_RELATION_COLUMN: &str = "internal_event_message_
 pub const EVENT_MESSAGES_HISTORICAL_TABLE: &str = "event_messages_historical";
 
 pub const EVENTS_TABLE: &str = "events";
-

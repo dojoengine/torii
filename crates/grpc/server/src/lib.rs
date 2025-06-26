@@ -237,9 +237,16 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         request: Request<RetrieveEntitiesRequest>,
     ) -> Result<Response<RetrieveEntitiesResponse>, Status> {
         let RetrieveEntitiesRequest { query } = request.into_inner();
-        let query = query.ok_or_else(|| Status::invalid_argument("Missing query argument"))?.try_into().map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
-        let entities = self.sql.entities(&query).await.map_err(|e| Status::internal(e.to_string()))?;
+        let entities = self
+            .sql
+            .entities(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(RetrieveEntitiesResponse {
             entities: entities.items.into_iter().map(Into::into).collect(),
@@ -252,9 +259,16 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         request: Request<RetrieveEventMessagesRequest>,
     ) -> Result<Response<RetrieveEntitiesResponse>, Status> {
         let RetrieveEventMessagesRequest { query } = request.into_inner();
-        let query = query.ok_or_else(|| Status::invalid_argument("Missing query argument"))?.try_into().map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
-        let entities = self.sql.event_messages(&query).await.map_err(|e| Status::internal(e.to_string()))?;
+        let entities = self
+            .sql
+            .event_messages(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(RetrieveEntitiesResponse {
             entities: entities.items.into_iter().map(Into::into).collect(),
@@ -271,7 +285,10 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .query
             .ok_or_else(|| Status::invalid_argument("Missing query argument"))?;
 
-        let keys = query.keys.ok_or_else(|| Status::invalid_argument("Missing keys argument"))?.into();
+        let keys = query
+            .keys
+            .ok_or_else(|| Status::invalid_argument("Missing keys argument"))?
+            .into();
         let cursor = if query.cursor.is_empty() {
             None
         } else {
@@ -422,7 +439,11 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(RetrieveTokenCollectionsResponse {
-            tokens: token_collections.items.into_iter().map(Into::into).collect(),
+            tokens: token_collections
+                .items
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             next_cursor: token_collections.next_cursor.unwrap_or_default(),
         }))
     }

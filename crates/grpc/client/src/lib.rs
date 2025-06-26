@@ -32,9 +32,7 @@ use torii_proto::proto::world::{
     UpdateTokenSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
-use torii_proto::{
-    Clause, Event, IndexerUpdate, KeysClause, Message, Query, Token, TokenBalance,
-};
+use torii_proto::{Clause, Event, IndexerUpdate, KeysClause, Message, Query, Token, TokenBalance};
 
 pub use torii_proto as types;
 
@@ -315,11 +313,14 @@ impl WorldClient {
         limit: Option<u32>,
     ) -> Result<RetrieveEventsResponse, Error> {
         let request = RetrieveEventsRequest {
-            query: Some(EventQuery {
-                keys: keys.map(|k| k.into()),
-                cursor: cursor.unwrap_or_default(),
-                limit: limit.unwrap_or_default(),
-            }.into()),
+            query: Some(
+                EventQuery {
+                    keys: keys.map(|k| k.into()),
+                    cursor: cursor.unwrap_or_default(),
+                    limit: limit.unwrap_or_default(),
+                }
+                .into(),
+            ),
         };
         self.inner
             .retrieve_events(request)
