@@ -45,7 +45,7 @@ pub struct Sql {
     pub pool: Pool<Sqlite>,
     pub executor: UnboundedSender<QueryMessage>,
     pub config: SqlConfig,
-    pub cache: Arc<dyn Cache>,
+    pub cache: Option<Arc<dyn Cache>>,
 }
 
 impl Sql {
@@ -53,9 +53,8 @@ impl Sql {
         pool: Pool<Sqlite>,
         executor: UnboundedSender<QueryMessage>,
         contracts: &[Contract],
-        cache: Arc<dyn Cache>,
     ) -> Result<Self, Error> {
-        Self::new_with_config(pool, executor, contracts, Default::default(), cache).await
+        Self::new_with_config(pool, executor, contracts, Default::default()).await
     }
 
     pub async fn new_with_config(
@@ -63,7 +62,6 @@ impl Sql {
         executor: UnboundedSender<QueryMessage>,
         contracts: &[Contract],
         config: SqlConfig,
-        cache: Arc<dyn Cache>,
     ) -> Result<Self, Error> {
         for contract in contracts {
             executor.send(QueryMessage::other(
@@ -82,12 +80,19 @@ impl Sql {
             pool: pool.clone(),
             executor,
             config,
-            cache,
+            cache: None,
         };
 
         db.execute().await?;
 
         Ok(db)
+    }
+
+    pub fn with_cache(self, cache: Arc<dyn Cache>) -> Self {
+        Self {
+            cache: Some(cache),
+            ..self
+        }
     }
 
     fn set_entity_model(

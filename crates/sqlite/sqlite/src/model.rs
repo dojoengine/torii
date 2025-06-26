@@ -471,6 +471,8 @@ impl Sql {
             .collect::<Vec<_>>();
         let schemas = self
             .cache
+            .as_ref()
+            .expect("Expected cache to be set")
             .models(&models)
             .await?
             .iter()
@@ -614,6 +616,8 @@ impl Sql {
                 let hashed_keys = Felt::from_str(id).map_err(ParseError::FromStr)?;
                 let model = self
                     .cache
+                    .as_ref()
+                    .expect("Expected cache to be set")
                     .model(Felt::from_str(model_id).map_err(ParseError::FromStr)?)
                     .await?;
                 let mut schema = model.schema;

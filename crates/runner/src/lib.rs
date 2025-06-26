@@ -264,10 +264,10 @@ impl Runner {
                 historical_models: historical_models.clone(),
                 hooks: self.args.sql.hooks.clone(),
             },
-            cache.clone(),
         )
         .await?;
         let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+        let db = db.with_cache(cache.clone());
 
         let processors = Processors::default();
 

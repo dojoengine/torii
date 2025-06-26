@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
-use crypto_bigint::U256;
+use crypto_bigint::{Encoding, U256};
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::model::Layout;
@@ -59,6 +59,17 @@ pub struct Pagination {
     pub limit: Option<u32>,
     pub direction: PaginationDirection,
     pub order_by: Vec<OrderBy>,
+}
+
+impl Default for Pagination {
+    fn default() -> Self {
+        Self {
+            cursor: None,
+            limit: None,
+            direction: PaginationDirection::Forward,
+            order_by: vec![],
+        }
+    }
 }
 
 impl From<Pagination> for proto::types::Pagination {
@@ -133,6 +144,19 @@ pub struct Token {
     pub metadata: String,
 }
 
+impl From<Token> for proto::types::Token {
+    fn from(value: Token) -> Self {
+        Self {
+            token_id: value.token_id.to_be_bytes().to_vec(),
+            contract_address: value.contract_address.to_bytes_be().into(),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u32,
+            metadata: value.metadata.into_bytes(),
+        }
+    }
+}
+
 impl TryFrom<proto::types::Token> for Token {
     type Error = ProtoError;
     fn try_from(value: proto::types::Token) -> Result<Self, Self::Error> {
@@ -170,6 +194,19 @@ pub struct TokenCollection {
     pub metadata: String,
 }
 
+impl From<TokenCollection> for proto::types::TokenCollection {
+    fn from(value: TokenCollection) -> Self {
+        Self {
+            contract_address: value.contract_address.to_bytes_be().into(),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u32,
+            count: value.count,
+            metadata: value.metadata.into_bytes(),
+        }
+    }
+}
+
 impl TryFrom<proto::types::TokenCollection> for TokenCollection {
     type Error = ProtoError;
     fn try_from(value: proto::types::TokenCollection) -> Result<Self, Self::Error> {
@@ -190,6 +227,17 @@ pub struct TokenBalance {
     pub account_address: Felt,
     pub contract_address: Felt,
     pub token_id: U256,
+}
+
+impl From<TokenBalance> for proto::types::TokenBalance {
+    fn from(value: TokenBalance) -> Self {
+        Self {
+            balance: value.balance.to_be_bytes().to_vec(),
+            account_address: value.account_address.to_bytes_be().into(),
+            contract_address: value.contract_address.to_bytes_be().into(),
+            token_id: value.token_id.to_be_bytes().to_vec(),
+        }
+    }
 }
 
 impl TryFrom<proto::types::TokenBalance> for TokenBalance {
@@ -260,7 +308,7 @@ pub enum OrderDirection {
     Desc,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct Query {
     pub clause: Option<Clause>,
     pub pagination: Pagination,
@@ -481,6 +529,20 @@ impl TryFrom<proto::types::World> for World {
     }
 }
 
+impl TryFrom<proto::types::Query> for Query {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::Query) -> Result<Self, Self::Error> {
+        let clause = value.clause.map(|c| c.try_into()).transpose()?;
+        Ok(Self {
+            clause,
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
+            no_hashed_keys: value.no_hashed_keys,
+            models: value.models,
+            historical: value.historical,
+        })
+    }
+}
+
 impl From<Query> for proto::types::Query {
     fn from(value: Query) -> Self {
         Self {
@@ -695,6 +757,16 @@ pub struct Event {
     pub keys: Vec<Felt>,
     pub data: Vec<Felt>,
     pub transaction_hash: Felt,
+}
+
+impl From<Event> for proto::types::Event {
+    fn from(value: Event) -> Self {
+        Self {
+            keys: value.keys.into_iter().map(|k| k.to_bytes_be().into()).collect(),
+            data: value.data.into_iter().map(|d| d.to_bytes_be().into()).collect(),
+            transaction_hash: value.transaction_hash.to_bytes_be().into(),
+        }
+    }
 }
 
 impl From<proto::types::Event> for Event {

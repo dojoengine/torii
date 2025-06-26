@@ -7,14 +7,10 @@ use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::str;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use crypto_bigint::U256;
-use dojo_types::naming::compute_selector_from_tag;
-use dojo_types::primitive::Primitive;
-use dojo_types::schema::Ty;
 use dojo_world::contracts::naming::compute_selector_from_names;
 use futures::Stream;
 use http::HeaderName;
@@ -22,9 +18,6 @@ use proto::world::{
     RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventsRequest,
     RetrieveEventsResponse, UpdateEntitiesSubscriptionRequest,
 };
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use sqlx::sqlite::SqliteRow;
-use sqlx::Row;
 use starknet::core::types::{Felt, TypedData};
 use starknet::providers::Provider;
 use subscriptions::event::EventManager;
@@ -41,22 +34,12 @@ use tonic_web::GrpcWebLayer;
 use torii_cache::Cache;
 use torii_messaging::validate_and_set_entity;
 use torii_proto::error::ProtoError;
-use torii_sqlite::constants::SQL_DEFAULT_LIMIT;
-use torii_sqlite::error::{ParseError, QueryError};
-use torii_sqlite::model::{decode_cursor, encode_cursor, fetch_entities, map_row_to_ty};
-use torii_sqlite::types::{
-    Page, Pagination, PaginationDirection, Token, TokenBalance, TokenCollection,
-};
-use torii_sqlite::utils::u256_to_sql_string;
 use torii_sqlite::Sql;
 use torii_storage::ReadOnlyStorage;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use self::subscriptions::entity::EntityManager;
 use self::subscriptions::event_message::EventMessageManager;
-use torii_proto::proto::types::clause::ClauseType;
-use torii_proto::proto::types::member_value::ValueType;
-use torii_proto::proto::types::LogicalOperator;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
     PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest,
@@ -71,7 +54,7 @@ use torii_proto::proto::world::{
     WorldMetadataResponse,
 };
 use torii_proto::proto::{self};
-use torii_proto::{ComparisonOperator, Message};
+use torii_proto::Message;
 
 use anyhow::{anyhow, Error};
 
@@ -186,217 +169,6 @@ impl<P: Provider + Sync> DojoWorld<P> {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
-    async fn entities_all(
-        &self,
-        table: &str,
-        model_relation_table: &str,
-        entity_relation_column: &str,
-        pagination: Pagination,
-        no_hashed_keys: bool,
-        models: Vec<String>,
-    ) -> Result<Page<proto::types::Entity>, Error> {
-        self.query_by_hashed_keys(
-            table,
-            model_relation_table,
-            entity_relation_column,
-            None,
-            pagination,
-            no_hashed_keys,
-            models,
-        )
-        .await
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) async fn query_by_hashed_keys(
-        &self,
-        table: &str,
-        model_relation_table: &str,
-        entity_relation_column: &str,
-        hashed_keys: Option<proto::types::HashedKeysClause>,
-        pagination: Pagination,
-        no_hashed_keys: bool,
-        models: Vec<String>,
-    ) -> Result<Page<proto::types::Entity>, Error> {
-        let where_clause = match &hashed_keys {
-            Some(hashed_keys) => {
-                let ids = hashed_keys
-                    .hashed_keys
-                    .iter()
-                    .map(|_| format!("{table}.id = ?"))
-                    .collect::<Vec<_>>();
-                ids.join(" OR ")
-            }
-            None => String::new(),
-        };
-
-        let bind_values = if let Some(hashed_keys) = hashed_keys {
-            hashed_keys
-                .hashed_keys
-                .iter()
-                .map(|key| format!("{:#x}", Felt::from_bytes_be_slice(key)))
-                .collect::<Vec<_>>()
-        } else {
-            vec![]
-        };
-
-        let models = models
-            .iter()
-            .map(|model| compute_selector_from_tag(model))
-            .collect::<Vec<_>>();
-        let schemas = self
-            .cache
-            .models(&models)
-            .await
-            .map_err(|e| anyhow!("Failed to get models from cache: {}", e))?
-            .iter()
-            .map(|m| m.schema.clone())
-            .collect::<Vec<_>>();
-
-        let having_clause = models
-            .iter()
-            .map(|model| format!("INSTR(model_ids, '{:#x}') > 0", model))
-            .collect::<Vec<_>>()
-            .join(" OR ");
-
-        if table.ends_with("_historical") {
-            return self
-                .fetch_historical_entities(
-                    table,
-                    model_relation_table,
-                    &where_clause,
-                    &having_clause,
-                    bind_values,
-                    pagination,
-                )
-                .await;
-        }
-
-        let page = fetch_entities(
-            &self.sql.pool,
-            &schemas,
-            table,
-            model_relation_table,
-            entity_relation_column,
-            if !where_clause.is_empty() {
-                Some(&where_clause)
-            } else {
-                None
-            },
-            if !having_clause.is_empty() {
-                Some(&having_clause)
-            } else {
-                None
-            },
-            pagination,
-            bind_values,
-        )
-        .await?;
-
-        Ok(Page {
-            items: page
-                .items
-                .par_iter()
-                .map(|row| map_row_to_entity(row, &schemas, no_hashed_keys))
-                .collect::<Result<Vec<_>, Error>>()?,
-            next_cursor: page.next_cursor,
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) async fn query_by_keys(
-        &self,
-        table: &str,
-        model_relation_table: &str,
-        entity_relation_column: &str,
-        keys_clause: &proto::types::KeysClause,
-        pagination: Pagination,
-        no_hashed_keys: bool,
-        models: Vec<String>,
-    ) -> Result<Page<proto::types::Entity>, Error> {
-        let keys_pattern = build_keys_pattern(keys_clause)?;
-        let model_selectors: Vec<String> = keys_clause
-            .models
-            .iter()
-            .map(|model| format!("{:#x}", compute_selector_from_tag(model)))
-            .collect();
-
-        let mut bind_values = vec![keys_pattern];
-        let where_clause = if model_selectors.is_empty() {
-            format!("({table}.keys REGEXP ?)")
-        } else {
-            let model_selectors_len = model_selectors.len();
-            bind_values.extend(model_selectors.clone());
-            bind_values.extend(model_selectors);
-
-            format!(
-                "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
-                 {model_relation_table}.model_id NOT IN ({}))",
-                vec!["?"; model_selectors_len].join(", "),
-                vec!["?"; model_selectors_len].join(", "),
-            )
-        };
-
-        let models = models
-            .iter()
-            .map(|model| compute_selector_from_tag(model))
-            .collect::<Vec<_>>();
-        let schemas = self
-            .cache
-            .models(&models)
-            .await
-            .map_err(|e| anyhow!("Failed to get models from cache: {}", e))?
-            .iter()
-            .map(|m| m.schema.clone())
-            .collect::<Vec<_>>();
-
-        let having_clause = models
-            .iter()
-            .map(|model| format!("INSTR(model_ids, '{:#x}') > 0", model))
-            .collect::<Vec<_>>()
-            .join(" OR ");
-
-        if table.ends_with("_historical") {
-            return self
-                .fetch_historical_entities(
-                    table,
-                    model_relation_table,
-                    &where_clause,
-                    &having_clause,
-                    bind_values,
-                    pagination,
-                )
-                .await;
-        }
-
-        let page = fetch_entities(
-            &self.sql.pool,
-            &schemas,
-            table,
-            model_relation_table,
-            entity_relation_column,
-            Some(&where_clause),
-            if !having_clause.is_empty() {
-                Some(&having_clause)
-            } else {
-                None
-            },
-            pagination,
-            bind_values,
-        )
-        .await?;
-
-        Ok(Page {
-            items: page
-                .items
-                .par_iter()
-                .map(|row| map_row_to_entity(row, &schemas, no_hashed_keys))
-                .collect::<Result<Vec<_>, Error>>()?,
-            next_cursor: page.next_cursor,
-        })
-    }
-
     pub async fn model_metadata(
         &self,
         namespace: &str,
@@ -423,111 +195,6 @@ impl<P: Provider + Sync> DojoWorld<P> {
             schema: serde_json::to_vec(&model.schema).unwrap(),
         })
     }
-
-    async fn retrieve_entities(
-        &self,
-        table: &str,
-        model_relation_table: &str,
-        entity_relation_column: &str,
-        query: proto::types::Query,
-    ) -> Result<proto::world::RetrieveEntitiesResponse, Error> {
-        let pagination = query
-            .pagination
-            .ok_or(QueryError::MissingParam("pagination".into()))?;
-        let pagination: Pagination = pagination.into();
-
-        let page = match query.clause {
-            None => {
-                self.entities_all(
-                    table,
-                    model_relation_table,
-                    entity_relation_column,
-                    pagination,
-                    query.no_hashed_keys,
-                    query.models,
-                )
-                .await?
-            }
-            Some(clause) => {
-                let clause_type = clause
-                    .clause_type
-                    .ok_or(QueryError::MissingParam("clause_type".into()))?;
-
-                match clause_type {
-                    ClauseType::HashedKeys(hashed_keys) => {
-                        self.query_by_hashed_keys(
-                            table,
-                            model_relation_table,
-                            entity_relation_column,
-                            if hashed_keys.hashed_keys.is_empty() {
-                                None
-                            } else {
-                                Some(hashed_keys)
-                            },
-                            pagination,
-                            query.no_hashed_keys,
-                            query.models,
-                        )
-                        .await?
-                    }
-                    ClauseType::Keys(keys) => {
-                        self.query_by_keys(
-                            table,
-                            model_relation_table,
-                            entity_relation_column,
-                            &keys,
-                            pagination,
-                            query.no_hashed_keys,
-                            query.models,
-                        )
-                        .await?
-                    }
-                    ClauseType::Member(member) => {
-                        self.query_by_member(
-                            table,
-                            model_relation_table,
-                            entity_relation_column,
-                            member,
-                            pagination,
-                            query.no_hashed_keys,
-                            query.models,
-                        )
-                        .await?
-                    }
-                    ClauseType::Composite(composite) => {
-                        self.query_by_composite(
-                            table,
-                            model_relation_table,
-                            entity_relation_column,
-                            composite,
-                            pagination,
-                            query.no_hashed_keys,
-                            query.models,
-                        )
-                        .await?
-                    }
-                }
-            }
-        };
-
-        Ok(RetrieveEntitiesResponse {
-            entities: page.items,
-            next_cursor: page.next_cursor.unwrap_or_default(),
-        })
-    }
-}
-
-fn process_event_field(data: &str) -> Result<Vec<Vec<u8>>, Error> {
-    Ok(data
-        .trim_end_matches('/')
-        .split('/')
-        .filter(|&d| !d.is_empty())
-        .map(|d| {
-            Felt::from_str(d)
-                .map_err(ParseError::FromStr)
-                .map(|f| f.to_bytes_be().to_vec())
-        })
-        .collect::<Result<Vec<_>, _>>()?)
 }
 
 type ServiceResult<T> = Result<Response<T>, Status>;
@@ -570,23 +237,14 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         request: Request<RetrieveEntitiesRequest>,
     ) -> Result<Response<RetrieveEntitiesResponse>, Status> {
         let RetrieveEntitiesRequest { query } = request.into_inner();
-        let query = query.ok_or_else(|| Status::invalid_argument("Missing query argument"))?;
+        let query = query.ok_or_else(|| Status::invalid_argument("Missing query argument"))?.try_into().map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
-        let entities = self
-            .retrieve_entities(
-                if query.historical {
-                    ENTITIES_HISTORICAL_TABLE
-                } else {
-                    ENTITIES_TABLE
-                },
-                ENTITIES_MODEL_RELATION_TABLE,
-                ENTITIES_ENTITY_RELATION_COLUMN,
-                query,
-            )
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+        let entities = self.sql.entities(&query).await.map_err(|e| Status::internal(e.to_string()))?;
 
-        Ok(Response::new(entities))
+        Ok(Response::new(RetrieveEntitiesResponse {
+            entities: entities.items.into_iter().map(Into::into).collect(),
+            next_cursor: entities.next_cursor.unwrap_or_default(),
+        }))
     }
 
     async fn retrieve_event_messages(
@@ -594,23 +252,14 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         request: Request<RetrieveEventMessagesRequest>,
     ) -> Result<Response<RetrieveEntitiesResponse>, Status> {
         let RetrieveEventMessagesRequest { query } = request.into_inner();
-        let query = query.ok_or_else(|| Status::invalid_argument("Missing query argument"))?;
+        let query = query.ok_or_else(|| Status::invalid_argument("Missing query argument"))?.try_into().map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
-        let entities = self
-            .retrieve_entities(
-                if query.historical {
-                    EVENT_MESSAGES_HISTORICAL_TABLE
-                } else {
-                    EVENT_MESSAGES_TABLE
-                },
-                EVENT_MESSAGES_MODEL_RELATION_TABLE,
-                EVENT_MESSAGES_ENTITY_RELATION_COLUMN,
-                query,
-            )
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+        let entities = self.sql.event_messages(&query).await.map_err(|e| Status::internal(e.to_string()))?;
 
-        Ok(Response::new(entities))
+        Ok(Response::new(RetrieveEntitiesResponse {
+            entities: entities.items.into_iter().map(Into::into).collect(),
+            next_cursor: entities.next_cursor.unwrap_or_default(),
+        }))
     }
 
     async fn retrieve_events(
@@ -622,12 +271,28 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .query
             .ok_or_else(|| Status::invalid_argument("Missing query argument"))?;
 
+        let keys = query.keys.ok_or_else(|| Status::invalid_argument("Missing keys argument"))?.into();
+        let cursor = if query.cursor.is_empty() {
+            None
+        } else {
+            Some(query.cursor)
+        };
+        let limit = if query.limit > 0 {
+            Some(query.limit as usize)
+        } else {
+            None
+        };
+
         let events = self
-            .retrieve_events(&query)
+            .sql
+            .events(&keys, cursor, limit)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        Ok(Response::new(events))
+        Ok(Response::new(RetrieveEventsResponse {
+            events: events.items.into_iter().map(Into::into).collect(),
+            next_cursor: events.next_cursor.unwrap_or_default(),
+        }))
     }
 
     async fn retrieve_controllers(
@@ -686,23 +351,28 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .collect::<Vec<_>>();
         let token_ids = token_ids
             .iter()
-            .map(|id| crypto_bigint::U256::from_be_slice(id))
+            .map(|id| crypto_bigint::U256::from_be_slice(id).into())
             .collect::<Vec<_>>();
+        let limit = if limit > 0 {
+            Some(limit as usize)
+        } else {
+            None
+        };
+        let cursor = if !cursor.is_empty() {
+            Some(cursor)
+        } else {
+            None
+        };
 
         let tokens = self
-            .retrieve_tokens(
-                contract_addresses,
-                token_ids,
-                if limit > 0 { Some(limit) } else { None },
-                if !cursor.is_empty() {
-                    Some(cursor)
-                } else {
-                    None
-                },
-            )
+            .sql
+            .tokens(&contract_addresses, &token_ids, cursor, limit)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        Ok(Response::new(tokens))
+        Ok(Response::new(RetrieveTokensResponse {
+            tokens: tokens.items.into_iter().map(Into::into).collect(),
+            next_cursor: tokens.next_cursor.unwrap_or_default(),
+        }))
     }
 
     async fn retrieve_token_collections(
@@ -727,24 +397,34 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .collect::<Vec<_>>();
         let token_ids = token_ids
             .iter()
-            .map(|id| crypto_bigint::U256::from_be_slice(id))
+            .map(|id| crypto_bigint::U256::from_be_slice(id).into())
             .collect::<Vec<_>>();
+        let limit = if limit > 0 {
+            Some(limit as usize)
+        } else {
+            None
+        };
+        let cursor = if !cursor.is_empty() {
+            Some(cursor)
+        } else {
+            None
+        };
 
-        let tokens = self
-            .retrieve_token_collections(
-                account_addresses,
-                contract_addresses,
-                token_ids,
-                if limit > 0 { Some(limit) } else { None },
-                if !cursor.is_empty() {
-                    Some(cursor)
-                } else {
-                    None
-                },
+        let token_collections = self
+            .sql
+            .token_collections(
+                &account_addresses,
+                &contract_addresses,
+                &token_ids,
+                cursor,
+                limit,
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        Ok(Response::new(tokens))
+        Ok(Response::new(RetrieveTokenCollectionsResponse {
+            tokens: token_collections.items.into_iter().map(Into::into).collect(),
+            next_cursor: token_collections.next_cursor.unwrap_or_default(),
+        }))
     }
 
     async fn subscribe_tokens(
@@ -819,24 +499,34 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .collect::<Vec<_>>();
         let token_ids = token_ids
             .iter()
-            .map(|id| U256::from_be_slice(id))
+            .map(|id| U256::from_be_slice(id).into())
             .collect::<Vec<_>>();
+        let limit = if limit > 0 {
+            Some(limit as usize)
+        } else {
+            None
+        };
+        let cursor = if !cursor.is_empty() {
+            Some(cursor)
+        } else {
+            None
+        };
 
         let balances = self
-            .retrieve_token_balances(
-                account_addresses,
-                contract_addresses,
-                token_ids,
-                if limit > 0 { Some(limit) } else { None },
-                if !cursor.is_empty() {
-                    Some(cursor)
-                } else {
-                    None
-                },
+            .sql
+            .token_balances(
+                &account_addresses,
+                &contract_addresses,
+                &token_ids,
+                cursor,
+                limit,
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        Ok(Response::new(balances))
+        Ok(Response::new(RetrieveTokenBalancesResponse {
+            balances: balances.items.into_iter().map(Into::into).collect(),
+            next_cursor: balances.next_cursor.unwrap_or_default(),
+        }))
     }
 
     async fn subscribe_indexer(

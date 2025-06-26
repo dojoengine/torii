@@ -17,6 +17,7 @@ use tonic::codec::CompressionEncoding;
 use tonic::transport::Endpoint;
 
 use torii_proto::error::ProtoError;
+use torii_proto::proto::types::EventQuery;
 use torii_proto::proto::world::{
     world_client, PublishMessageBatchRequest, PublishMessageRequest, RetrieveControllersRequest,
     RetrieveControllersResponse, RetrieveEntitiesRequest, RetrieveEntitiesResponse,
@@ -32,7 +33,7 @@ use torii_proto::proto::world::{
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Event, EventQuery, IndexerUpdate, KeysClause, Message, Query, Token, TokenBalance,
+    Clause, Event, IndexerUpdate, KeysClause, Message, Query, Token, TokenBalance,
 };
 
 pub use torii_proto as types;
@@ -309,10 +310,16 @@ impl WorldClient {
 
     pub async fn retrieve_events(
         &mut self,
-        query: EventQuery,
+        keys: Option<KeysClause>,
+        cursor: Option<String>,
+        limit: Option<u32>,
     ) -> Result<RetrieveEventsResponse, Error> {
         let request = RetrieveEventsRequest {
-            query: Some(query.into()),
+            query: Some(EventQuery {
+                keys: keys.map(|k| k.into()),
+                cursor: cursor.unwrap_or_default(),
+                limit: limit.unwrap_or_default(),
+            }.into()),
         };
         self.inner
             .retrieve_events(request)

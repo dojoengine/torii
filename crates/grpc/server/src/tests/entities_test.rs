@@ -21,15 +21,17 @@ use starknet::providers::JsonRpcClient;
 use starknet_crypto::poseidon_hash_many;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
+use tonic::Request;
 use torii_cache::InMemoryCache;
 use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
+use torii_proto::proto::world::world_server::World;
+use torii_proto::proto::world::RetrieveEntitiesRequest;
+use torii_proto::{Clause, KeysClause, PatternMatching, Query};
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::{Pagination, PaginationDirection};
 use torii_sqlite::Sql;
 
-use torii_proto::proto::types::KeysClause;
 use torii_proto::schema::Entity;
 use torii_storage::types::{Contract, ContractType};
 use torii_storage::Storage;
@@ -162,28 +164,22 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         GrpcConfig::default(),
     );
 
+    let query = Query {
+        clause: Some(Clause::Keys(KeysClause {
+            keys: vec![Some(account.address())],
+            pattern_matching: PatternMatching::FixedLen,
+            models: vec![],
+        })),
+        ..Default::default()
+    };
     let entities = grpc
-        .query_by_keys(
-            "entities",
-            "entity_model",
-            "internal_entity_id",
-            &KeysClause {
-                keys: vec![account.address().to_bytes_be().to_vec()],
-                pattern_matching: 0,
-                models: vec![],
-            },
-            Pagination {
-                cursor: None,
-                limit: Some(1),
-                direction: PaginationDirection::Forward,
-                order_by: vec![],
-            },
-            false,
-            vec!["ns-Moves".to_string(), "ns-Position".to_string()],
-        )
+        .retrieve_entities(Request::new(RetrieveEntitiesRequest {
+            query: Some(query.into()),
+        }))
         .await
         .unwrap()
-        .items;
+        .into_inner()
+        .entities;
 
     assert_eq!(entities.len(), 1);
 
