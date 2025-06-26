@@ -388,6 +388,7 @@ fn build_composite_clause(
                 fn prepare_comparison(
                     value: &MemberValue,
                     bind_values: &mut Vec<String>,
+                    historical: bool,
                 ) -> Result<String, Error> {
                     match value {
                         MemberValue::String(value) => {
@@ -395,20 +396,25 @@ fn build_composite_clause(
                             Ok("?".to_string())
                         }
                         MemberValue::Primitive(value) => {
-                            bind_values.push(value.to_sql_value());
+                            let value = if historical {
+                                Ty::Primitive(value.clone()).to_json_value()?.to_string()
+                            } else {
+                                value.to_sql_value()
+                            };
+                            bind_values.push(value);
                             Ok("?".to_string())
                         }
                         MemberValue::List(values) => Ok(format!(
                             "({})",
                             values
                                 .iter()
-                                .map(|v| prepare_comparison(v, bind_values))
+                                .map(|v| prepare_comparison(v, bind_values, historical))
                                 .collect::<Result<Vec<String>, Error>>()?
                                 .join(", ")
                         )),
                     }
                 }
-                let value = prepare_comparison(&member.value, &mut bind_values)?;
+                let value = prepare_comparison(&member.value, &mut bind_values, historical)?;
 
                 let model = member.model.clone();
                 let operator = member.operator.clone();
@@ -416,7 +422,7 @@ fn build_composite_clause(
                 if historical {
                     // For historical data, query the JSON data column
                     where_clauses.push(format!(
-                        "(JSON_EXTRACT({table}.data, '$.{}') {operator} {value})",
+                        "JSON_EXTRACT({table}.data, '$.{}') {operator} {value}",
                         member.member
                     ));
                 } else {
