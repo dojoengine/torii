@@ -10,7 +10,10 @@ use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
 use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
-use torii_proto::{schema::Entity, Clause, CompositeClause, Controller, Event, KeysClause, LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenCollection};
+use torii_proto::{
+    schema::Entity, Clause, CompositeClause, Controller, Event, KeysClause, LogicalOperator, Model,
+    Page, Query, Token, TokenBalance, TokenCollection,
+};
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
     types::{Cursor, ParsedCall},
@@ -18,9 +21,13 @@ use torii_storage::{
 };
 
 use crate::{
-    constants::{ENTITIES_ENTITY_RELATION_COLUMN, ENTITIES_HISTORICAL_TABLE, ENTITIES_MODEL_RELATION_TABLE, ENTITIES_TABLE, EVENT_MESSAGES_ENTITY_RELATION_COLUMN, EVENT_MESSAGES_HISTORICAL_TABLE, EVENT_MESSAGES_MODEL_RELATION_TABLE, EVENT_MESSAGES_TABLE, TOKEN_TRANSFER_TABLE},
+    constants::{
+        ENTITIES_ENTITY_RELATION_COLUMN, ENTITIES_HISTORICAL_TABLE, ENTITIES_MODEL_RELATION_TABLE,
+        ENTITIES_TABLE, EVENT_MESSAGES_ENTITY_RELATION_COLUMN, EVENT_MESSAGES_HISTORICAL_TABLE,
+        EVENT_MESSAGES_MODEL_RELATION_TABLE, EVENT_MESSAGES_TABLE, TOKEN_TRANSFER_TABLE,
+    },
     executor::{RegisterErc20TokenQuery, RegisterNftTokenQuery},
-    model::{decode_cursor, encode_cursor, query_by_composite},
+    model::{decode_cursor, encode_cursor},
     utils::{build_keys_pattern, u256_to_sql_string},
 };
 use crate::{
@@ -293,7 +300,8 @@ impl ReadOnlyStorage for Sql {
             query = query.bind(value);
         }
 
-        let mut balances: Vec<torii_sqlite_types::TokenBalance> = query.fetch_all(&self.pool).await?;
+        let mut balances: Vec<torii_sqlite_types::TokenBalance> =
+            query.fetch_all(&self.pool).await?;
         let next_cursor = if limit.is_some() && balances.len() > limit.unwrap() {
             Some(encode_cursor(&balances.pop().unwrap().id)?)
         } else {
@@ -360,7 +368,8 @@ impl ReadOnlyStorage for Sql {
             query = query.bind(value);
         }
 
-        let mut tokens: Vec<torii_sqlite_types::TokenCollection> = query.fetch_all(&self.pool).await?;
+        let mut tokens: Vec<torii_sqlite_types::TokenCollection> =
+            query.fetch_all(&self.pool).await?;
         let next_cursor = if limit.is_some() && tokens.len() > limit.unwrap() {
             Some(encode_cursor(&tokens.pop().unwrap().contract_address)?)
         } else {
@@ -432,10 +441,7 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Queries the entities from the storage.
-    async fn entities(
-        &self,
-        query: &Query,
-    ) -> Result<Page<Entity>, StorageError> {
+    async fn entities(&self, query: &Query) -> Result<Page<Entity>, StorageError> {
         // Map other clauses to a composite clause
         let composite = match &query.clause {
             Some(Clause::Composite(composite)) => composite.clone(),
@@ -451,20 +457,32 @@ impl ReadOnlyStorage for Sql {
             }
         };
 
-        let table = if query.historical { ENTITIES_HISTORICAL_TABLE } else { ENTITIES_TABLE };
+        let table = if query.historical {
+            ENTITIES_HISTORICAL_TABLE
+        } else {
+            ENTITIES_TABLE
+        };
         let model_relation_table = ENTITIES_MODEL_RELATION_TABLE;
         let entity_relation_column = ENTITIES_ENTITY_RELATION_COLUMN;
 
-        let page = query_by_composite(&self.pool, self.cache.clone(), table, model_relation_table, entity_relation_column, &composite, query.pagination.clone(), query.no_hashed_keys, query.models.clone()).await?;
+        let page = self
+            .query_by_composite(
+                table,
+                model_relation_table,
+                entity_relation_column,
+                &composite,
+                query.pagination.clone(),
+                query.no_hashed_keys,
+                query.models.clone(),
+                query.historical,
+            )
+            .await?;
 
         Ok(page)
     }
 
     /// Queries the event messages from the storage.
-    async fn event_messages(
-        &self,
-        query: &Query,
-    ) -> Result<Page<Entity>, StorageError> {
+    async fn event_messages(&self, query: &Query) -> Result<Page<Entity>, StorageError> {
         // Map other clauses to a composite clause
         let composite = match &query.clause {
             Some(Clause::Composite(composite)) => composite.clone(),
@@ -480,11 +498,26 @@ impl ReadOnlyStorage for Sql {
             }
         };
 
-        let table = if query.historical { EVENT_MESSAGES_HISTORICAL_TABLE } else { EVENT_MESSAGES_TABLE };
+        let table = if query.historical {
+            EVENT_MESSAGES_HISTORICAL_TABLE
+        } else {
+            EVENT_MESSAGES_TABLE
+        };
         let model_relation_table = EVENT_MESSAGES_MODEL_RELATION_TABLE;
         let entity_relation_column = EVENT_MESSAGES_ENTITY_RELATION_COLUMN;
 
-        let page = query_by_composite(&self.pool, self.cache.clone(), table, model_relation_table, entity_relation_column, &composite, query.pagination.clone(), query.no_hashed_keys, query.models.clone()).await?;
+        let page = self
+            .query_by_composite(
+                table,
+                model_relation_table,
+                entity_relation_column,
+                &composite,
+                query.pagination.clone(),
+                query.no_hashed_keys,
+                query.models.clone(),
+                query.historical,
+            )
+            .await?;
 
         Ok(page)
     }

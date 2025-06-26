@@ -11594,6 +11594,7 @@ dependencies = [
  "dojo-utils",
  "dojo-world",
  "flate2",
+ "futures",
  "futures-channel",
  "futures-util",
  "hashlink",
