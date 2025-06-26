@@ -285,24 +285,9 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .query
             .ok_or_else(|| Status::invalid_argument("Missing query argument"))?;
 
-        let keys = query
-            .keys
-            .ok_or_else(|| Status::invalid_argument("Missing keys argument"))?
-            .into();
-        let cursor = if query.cursor.is_empty() {
-            None
-        } else {
-            Some(query.cursor)
-        };
-        let limit = if query.limit > 0 {
-            Some(query.limit as usize)
-        } else {
-            None
-        };
-
         let events = self
             .sql
-            .events(&keys, cursor, limit)
+            .events(query.into())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

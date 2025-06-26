@@ -17,7 +17,6 @@ use tonic::codec::CompressionEncoding;
 use tonic::transport::Endpoint;
 
 use torii_proto::error::ProtoError;
-use torii_proto::proto::types::EventQuery;
 use torii_proto::proto::world::{
     world_client, PublishMessageBatchRequest, PublishMessageRequest, RetrieveControllersRequest,
     RetrieveControllersResponse, RetrieveEntitiesRequest, RetrieveEntitiesResponse,
@@ -32,7 +31,9 @@ use torii_proto::proto::world::{
     UpdateTokenSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
-use torii_proto::{Clause, Event, IndexerUpdate, KeysClause, Message, Query, Token, TokenBalance};
+use torii_proto::{
+    Clause, Event, EventQuery, IndexerUpdate, KeysClause, Message, Query, Token, TokenBalance,
+};
 
 pub use torii_proto as types;
 

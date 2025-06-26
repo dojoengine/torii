@@ -322,7 +322,7 @@ fn map_row_to_entity(
         .map(|schema| {
             let mut ty = schema.clone();
             map_row_to_ty("", &schema.name(), &mut ty, row)?;
-            Ok(ty.as_struct().unwrap().clone().into())
+            Ok(ty.as_struct().unwrap().clone())
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
@@ -397,7 +397,7 @@ fn build_composite_clause(
                         }
                         MemberValue::Primitive(value) => {
                             let value = if historical {
-                                Ty::Primitive(value.clone()).to_json_value()?.to_string()
+                                Ty::Primitive(*value).to_json_value()?.to_string()
                             } else {
                                 value.to_sql_value()
                             };
@@ -469,7 +469,7 @@ impl Sql {
         historical: bool,
     ) -> Result<Page<Entity>, Error> {
         let (where_clause, bind_values) =
-            build_composite_clause(table, model_relation_table, &composite, historical)?;
+            build_composite_clause(table, model_relation_table, composite, historical)?;
 
         let models = models
             .iter()
@@ -633,7 +633,7 @@ impl Sql {
 
                 Ok::<_, Error>(torii_proto::schema::Entity {
                     hashed_keys,
-                    models: vec![schema.as_struct().unwrap().clone().into()],
+                    models: vec![schema.as_struct().unwrap().clone()],
                 })
             })
             // Collect the futures into a Vec

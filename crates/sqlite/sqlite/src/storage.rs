@@ -11,7 +11,8 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    schema::Entity, Clause, CompositeClause, Controller, Event, EventQuery, LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenCollection
+    schema::Entity, Clause, CompositeClause, Controller, Event, EventQuery, LogicalOperator, Model,
+    Page, Query, Token, TokenBalance, TokenCollection,
 };
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
@@ -208,7 +209,7 @@ impl ReadOnlyStorage for Sql {
         if !token_ids.is_empty() {
             let placeholders = vec!["?"; token_ids.len()].join(", ");
             conditions.push(format!("token_id IN ({})", placeholders));
-            bind_values.extend(token_ids.iter().map(|id| u256_to_sql_string(&(*id).into())));
+            bind_values.extend(token_ids.iter().map(u256_to_sql_string));
         }
 
         if let Some(cursor) = cursor {
@@ -276,7 +277,7 @@ impl ReadOnlyStorage for Sql {
                 "SUBSTR(token_id, INSTR(token_id, ':') + 1) IN ({})",
                 placeholders
             ));
-            bind_values.extend(token_ids.iter().map(|id| u256_to_sql_string(&(*id).into())));
+            bind_values.extend(token_ids.iter().map(u256_to_sql_string));
         }
 
         if let Some(cursor) = cursor {
@@ -344,7 +345,7 @@ impl ReadOnlyStorage for Sql {
         if !token_ids.is_empty() {
             let placeholders = vec!["?"; token_ids.len()].join(", ");
             conditions.push(format!("t.token_id IN ({})", placeholders));
-            bind_values.extend(token_ids.iter().map(|id| u256_to_sql_string(&(*id).into())));
+            bind_values.extend(token_ids.iter().map(u256_to_sql_string));
         }
 
         if let Some(cursor) = cursor {
@@ -382,10 +383,7 @@ impl ReadOnlyStorage for Sql {
         })
     }
 
-    async fn events(
-        &self,
-        query: EventQuery,
-    ) -> Result<Page<Event>, StorageError> {
+    async fn events(&self, query: EventQuery) -> Result<Page<Event>, StorageError> {
         let mut bind_values = Vec::new();
         let mut conditions = Vec::new();
 
