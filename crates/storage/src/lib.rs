@@ -3,16 +3,19 @@ use chrono::{DateTime, Utc};
 use dojo_types::schema::Ty;
 use dojo_world::config::WorldMetadata;
 use dojo_world::contracts::abigen::model::Layout;
-use starknet::core::types::{Event, Felt, U256};
+use starknet::core::types::{Felt, U256};
 use std::fmt::Debug;
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
 };
 use torii_math::I256;
+use torii_proto::schema::Entity;
 
 use crate::types::{Cursor, ParsedCall};
-use torii_proto::{Controller, Model, Page};
+use torii_proto::{
+    Controller, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenCollection,
+};
 
 pub mod types;
 pub mod utils;
@@ -28,7 +31,8 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     async fn model(&self, model: Felt) -> Result<Model, StorageError>;
 
     /// Returns the models for the storage.
-    async fn models(&self) -> Result<Vec<Model>, StorageError>;
+    /// If selectors is empty, returns all models.
+    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, StorageError>;
 
     /// Returns the IDs of all the registered tokens
     async fn token_ids(&self) -> Result<HashSet<String>, StorageError>;
@@ -41,6 +45,44 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
         cursor: Option<String>,
         limit: Option<usize>,
     ) -> Result<Page<Controller>, StorageError>;
+
+    /// Returns the tokens for the storage.
+    async fn tokens(
+        &self,
+        contract_addresses: &[Felt],
+        token_ids: &[U256],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<Token>, StorageError>;
+
+    /// Returns the token balances for the storage.
+    async fn token_balances(
+        &self,
+        account_addresses: &[Felt],
+        contract_addresses: &[Felt],
+        token_ids: &[U256],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<TokenBalance>, StorageError>;
+
+    /// Returns the token collections for the storage.
+    async fn token_collections(
+        &self,
+        account_addresses: &[Felt],
+        contract_addresses: &[Felt],
+        token_ids: &[U256],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<TokenCollection>, StorageError>;
+
+    /// Returns events for the storage.
+    async fn events(&self, query: EventQuery) -> Result<Page<Event>, StorageError>;
+
+    /// Returns entities for the storage.
+    async fn entities(&self, query: &Query) -> Result<Page<Entity>, StorageError>;
+
+    /// Returns event messages for the storage.
+    async fn event_messages(&self, query: &Query) -> Result<Page<Entity>, StorageError>;
 }
 
 #[async_trait]
@@ -152,7 +194,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     async fn store_event(
         &self,
         event_id: &str,
-        event: &Event,
+        event: &starknet::core::types::Event,
         transaction_hash: Felt,
         block_timestamp: u64,
     ) -> Result<(), StorageError>;

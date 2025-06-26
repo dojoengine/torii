@@ -1,10 +1,12 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use dojo_types::primitive::SqlType;
 use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
+use torii_cache::Cache;
 use torii_storage::types::{Contract, Cursor};
 use torii_storage::Storage;
 
@@ -43,6 +45,7 @@ pub struct Sql {
     pub pool: Pool<Sqlite>,
     pub executor: UnboundedSender<QueryMessage>,
     pub config: SqlConfig,
+    pub cache: Option<Arc<dyn Cache>>,
 }
 
 impl Sql {
@@ -77,11 +80,19 @@ impl Sql {
             pool: pool.clone(),
             executor,
             config,
+            cache: None,
         };
 
         db.execute().await?;
 
         Ok(db)
+    }
+
+    pub fn with_cache(self, cache: Arc<dyn Cache>) -> Self {
+        Self {
+            cache: Some(cache),
+            ..self
+        }
     }
 
     fn set_entity_model(

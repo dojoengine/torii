@@ -7,21 +7,29 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dojo_types::{naming::compute_selector_from_names, schema::Ty};
 use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
-use starknet::core::types::{Event, U256};
+use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
-use torii_proto::{Controller, Model, Page};
+use torii_proto::{
+    schema::Entity, Clause, CompositeClause, Controller, Event, EventQuery, LogicalOperator, Model,
+    Page, Query, Token, TokenBalance, TokenCollection,
+};
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
     types::{Cursor, ParsedCall},
     ReadOnlyStorage, Storage, StorageError,
 };
+use tracing::warn;
 
 use crate::{
-    constants::TOKEN_TRANSFER_TABLE,
+    constants::{
+        ENTITIES_ENTITY_RELATION_COLUMN, ENTITIES_HISTORICAL_TABLE, ENTITIES_MODEL_RELATION_TABLE,
+        ENTITIES_TABLE, EVENT_MESSAGES_ENTITY_RELATION_COLUMN, EVENT_MESSAGES_HISTORICAL_TABLE,
+        EVENT_MESSAGES_MODEL_RELATION_TABLE, EVENT_MESSAGES_TABLE, TOKEN_TRANSFER_TABLE,
+    },
     executor::{RegisterErc20TokenQuery, RegisterNftTokenQuery},
     model::{decode_cursor, encode_cursor},
-    utils::u256_to_sql_string,
+    utils::{build_keys_pattern, u256_to_sql_string},
 };
 use crate::{
     error::{Error, ParseError},
@@ -36,6 +44,8 @@ use crate::{
     },
     Sql,
 };
+
+pub const LOG_TARGET: &str = "torii::sqlite::storage";
 
 #[async_trait]
 impl ReadOnlyStorage for Sql {
@@ -65,6 +75,18 @@ impl ReadOnlyStorage for Sql {
 
     /// Returns the model metadata for the storage.
     async fn model(&self, selector: Felt) -> Result<Model, StorageError> {
+        if let Some(cache) = &self.cache {
+            if let Ok(model) = cache.model(selector).await {
+                return Ok(model);
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    model_selector = %format!("{:#x}", selector),
+                    "Failed to get model from cache, falling back to database."
+                );
+            }
+        }
+
         let model = sqlx::query_as::<_, SQLModel>("SELECT * FROM models WHERE id = ?")
             .bind(format!("{:#x}", selector))
             .fetch_one(&self.pool)
@@ -90,10 +112,33 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Returns the models for the storage.
-    async fn models(&self) -> Result<Vec<Model>, StorageError> {
-        let models = sqlx::query_as::<_, SQLModel>("SELECT * FROM models")
-            .fetch_all(&self.pool)
-            .await?;
+    /// If selectors is empty, returns all models.
+    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, StorageError> {
+        if let Some(cache) = &self.cache {
+            if let Ok(models) = cache.models(selectors).await {
+                return Ok(models);
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    selectors = ?selectors.iter().map(|s| format!("{:#x}", s)).collect::<Vec<_>>(),
+                    "Failed to get models from cache, falling back to database.",
+                );
+            }
+        }
+
+        let mut query = "SELECT * FROM models".to_string();
+        let mut bind_values = vec![];
+        if !selectors.is_empty() {
+            let placeholders = vec!["?"; selectors.len()].join(", ");
+            query += &format!(" WHERE id IN ({})", placeholders);
+            bind_values.extend(selectors.iter().map(|s| format!("{:#x}", s)));
+        }
+
+        let mut query = sqlx::query_as::<_, SQLModel>(&query);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+        let models = query.fetch_all(&self.pool).await?;
 
         let mut models_metadata = Vec::with_capacity(models.len());
         for model in models {
@@ -181,6 +226,337 @@ impl ReadOnlyStorage for Sql {
             items: controllers.into_iter().map(|c| c.into()).collect(),
             next_cursor,
         })
+    }
+
+    async fn tokens(
+        &self,
+        contract_addresses: &[Felt],
+        token_ids: &[U256],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<Token>, StorageError> {
+        let mut query = "SELECT * FROM tokens".to_string();
+        let mut bind_values = Vec::new();
+        let mut conditions = Vec::new();
+
+        if !contract_addresses.is_empty() {
+            let placeholders = vec!["?"; contract_addresses.len()].join(", ");
+            conditions.push(format!("contract_address IN ({})", placeholders));
+            bind_values.extend(contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+        if !token_ids.is_empty() {
+            let placeholders = vec!["?"; token_ids.len()].join(", ");
+            conditions.push(format!("token_id IN ({})", placeholders));
+            bind_values.extend(token_ids.iter().map(u256_to_sql_string));
+        }
+
+        if let Some(cursor) = cursor {
+            bind_values.push(decode_cursor(&cursor)?);
+            conditions.push("id >= ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            query += &format!(" WHERE {}", conditions.join(" AND "));
+        }
+
+        query += " ORDER BY id";
+
+        if let Some(limit) = limit {
+            query += " LIMIT ?";
+            bind_values.push((limit + 1).to_string());
+        }
+
+        let mut query = sqlx::query_as(&query);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+
+        let mut tokens: Vec<torii_sqlite_types::Token> = query.fetch_all(&self.pool).await?;
+        let next_cursor = if limit.is_some() && tokens.len() > limit.unwrap() {
+            Some(encode_cursor(&tokens.pop().unwrap().id)?)
+        } else {
+            None
+        };
+
+        let tokens = tokens.into_iter().map(|token| token.into()).collect();
+        Ok(Page {
+            items: tokens,
+            next_cursor,
+        })
+    }
+
+    async fn token_balances(
+        &self,
+        account_addresses: &[Felt],
+        contract_addresses: &[Felt],
+        token_ids: &[U256],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<TokenBalance>, StorageError> {
+        let mut query = "SELECT * FROM token_balances".to_string();
+        let mut bind_values = Vec::new();
+        let mut conditions = Vec::new();
+
+        if !account_addresses.is_empty() {
+            let placeholders = vec!["?"; account_addresses.len()].join(", ");
+            conditions.push(format!("account_address IN ({})", placeholders));
+            bind_values.extend(account_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+
+        if !contract_addresses.is_empty() {
+            let placeholders = vec!["?"; contract_addresses.len()].join(", ");
+            conditions.push(format!("contract_address IN ({})", placeholders));
+            bind_values.extend(contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+
+        if !token_ids.is_empty() {
+            let placeholders = vec!["?"; token_ids.len()].join(", ");
+            conditions.push(format!(
+                "SUBSTR(token_id, INSTR(token_id, ':') + 1) IN ({})",
+                placeholders
+            ));
+            bind_values.extend(token_ids.iter().map(u256_to_sql_string));
+        }
+
+        if let Some(cursor) = cursor {
+            bind_values.push(decode_cursor(&cursor)?);
+            conditions.push("id >= ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            query += &format!(" WHERE {}", conditions.join(" AND "));
+        }
+
+        query += " ORDER BY id";
+        if let Some(limit) = limit {
+            query += " LIMIT ?";
+            bind_values.push((limit + 1).to_string());
+        }
+
+        let mut query = sqlx::query_as(&query);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+
+        let mut balances: Vec<torii_sqlite_types::TokenBalance> =
+            query.fetch_all(&self.pool).await?;
+        let next_cursor = if limit.is_some() && balances.len() > limit.unwrap() {
+            Some(encode_cursor(&balances.pop().unwrap().id)?)
+        } else {
+            None
+        };
+
+        let balances = balances.into_iter().map(|balance| balance.into()).collect();
+        Ok(Page {
+            items: balances,
+            next_cursor,
+        })
+    }
+
+    async fn token_collections(
+        &self,
+        account_addresses: &[Felt],
+        contract_addresses: &[Felt],
+        token_ids: &[U256],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<TokenCollection>, StorageError> {
+        let mut query =
+            "SELECT t.contract_address as contract_address, t.name as name, t.symbol as symbol, t.decimals as decimals, t.metadata as metadata, count(t.contract_address) as count FROM tokens t".to_owned();
+
+        let mut bind_values = Vec::new();
+        let mut conditions = Vec::new();
+
+        if !account_addresses.is_empty() {
+            query += "  JOIN token_balances tb ON tb.token_id = CONCAT(t.contract_address, ':', t.token_id)";
+
+            let placeholders = vec!["?"; account_addresses.len()].join(", ");
+            conditions.push(format!("tb.account_address IN ({})", placeholders));
+            bind_values.extend(account_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+
+        if !contract_addresses.is_empty() {
+            let placeholders = vec!["?"; contract_addresses.len()].join(", ");
+            conditions.push(format!("t.contract_address IN ({})", placeholders));
+            bind_values.extend(contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+        if !token_ids.is_empty() {
+            let placeholders = vec!["?"; token_ids.len()].join(", ");
+            conditions.push(format!("t.token_id IN ({})", placeholders));
+            bind_values.extend(token_ids.iter().map(u256_to_sql_string));
+        }
+
+        if let Some(cursor) = cursor {
+            bind_values.push(decode_cursor(&cursor)?);
+            conditions.push("t.id >= ?".to_string());
+        }
+
+        if !conditions.is_empty() {
+            query += &format!(" WHERE {}", conditions.join(" AND "));
+        }
+
+        query += " GROUP BY t.contract_address ORDER BY t.id";
+        if let Some(limit) = limit {
+            query += " LIMIT ?";
+            bind_values.push((limit + 1).to_string());
+        }
+
+        let mut query = sqlx::query_as(&query);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+
+        let mut tokens: Vec<torii_sqlite_types::TokenCollection> =
+            query.fetch_all(&self.pool).await?;
+        let next_cursor = if limit.is_some() && tokens.len() > limit.unwrap() {
+            Some(encode_cursor(&tokens.pop().unwrap().contract_address)?)
+        } else {
+            None
+        };
+
+        let tokens = tokens.into_iter().map(|token| token.into()).collect();
+        Ok(Page {
+            items: tokens,
+            next_cursor,
+        })
+    }
+
+    async fn events(&self, query: EventQuery) -> Result<Page<Event>, StorageError> {
+        let mut bind_values = Vec::new();
+        let mut conditions = Vec::new();
+
+        let keys_pattern = if let Some(keys) = &query.keys {
+            build_keys_pattern(keys)
+        } else {
+            "".to_string()
+        };
+
+        if !keys_pattern.is_empty() {
+            conditions.push("keys REGEXP ?");
+            bind_values.push(keys_pattern);
+        }
+
+        if let Some(cursor) = query.cursor {
+            conditions.push("id >= ?");
+            bind_values.push(decode_cursor(&cursor)?);
+        }
+
+        let mut events_query = r#"
+            SELECT id, keys, data, transaction_hash, executed_at, created_at
+            FROM events
+        "#
+        .to_string();
+
+        if !conditions.is_empty() {
+            events_query = format!("{} WHERE {}", events_query, conditions.join(" AND "));
+        }
+
+        events_query = format!("{} ORDER BY id", events_query);
+        if let Some(limit) = query.limit {
+            events_query += &format!(" LIMIT {}", limit);
+        }
+
+        let mut row_events = sqlx::query_as(&events_query);
+        for value in &bind_values {
+            row_events = row_events.bind(value);
+        }
+        let mut row_events: Vec<torii_sqlite_types::Event> =
+            row_events.fetch_all(&self.pool).await?;
+
+        let next_cursor = if query.limit.is_some() && row_events.len() > query.limit.unwrap() {
+            Some(encode_cursor(&row_events.pop().unwrap().id)?)
+        } else {
+            None
+        };
+
+        let events = row_events.into_iter().map(|event| event.into()).collect();
+
+        Ok(Page {
+            items: events,
+            next_cursor,
+        })
+    }
+
+    /// Queries the entities from the storage.
+    async fn entities(&self, query: &Query) -> Result<Page<Entity>, StorageError> {
+        // Map other clauses to a composite clause
+        let composite = match &query.clause {
+            Some(Clause::Composite(composite)) => composite.clone(),
+            _ => {
+                let mut composite = CompositeClause {
+                    operator: LogicalOperator::And,
+                    clauses: vec![],
+                };
+                if let Some(clause) = &query.clause {
+                    composite.clauses.push(clause.clone());
+                }
+                composite
+            }
+        };
+
+        let table = if query.historical {
+            ENTITIES_HISTORICAL_TABLE
+        } else {
+            ENTITIES_TABLE
+        };
+        let model_relation_table = ENTITIES_MODEL_RELATION_TABLE;
+        let entity_relation_column = ENTITIES_ENTITY_RELATION_COLUMN;
+
+        let page = self
+            .query_by_composite(
+                table,
+                model_relation_table,
+                entity_relation_column,
+                &composite,
+                query.pagination.clone(),
+                query.no_hashed_keys,
+                query.models.clone(),
+                query.historical,
+            )
+            .await?;
+
+        Ok(page)
+    }
+
+    /// Queries the event messages from the storage.
+    async fn event_messages(&self, query: &Query) -> Result<Page<Entity>, StorageError> {
+        // Map other clauses to a composite clause
+        let composite = match &query.clause {
+            Some(Clause::Composite(composite)) => composite.clone(),
+            _ => {
+                let mut composite = CompositeClause {
+                    operator: LogicalOperator::And,
+                    clauses: vec![],
+                };
+                if let Some(clause) = &query.clause {
+                    composite.clauses.push(clause.clone());
+                }
+                composite
+            }
+        };
+
+        let table = if query.historical {
+            EVENT_MESSAGES_HISTORICAL_TABLE
+        } else {
+            EVENT_MESSAGES_TABLE
+        };
+        let model_relation_table = EVENT_MESSAGES_MODEL_RELATION_TABLE;
+        let entity_relation_column = EVENT_MESSAGES_ENTITY_RELATION_COLUMN;
+
+        let page = self
+            .query_by_composite(
+                table,
+                model_relation_table,
+                entity_relation_column,
+                &composite,
+                query.pagination.clone(),
+                query.no_hashed_keys,
+                query.models.clone(),
+                query.historical,
+            )
+            .await?;
+
+        Ok(page)
     }
 }
 
@@ -623,7 +999,7 @@ impl Storage for Sql {
     async fn store_event(
         &self,
         event_id: &str,
-        event: &Event,
+        event: &starknet::core::types::Event,
         transaction_hash: Felt,
         block_timestamp: u64,
     ) -> Result<(), StorageError> {

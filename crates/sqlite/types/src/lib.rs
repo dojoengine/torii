@@ -2,7 +2,7 @@ use core::fmt;
 use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
-use crypto_bigint::{Encoding, U256};
+use crypto_bigint::U256;
 use dojo_types::schema::Ty;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -124,6 +124,28 @@ pub struct Event {
     pub created_at: DateTime<Utc>,
 }
 
+impl From<Event> for torii_proto::Event {
+    fn from(value: Event) -> Self {
+        Self {
+            keys: value
+                .keys
+                .trim_end_matches('/')
+                .split('/')
+                .filter(|k| !k.is_empty())
+                .map(|k| Felt::from_str(k).unwrap())
+                .collect(),
+            data: value
+                .data
+                .trim_end_matches('/')
+                .split('/')
+                .filter(|d| !d.is_empty())
+                .map(|d| Felt::from_str(d).unwrap())
+                .collect(),
+            transaction_hash: Felt::from_str(&value.transaction_hash).unwrap(),
+        }
+    }
+}
+
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OptimisticToken {
@@ -148,24 +170,19 @@ pub struct Token {
     pub metadata: String,
 }
 
-impl From<Token> for torii_proto::proto::types::Token {
+impl From<Token> for torii_proto::Token {
     fn from(value: Token) -> Self {
         Self {
             token_id: if value.token_id.is_empty() {
-                U256::ZERO.to_be_bytes().to_vec()
+                U256::ZERO
             } else {
                 U256::from_be_hex(value.token_id.trim_start_matches("0x"))
-                    .to_be_bytes()
-                    .to_vec()
             },
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
+            contract_address: Felt::from_str(&value.contract_address).unwrap(),
             name: value.name,
             symbol: value.symbol,
-            decimals: value.decimals as u32,
-            metadata: value.metadata.as_bytes().to_vec(),
+            decimals: value.decimals,
+            metadata: value.metadata,
         }
     }
 }
@@ -181,18 +198,15 @@ pub struct TokenCollection {
     pub metadata: String,
 }
 
-impl From<TokenCollection> for torii_proto::proto::types::TokenCollection {
+impl From<TokenCollection> for torii_proto::TokenCollection {
     fn from(value: TokenCollection) -> Self {
         Self {
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
+            contract_address: Felt::from_str(&value.contract_address).unwrap(),
             name: value.name,
             symbol: value.symbol,
-            decimals: value.decimals as u32,
+            decimals: value.decimals,
             count: value.count,
-            metadata: value.metadata.as_bytes().to_vec(),
+            metadata: value.metadata,
         }
     }
 }
@@ -217,28 +231,18 @@ pub struct TokenBalance {
     pub token_id: String,
 }
 
-impl From<TokenBalance> for torii_proto::proto::types::TokenBalance {
+impl From<TokenBalance> for torii_proto::TokenBalance {
     fn from(value: TokenBalance) -> Self {
         let id = value.token_id.split(':').collect::<Vec<&str>>();
 
         Self {
-            balance: U256::from_be_hex(value.balance.trim_start_matches("0x"))
-                .to_be_bytes()
-                .to_vec(),
-            account_address: Felt::from_str(&value.account_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
+            balance: U256::from_be_hex(value.balance.trim_start_matches("0x")),
+            account_address: Felt::from_str(&value.account_address).unwrap(),
+            contract_address: Felt::from_str(&value.contract_address).unwrap(),
             token_id: if id.len() == 2 {
                 U256::from_be_hex(id[1].trim_start_matches("0x"))
-                    .to_be_bytes()
-                    .to_vec()
             } else {
-                U256::ZERO.to_be_bytes().to_vec()
+                U256::ZERO
             },
         }
     }
