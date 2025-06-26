@@ -797,3 +797,38 @@ impl From<proto::types::Event> for Event {
         }
     }
 }
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct EventQuery {
+    pub keys: Option<KeysClause>,
+    pub cursor: Option<String>,
+    pub limit: Option<usize>,
+}
+
+impl From<EventQuery> for proto::types::EventQuery {
+    fn from(value: EventQuery) -> Self {
+        Self {
+            keys: value.keys.map(|k| k.into()),
+            cursor: value.cursor.unwrap_or_default(),
+            limit: value.limit.unwrap_or_default() as u32,
+        }
+    }
+}
+
+impl From<proto::types::EventQuery> for EventQuery {
+    fn from(value: proto::types::EventQuery) -> Self {
+        Self {
+            keys: value.keys.map(|k| k.into()),
+            cursor: if value.cursor.is_empty() {
+                None
+            } else {
+                Some(value.cursor)
+            },
+            limit: if value.limit == 0 {
+                None
+            } else {
+                Some(value.limit as usize)
+            },
+        }
+    }
+}

@@ -11,8 +11,7 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    schema::Entity, Clause, CompositeClause, Controller, Event, KeysClause, LogicalOperator, Model,
-    Page, Query, Token, TokenBalance, TokenCollection,
+    schema::Entity, Clause, CompositeClause, Controller, Event, EventQuery, LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenCollection
 };
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
@@ -385,21 +384,23 @@ impl ReadOnlyStorage for Sql {
 
     async fn events(
         &self,
-        keys: &KeysClause,
-        cursor: Option<String>,
-        limit: Option<usize>,
+        query: EventQuery,
     ) -> Result<Page<Event>, StorageError> {
         let mut bind_values = Vec::new();
         let mut conditions = Vec::new();
 
-        let keys_pattern = build_keys_pattern(keys);
+        let keys_pattern = if let Some(keys) = &query.keys {
+            build_keys_pattern(keys)
+        } else {
+            "".to_string()
+        };
 
         if !keys_pattern.is_empty() {
             conditions.push("keys REGEXP ?");
             bind_values.push(keys_pattern);
         }
 
-        if let Some(cursor) = cursor {
+        if let Some(cursor) = query.cursor {
             conditions.push("id >= ?");
             bind_values.push(decode_cursor(&cursor)?);
         }
@@ -415,7 +416,7 @@ impl ReadOnlyStorage for Sql {
         }
 
         events_query = format!("{} ORDER BY id", events_query);
-        if let Some(limit) = limit {
+        if let Some(limit) = query.limit {
             events_query += &format!(" LIMIT {}", limit);
         }
 
@@ -426,7 +427,7 @@ impl ReadOnlyStorage for Sql {
         let mut row_events: Vec<torii_sqlite_types::Event> =
             row_events.fetch_all(&self.pool).await?;
 
-        let next_cursor = if limit.is_some() && row_events.len() > limit.unwrap() {
+        let next_cursor = if query.limit.is_some() && row_events.len() > query.limit.unwrap() {
             Some(encode_cursor(&row_events.pop().unwrap().id)?)
         } else {
             None

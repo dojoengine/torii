@@ -308,19 +308,10 @@ impl WorldClient {
 
     pub async fn retrieve_events(
         &mut self,
-        keys: Option<KeysClause>,
-        cursor: Option<String>,
-        limit: Option<u32>,
+        query: EventQuery,
     ) -> Result<RetrieveEventsResponse, Error> {
         let request = RetrieveEventsRequest {
-            query: Some(
-                EventQuery {
-                    keys: keys.map(|k| k.into()),
-                    cursor: cursor.unwrap_or_default(),
-                    limit: limit.unwrap_or_default(),
-                }
-                .into(),
-            ),
+            query: Some(query.into()),
         };
         self.inner
             .retrieve_events(request)
