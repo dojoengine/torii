@@ -422,7 +422,7 @@ fn build_composite_clause(
                 if historical {
                     // For historical data, query the JSON data column
                     where_clauses.push(format!(
-                        "JSON_EXTRACT({table}.data, '$.{}') {operator} {value}",
+                        "CAST(JSON_EXTRACT({table}.data, '$.{}') AS TEXT) {operator} {value}",
                         member.member
                     ));
                 } else {
@@ -604,7 +604,6 @@ impl Sql {
             query = query.bind(value);
         }
         query = query.bind(query_limit);
-
         let db_entities: Vec<(String, String, String, String, String)> =
             query.fetch_all(&self.pool).await?;
 
