@@ -7,7 +7,6 @@ use std::task::{Context, Poll};
 use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use rand::Rng;
-use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
@@ -15,6 +14,7 @@ use tokio::sync::mpsc::{
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::ContractCursor as ContractUpdated;
+use torii_storage::ReadOnlyStorage;
 use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeIndexerResponse;
@@ -45,31 +45,20 @@ impl IndexerManager {
 
     pub async fn add_subscriber(
         &self,
-        pool: &Pool<Sqlite>,
+        storage: Arc<dyn ReadOnlyStorage>,
         contract_address: Felt,
     ) -> Result<Receiver<Result<SubscribeIndexerResponse, tonic::Status>>, Error> {
         let id = rand::thread_rng().gen::<usize>();
         let (sender, receiver) = channel(self.subscription_buffer_size);
 
-        let mut statement = "SELECT * FROM contracts".to_string();
+        let contracts = storage.cursors().await?;
 
-        let contracts: Vec<ContractUpdated> = if contract_address != Felt::ZERO {
-            statement += " WHERE id = ?";
-
-            sqlx::query_as(&statement)
-                .bind(format!("{:#x}", contract_address))
-                .fetch_all(pool)
-                .await?
-        } else {
-            sqlx::query_as(&statement).fetch_all(pool).await?
-        };
-
-        for contract in contracts {
+        for (contract_address, contract) in contracts {
             let _ = sender
                 .send(Ok(SubscribeIndexerResponse {
-                    head: contract.head.unwrap(),
-                    tps: contract.tps.unwrap(),
-                    last_block_timestamp: contract.last_block_timestamp.unwrap(),
+                    head: contract.head.unwrap() as i64,
+                    tps: contract.tps.unwrap() as i64,
+                    last_block_timestamp: contract.last_block_timestamp.unwrap() as i64,
                     contract_address: contract_address.to_bytes_be().to_vec(),
                 }))
                 .await;
