@@ -160,4 +160,139 @@ mod tests {
         println!("{}", out);
         assert_eq!(out, expected, "Failed to convert timestamp to String");
     }
+
+    #[test]
+    fn test_build_keys_pattern_fixed_len_specific_keys() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::ONE), Some(Felt::TWO)],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x1/0x2/$");
+    }
+
+    #[test]
+    fn test_build_keys_pattern_fixed_len_with_wildcards() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::ONE), None, Some(Felt::TWO)],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x1/0x[0-9a-fA-F]+/0x2/$");
+    }
+
+    #[test]
+    fn test_build_keys_pattern_variable_len_specific_keys() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::ONE), Some(Felt::TWO)],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x1/0x2(/0x[0-9a-fA-F]+)*/$");
+    }
+
+    #[test]
+    fn test_build_keys_pattern_variable_len_with_wildcards() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::ONE), None],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x1/0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$");
+    }
+
+    #[test]
+    fn test_build_keys_pattern_all_wildcards_fixed_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![None, None, None],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x[0-9a-fA-F]+/0x[0-9a-fA-F]+/0x[0-9a-fA-F]+/$");
+    }
+
+    #[test]
+    fn test_build_keys_pattern_all_wildcards_variable_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![None, None],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(
+            pattern,
+            "^0x[0-9a-fA-F]+/0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$"
+        );
+    }
+
+    #[test]
+    fn test_build_keys_pattern_empty_keys_fixed_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x[0-9a-fA-F]+/$");
+    }
+
+    #[test]
+    fn test_build_keys_pattern_empty_keys_variable_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$");
+    }
+
+    #[test]
+    fn test_build_keys_pattern_single_specific_key_fixed_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::from_hex("0x123").unwrap())],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x123/$");
+    }
+
+    #[test]
+    fn test_build_keys_pattern_single_specific_key_variable_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::from_hex("0x123").unwrap())],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x123(/0x[0-9a-fA-F]+)*/$");
+    }
+
+    #[test]
+    fn test_build_keys_pattern_single_wildcard_fixed_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![None],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x[0-9a-fA-F]+/$");
+    }
+
+    #[test]
+    fn test_build_keys_pattern_single_wildcard_variable_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![None],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$");
+    }
 }

@@ -1,12 +1,6 @@
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
-use base64::Engine;
 use dojo_types::naming::compute_selector_from_tag;
-use flate2::read::DeflateDecoder;
-use flate2::write::DeflateEncoder;
-use flate2::Compression;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::collections::HashSet;
-use std::io::prelude::*;
 use std::str::FromStr;
 use torii_proto::schema::Entity;
 use torii_proto::{
@@ -28,6 +22,7 @@ use starknet::core::types::Felt;
 
 use super::error::{self, Error};
 use crate::constants::{SQL_DEFAULT_LIMIT, SQL_MAX_JOINS};
+use crate::cursor::{build_cursor_conditions, build_cursor_values, decode_cursor, encode_cursor};
 use crate::error::{ParseError, QueryError};
 use crate::utils::build_keys_pattern;
 use crate::Sql;
@@ -581,21 +576,23 @@ impl Sql {
         let query_limit = limit + 1;
 
         let query_str = format!(
-            "SELECT {table}.id, {table}.data, {table}.model_id, {table}.event_id, \
-             group_concat({model_relation_table}.model_id) as model_ids
+            "SELECT {table}.id, {table}.data, {table}.model_id, {table}.event_id, group_concat({model_relation_table}.model_id) as model_ids
             FROM {table}
             JOIN {model_relation_table} ON {table}.id = {model_relation_table}.entity_id
             {where_clause}
             GROUP BY {table}.event_id
-            {}
+            {having_part}
             ORDER BY {table}.event_id {order_direction}
-            LIMIT ?
-            ",
-            if !having_clause.is_empty() {
+            LIMIT ?",
+            table = table,
+            model_relation_table = model_relation_table,
+            where_clause = where_clause,
+            having_part = if !having_clause.is_empty() {
                 format!("HAVING {}", having_clause)
             } else {
                 String::new()
-            }
+            },
+            order_direction = order_direction
         );
 
         let mut query = sqlx::query_as(&query_str);
@@ -850,69 +847,6 @@ impl Sql {
 }
 
 // Helper functions
-fn build_cursor_conditions(
-    pagination: &Pagination,
-    cursor_values: Option<&[String]>,
-    table_name: &str,
-) -> Result<(Vec<String>, Vec<String>), Error> {
-    let mut conditions = Vec::new();
-    let mut binds = Vec::new();
-
-    if let Some(values) = cursor_values {
-        let expected_len = if pagination.order_by.is_empty() {
-            1
-        } else {
-            pagination.order_by.len() + 1
-        };
-        if values.len() != expected_len {
-            return Err(Error::Query(QueryError::InvalidCursor(
-                "Invalid cursor values length".to_string(),
-            )));
-        }
-
-        if pagination.order_by.is_empty() {
-            let operator = if pagination.direction == PaginationDirection::Forward {
-                "<"
-            } else {
-                ">"
-            };
-            conditions.push(format!("{}.event_id {} ?", table_name, operator));
-            binds.push(values[0].clone());
-        } else {
-            for (i, (ob, val)) in pagination.order_by.iter().zip(values).enumerate() {
-                let operator = match (&ob.direction, &pagination.direction) {
-                    (OrderDirection::Asc, PaginationDirection::Forward) => ">",
-                    (OrderDirection::Asc, PaginationDirection::Backward) => "<",
-                    (OrderDirection::Desc, PaginationDirection::Forward) => "<",
-                    (OrderDirection::Desc, PaginationDirection::Backward) => ">",
-                };
-
-                let condition = if i == 0 {
-                    format!("[{}.{}] {} ?", ob.model, ob.member, operator)
-                } else {
-                    let prev = (0..i)
-                        .map(|j| {
-                            let prev_ob = &pagination.order_by[j];
-                            format!("[{}.{}] = ?", prev_ob.model, prev_ob.member)
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" AND ");
-                    format!("({} AND [{}.{}] {} ?)", prev, ob.model, ob.member, operator)
-                };
-                conditions.push(condition);
-                binds.push(val.clone());
-            }
-            let operator = if pagination.direction == PaginationDirection::Forward {
-                "<"
-            } else {
-                ">"
-            };
-            conditions.push(format!("{}.event_id {} ?", table_name, operator));
-            binds.push(values.last().unwrap().clone());
-        }
-    }
-    Ok((conditions, binds))
-}
 
 fn combine_where_clauses(base: Option<&str>, cursor_conditions: &[String]) -> String {
     let mut parts = Vec::new();
@@ -950,71 +884,305 @@ fn build_query(
     query
 }
 
-fn build_cursor_values(pagination: &Pagination, row: &SqliteRow) -> Result<Vec<String>, Error> {
-    if pagination.order_by.is_empty() {
-        Ok(vec![row.try_get("event_id")?])
-    } else {
-        let mut values = Vec::new();
-        for ob in &pagination.order_by {
-            let col = format!("{}.{}", ob.model, ob.member);
-            // Try as String first
-            match row.try_get::<String, &str>(&col) {
-                Ok(val) => values.push(val),
-                Err(_) => {
-                    // Try as i64 (INTEGER)
-                    match row.try_get::<i64, &str>(&col) {
-                        Ok(val) => values.push(val.to_string()),
-                        Err(e) => {
-                            return Err(Error::Query(QueryError::InvalidCursor(format!(
-                                "Could not extract cursor value for column {}: {}",
-                                col, e
-                            ))));
-                        }
-                    }
-                }
-            }
-        }
-        values.push(row.try_get("event_id")?);
-        Ok(values)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use starknet::core::types::Felt;
+    use torii_proto::{
+        Clause, ComparisonOperator, CompositeClause, KeysClause, LogicalOperator, MemberClause,
+        MemberValue,
+    };
+
+    #[test]
+    fn test_build_composite_clause_hashed_keys() {
+        let hashed_keys = vec![Felt::ONE, Felt::TWO];
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::HashedKeys(hashed_keys.clone())],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "(entities.id IN (?, ?))");
+        assert_eq!(
+            bind_values,
+            hashed_keys
+                .iter()
+                .map(|k| format!("{:#x}", k))
+                .collect::<Vec<_>>()
+        );
     }
-}
 
-/// Compresses a string using Deflate and then encodes it using Base64 (no padding).
-pub fn encode_cursor(value: &str) -> Result<String, Error> {
-    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(value.as_bytes()).map_err(|e| {
-        Error::Query(QueryError::InvalidCursor(format!(
-            "Cursor compression error: {}",
-            e
-        )))
-    })?;
-    let compressed_bytes = encoder.finish().map_err(|e| {
-        Error::Query(QueryError::InvalidCursor(format!(
-            "Cursor compression finish error: {}",
-            e
-        )))
-    })?;
+    #[test]
+    fn test_build_composite_clause_keys_no_models() {
+        let keys = KeysClause {
+            keys: vec![Some(Felt::ONE), Some(Felt::TWO)],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Keys(keys)],
+        };
 
-    Ok(BASE64_URL_SAFE_NO_PAD.encode(&compressed_bytes))
-}
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
 
-/// Decodes a Base64 (no padding) string and then decompresses it using Deflate.
-pub fn decode_cursor(encoded_cursor: &str) -> Result<String, Error> {
-    let compressed_cursor_bytes = BASE64_URL_SAFE_NO_PAD.decode(encoded_cursor).map_err(|e| {
-        Error::Query(QueryError::InvalidCursor(format!(
-            "Base64 decode error: {}",
-            e
-        )))
-    })?;
+        assert_eq!(where_clause, "(entities.keys REGEXP ?)");
+        assert_eq!(bind_values.len(), 1);
+    }
 
-    let mut decoder = DeflateDecoder::new(&compressed_cursor_bytes[..]);
-    let mut decompressed_str = String::new();
-    decoder.read_to_string(&mut decompressed_str).map_err(|e| {
-        Error::Query(QueryError::InvalidCursor(format!(
-            "Decompression error: {}",
-            e
-        )))
-    })?;
+    #[test]
+    fn test_build_composite_clause_keys_with_models() {
+        let keys = KeysClause {
+            keys: vec![Some(Felt::ONE), Some(Felt::TWO)],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec!["ns-Player".to_string(), "ns-Position".to_string()],
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Keys(keys)],
+        };
 
-    Ok(decompressed_str)
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert!(where_clause.contains("entities.keys REGEXP ?"));
+        assert!(where_clause.contains("entity_model.model_id IN"));
+        assert!(where_clause.contains("entity_model.model_id NOT IN"));
+        assert_eq!(bind_values.len(), 5); // keys pattern + 2 model selectors + 2 model selectors again
+    }
+
+    #[test]
+    fn test_build_composite_clause_member_non_historical() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Eq,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "([Player].[score] = ?)");
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_member_historical() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Eq,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, true).unwrap();
+
+        assert!(where_clause.contains("CAST(JSON_EXTRACT(entities.data, '$.score') AS TEXT) = ?"));
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_member_string_value() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "name".to_string(),
+            operator: ComparisonOperator::Eq,
+            value: MemberValue::String("Alice".to_string()),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "([Player].[name] = ?)");
+        assert_eq!(bind_values, vec!["Alice".to_string()]);
+    }
+
+    #[test]
+    fn test_build_composite_clause_member_list_value() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "level".to_string(),
+            operator: ComparisonOperator::In,
+            value: MemberValue::List(vec![
+                MemberValue::Primitive(Primitive::U32(Some(1))),
+                MemberValue::Primitive(Primitive::U32(Some(2))),
+                MemberValue::Primitive(Primitive::U32(Some(3))),
+            ]),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "([Player].[level] IN (?, ?, ?))");
+        assert_eq!(bind_values.len(), 3);
+    }
+
+    #[test]
+    fn test_build_composite_clause_or_operator() {
+        let member1 = MemberClause {
+            model: "Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Gt,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let member2 = MemberClause {
+            model: "Player".to_string(),
+            member: "level".to_string(),
+            operator: ComparisonOperator::Lt,
+            value: MemberValue::Primitive(Primitive::U32(Some(5))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::Or,
+            clauses: vec![Clause::Member(member1), Clause::Member(member2)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert!(where_clause.contains("([Player].[score] > ?)"));
+        assert!(where_clause.contains("([Player].[level] < ?)"));
+        assert!(where_clause.contains(" OR "));
+        assert_eq!(bind_values.len(), 2);
+    }
+
+    #[test]
+    fn test_build_composite_clause_and_operator() {
+        let member1 = MemberClause {
+            model: "Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Gt,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let member2 = MemberClause {
+            model: "Player".to_string(),
+            member: "level".to_string(),
+            operator: ComparisonOperator::Lt,
+            value: MemberValue::Primitive(Primitive::U32(Some(5))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member1), Clause::Member(member2)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert!(where_clause.contains("([Player].[score] > ?)"));
+        assert!(where_clause.contains("([Player].[level] < ?)"));
+        assert!(where_clause.contains(" AND "));
+        assert_eq!(bind_values.len(), 2);
+    }
+
+    #[test]
+    fn test_build_composite_clause_nested() {
+        let inner_composite = CompositeClause {
+            operator: LogicalOperator::Or,
+            clauses: vec![
+                Clause::Member(MemberClause {
+                    model: "Player".to_string(),
+                    member: "score".to_string(),
+                    operator: ComparisonOperator::Gt,
+                    value: MemberValue::Primitive(Primitive::U32(Some(100))),
+                }),
+                Clause::Member(MemberClause {
+                    model: "Player".to_string(),
+                    member: "level".to_string(),
+                    operator: ComparisonOperator::Gt,
+                    value: MemberValue::Primitive(Primitive::U32(Some(10))),
+                }),
+            ],
+        };
+
+        let outer_composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![
+                Clause::Composite(inner_composite),
+                Clause::Member(MemberClause {
+                    model: "Player".to_string(),
+                    member: "active".to_string(),
+                    operator: ComparisonOperator::Eq,
+                    value: MemberValue::Primitive(Primitive::Bool(Some(true))),
+                }),
+            ],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &outer_composite, false).unwrap();
+
+        assert!(where_clause.contains("([Player].[score] > ?)"));
+        assert!(where_clause.contains("([Player].[level] > ?)"));
+        assert!(where_clause.contains("([Player].[active] = ?)"));
+        assert!(where_clause.contains(" OR "));
+        assert!(where_clause.contains(" AND "));
+        assert_eq!(bind_values.len(), 3);
+    }
+
+    #[test]
+    fn test_build_composite_clause_empty() {
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "");
+        assert_eq!(bind_values.len(), 0);
+    }
+
+    #[test]
+    fn test_build_composite_clause_mixed_types() {
+        let hashed_keys = vec![Felt::ONE];
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Eq,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let keys = KeysClause {
+            keys: vec![Some(Felt::ONE)],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![
+                Clause::HashedKeys(hashed_keys),
+                Clause::Member(member),
+                Clause::Keys(keys),
+            ],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert!(where_clause.contains("(entities.id IN (?))"));
+        assert!(where_clause.contains("([Player].[score] = ?)"));
+        assert!(where_clause.contains("(entities.keys REGEXP ?)"));
+        assert!(where_clause.contains(" AND "));
+        assert_eq!(bind_values.len(), 3);
+    }
 }

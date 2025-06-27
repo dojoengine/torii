@@ -28,8 +28,9 @@ use crate::{
         ENTITIES_TABLE, EVENT_MESSAGES_ENTITY_RELATION_COLUMN, EVENT_MESSAGES_HISTORICAL_TABLE,
         EVENT_MESSAGES_MODEL_RELATION_TABLE, EVENT_MESSAGES_TABLE, TOKEN_TRANSFER_TABLE,
     },
+    cursor::{decode_cursor, encode_cursor},
     executor::{RegisterErc20TokenQuery, RegisterNftTokenQuery},
-    model::{decode_cursor, encode_cursor, map_row_to_ty},
+    model::map_row_to_ty,
     utils::{build_keys_pattern, u256_to_sql_string},
 };
 use crate::{
