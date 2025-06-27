@@ -85,7 +85,11 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     async fn event_messages(&self, query: &Query) -> Result<Page<Entity>, StorageError>;
 
     /// Returns the model data of an entity.
-    async fn entity_model(&self, entity_id: Felt, model_selector: Felt) -> Result<Option<Ty>, StorageError>;
+    async fn entity_model(
+        &self,
+        entity_id: Felt,
+        model_selector: Felt,
+    ) -> Result<Option<Ty>, StorageError>;
 }
 
 #[async_trait]

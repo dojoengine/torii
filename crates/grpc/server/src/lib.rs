@@ -530,7 +530,10 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         let SubscribeIndexerRequest { contract_address } = request.into_inner();
         let rx = self
             .indexer_manager
-            .add_subscriber(self.storage.clone(), Felt::from_bytes_be_slice(&contract_address))
+            .add_subscriber(
+                self.storage.clone(),
+                Felt::from_bytes_be_slice(&contract_address),
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(
@@ -711,9 +714,14 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .collect::<Vec<_>>();
         let typed_data = serde_json::from_str::<TypedData>(&message)
             .map_err(|_| Status::invalid_argument("Invalid message"))?;
-        let entity_id = validate_and_set_entity(self.storage.clone(), &typed_data, &signature, &self.provider)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+        let entity_id = validate_and_set_entity(
+            self.storage.clone(),
+            &typed_data,
+            &signature,
+            &self.provider,
+        )
+        .await
+        .map_err(|e| Status::internal(e.to_string()))?;
 
         let message = Message { signature, message };
         if let Some(tx) = &self.cross_messaging_tx {
@@ -742,10 +750,14 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             let typed_data = serde_json::from_str::<TypedData>(&message)
                 .map_err(|_| Status::invalid_argument("Invalid message"))?;
 
-            let entity_id =
-                validate_and_set_entity(self.storage.clone(), &typed_data, &signature, &self.provider)
-                    .await
-                    .map_err(|e| Status::internal(e.to_string()))?;
+            let entity_id = validate_and_set_entity(
+                self.storage.clone(),
+                &typed_data,
+                &signature,
+                &self.provider,
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
             responses.push(PublishMessageResponse {
                 entity_id: entity_id.to_bytes_be().to_vec(),
             });

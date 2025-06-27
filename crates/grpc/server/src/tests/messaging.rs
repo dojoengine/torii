@@ -56,16 +56,18 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let db = Arc::new(Sql::new(
-        pool.clone(),
-        sender,
-        &[Contract {
-            address: Felt::ZERO,
-            r#type: ContractType::WORLD,
-        }],
-    )
-    .await
-    .unwrap());
+    let db = Arc::new(
+        Sql::new(
+            pool.clone(),
+            sender,
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
+        )
+        .await
+        .unwrap(),
+    );
 
     // Register the model for our Message
     db.register_model(
@@ -251,16 +253,18 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         executor1.run().await.unwrap();
     });
 
-    let mut db1 = Arc::new(Sql::new(
-        pool1.clone(),
-        sender1,
-        &[Contract {
-            address: Felt::ZERO,
-            r#type: ContractType::WORLD,
-        }],
-    )
-    .await
-    .unwrap());
+    let mut db1 = Arc::new(
+        Sql::new(
+            pool1.clone(),
+            sender1,
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
+        )
+        .await
+        .unwrap(),
+    );
 
     // Setup second server components
     let (shutdown_tx2, _) = broadcast::channel(1);
@@ -272,16 +276,18 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         executor2.run().await.unwrap();
     });
 
-    let mut db2 = Arc::new(Sql::new(
-        pool2.clone(),
-        sender2,
-        &[Contract {
-            address: Felt::ZERO,
-            r#type: ContractType::WORLD,
-        }],
-    )
-    .await
-    .unwrap());
+    let mut db2 = Arc::new(
+        Sql::new(
+            pool2.clone(),
+            sender2,
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
+        )
+        .await
+        .unwrap(),
+    );
 
     // Register the message model on both databases
     let message_model = Ty::Struct(Struct {
