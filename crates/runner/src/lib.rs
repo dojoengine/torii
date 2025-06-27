@@ -354,7 +354,7 @@ impl Runner {
 
         let (grpc_addr, grpc_server) = torii_grpc_server::new(
             shutdown_rx,
-            db.clone(),
+            storage.clone(),
             provider.clone(),
             world_address,
             cross_messaging_tx,
