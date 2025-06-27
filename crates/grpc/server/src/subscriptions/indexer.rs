@@ -14,7 +14,7 @@ use tokio::sync::mpsc::{
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::ContractCursor as ContractUpdated;
-use torii_storage::ReadOnlyStorage;
+use torii_storage::Storage;
 use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeIndexerResponse;
@@ -45,7 +45,7 @@ impl IndexerManager {
 
     pub async fn add_subscriber(
         &self,
-        storage: Arc<dyn ReadOnlyStorage>,
+        storage: Arc<dyn Storage>,
         contract_address: Felt,
     ) -> Result<Receiver<Result<SubscribeIndexerResponse, tonic::Status>>, Error> {
         let id = rand::thread_rng().gen::<usize>();

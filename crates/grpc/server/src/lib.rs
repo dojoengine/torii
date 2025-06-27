@@ -33,7 +33,7 @@ use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
 use torii_messaging::validate_and_set_entity;
 use torii_proto::error::ProtoError;
-use torii_storage::ReadOnlyStorage;
+use torii_storage::Storage;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use self::subscriptions::entity::EntityManager;
@@ -58,7 +58,7 @@ use anyhow::{anyhow, Error};
 
 #[derive(Debug, Clone)]
 pub struct DojoWorld<P: Provider + Sync> {
-    storage: Arc<dyn ReadOnlyStorage>,
+    storage: Arc<dyn Storage>,
     provider: Arc<P>,
     world_address: Felt,
     cross_messaging_tx: Option<UnboundedSender<Message>>,
@@ -73,7 +73,7 @@ pub struct DojoWorld<P: Provider + Sync> {
 
 impl<P: Provider + Sync> DojoWorld<P> {
     pub fn new(
-        storage: Arc<dyn ReadOnlyStorage>,
+        storage: Arc<dyn Storage>,
         provider: Arc<P>,
         world_address: Felt,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
@@ -788,7 +788,7 @@ impl Default for GrpcConfig {
 
 pub async fn new<P: Provider + Sync + Send + 'static>(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
-    storage: Arc<dyn ReadOnlyStorage>,
+    storage: Arc<dyn Storage>,
     provider: Arc<P>,
     world_address: Felt,
     cross_messaging_tx: UnboundedSender<Message>,

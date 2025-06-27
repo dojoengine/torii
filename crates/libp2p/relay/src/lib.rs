@@ -2,6 +2,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::net::Ipv4Addr;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use std::{fs, io};
 
@@ -24,7 +25,7 @@ use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use torii_messaging::validate_and_set_entity;
 use torii_proto::Message;
-use torii_sqlite::Sql;
+use torii_storage::Storage;
 use tracing::{info, trace, warn};
 use webrtc::tokio::Certificate;
 
@@ -49,14 +50,14 @@ pub struct Behaviour {
 #[allow(missing_debug_implementations)]
 pub struct Relay<P: Provider + Sync> {
     swarm: Swarm<Behaviour>,
-    db: Sql,
+    storage: Arc<dyn Storage>,
     provider: Box<P>,
     cross_messaging_rx: UnboundedReceiver<Message>,
 }
 
 impl<P: Provider + Sync> Relay<P> {
     pub fn new(
-        pool: Sql,
+        storage: Arc<dyn Storage>,
         provider: P,
         port: u16,
         port_webrtc: u16,
@@ -65,7 +66,7 @@ impl<P: Provider + Sync> Relay<P> {
         cert_path: Option<String>,
     ) -> Result<(Self, UnboundedSender<Message>), Error> {
         Self::new_with_peers(
-            pool,
+            storage,
             provider,
             port,
             port_webrtc,
@@ -78,7 +79,7 @@ impl<P: Provider + Sync> Relay<P> {
 
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_peers(
-        pool: Sql,
+        storage: Arc<dyn Storage>,
         provider: P,
         port: u16,
         port_webrtc: u16,
@@ -220,7 +221,7 @@ impl<P: Provider + Sync> Relay<P> {
         Ok((
             Self {
                 swarm,
-                db: pool,
+                storage,
                 provider: Box::new(provider),
                 cross_messaging_rx: rx,
             },
@@ -281,7 +282,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 let typed_data =
                                     serde_json::from_str::<TypedData>(&data.message).unwrap();
                                 if let Err(e) = validate_and_set_entity(
-                                    &self.db,
+                                    self.storage.clone(),
                                     &typed_data,
                                     &data.signature,
                                     &self.provider,
