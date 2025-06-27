@@ -187,16 +187,51 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     assert!(!entity_id.is_empty());
 
     // Verify the message was stored in the database by checking entities table
-    let entity_exists: bool = sqlx::query_scalar("SELECT COUNT(*) > 0 FROM entities WHERE id = ?")
-        .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let message: String =
+        sqlx::query_scalar("SELECT message FROM [types_test-Message] WHERE internal_id = ?")
+            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
 
-    assert!(
-        entity_exists,
-        "Entity should exist in database after publishing message"
+    assert_eq!(message, "test message");
+
+    // Publish again with another message
+    typed_data.message.insert(
+        "message".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String("test message 2".to_string()),
     );
+
+    let message_hash = typed_data.encode(account_data.address).unwrap();
+    let signature =
+        SigningKey::from_secret_scalar(account_data.private_key.clone().unwrap().secret_scalar())
+            .sign(&message_hash)
+            .unwrap();
+
+    let request = Request::new(PublishMessageRequest {
+        message: serde_json::to_string(&typed_data).unwrap(),
+        signature: vec![
+            signature.r.to_bytes_be().to_vec(),
+            signature.s.to_bytes_be().to_vec(),
+        ],
+    });
+
+    // Publish the message using the gRPC service
+    let response = grpc.publish_message(request).await.unwrap();
+    let entity_id = response.into_inner().entity_id;
+
+    // Verify the entity was created
+    assert!(!entity_id.is_empty());
+
+    // Verify the message was stored in the database by checking entities table
+    let message: String =
+        sqlx::query_scalar("SELECT message FROM [types_test-Message] WHERE internal_id = ?")
+            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    assert_eq!(message, "test message 2");
 }
 
 #[tokio::test(flavor = "multi_thread")]
