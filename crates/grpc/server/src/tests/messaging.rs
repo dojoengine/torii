@@ -235,10 +235,9 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
 
     // Check that message is not updated with bad signature
     let message_hash = typed_data.encode(account_data.address).unwrap();
-    let signature =
-        SigningKey::from_secret_scalar(Felt::ZERO)
-            .sign(&message_hash)
-            .unwrap();
+    let signature = SigningKey::from_secret_scalar(Felt::ZERO)
+        .sign(&message_hash)
+        .unwrap();
 
     let request = Request::new(PublishMessageRequest {
         message: serde_json::to_string(&typed_data).unwrap(),
@@ -529,7 +528,6 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     );
 }
 
-
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10)]
 async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
@@ -670,7 +668,11 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
     // Sign the message hash with the WRONG private key (simulating impersonation attempt)
     let message_hash = typed_data.encode(account_data.address).unwrap();
     let bad_signature = SigningKey::from_secret_scalar(
-        wrong_account_data.private_key.clone().unwrap().secret_scalar()
+        wrong_account_data
+            .private_key
+            .clone()
+            .unwrap()
+            .secret_scalar(),
     )
     .sign(&message_hash)
     .unwrap();
@@ -689,7 +691,10 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
     let result = grpc.publish_message(request).await;
 
     // Verify that the request failed due to invalid signature
-    assert!(result.is_err(), "Publishing message with bad signature should fail");
+    assert!(
+        result.is_err(),
+        "Publishing message with bad signature should fail"
+    );
 
     // Verify that no entity was created in the database
     let entity_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM entities")
@@ -697,5 +702,8 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    assert_eq!(entity_count, 0, "No entities should be created when signature verification fails");
+    assert_eq!(
+        entity_count, 0,
+        "No entities should be created when signature verification fails"
+    );
 }
