@@ -574,7 +574,7 @@ impl ReadOnlyStorage for Sql {
         let row: Option<SqliteRow> = query.fetch_optional(&self.pool).await?;
         match row {
             Some(row) => {
-                map_row_to_ty("", &schema.name(), &mut schema, &row)?;
+                map_row_to_ty("", "", &mut schema, &row)?;
                 Ok(Some(schema))
             }
             None => Ok(None),
