@@ -16,8 +16,6 @@ serde_json.workspace = true
 starknet.workspace = true
 thiserror.workspace = true
 tracing = "0.1.41"
-sqlx = { workspace = true }
-torii-sqlite = { workspace = true }
 dojo-types = { workspace = true }
 dojo-world = { workspace = true }
 rand = { workspace = true }
@@ -29,6 +27,7 @@ libp2p-webrtc = { git = "https://github.com/libp2p/rust-libp2p", features = [ "p
 torii-messaging = { workspace = true }
 crypto-bigint = { workspace = true }
 torii-proto = { workspace = true }
+torii-storage = { workspace = true }
 tokio.workspace = true
 
 [dev-dependencies]

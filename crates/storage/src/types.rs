@@ -9,6 +9,7 @@ pub struct Cursor {
     pub last_pending_block_tx: Option<Felt>,
     pub head: Option<u64>,
     pub last_block_timestamp: Option<u64>,
+    pub tps: Option<u64>,
 }
 
 /// Represents a parsed call within a transaction

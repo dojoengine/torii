@@ -31,11 +31,9 @@ use tonic::codec::CompressionEncoding;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
-use torii_cache::Cache;
 use torii_messaging::validate_and_set_entity;
 use torii_proto::error::ProtoError;
-use torii_sqlite::Sql;
-use torii_storage::ReadOnlyStorage;
+use torii_storage::Storage;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use self::subscriptions::entity::EntityManager;
@@ -60,8 +58,7 @@ use anyhow::{anyhow, Error};
 
 #[derive(Debug, Clone)]
 pub struct DojoWorld<P: Provider + Sync> {
-    sql: Sql,
-    cache: Arc<dyn Cache>,
+    storage: Arc<dyn Storage>,
     provider: Arc<P>,
     world_address: Felt,
     cross_messaging_tx: Option<UnboundedSender<Message>>,
@@ -76,8 +73,7 @@ pub struct DojoWorld<P: Provider + Sync> {
 
 impl<P: Provider + Sync> DojoWorld<P> {
     pub fn new(
-        sql: Sql,
-        cache: Arc<dyn Cache>,
+        storage: Arc<dyn Storage>,
         provider: Arc<P>,
         world_address: Felt,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
@@ -117,8 +113,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         )));
 
         Self {
-            sql,
-            cache,
+            storage,
             provider,
             world_address,
             cross_messaging_tx,
@@ -135,15 +130,8 @@ impl<P: Provider + Sync> DojoWorld<P> {
 
 impl<P: Provider + Sync> DojoWorld<P> {
     pub async fn world(&self) -> Result<proto::types::World, Error> {
-        let world_address = sqlx::query_scalar(&format!(
-            "SELECT contract_address FROM contracts WHERE id = '{:#x}'",
-            self.world_address
-        ))
-        .fetch_one(&self.sql.pool)
-        .await?;
-
         let models = self
-            .cache
+            .storage
             .models(&[])
             .await
             .map_err(|e| anyhow!("Failed to get models from cache: {}", e))?;
@@ -164,7 +152,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         }
 
         Ok(proto::types::World {
-            world_address,
+            world_address: format!("{:#x}", self.world_address),
             models: models_metadata,
         })
     }
@@ -178,7 +166,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let model = compute_selector_from_names(namespace, name);
 
         let model = self
-            .cache
+            .storage
             .model(model)
             .await
             .map_err(|e| anyhow!("Failed to get model from cache: {}", e))?;
@@ -243,7 +231,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
         let entities = self
-            .sql
+            .storage
             .entities(&query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -265,7 +253,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
         let entities = self
-            .sql
+            .storage
             .event_messages(&query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -286,7 +274,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .ok_or_else(|| Status::invalid_argument("Missing query argument"))?;
 
         let events = self
-            .sql
+            .storage
             .events(query.into())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -313,7 +301,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .collect::<Vec<_>>();
 
         let controllers = self
-            .sql
+            .storage
             .controllers(
                 &contract_addresses,
                 &usernames,
@@ -367,7 +355,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         };
 
         let tokens = self
-            .sql
+            .storage
             .tokens(&contract_addresses, &token_ids, cursor, limit)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -413,7 +401,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         };
 
         let token_collections = self
-            .sql
+            .storage
             .token_collections(
                 &account_addresses,
                 &contract_addresses,
@@ -519,7 +507,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         };
 
         let balances = self
-            .sql
+            .storage
             .token_balances(
                 &account_addresses,
                 &contract_addresses,
@@ -542,7 +530,10 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         let SubscribeIndexerRequest { contract_address } = request.into_inner();
         let rx = self
             .indexer_manager
-            .add_subscriber(&self.sql.pool, Felt::from_bytes_be_slice(&contract_address))
+            .add_subscriber(
+                self.storage.clone(),
+                Felt::from_bytes_be_slice(&contract_address),
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(
@@ -723,9 +714,14 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .collect::<Vec<_>>();
         let typed_data = serde_json::from_str::<TypedData>(&message)
             .map_err(|_| Status::invalid_argument("Invalid message"))?;
-        let entity_id = validate_and_set_entity(&self.sql, &typed_data, &signature, &self.provider)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+        let entity_id = validate_and_set_entity(
+            self.storage.clone(),
+            &typed_data,
+            &signature,
+            &self.provider,
+        )
+        .await
+        .map_err(|e| Status::internal(e.to_string()))?;
 
         let message = Message { signature, message };
         if let Some(tx) = &self.cross_messaging_tx {
@@ -754,10 +750,14 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             let typed_data = serde_json::from_str::<TypedData>(&message)
                 .map_err(|_| Status::invalid_argument("Invalid message"))?;
 
-            let entity_id =
-                validate_and_set_entity(&self.sql, &typed_data, &signature, &self.provider)
-                    .await
-                    .map_err(|e| Status::internal(e.to_string()))?;
+            let entity_id = validate_and_set_entity(
+                self.storage.clone(),
+                &typed_data,
+                &signature,
+                &self.provider,
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
             responses.push(PublishMessageResponse {
                 entity_id: entity_id.to_bytes_be().to_vec(),
             });
@@ -800,8 +800,7 @@ impl Default for GrpcConfig {
 
 pub async fn new<P: Provider + Sync + Send + 'static>(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
-    sql: Sql,
-    cache: Arc<dyn Cache>,
+    storage: Arc<dyn Storage>,
     provider: Arc<P>,
     world_address: Felt,
     cross_messaging_tx: UnboundedSender<Message>,
@@ -822,8 +821,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
         .unwrap();
 
     let world = DojoWorld::new(
-        sql,
-        cache,
+        storage,
         provider,
         world_address,
         Some(cross_messaging_tx),

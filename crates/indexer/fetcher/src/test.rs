@@ -56,6 +56,7 @@ async fn test_range_one_block() {
             last_pending_block_tx: None,
             head: Some(eternum_block - 1),
             last_block_timestamp: None,
+            tps: None,
         },
     )]);
 

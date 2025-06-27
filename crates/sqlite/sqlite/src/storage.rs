@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dojo_types::{naming::compute_selector_from_names, schema::Ty};
 use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
+use sqlx::sqlite::SqliteRow;
 use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
@@ -28,7 +29,7 @@ use crate::{
         EVENT_MESSAGES_MODEL_RELATION_TABLE, EVENT_MESSAGES_TABLE, TOKEN_TRANSFER_TABLE,
     },
     executor::{RegisterErc20TokenQuery, RegisterNftTokenQuery},
-    model::{decode_cursor, encode_cursor},
+    model::{decode_cursor, encode_cursor, map_row_to_ty},
     utils::{build_keys_pattern, u256_to_sql_string},
 };
 use crate::{
@@ -67,6 +68,7 @@ impl ReadOnlyStorage for Sql {
                 last_pending_block_tx,
                 head: c.head.map(|h| h as u64),
                 last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
+                tps: c.tps.map(|t| t as u64),
             };
             cursors_map.insert(contract_address, cursor);
         }
@@ -557,6 +559,26 @@ impl ReadOnlyStorage for Sql {
             .await?;
 
         Ok(page)
+    }
+
+    /// Returns the model data of an entity.
+    async fn entity_model(
+        &self,
+        entity_id: Felt,
+        model_selector: Felt,
+    ) -> Result<Option<Ty>, StorageError> {
+        let mut schema = self.model(model_selector).await?.schema;
+        let query = format!("SELECT * FROM [{}] WHERE internal_id = ?", schema.name());
+        let mut query = sqlx::query(&query);
+        query = query.bind(format!("{:#x}", entity_id));
+        let row: Option<SqliteRow> = query.fetch_optional(&self.pool).await?;
+        match row {
+            Some(row) => {
+                map_row_to_ty("", &schema.name(), &mut schema, &row)?;
+                Ok(Some(schema))
+            }
+            None => Ok(None),
+        }
     }
 }
 

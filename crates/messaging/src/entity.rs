@@ -1,8 +1,9 @@
+use std::sync::Arc;
+
 use dojo_types::naming::is_valid_tag;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::naming::compute_selector_from_tag;
 use starknet::core::types::Felt;
-use torii_sqlite::Sql;
 use torii_storage::Storage;
 
 use crate::error::MessagingError;
@@ -52,7 +53,7 @@ pub fn get_identity_from_ty(ty: &Ty) -> Result<Felt, MessagingError> {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn set_entity(
-    db: &Sql,
+    db: Arc<dyn Storage>,
     ty: Ty,
     block_timestamp: u64,
     entity_id: Felt,
