@@ -566,14 +566,19 @@ impl ReadOnlyStorage for Sql {
         &self,
         entity_id: Felt,
         model_selector: Felt,
-    ) -> Result<Ty, StorageError> {
+    ) -> Result<Option<Ty>, StorageError> {
         let mut schema = self.model(model_selector).await?.schema;
         let query = format!("SELECT * FROM [{}] WHERE internal_id = ?", schema.name());
         let mut query = sqlx::query(&query);
         query = query.bind(format!("{:#x}", entity_id));
-        let row: SqliteRow = query.fetch_one(&self.pool).await?;
-        map_row_to_ty("", &schema.name(), &mut schema, &row)?;
-        Ok(schema)
+        let row: Option<SqliteRow> = query.fetch_optional(&self.pool).await?;
+        match row {
+            Some(row) => {
+                map_row_to_ty("", &schema.name(), &mut schema, &row)?;
+                Ok(Some(schema))
+            }
+            None => Ok(None),
+        }
     }
 }
 

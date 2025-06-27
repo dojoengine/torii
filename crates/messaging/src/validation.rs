@@ -8,7 +8,7 @@ use starknet::core::utils::get_selector_from_name;
 use starknet::providers::Provider;
 use starknet_core::types::typed_data::TypeReference;
 use starknet_core::types::TypedData;
-use torii_storage::ReadOnlyStorage;
+use torii_storage::Storage;
 
 use crate::error::MessagingError;
 use crate::parsing::parse_value_to_ty;
@@ -37,7 +37,7 @@ pub async fn validate_signature<P: Provider + Sync>(
         .map(|res| res[0] != Felt::ZERO)
 }
 
-pub async fn validate_message(storage: Arc<dyn ReadOnlyStorage>, message: &TypedData) -> Result<Ty, MessagingError> {
+pub async fn validate_message(storage: Arc<dyn Storage>, message: &TypedData) -> Result<Ty, MessagingError> {
     let tag = message.primary_type().signature_ref_repr();
     if !is_valid_tag(&tag) {
         return Err(MessagingError::InvalidModelTag(tag));

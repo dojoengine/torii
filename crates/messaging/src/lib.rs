@@ -3,7 +3,7 @@ pub mod error;
 pub mod parsing;
 pub mod validation;
 
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 pub use entity::{get_identity_from_ty, set_entity, ty_keys, ty_model_id};
 pub use error::MessagingError;
@@ -12,14 +12,14 @@ use sqlx::types::chrono::Utc;
 use starknet::providers::Provider;
 use starknet_core::types::{typed_data::TypeReference, TypedData};
 use starknet_crypto::{poseidon_hash_many, Felt};
-use torii_storage::ReadOnlyStorage;
+use torii_storage::Storage;
 use tracing::{debug, info, warn};
 pub use validation::{validate_message, validate_signature};
 
 pub const LOG_TARGET: &str = "torii::messaging";
 
 pub async fn validate_and_set_entity<P: Provider + Sync>(
-    storage: Arc<dyn ReadOnlyStorage>,
+    storage: Arc<dyn Storage>,
     message: &TypedData,
     signature: &[Felt],
     provider: &P,
@@ -62,34 +62,18 @@ pub async fn validate_and_set_entity<P: Provider + Sync>(
     let entity_id = poseidon_hash_many(&keys);
     let model_id = ty_model_id(&ty).unwrap();
 
-    // select only identity field, if doesn't exist, empty string
-    let query = format!("SELECT identity FROM [{}] WHERE internal_id = ?", ty.name());
-    let entity_identity: Option<String> = match sqlx::query_scalar(&query)
-        .bind(format!("{:#x}", entity_id))
-        .fetch_optional(&mut *pool)
-        .await
-    {
-        Ok(entity_identity) => entity_identity,
-        Err(e) => {
-            warn!(
-                target: LOG_TARGET,
-                error = ?e,
-                "Fetching entity."
-            );
-            return Err(MessagingError::SqliteError(e.into()));
-        }
-    };
+    let entity_model = storage.entity_model(entity_id, model_id).await?;
 
-    let entity_identity = match entity_identity {
-        Some(identity) => match Felt::from_str(&identity) {
+    let entity_identity = match entity_model {
+        Some(entity_model) => match get_identity_from_ty(&entity_model) {
             Ok(identity) => identity,
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
                     error = ?e,
-                    "Parsing identity."
+                    "Getting identity from entity model."
                 );
-                return Err(e.into());
+                return Err(e);
             }
         },
         _ => match get_identity_from_ty(&ty) {
@@ -131,7 +115,7 @@ pub async fn validate_and_set_entity<P: Provider + Sync>(
     }
 
     if let Err(e) = set_entity(
-        db,
+        storage.clone(),
         ty.clone(),
         Utc::now().timestamp() as u64,
         entity_id,
