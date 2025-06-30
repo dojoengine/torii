@@ -51,6 +51,10 @@ pub const LOG_TARGET: &str = "torii::sqlite::storage";
 
 #[async_trait]
 impl ReadOnlyStorage for Sql {
+    fn as_read_only(&self) -> &dyn ReadOnlyStorage {
+        self
+    }
+
     /// Returns the cursors for all contracts.
     async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, StorageError> {
         let cursors = sqlx::query_as::<_, ContractCursor>("SELECT * FROM contracts")

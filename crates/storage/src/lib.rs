@@ -24,6 +24,8 @@ pub type StorageError = Box<dyn Error + Send + Sync>;
 
 #[async_trait]
 pub trait ReadOnlyStorage: Send + Sync + Debug {
+    fn as_read_only(&self) -> &dyn ReadOnlyStorage;
+
     /// Returns the cursors for all contracts.
     async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, StorageError>;
 
