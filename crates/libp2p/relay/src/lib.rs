@@ -234,7 +234,7 @@ impl<P: Provider + Sync> Relay<P> {
             select! {
                 Some(message) = self.cross_messaging_rx.recv() => {
                     match self.swarm.behaviour_mut().gossipsub.publish(
-                        IdentTopic::new(constants::MESSAGING_TOPIC),
+                        IdentTopic::new(constants::PEERS_MESSAGING_TOPIC),
                         serde_json::to_string(&message).unwrap(),
                     ).map_err(Error::PublishError) {
                         Ok(_) => info!(target: LOG_TARGET, "Forwarded message to peers."),
