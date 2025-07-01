@@ -13,7 +13,7 @@ use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
     schema::Entity, Clause, CompositeClause, Controller, Event, EventQuery, LogicalOperator, Model,
-    Page, Query, Token, TokenBalance, TokenCollection,
+    Page, Pagination, PaginationDirection, Query, Token, TokenBalance, TokenCollection,
 };
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
@@ -26,11 +26,11 @@ use crate::{
     constants::{
         ENTITIES_ENTITY_RELATION_COLUMN, ENTITIES_HISTORICAL_TABLE, ENTITIES_MODEL_RELATION_TABLE,
         ENTITIES_TABLE, EVENT_MESSAGES_ENTITY_RELATION_COLUMN, EVENT_MESSAGES_HISTORICAL_TABLE,
-        EVENT_MESSAGES_MODEL_RELATION_TABLE, EVENT_MESSAGES_TABLE, TOKEN_TRANSFER_TABLE,
+        EVENT_MESSAGES_MODEL_RELATION_TABLE, EVENT_MESSAGES_TABLE, SQL_DEFAULT_LIMIT, TOKEN_TRANSFER_TABLE,
     },
     cursor::{decode_cursor, encode_cursor},
     executor::{RegisterErc20TokenQuery, RegisterNftTokenQuery},
-    model::map_row_to_ty,
+    model::{map_row_to_ty, QueryBuilder},
     utils::{build_keys_pattern, u256_to_sql_string},
 };
 use crate::{
@@ -187,44 +187,61 @@ impl ReadOnlyStorage for Sql {
         cursor: Option<String>,
         limit: Option<usize>,
     ) -> Result<Page<Controller>, StorageError> {
-        let mut query =
-            "SELECT address, username, deployed_at FROM controllers WHERE 1=1".to_string();
-        let mut args = vec![];
+        let mut selections = vec![
+            "address".to_string(),
+            "username".to_string(), 
+            "deployed_at".to_string(),
+        ];
+        
+        let mut where_conditions = vec![];
+        let mut bind_values = vec![];
 
         if !usernames.is_empty() {
             let placeholders = vec!["?"; usernames.len()].join(", ");
-            query += &format!(" AND id IN ({})", placeholders);
-            args.extend(usernames.iter().cloned());
+            where_conditions.push(format!("id IN ({})", placeholders));
+            bind_values.extend(usernames.iter().cloned());
         }
 
         if !contract_addresses.is_empty() {
             let placeholders = vec!["?"; contract_addresses.len()].join(", ");
-            query += &format!(" AND address IN ({})", placeholders);
-            args.extend(contract_addresses.iter().map(|a| format!("{:#064x}", a)));
+            where_conditions.push(format!("address IN ({})", placeholders));
+            bind_values.extend(contract_addresses.iter().map(|a| format!("{:#064x}", a)));
         }
 
-        if let Some(cursor) = cursor {
-            query += " AND deployed_at < ?";
-            args.push(decode_cursor(&cursor)?);
+        // Handle cursor manually for deployed_at field
+        if let Some(cursor) = &cursor {
+            where_conditions.push("deployed_at < ?".to_string());
+            bind_values.push(decode_cursor(cursor)?);
         }
 
-        query += " ORDER BY deployed_at DESC";
+        let actual_limit = limit.unwrap_or(SQL_DEFAULT_LIMIT as usize);
+        let fetch_limit = actual_limit + 1; // +1 to check for more pages
 
-        if let Some(limit) = limit {
-            query += " LIMIT ?";
-            args.push((limit + 1).to_string());
+        let query_builder = QueryBuilder::new()
+            .with_selections(selections)
+            .with_where_conditions(where_conditions)
+            .with_bind_values(bind_values)
+            .with_order_clause("deployed_at DESC".to_string())
+            .with_limit(fetch_limit as u32);
+
+        let query = query_builder.build_simple_query("controllers");
+
+        let mut stmt = sqlx::query_as::<_, torii_sqlite_types::Controller>(&query);
+        for value in query_builder.all_bind_values() {
+            stmt = stmt.bind(value);
         }
+        stmt = stmt.bind(query_builder.limit);
 
-        let mut query = sqlx::query_as::<_, torii_sqlite_types::Controller>(&query);
-        for arg in args {
-            query = query.bind(arg);
+        let mut controllers = stmt.fetch_all(&self.pool).await?;
+        
+        // Handle pagination manually since this doesn't follow entity pattern
+        let has_more = controllers.len() > actual_limit;
+        if has_more {
+            controllers.truncate(actual_limit);
         }
-
-        let mut controllers = query.fetch_all(&self.pool).await?;
-        let next_cursor = if limit.is_some() && controllers.len() > limit.unwrap() {
-            Some(encode_cursor(
-                &controllers.pop().unwrap().deployed_at.to_rfc3339(),
-            )?)
+        
+        let next_cursor = if has_more && !controllers.is_empty() {
+            Some(encode_cursor(&controllers.last().unwrap().deployed_at.to_rfc3339())?)
         } else {
             None
         };
@@ -242,45 +259,55 @@ impl ReadOnlyStorage for Sql {
         cursor: Option<String>,
         limit: Option<usize>,
     ) -> Result<Page<Token>, StorageError> {
-        let mut query = "SELECT * FROM tokens".to_string();
+        let selections = vec!["*".to_string()];
+        let mut where_conditions = Vec::new();
         let mut bind_values = Vec::new();
-        let mut conditions = Vec::new();
 
         if !contract_addresses.is_empty() {
             let placeholders = vec!["?"; contract_addresses.len()].join(", ");
-            conditions.push(format!("contract_address IN ({})", placeholders));
+            where_conditions.push(format!("contract_address IN ({})", placeholders));
             bind_values.extend(contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
         }
         if !token_ids.is_empty() {
             let placeholders = vec!["?"; token_ids.len()].join(", ");
-            conditions.push(format!("token_id IN ({})", placeholders));
+            where_conditions.push(format!("token_id IN ({})", placeholders));
             bind_values.extend(token_ids.iter().map(u256_to_sql_string));
         }
 
-        if let Some(cursor) = cursor {
-            bind_values.push(decode_cursor(&cursor)?);
-            conditions.push("id >= ?".to_string());
+        // Handle cursor manually for id field
+        if let Some(cursor) = &cursor {
+            where_conditions.push("id >= ?".to_string());
+            bind_values.push(decode_cursor(cursor)?);
         }
 
-        if !conditions.is_empty() {
-            query += &format!(" WHERE {}", conditions.join(" AND "));
+        let actual_limit = limit.unwrap_or(SQL_DEFAULT_LIMIT as usize);
+        let fetch_limit = actual_limit + 1; // +1 to check for more pages
+
+        let query_builder = QueryBuilder::new()
+            .with_selections(selections)
+            .with_where_conditions(where_conditions)
+            .with_bind_values(bind_values)
+            .with_order_clause("id ASC".to_string())
+            .with_limit(fetch_limit as u32);
+
+        let query = query_builder.build_simple_query("tokens");
+
+        let mut stmt = sqlx::query_as(&query);
+        for value in query_builder.all_bind_values() {
+            stmt = stmt.bind(value);
         }
+        stmt = stmt.bind(query_builder.limit);
 
-        query += " ORDER BY id";
-
-        if let Some(limit) = limit {
-            query += " LIMIT ?";
-            bind_values.push((limit + 1).to_string());
+        let mut tokens: Vec<torii_sqlite_types::Token> = stmt.fetch_all(&self.pool).await?;
+        
+        // Handle pagination manually
+        let has_more = tokens.len() > actual_limit;
+        if has_more {
+            tokens.truncate(actual_limit);
         }
-
-        let mut query = sqlx::query_as(&query);
-        for value in bind_values {
-            query = query.bind(value);
-        }
-
-        let mut tokens: Vec<torii_sqlite_types::Token> = query.fetch_all(&self.pool).await?;
-        let next_cursor = if limit.is_some() && tokens.len() > limit.unwrap() {
-            Some(encode_cursor(&tokens.pop().unwrap().id)?)
+        
+        let next_cursor = if has_more && !tokens.is_empty() {
+            Some(encode_cursor(&tokens.last().unwrap().id)?)
         } else {
             None
         };
@@ -300,55 +327,66 @@ impl ReadOnlyStorage for Sql {
         cursor: Option<String>,
         limit: Option<usize>,
     ) -> Result<Page<TokenBalance>, StorageError> {
-        let mut query = "SELECT * FROM token_balances".to_string();
+        let selections = vec!["*".to_string()];
+        let mut where_conditions = Vec::new();
         let mut bind_values = Vec::new();
-        let mut conditions = Vec::new();
 
         if !account_addresses.is_empty() {
             let placeholders = vec!["?"; account_addresses.len()].join(", ");
-            conditions.push(format!("account_address IN ({})", placeholders));
+            where_conditions.push(format!("account_address IN ({})", placeholders));
             bind_values.extend(account_addresses.iter().map(|addr| format!("{:#x}", addr)));
         }
 
         if !contract_addresses.is_empty() {
             let placeholders = vec!["?"; contract_addresses.len()].join(", ");
-            conditions.push(format!("contract_address IN ({})", placeholders));
+            where_conditions.push(format!("contract_address IN ({})", placeholders));
             bind_values.extend(contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
         }
 
         if !token_ids.is_empty() {
             let placeholders = vec!["?"; token_ids.len()].join(", ");
-            conditions.push(format!(
+            where_conditions.push(format!(
                 "SUBSTR(token_id, INSTR(token_id, ':') + 1) IN ({})",
                 placeholders
             ));
             bind_values.extend(token_ids.iter().map(u256_to_sql_string));
         }
 
-        if let Some(cursor) = cursor {
-            bind_values.push(decode_cursor(&cursor)?);
-            conditions.push("id >= ?".to_string());
+        // Handle cursor manually for id field
+        if let Some(cursor) = &cursor {
+            where_conditions.push("id >= ?".to_string());
+            bind_values.push(decode_cursor(cursor)?);
         }
 
-        if !conditions.is_empty() {
-            query += &format!(" WHERE {}", conditions.join(" AND "));
-        }
+        let actual_limit = limit.unwrap_or(SQL_DEFAULT_LIMIT as usize);
+        let fetch_limit = actual_limit + 1; // +1 to check for more pages
 
-        query += " ORDER BY id";
-        if let Some(limit) = limit {
-            query += " LIMIT ?";
-            bind_values.push((limit + 1).to_string());
-        }
+        let query_builder = QueryBuilder::new()
+            .with_selections(selections)
+            .with_where_conditions(where_conditions)
+            .with_bind_values(bind_values)
+            .with_order_clause("id ASC".to_string())
+            .with_limit(fetch_limit as u32);
 
-        let mut query = sqlx::query_as(&query);
-        for value in bind_values {
-            query = query.bind(value);
+        let query = query_builder.build_simple_query("token_balances");
+
+        let mut stmt = sqlx::query_as(&query);
+        for value in query_builder.all_bind_values() {
+            stmt = stmt.bind(value);
         }
+        stmt = stmt.bind(query_builder.limit);
 
         let mut balances: Vec<torii_sqlite_types::TokenBalance> =
-            query.fetch_all(&self.pool).await?;
-        let next_cursor = if limit.is_some() && balances.len() > limit.unwrap() {
-            Some(encode_cursor(&balances.pop().unwrap().id)?)
+            stmt.fetch_all(&self.pool).await?;
+        
+        // Handle pagination manually
+        let has_more = balances.len() > actual_limit;
+        if has_more {
+            balances.truncate(actual_limit);
+        }
+        
+        let next_cursor = if has_more && !balances.is_empty() {
+            Some(encode_cursor(&balances.last().unwrap().id)?)
         } else {
             None
         };
@@ -368,55 +406,77 @@ impl ReadOnlyStorage for Sql {
         cursor: Option<String>,
         limit: Option<usize>,
     ) -> Result<Page<TokenCollection>, StorageError> {
-        let mut query =
-            "SELECT t.contract_address as contract_address, t.name as name, t.symbol as symbol, t.decimals as decimals, t.metadata as metadata, count(t.contract_address) as count FROM tokens t".to_owned();
+        let selections = vec![
+            "t.contract_address as contract_address".to_string(),
+            "t.name as name".to_string(),
+            "t.symbol as symbol".to_string(),
+            "t.decimals as decimals".to_string(),
+            "t.metadata as metadata".to_string(),
+            "count(t.contract_address) as count".to_string(),
+        ];
 
+        let mut joins = Vec::new();
+        let mut where_conditions = Vec::new();
         let mut bind_values = Vec::new();
-        let mut conditions = Vec::new();
 
         if !account_addresses.is_empty() {
-            query += "  JOIN token_balances tb ON tb.token_id = CONCAT(t.contract_address, ':', t.token_id)";
+            joins.push("JOIN token_balances tb ON tb.token_id = CONCAT(t.contract_address, ':', t.token_id)".to_string());
 
             let placeholders = vec!["?"; account_addresses.len()].join(", ");
-            conditions.push(format!("tb.account_address IN ({})", placeholders));
+            where_conditions.push(format!("tb.account_address IN ({})", placeholders));
             bind_values.extend(account_addresses.iter().map(|addr| format!("{:#x}", addr)));
         }
 
         if !contract_addresses.is_empty() {
             let placeholders = vec!["?"; contract_addresses.len()].join(", ");
-            conditions.push(format!("t.contract_address IN ({})", placeholders));
+            where_conditions.push(format!("t.contract_address IN ({})", placeholders));
             bind_values.extend(contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
         }
         if !token_ids.is_empty() {
             let placeholders = vec!["?"; token_ids.len()].join(", ");
-            conditions.push(format!("t.token_id IN ({})", placeholders));
+            where_conditions.push(format!("t.token_id IN ({})", placeholders));
             bind_values.extend(token_ids.iter().map(u256_to_sql_string));
         }
 
-        if let Some(cursor) = cursor {
-            bind_values.push(decode_cursor(&cursor)?);
-            conditions.push("t.id >= ?".to_string());
+        // Handle cursor manually for id field
+        if let Some(cursor) = &cursor {
+            where_conditions.push("t.id >= ?".to_string());
+            bind_values.push(decode_cursor(cursor)?);
         }
 
-        if !conditions.is_empty() {
-            query += &format!(" WHERE {}", conditions.join(" AND "));
+        let actual_limit = limit.unwrap_or(SQL_DEFAULT_LIMIT as usize);
+        let fetch_limit = actual_limit + 1; // +1 to check for more pages
+
+        // Build custom query for token collections (needs GROUP BY)
+        let mut query = format!("SELECT {} FROM tokens t", selections.join(", "));
+
+        if !joins.is_empty() {
+            query.push_str(&format!(" {}", joins.join(" ")));
         }
 
-        query += " GROUP BY t.contract_address ORDER BY t.id";
-        if let Some(limit) = limit {
-            query += " LIMIT ?";
-            bind_values.push((limit + 1).to_string());
+        if !where_conditions.is_empty() {
+            query.push_str(&format!(" WHERE {}", where_conditions.join(" AND ")));
         }
 
-        let mut query = sqlx::query_as(&query);
-        for value in bind_values {
-            query = query.bind(value);
+        query.push_str(" GROUP BY t.contract_address ORDER BY t.id");
+        query.push_str(&format!(" LIMIT {}", fetch_limit));
+
+        let mut stmt = sqlx::query_as(&query);
+        for value in &bind_values {
+            stmt = stmt.bind(value);
         }
 
         let mut tokens: Vec<torii_sqlite_types::TokenCollection> =
-            query.fetch_all(&self.pool).await?;
-        let next_cursor = if limit.is_some() && tokens.len() > limit.unwrap() {
-            Some(encode_cursor(&tokens.pop().unwrap().contract_address)?)
+            stmt.fetch_all(&self.pool).await?;
+        
+        // Handle pagination manually
+        let has_more = tokens.len() > actual_limit;
+        if has_more {
+            tokens.truncate(actual_limit);
+        }
+        
+        let next_cursor = if has_more && !tokens.is_empty() {
+            Some(encode_cursor(&tokens.last().unwrap().contract_address)?)
         } else {
             None
         };
@@ -429,8 +489,17 @@ impl ReadOnlyStorage for Sql {
     }
 
     async fn events(&self, query: EventQuery) -> Result<Page<Event>, StorageError> {
+        let selections = vec![
+            "id".to_string(),
+            "keys".to_string(),
+            "data".to_string(),
+            "transaction_hash".to_string(),
+            "executed_at".to_string(),
+            "created_at".to_string(),
+        ];
+        
+        let mut where_conditions = Vec::new();
         let mut bind_values = Vec::new();
-        let mut conditions = Vec::new();
 
         let keys_pattern = if let Some(keys) = &query.keys {
             build_keys_pattern(keys)
@@ -439,39 +508,45 @@ impl ReadOnlyStorage for Sql {
         };
 
         if !keys_pattern.is_empty() {
-            conditions.push("keys REGEXP ?");
+            where_conditions.push("keys REGEXP ?".to_string());
             bind_values.push(keys_pattern);
         }
 
-        if let Some(cursor) = query.cursor {
-            conditions.push("id >= ?");
-            bind_values.push(decode_cursor(&cursor)?);
+        // Handle cursor manually for id field
+        if let Some(cursor) = &query.cursor {
+            where_conditions.push("id >= ?".to_string());
+            bind_values.push(decode_cursor(cursor)?);
         }
 
-        let mut events_query = r#"
-            SELECT id, keys, data, transaction_hash, executed_at, created_at
-            FROM events
-        "#
-        .to_string();
+        let actual_limit = query.limit.unwrap_or(SQL_DEFAULT_LIMIT as usize);
+        let fetch_limit = actual_limit + 1; // +1 to check for more pages
 
-        if !conditions.is_empty() {
-            events_query = format!("{} WHERE {}", events_query, conditions.join(" AND "));
-        }
+        let query_builder = QueryBuilder::new()
+            .with_selections(selections)
+            .with_where_conditions(where_conditions)
+            .with_bind_values(bind_values)
+            .with_order_clause("id ASC".to_string())
+            .with_limit(fetch_limit as u32);
 
-        events_query = format!("{} ORDER BY id", events_query);
-        if let Some(limit) = query.limit {
-            events_query += &format!(" LIMIT {}", limit);
-        }
+        let query_str = query_builder.build_simple_query("events");
 
-        let mut row_events = sqlx::query_as(&events_query);
-        for value in &bind_values {
-            row_events = row_events.bind(value);
+        let mut stmt = sqlx::query_as(&query_str);
+        for value in query_builder.all_bind_values() {
+            stmt = stmt.bind(value);
         }
+        stmt = stmt.bind(query_builder.limit);
+
         let mut row_events: Vec<torii_sqlite_types::Event> =
-            row_events.fetch_all(&self.pool).await?;
+            stmt.fetch_all(&self.pool).await?;
 
-        let next_cursor = if query.limit.is_some() && row_events.len() > query.limit.unwrap() {
-            Some(encode_cursor(&row_events.pop().unwrap().id)?)
+        // Handle pagination manually
+        let has_more = row_events.len() > actual_limit;
+        if has_more {
+            row_events.truncate(actual_limit);
+        }
+        
+        let next_cursor = if has_more && !row_events.is_empty() {
+            Some(encode_cursor(&row_events.last().unwrap().id)?)
         } else {
             None
         };

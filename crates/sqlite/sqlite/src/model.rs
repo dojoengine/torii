@@ -128,6 +128,344 @@ impl ModelReader<Error> for ModelSQLReader {
     }
 }
 
+/// Builder for constructing SQL queries with pagination, joins, and cursors
+#[derive(Debug)]
+pub struct QueryBuilder {
+    pub selections: Vec<String>,
+    pub joins: Vec<String>,
+    pub where_conditions: Vec<String>,
+    pub having_clause: Option<String>,
+    pub order_clause: String,
+    pub bind_values: Vec<String>,
+    pub cursor_binds: Vec<String>,
+    pub limit: u32,
+    pub pagination: Option<Pagination>,
+}
+
+impl QueryBuilder {
+    pub fn new() -> Self {
+        Self {
+            selections: Vec::new(),
+            joins: Vec::new(),
+            where_conditions: Vec::new(),
+            having_clause: None,
+            order_clause: String::new(),
+            bind_values: Vec::new(),
+            cursor_binds: Vec::new(),
+            limit: SQL_DEFAULT_LIMIT as u32,
+            pagination: None,
+        }
+    }
+
+    pub fn with_selections(mut self, selections: Vec<String>) -> Self {
+        self.selections = selections;
+        self
+    }
+
+    pub fn with_joins(mut self, joins: Vec<String>) -> Self {
+        self.joins = joins;
+        self
+    }
+
+    pub fn with_where_conditions(mut self, conditions: Vec<String>) -> Self {
+        self.where_conditions = conditions;
+        self
+    }
+
+    pub fn with_having_clause(mut self, having: Option<String>) -> Self {
+        self.having_clause = having;
+        self
+    }
+
+    pub fn with_order_clause(mut self, order: String) -> Self {
+        self.order_clause = order;
+        self
+    }
+
+    pub fn with_bind_values(mut self, values: Vec<String>) -> Self {
+        self.bind_values = values;
+        self
+    }
+
+    pub fn with_cursor_binds(mut self, cursor_binds: Vec<String>) -> Self {
+        self.cursor_binds = cursor_binds;
+        self
+    }
+
+    pub fn with_limit(mut self, limit: u32) -> Self {
+        self.limit = limit;
+        self
+    }
+
+    pub fn with_pagination(mut self, pagination: Pagination, table_name: &str) -> Result<Self, Error> {
+        // Parse cursor values
+        let cursor_values = SchemaQueryHelper::parse_cursor(&pagination)?;
+        
+        // Build cursor conditions
+        let (cursor_conditions, cursor_binds) = 
+            build_cursor_conditions(&pagination, cursor_values.as_deref(), table_name)?;
+        
+        // Set up order clause
+        let order_clause = SchemaQueryHelper::build_order_clause(&pagination, table_name);
+        
+        // Set limit from pagination
+        let limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32) + 1; // +1 to check for more pages
+        
+        self.pagination = Some(pagination);
+        self.cursor_binds = cursor_binds;
+        self.order_clause = order_clause;
+        self.limit = limit;
+        
+        // Add cursor conditions to where conditions
+        self.where_conditions.extend(cursor_conditions);
+        
+        Ok(self)
+    }
+
+    pub fn build_query(&self, table_name: &str) -> String {
+        let mut query = format!(
+            "SELECT {} FROM [{}]",
+            self.selections.join(", "),
+            table_name
+        );
+
+        if !self.joins.is_empty() {
+            query.push_str(&format!(" {}", self.joins.join(" ")));
+        }
+
+        if !self.where_conditions.is_empty() {
+            query.push_str(&format!(" WHERE {}", self.where_conditions.join(" AND ")));
+        }
+
+        query.push_str(&format!(" GROUP BY {}.id", table_name));
+
+        if let Some(having) = &self.having_clause {
+            query.push_str(&format!(" HAVING {}", having));
+        }
+
+        if !self.order_clause.is_empty() {
+            query.push_str(&format!(" ORDER BY {}", self.order_clause));
+        }
+
+        query.push_str(" LIMIT ?");
+        query
+    }
+
+    /// Build a simple query without GROUP BY (for non-entity queries)
+    pub fn build_simple_query(&self, table_name: &str) -> String {
+        let mut query = format!(
+            "SELECT {} FROM [{}]",
+            self.selections.join(", "),
+            table_name
+        );
+
+        if !self.joins.is_empty() {
+            query.push_str(&format!(" {}", self.joins.join(" ")));
+        }
+
+        if !self.where_conditions.is_empty() {
+            query.push_str(&format!(" WHERE {}", self.where_conditions.join(" AND ")));
+        }
+
+        if !self.order_clause.is_empty() {
+            query.push_str(&format!(" ORDER BY {}", self.order_clause));
+        }
+
+        query.push_str(" LIMIT ?");
+        query
+    }
+
+    pub fn all_bind_values(&self) -> Vec<&String> {
+        self.bind_values.iter().chain(self.cursor_binds.iter()).collect()
+    }
+
+    /// Process query results and handle pagination
+    pub fn process_results<T>(&self, mut results: Vec<T>) -> Result<Page<T>, Error> 
+    where 
+        T: Clone,
+    {
+        let pagination = self.pagination.as_ref().ok_or_else(|| {
+            Error::Query(QueryError::UnsupportedQuery("No pagination set".to_string()))
+        })?;
+        
+        let original_limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
+        let has_more = results.len() > original_limit as usize;
+        
+        // Handle backward pagination
+        if pagination.direction == PaginationDirection::Backward {
+            results.reverse();
+        }
+        
+        // Truncate to original limit if we have more results
+        if has_more {
+            results.truncate(original_limit as usize);
+        }
+        
+        // Generate next cursor if there are more pages
+        let next_cursor = if has_more && !results.is_empty() {
+            // For now, we'll need to implement cursor generation per entity type
+            // This is a placeholder - actual implementation would depend on the entity type
+            None
+        } else {
+            None
+        };
+        
+        Ok(Page {
+            items: results,
+            next_cursor,
+        })
+    }
+
+    /// Process SQLite row results with cursor generation
+    pub fn process_sqlite_results(&self, mut results: Vec<SqliteRow>) -> Result<Page<SqliteRow>, Error> {
+        let pagination = self.pagination.as_ref().ok_or_else(|| {
+            Error::Query(QueryError::UnsupportedQuery("No pagination set".to_string()))
+        })?;
+        
+        let original_limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
+        let has_more = results.len() > original_limit as usize;
+        
+        // Handle backward pagination
+        if pagination.direction == PaginationDirection::Backward {
+            results.reverse();
+        }
+        
+        // Truncate to original limit if we have more results
+        if has_more {
+            results.truncate(original_limit as usize);
+        }
+        
+        // Generate next cursor if there are more pages
+        let next_cursor = if has_more {
+            if let Some(last_row) = results.last() {
+                let cursor_values_str = build_cursor_values(pagination, last_row)?.join("/");
+                Some(encode_cursor(&cursor_values_str)?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        
+        Ok(Page {
+            items: results,
+            next_cursor,
+        })
+    }
+}
+
+/// Helper functions for schema-based query construction
+pub struct SchemaQueryHelper;
+
+impl SchemaQueryHelper {
+    /// Collect columns from a schema for SQL selection
+    pub fn collect_columns(table_prefix: &str, path: &str, ty: &Ty, selections: &mut Vec<String>) {
+        match ty {
+            Ty::Struct(s) => {
+                for child in &s.children {
+                    let new_path = if path.is_empty() {
+                        child.name.clone()
+                    } else {
+                        format!("{}.{}", path, child.name)
+                    };
+                    Self::collect_columns(table_prefix, &new_path, &child.ty, selections);
+                }
+            }
+            Ty::Tuple(t) => {
+                for (i, child) in t.iter().enumerate() {
+                    let new_path = if path.is_empty() {
+                        format!("{}", i)
+                    } else {
+                        format!("{}.{}", path, i)
+                    };
+                    Self::collect_columns(table_prefix, &new_path, child, selections);
+                }
+            }
+            Ty::Enum(e) => {
+                selections.push(format!(
+                    "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
+                ));
+
+                for option in &e.options {
+                    if let Ty::Tuple(t) = &option.ty {
+                        if t.is_empty() {
+                            continue;
+                        }
+                    }
+                    let variant_path = format!("{}.{}", path, option.name);
+                    Self::collect_columns(table_prefix, &variant_path, &option.ty, selections);
+                }
+            }
+            Ty::Array(_) | Ty::Primitive(_) | Ty::ByteArray(_) => {
+                selections.push(format!(
+                    "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
+                ));
+            }
+        }
+    }
+
+    /// Build joins for schema-based queries
+    pub fn build_schema_joins(
+        schemas: &[Ty],
+        table_name: &str,
+        entity_relation_column: &str,
+        order_by_models: &HashSet<String>,
+    ) -> Vec<String> {
+        let mut joins = Vec::new();
+        
+        for model in schemas {
+            let model_table = model.name();
+            let join_type = if order_by_models.contains(&model_table) {
+                "INNER"
+            } else {
+                "LEFT"
+            };
+            joins.push(format!(
+                "{join_type} JOIN [{model_table}] ON {table_name}.id = \
+                 [{model_table}].{entity_relation_column}",
+            ));
+        }
+        
+        joins
+    }
+
+    /// Build order clause from pagination
+    pub fn build_order_clause(pagination: &Pagination, table_name: &str) -> String {
+        if pagination.order_by.is_empty() {
+            format!("{table_name}.event_id DESC")
+        } else {
+            pagination
+                .order_by
+                .iter()
+                .map(|ob| {
+                    let direction = match (&ob.direction, &pagination.direction) {
+                        (OrderDirection::Asc, PaginationDirection::Forward) => "ASC",
+                        (OrderDirection::Asc, PaginationDirection::Backward) => "DESC",
+                        (OrderDirection::Desc, PaginationDirection::Forward) => "DESC",
+                        (OrderDirection::Desc, PaginationDirection::Backward) => "ASC",
+                    };
+                    format!("[{}].[{}] {direction}", ob.model, ob.member)
+                })
+                .chain(std::iter::once(format!("{table_name}.event_id DESC")))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+    }
+
+    /// Parse cursor from pagination
+    pub fn parse_cursor(pagination: &Pagination) -> Result<Option<Vec<String>>, Error> {
+        pagination
+            .cursor
+            .as_ref()
+            .map(|cursor_str| {
+                let decompressed_str = decode_cursor(cursor_str)?;
+                Ok(decompressed_str.split('/').map(|s| s.to_string()).collect())
+            })
+            .transpose()
+            .map_err(|e: Error| Error::Query(QueryError::InvalidCursor(e.to_string())))
+    }
+}
+
 /// Populate the values of a Ty (schema) from SQLite row.
 pub fn map_row_to_ty(
     path: &str,
@@ -665,56 +1003,6 @@ impl Sql {
         pagination: Pagination,
         bind_values: Vec<String>,
     ) -> Result<Page<SqliteRow>, Error> {
-        // Helper function to collect columns
-        fn collect_columns(table_prefix: &str, path: &str, ty: &Ty, selections: &mut Vec<String>) {
-            match ty {
-                Ty::Struct(s) => {
-                    for child in &s.children {
-                        let new_path = if path.is_empty() {
-                            child.name.clone()
-                        } else {
-                            format!("{}.{}", path, child.name)
-                        };
-                        collect_columns(table_prefix, &new_path, &child.ty, selections);
-                    }
-                }
-                Ty::Tuple(t) => {
-                    for (i, child) in t.iter().enumerate() {
-                        let new_path = if path.is_empty() {
-                            format!("{}", i)
-                        } else {
-                            format!("{}.{}", path, i)
-                        };
-                        collect_columns(table_prefix, &new_path, child, selections);
-                    }
-                }
-                Ty::Enum(e) => {
-                    selections.push(format!(
-                        "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
-                    ));
-
-                    for option in &e.options {
-                        if let Ty::Tuple(t) = &option.ty {
-                            if t.is_empty() {
-                                continue;
-                            }
-                        }
-                        let variant_path = format!("{}.{}", path, option.name);
-                        collect_columns(table_prefix, &variant_path, &option.ty, selections);
-                    }
-                }
-                Ty::Array(_) | Ty::Primitive(_) | Ty::ByteArray(_) => {
-                    selections.push(format!(
-                        "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
-                    ));
-                }
-            }
-        }
-
-        let original_limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
-        let fetch_limit = original_limit + 1;
-        let mut has_more_pages = false;
-
         // Build order by clause with proper model joining
         let order_by_models: HashSet<String> = pagination
             .order_by
@@ -722,47 +1010,8 @@ impl Sql {
             .map(|ob| ob.model.clone())
             .collect();
 
-        let order_clause = if pagination.order_by.is_empty() {
-            format!("{table_name}.event_id DESC")
-        } else {
-            pagination
-                .order_by
-                .iter()
-                .map(|ob| {
-                    let direction = match (&ob.direction, &pagination.direction) {
-                        (OrderDirection::Asc, PaginationDirection::Forward) => "ASC",
-                        (OrderDirection::Asc, PaginationDirection::Backward) => "DESC",
-                        (OrderDirection::Desc, PaginationDirection::Forward) => "DESC",
-                        (OrderDirection::Desc, PaginationDirection::Backward) => "ASC",
-                    };
-                    format!("[{}].[{}] {direction}", ob.model, ob.member)
-                })
-                .chain(std::iter::once(format!("{table_name}.event_id DESC")))
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-
-        // Parse cursor
-        let cursor_values: Option<Vec<String>> = pagination
-            .cursor
-            .as_ref()
-            .map(|cursor_str| {
-                let decompressed_str = decode_cursor(cursor_str)?;
-                Ok(decompressed_str.split('/').map(|s| s.to_string()).collect())
-            })
-            .transpose()
-            .map_err(|e: Error| Error::Query(QueryError::InvalidCursor(e.to_string())))?;
-
-        // Build cursor conditions
-        let (cursor_conditions, cursor_binds) =
-            build_cursor_conditions(&pagination, cursor_values.as_deref(), table_name)?;
-
-        // Combine WHERE clauses
-        let combined_where = combine_where_clauses(where_clause, &cursor_conditions);
-
         // Process schemas in chunks
         let mut all_rows = Vec::new();
-        let mut next_cursor = None;
 
         for chunk in schemas.chunks(SQL_MAX_JOINS) {
             let mut selections = vec![
@@ -774,74 +1023,66 @@ impl Sql {
                     model_relation_table
                 ),
             ];
-            let mut joins = Vec::new();
 
-            // Add schema joins
+            // Add schema joins and selections
+            let joins = SchemaQueryHelper::build_schema_joins(
+                chunk,
+                table_name,
+                entity_relation_column,
+                &order_by_models,
+            );
+
+            // Collect columns for this chunk
             for model in chunk {
-                let model_table = model.name();
-                let join_type = if order_by_models.contains(&model_table) {
-                    "INNER"
-                } else {
-                    "LEFT"
-                };
-                joins.push(format!(
-                    "{join_type} JOIN [{model_table}] ON {table_name}.id = \
-                     [{model_table}].{entity_relation_column}",
-                ));
-                collect_columns(&model_table, "", model, &mut selections);
+                SchemaQueryHelper::collect_columns(&model.name(), "", model, &mut selections);
             }
 
-            joins.push(format!(
+            // Add model relation join
+            let mut all_joins = joins;
+            all_joins.push(format!(
                 "JOIN {model_relation_table} ON {table_name}.id = {model_relation_table}.entity_id",
             ));
 
-            // Build and execute query
-            let query = build_query(
-                &selections,
-                table_name,
-                &joins,
-                &combined_where,
-                having_clause,
-                &order_clause,
-            );
+            // Build query using QueryBuilder with pagination
+            let mut query_builder = QueryBuilder::new()
+                .with_selections(selections)
+                .with_joins(all_joins)
+                .with_bind_values(bind_values.clone())
+                .with_having_clause(having_clause.map(|s| s.to_string()));
+
+            // Add where conditions
+            if let Some(where_clause) = where_clause {
+                query_builder = query_builder.with_where_conditions(vec![where_clause.to_string()]);
+            }
+
+            // Apply pagination
+            query_builder = query_builder.with_pagination(pagination.clone(), table_name)?;
+
+            let query = query_builder.build_query(table_name);
 
             let mut stmt = sqlx::query(&query);
-            for value in bind_values.iter().chain(cursor_binds.iter()) {
+            for value in query_builder.all_bind_values() {
                 stmt = stmt.bind(value);
             }
+            stmt = stmt.bind(query_builder.limit);
 
-            stmt = stmt.bind(fetch_limit);
+            let rows = stmt.fetch_all(&self.pool).await?;
+            let page = query_builder.process_sqlite_results(rows)?;
 
-            let mut rows = stmt.fetch_all(&self.pool).await?;
-            let has_more = rows.len() >= fetch_limit as usize;
-
-            if pagination.direction == PaginationDirection::Backward {
-                rows.reverse();
-            }
-            if has_more {
-                // mark that there are more pages beyond the limit
-                has_more_pages = true;
-                rows.truncate(original_limit as usize);
-            }
-
-            all_rows.extend(rows);
-            if has_more {
-                break;
-            }
-        }
-
-        // Helper functions
-        // Replace generation of next cursor to only when there are more pages
-        if has_more_pages {
-            if let Some(last_row) = all_rows.last() {
-                let cursor_values_str = build_cursor_values(&pagination, last_row)?.join("/");
-                next_cursor = Some(encode_cursor(&cursor_values_str)?);
+            all_rows.extend(page.items);
+            
+            // If we have results, we can break since we found our data
+            if !all_rows.is_empty() {
+                return Ok(Page { 
+                    items: all_rows, 
+                    next_cursor: page.next_cursor 
+                });
             }
         }
 
         Ok(Page {
             items: all_rows,
-            next_cursor,
+            next_cursor: None,
         })
     }
 }
@@ -855,33 +1096,6 @@ fn combine_where_clauses(base: Option<&str>, cursor_conditions: &[String]) -> St
     }
     parts.extend(cursor_conditions.iter().cloned());
     parts.join(" AND ")
-}
-
-fn build_query(
-    selections: &[String],
-    table_name: &str,
-    joins: &[String],
-    where_clause: &str,
-    having_clause: Option<&str>,
-    order_clause: &str,
-) -> String {
-    let mut query = format!(
-        "SELECT {} FROM [{}] {}",
-        selections.join(", "),
-        table_name,
-        joins.join(" ")
-    );
-    if !where_clause.is_empty() {
-        query.push_str(&format!(" WHERE {}", where_clause));
-    }
-
-    query.push_str(&format!(" GROUP BY {}.id", table_name));
-
-    if let Some(having) = having_clause {
-        query.push_str(&format!(" HAVING {}", having));
-    }
-    query.push_str(&format!(" ORDER BY {} LIMIT ?", order_clause));
-    query
 }
 
 #[cfg(test)]
