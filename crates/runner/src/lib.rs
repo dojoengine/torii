@@ -367,6 +367,8 @@ impl Runner {
         let addr = SocketAddr::new(self.args.server.http_addr, self.args.server.http_port);
 
         let tls_config = if self.args.server.https {
+            let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
             let cert_path = if let Some(path) = &self.args.server.tls_cert_path {
                 PathBuf::from(path)
             } else if let Some(db_dir) = &self.args.db_dir {
