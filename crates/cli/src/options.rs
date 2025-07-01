@@ -250,6 +250,14 @@ pub struct ServerOptions {
     #[arg(default_value_t = DEFAULT_HTTP_PORT)]
     pub http_port: u16,
 
+    /// Enable HTTPS for the proxy server.
+    #[arg(long = "http.https")]
+    pub https: bool,
+
+    /// Path to TLS certificate file. If not specified and HTTPS is enabled, a self-signed certificate will be generated.
+    #[arg(long = "http.cert_path", value_name = "PATH")]
+    pub tls_cert_path: Option<String>,
+
     /// Comma separated list of domains from which to accept cross origin requests.
     #[arg(long = "http.cors_origins")]
     #[arg(value_delimiter = ',')]
@@ -261,6 +269,8 @@ impl Default for ServerOptions {
         Self {
             http_addr: DEFAULT_HTTP_ADDR,
             http_port: DEFAULT_HTTP_PORT,
+            https: false,
+            tls_cert_path: None,
             http_cors_origins: None,
         }
     }
@@ -443,10 +453,10 @@ pub struct SnapshotOptions {
 
     /// Optional version of the remote snapshot torii version
     #[arg(
-        long = "snapshot.version",
+        long = "snapshot.torii-release",
         help = "Optional version of the torii the snapshot has been made from. This is only used to give a warning if there is a version mismatch between the snapshot and this torii."
     )]
-    pub version: Option<String>,
+    pub snapshot_version: Option<String>,
 }
 
 #[derive(Default, Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
