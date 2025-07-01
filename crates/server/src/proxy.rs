@@ -177,7 +177,8 @@ impl Proxy {
         });
 
         if self.tls_config.is_some() {
-            tracing::warn!("HTTPS support is not yet implemented - falling back to HTTP mode");
+            tracing::warn!("HTTPS support is configured but not yet fully implemented - falling back to HTTP mode");
+            tracing::info!("Certificate generation and TLS configuration are ready for future HTTPS implementation");
         }
 
         let server = Server::bind(&addr).serve(make_svc);
