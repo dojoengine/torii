@@ -13,7 +13,7 @@
 use std::cmp;
 use std::collections::HashSet;
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -366,6 +366,29 @@ impl Runner {
 
         let addr = SocketAddr::new(self.args.server.http_addr, self.args.server.http_port);
 
+        let tls_config = if self.args.server.https {
+            let cert_path = if let Some(path) = &self.args.server.cert_path {
+                PathBuf::from(path)
+            } else if let Some(db_dir) = &self.args.db_dir {
+                db_dir.join("torii-tls.pem")
+            } else {
+                std::env::temp_dir().join("torii-tls.pem")
+            };
+
+            let (certs, key) = torii_server::proxy::read_or_create_certificate(&cert_path)
+                .map_err(|e| anyhow::anyhow!("Failed to setup TLS certificate: {}", e))?;
+
+            let mut config = rustls::ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(certs, key)
+                .map_err(|e| anyhow::anyhow!("Failed to create TLS config: {}", e))?;
+
+            config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+            Some(Arc::new(config))
+        } else {
+            None
+        };
+
         let proxy_server = Arc::new(Proxy::new(
             addr,
             self.args
@@ -377,6 +400,7 @@ impl Runner {
             Some(artifacts_addr),
             Arc::new(readonly_pool.clone()),
             self.version_spec.clone(),
+            tls_config,
         ));
 
         let graphql_server = spawn_rebuilding_graphql_server(

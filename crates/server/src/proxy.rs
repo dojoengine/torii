@@ -1,5 +1,7 @@
 use std::convert::Infallible;
+use std::fs;
 use std::net::{IpAddr, SocketAddr};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,6 +13,10 @@ use hyper::server::conn::AddrStream;
 use hyper::service::make_service_fn;
 use hyper::{Body, Client, Request, Response, Server, StatusCode};
 use hyper_reverse_proxy::ReverseProxy;
+use rcgen::{generate_simple_self_signed, CertifiedKey};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::ServerConfig;
+use rustls_pemfile::{certs, private_key};
 use serde_json::json;
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
@@ -70,9 +76,11 @@ pub struct Proxy {
     allowed_origins: Option<Vec<String>>,
     handlers: Arc<RwLock<Vec<Box<dyn Handler>>>>,
     version_spec: String,
+    tls_config: Option<Arc<ServerConfig>>,
 }
 
 impl Proxy {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         addr: SocketAddr,
         allowed_origins: Option<Vec<String>>,
@@ -81,6 +89,7 @@ impl Proxy {
         artifacts_addr: Option<SocketAddr>,
         pool: Arc<SqlitePool>,
         version_spec: String,
+        tls_config: Option<Arc<ServerConfig>>,
     ) -> Self {
         let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(vec![
             Box::new(GraphQLHandler::new(graphql_addr)),
@@ -95,6 +104,7 @@ impl Proxy {
             allowed_origins,
             handlers,
             version_spec,
+            tls_config,
         }
     }
 
@@ -166,10 +176,14 @@ impl Proxy {
             async { Ok::<_, Infallible>(service) }
         });
 
+        if self.tls_config.is_some() {
+            tracing::warn!("HTTPS support is not yet implemented - falling back to HTTP mode");
+        }
+
         let server = Server::bind(&addr).serve(make_svc);
+        tracing::info!("HTTP proxy server listening on http://{}", addr);
         server
             .with_graceful_shutdown(async move {
-                // Wait for the shutdown signal
                 shutdown_rx.recv().await.ok();
             })
             .await
@@ -201,4 +215,46 @@ async fn handle(
         .header(CONTENT_TYPE, "application/json")
         .body(Body::from(json.to_string()))
         .unwrap())
+}
+
+pub fn read_or_create_certificate(
+    path: &Path,
+) -> anyhow::Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
+    if path.exists() {
+        let pem_data = fs::read_to_string(path)?;
+        let mut cert_reader = std::io::Cursor::new(pem_data.as_bytes());
+        let certs: Result<Vec<_>, _> = certs(&mut cert_reader).collect();
+        let certs = certs?;
+
+        cert_reader.set_position(0);
+        let key = private_key(&mut cert_reader)?
+            .ok_or_else(|| anyhow::anyhow!("No private key found in certificate file"))?;
+
+        tracing::info!(path = %path.display(), "Using existing TLS certificate.");
+        return Ok((certs, key));
+    }
+
+    let subject_alt_names = vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "::1".to_string(),
+    ];
+
+    let CertifiedKey { cert, key_pair } = generate_simple_self_signed(subject_alt_names)?;
+    let cert_pem = cert.pem();
+    let key_pem = key_pair.serialize_pem();
+
+    let combined_pem = format!("{}\n{}", cert_pem, key_pem);
+    fs::write(path, combined_pem.as_bytes())?;
+
+    let mut cert_reader = std::io::Cursor::new(cert_pem.as_bytes());
+    let certs: Result<Vec<_>, _> = certs(&mut cert_reader).collect();
+    let certs = certs?;
+
+    let mut key_reader = std::io::Cursor::new(key_pem.as_bytes());
+    let key = private_key(&mut key_reader)?
+        .ok_or_else(|| anyhow::anyhow!("Failed to parse generated private key"))?;
+
+    tracing::info!(path = %path.display(), "Generated new TLS certificate.");
+    Ok((certs, key))
 }

@@ -250,6 +250,14 @@ pub struct ServerOptions {
     #[arg(default_value_t = DEFAULT_HTTP_PORT)]
     pub http_port: u16,
 
+    /// Enable HTTPS for the proxy server.
+    #[arg(long = "http.https")]
+    pub https: bool,
+
+    /// Path to TLS certificate file. If not specified and HTTPS is enabled, a self-signed certificate will be generated.
+    #[arg(long = "http.cert_path", value_name = "PATH")]
+    pub cert_path: Option<String>,
+
     /// Comma separated list of domains from which to accept cross origin requests.
     #[arg(long = "http.cors_origins")]
     #[arg(value_delimiter = ',')]
@@ -261,6 +269,8 @@ impl Default for ServerOptions {
         Self {
             http_addr: DEFAULT_HTTP_ADDR,
             http_port: DEFAULT_HTTP_PORT,
+            https: false,
+            cert_path: None,
             http_cors_origins: None,
         }
     }

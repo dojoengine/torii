@@ -40,3 +40,7 @@ tokio-stream = "0.1.17"
 uuid = "1.15.1"
 regex.workspace = true
 torii-processors.workspace = true
+rustls = "0.23"
+rustls-pemfile = "2.0"
+rcgen = { version = "0.13", features = ["crypto"] }
+tokio-rustls = "0.26"
