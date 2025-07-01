@@ -137,7 +137,7 @@ impl Runner {
                 info!(target: LOG_TARGET, url = %snapshot_url, path = %database_path.display(), "Downloading snapshot...");
 
                 // Check for version mismatch
-                if let Some(snapshot_version) = self.args.snapshot.version {
+                if let Some(snapshot_version) = self.args.snapshot.snapshot_version {
                     if snapshot_version != self.version_spec {
                         warn!(
                             target: LOG_TARGET,
@@ -367,7 +367,7 @@ impl Runner {
         let addr = SocketAddr::new(self.args.server.http_addr, self.args.server.http_port);
 
         let tls_config = if self.args.server.https {
-            let cert_path = if let Some(path) = &self.args.server.cert_path {
+            let cert_path = if let Some(path) = &self.args.server.tls_cert_path {
                 PathBuf::from(path)
             } else if let Some(db_dir) = &self.args.db_dir {
                 db_dir.join("torii-tls.pem")
