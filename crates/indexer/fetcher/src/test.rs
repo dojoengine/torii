@@ -11,7 +11,7 @@ use url::Url;
 
 use crate::{Fetcher, FetcherConfig};
 
-const CARTRIDGE_NODE_MAINNET: &str = "https://api.cartridge.gg/x/starknet/mainnet";
+const CARTRIDGE_NODE_MAINNET: &str = "https://api.cartridge.gg/x/starknet/mainnet?raw=true";
 const ETERNUM_ADDRESS: Felt =
     felt!("0x5c6d0020a9927edca9ddc984b97305439c0b32a1ec8d3f0eaf6291074cc9799");
 
