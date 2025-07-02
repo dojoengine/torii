@@ -77,7 +77,10 @@ async fn test_range_one_block() {
             .iter()
             .find(|tx| tx.receipt.transaction_hash() == torii_tx_hash);
         assert!(expected_tx.is_some());
-        assert_eq!(torii_tx_hash, expected_tx.unwrap().receipt.transaction_hash());
+        assert_eq!(
+            torii_tx_hash,
+            expected_tx.unwrap().receipt.transaction_hash()
+        );
     }
 }
 
