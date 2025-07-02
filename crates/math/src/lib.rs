@@ -3,7 +3,7 @@ use std::{
     ops::{Add, AddAssign, Sub, SubAssign},
 };
 
-use starknet_core::types::U256;
+use starknet::core::types::U256;
 
 #[derive(Debug, Clone, Copy)]
 pub struct I256 {

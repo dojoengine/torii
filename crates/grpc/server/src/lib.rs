@@ -18,7 +18,7 @@ use proto::world::{
     RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventsRequest,
     RetrieveEventsResponse, UpdateEntitiesSubscriptionRequest,
 };
-use starknet::core::types::{Felt, TypedData};
+use starknet_core::types::{Felt, TypedData};
 use starknet::providers::Provider;
 use subscriptions::event::EventManager;
 use subscriptions::indexer::IndexerManager;
