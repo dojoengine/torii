@@ -30,15 +30,15 @@ debug = true
 inherits = "release"
 
 [workspace.dependencies]
-cainome = { version = "0.6.1", features = [ "abigen-rs" ] }
-cainome-cairo-serde = { version = "0.2.0" }
-cainome-cairo-serde-derive = { version = "0.1.0" }
+cainome = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
+cainome-cairo-serde = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
+cainome-cairo-serde-derive = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
 
-dojo-utils = { git = "https://github.com/dojoengine/dojo", branch = "Larkooo-patch-4" }
-dojo-types = { git = "https://github.com/dojoengine/dojo", branch = "Larkooo-patch-4" }
-dojo-world = { git = "https://github.com/dojoengine/dojo", branch = "Larkooo-patch-4" }
-dojo-test-utils = { git = "https://github.com/dojoengine/dojo", branch = "Larkooo-patch-4" }
-dojo-metrics = { git = "https://github.com/dojoengine/dojo", branch = "Larkooo-patch-4" }
+dojo-utils = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
+dojo-types = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
+dojo-world = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
+dojo-test-utils = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
+dojo-metrics = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
 
 # torii
 torii-cli = { path = "crates/cli" }
@@ -115,9 +115,9 @@ url = { version = "2.4.0", features = [ "serde" ] }
 ipfs-api-backend-hyper = { git = "https://github.com/ferristseng/rust-ipfs-api", rev = "af2c17f7b19ef5b9898f458d97a90055c3605633", features = [ "with-hyper-rustls", "with-send-sync" ] }
 mime_guess = "2.0"
 
-sozo-scarbext = { git = "https://github.com/dojoengine/dojo", branch = "Larkooo-patch-4" }
+sozo-scarbext = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
 scarb = { git = "https://github.com/dojoengine/scarb", rev = "38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6" }
-sozo-ops = { git = "https://github.com/dojoengine/dojo", branch = "Larkooo-patch-4" }
+sozo-ops = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
 katana-runner = { git = "https://github.com/dojoengine/katana", rev = "f472095" }
 
 
@@ -139,7 +139,12 @@ wasm-tonic = { version = "0.12", default-features = false, features = [ "codegen
 wasm-tonic-build = { version = "0.12", default-features = false, features = [ "prost" ], package = "tonic-build" }
 
 starknet-core = "0.12.3"
-starknet = "0.15.1"
+starknet = "0.14.0"
 starknet-crypto = "0.7.1"
 
 dashmap = "6.1.0"
+
+[patch.crates-io]
+cainome = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
+cainome-cairo-serde = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
+cainome-cairo-serde-derive = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
