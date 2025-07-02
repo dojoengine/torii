@@ -17,23 +17,23 @@ dependencies = [
 
 [[package]]
 name = "dojo"
-version = "1.4.1"
-source = "git+https://github.com/dojoengine/dojo?tag=v1.4.1#0fab6ed063a56ca6049b51117e46e3e8acf237fa"
+version = "1.6.0-alpha.0"
+source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
 dependencies = [
  "dojo_plugin",
 ]
 
 [[package]]
 name = "dojo_cairo_test"
-version = "1.0.12"
-source = "git+https://github.com/dojoengine/dojo?tag=v1.4.1#0fab6ed063a56ca6049b51117e46e3e8acf237fa"
+version = "1.6.0-alpha.0"
+source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
 dependencies = [
  "dojo",
 ]
 
 [[package]]
 name = "dojo_examples"
-version = "1.4.1"
+version = "1.6.0"
 dependencies = [
  "armory",
  "bestiary",
@@ -44,8 +44,8 @@ dependencies = [
 
 [[package]]
 name = "dojo_plugin"
-version = "2.9.4"
-source = "git+https://github.com/dojoengine/dojo?tag=v1.4.1#0fab6ed063a56ca6049b51117e46e3e8acf237fa"
+version = "2.10.1"
+source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
 
 [[package]]
 name = "openzeppelin"
