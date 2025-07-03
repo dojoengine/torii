@@ -219,7 +219,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                             if let Some(tx) =
                                 block.transactions.get_mut(transaction.transaction_hash())
                             {
-                                tx.transaction = Some(transaction);
+                                tx.transaction = Some(transaction.into());
                             }
                         }
                     }
@@ -283,7 +283,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
             .iter()
             .map(|t| {
                 (
-                    *t.transaction.transaction_hash(),
+                    *t.receipt.transaction_hash(),
                     FetchTransaction {
                         transaction: Some(t.transaction.clone()),
                         events: vec![],
@@ -302,7 +302,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
 
             let mut last_pending_block_tx_tmp = cursor.last_pending_block_tx;
             for t in &pending_block.transactions {
-                let tx_hash = t.transaction.transaction_hash();
+                let tx_hash = t.receipt.transaction_hash();
                 // Skip all transactions until we reach the last processed transaction
                 if let Some(tx) = last_pending_block_tx_tmp {
                     if tx_hash != &tx {

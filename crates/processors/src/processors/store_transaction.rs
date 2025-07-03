@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use async_trait::async_trait;
 use cainome::cairo_serde_derive::CairoSerde;
 use cainome_cairo_serde::CairoSerde;
-use starknet::core::types::{BlockId, BlockTag, Felt, InvokeTransaction, Transaction};
+use starknet::core::types::{BlockId, BlockTag, Felt, InvokeTransactionContent, TransactionContent};
 use starknet::providers::Provider;
 use torii_sqlite::cache::{get_entrypoint_name_from_class, ContractClassCache};
 use torii_sqlite::types::{CallType, ParsedCall};
@@ -46,7 +46,6 @@ pub enum Execute {
 }
 
 struct TransactionInfo {
-    transaction_hash: Felt,
     sender_address: Felt,
     calldata: Vec<Felt>,
     max_fee: Felt,
@@ -59,10 +58,9 @@ struct TransactionInfo {
 pub struct StoreTransactionProcessor;
 
 impl StoreTransactionProcessor {
-    fn extract_transaction_info(transaction: &Transaction) -> Option<TransactionInfo> {
+    fn extract_transaction_info(transaction: &TransactionContent) -> Option<TransactionInfo> {
         match transaction {
-            Transaction::Invoke(InvokeTransaction::V3(tx)) => Some(TransactionInfo {
-                transaction_hash: tx.transaction_hash,
+            TransactionContent::Invoke(InvokeTransactionContent::V3(tx)) => Some(TransactionInfo {
                 sender_address: tx.sender_address,
                 calldata: tx.calldata.clone(),
                 max_fee: Felt::ZERO,
@@ -70,8 +68,7 @@ impl StoreTransactionProcessor {
                 nonce: tx.nonce,
                 transaction_type: "INVOKE",
             }),
-            Transaction::Invoke(InvokeTransaction::V1(tx)) => Some(TransactionInfo {
-                transaction_hash: tx.transaction_hash,
+            TransactionContent::Invoke(InvokeTransactionContent::V1(tx)) => Some(TransactionInfo {
                 sender_address: tx.sender_address,
                 calldata: tx.calldata.clone(),
                 max_fee: tx.max_fee,
@@ -79,8 +76,7 @@ impl StoreTransactionProcessor {
                 nonce: tx.nonce,
                 transaction_type: "INVOKE",
             }),
-            Transaction::L1Handler(tx) => Some(TransactionInfo {
-                transaction_hash: tx.transaction_hash,
+            TransactionContent::L1Handler(tx) => Some(TransactionInfo {
                 sender_address: tx.contract_address,
                 calldata: tx.calldata.clone(),
                 max_fee: Felt::ZERO,
@@ -274,9 +270,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug> TransactionProcessor<P>
         _provider: &P,
         block_number: u64,
         block_timestamp: u64,
-        _transaction_hash: Felt,
+        transaction_hash: Felt,
         contract_addresses: &HashSet<Felt>,
-        transaction: &Transaction,
+        transaction: &TransactionContent,
         contract_class_cache: &ContractClassCache<P>,
         unique_models: &HashSet<Felt>,
     ) -> Result<(), Error> {
@@ -306,7 +302,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug> TransactionProcessor<P>
         };
 
         db.store_transaction(
-            tx_info.transaction_hash,
+            transaction_hash,
             tx_info.sender_address,
             &tx_info.calldata,
             tx_info.max_fee,

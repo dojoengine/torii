@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
-use starknet::core::types::{Event, Felt, Transaction};
+use starknet::core::types::{Event, Felt, TransactionContent};
 use starknet::providers::Provider;
 use torii_sqlite::cache::ContractClassCache;
 use torii_sqlite::Sql;
@@ -108,7 +108,7 @@ pub trait TransactionProcessor<P: Provider + Sync + std::fmt::Debug>: Send + Syn
         block_timestamp: u64,
         transaction_hash: Felt,
         contract_addresses: &HashSet<Felt>,
-        transaction: &Transaction,
+        transaction: &TransactionContent,
         contract_class_cache: &ContractClassCache<P>,
         unique_models: &HashSet<Felt>,
     ) -> Result<()>;

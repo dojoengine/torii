@@ -6,7 +6,7 @@ use std::time::Duration;
 use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
 use lazy_static::lazy_static;
-use starknet::core::types::{Event, Transaction};
+use starknet::core::types::{Event, TransactionContent};
 use starknet::macros::selector;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
@@ -353,7 +353,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         events: &[Event],
         block_number: u64,
         block_timestamp: u64,
-        transaction: &Option<Transaction>,
+        transaction: &Option<TransactionContent>,
     ) -> Result<(), ProcessError> {
         let mut unique_contracts = HashSet::new();
         let mut unique_models = HashSet::new();
@@ -431,7 +431,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         block_timestamp: u64,
         transaction_hash: Felt,
         contract_addresses: &HashSet<Felt>,
-        transaction: &Transaction,
+        transaction: &TransactionContent,
         unique_models: &HashSet<Felt>,
     ) -> Result<(), ProcessError> {
         for processor in &self.processors.transaction {

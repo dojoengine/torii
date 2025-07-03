@@ -1,6 +1,6 @@
 use dojo_types::primitive::PrimitiveError;
 use dojo_types::schema::EnumError;
-use starknet_core::types::FromStrError;
+use starknet::core::types::FromStrError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
