@@ -1025,32 +1025,28 @@ impl PaginationExecutor {
             query_builder = query_builder.order_by(&field, direction);
         }
 
+        let table_name = query_builder.table_name().to_string();
+
         if pagination.order_by.is_empty() {
             let direction = if pagination.direction == PaginationDirection::Forward {
                 OrderDirection::Desc
             } else {
                 OrderDirection::Asc
             };
-            query_builder = query_builder.order_by(
-                &format!("{}.event_id", query_builder.table_name()),
-                direction,
-            );
+            query_builder = query_builder.order_by(&format!("{}.event_id", table_name), direction);
         } else {
             let direction = if pagination.direction == PaginationDirection::Forward {
                 OrderDirection::Desc
             } else {
                 OrderDirection::Asc
             };
-            query_builder = query_builder.order_by(
-                &format!("{}.event_id", query_builder.table_name()),
-                direction,
-            );
+            query_builder = query_builder.order_by(&format!("{}.event_id", table_name), direction);
         }
 
         query_builder = query_builder.limit(fetch_limit);
 
+        let bind_values = query_builder.bind_values().to_vec();
         let query = query_builder.build();
-        let bind_values = query_builder.bind_values();
 
         let mut stmt = sqlx::query(&query);
         for value in bind_values {
