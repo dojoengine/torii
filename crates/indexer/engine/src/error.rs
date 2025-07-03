@@ -5,15 +5,13 @@ pub enum Error {
     #[error(transparent)]
     Fetcher(#[from] torii_indexer_fetcher::Error),
     #[error(transparent)]
-    ProcessError(#[from] ProcessError),
+    Process(#[from] ProcessError),
     #[error(transparent)]
     Cache(#[from] torii_cache::error::Error),
     #[error(transparent)]
     Storage(#[from] torii_storage::StorageError),
     #[error(transparent)]
-    ProviderError(#[from] starknet::providers::ProviderError),
-    #[error(transparent)]
-    AnyhowError(#[from] anyhow::Error),
+    Provider(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
     ControllerSync(#[from] torii_controllers::error::Error),
 }

@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
-use dojo_utils::provider as provider_utils;
 use dojo_world::contracts::world::WorldContractReader;
 use lazy_static::lazy_static;
 use starknet::core::types::{Event, TransactionContent};
@@ -166,11 +165,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     }
 
     pub async fn start(&mut self) -> Result<(), Error> {
-        if let Err(e) = provider_utils::health_check_provider(self.provider.clone()).await {
-            error!(target: LOG_TARGET,"Provider health check failed during engine start");
-            return Err(Error::AnyhowError(e));
-        }
-
         let mut fetching_backoff_delay = Duration::from_secs(1);
         let mut processing_backoff_delay = Duration::from_secs(1);
         let max_backoff_delay = Duration::from_secs(60);
