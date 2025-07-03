@@ -17,7 +17,7 @@ edition = "2021"
 license = "Apache-2.0"
 license-file = "LICENSE"
 repository = "https://github.com/dojoengine/torii"
-version = "1.5.8"
+version = "1.5.9"
 
 [profile.performance]
 codegen-units = 1
