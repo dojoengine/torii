@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dojo_types::{naming::compute_selector_from_names, schema::Ty};
 use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
-use sqlx::sqlite::SqliteRow;
+use sqlx::{sqlite::SqliteRow, Row};
 use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
