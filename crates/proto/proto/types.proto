@@ -151,9 +151,8 @@ message TokenBalance {
 }
 
 message OrderBy {
-    string model = 1;
-    string member = 2;
-    OrderDirection direction = 3;
+    string field = 1;
+    OrderDirection direction = 2;
 }
 
 enum OrderDirection {
@@ -177,4 +176,5 @@ message Pagination {
     uint32 limit = 2;
     PaginationDirection direction = 3;
     repeated OrderBy order_by = 4;
+    uint32 offset = 5;
 }

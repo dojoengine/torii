@@ -1,6 +1,5 @@
 use dojo_types::naming::compute_selector_from_tag;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::collections::HashSet;
 use std::str::FromStr;
 use torii_proto::schema::Entity;
 use torii_proto::{
@@ -716,12 +715,6 @@ impl Sql {
         let mut has_more_pages = false;
 
         // Build order by clause with proper model joining
-        let order_by_models: HashSet<String> = pagination
-            .order_by
-            .iter()
-            .map(|ob| ob.model.clone())
-            .collect();
-
         let order_clause = if pagination.order_by.is_empty() {
             format!("{table_name}.event_id DESC")
         } else {
@@ -735,7 +728,7 @@ impl Sql {
                         (OrderDirection::Desc, PaginationDirection::Forward) => "DESC",
                         (OrderDirection::Desc, PaginationDirection::Backward) => "ASC",
                     };
-                    format!("[{}].[{}] {direction}", ob.model, ob.member)
+                    format!("[{}] {direction}", ob.field)
                 })
                 .chain(std::iter::once(format!("{table_name}.event_id DESC")))
                 .collect::<Vec<_>>()
@@ -779,13 +772,8 @@ impl Sql {
             // Add schema joins
             for model in chunk {
                 let model_table = model.name();
-                let join_type = if order_by_models.contains(&model_table) {
-                    "INNER"
-                } else {
-                    "LEFT"
-                };
                 joins.push(format!(
-                    "{join_type} JOIN [{model_table}] ON {table_name}.id = \
+                    "LEFT JOIN [{model_table}] ON {table_name}.id = \
                      [{model_table}].{entity_relation_column}",
                 ));
                 collect_columns(&model_table, "", model, &mut selections);

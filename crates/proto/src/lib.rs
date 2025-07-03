@@ -59,6 +59,7 @@ pub struct Pagination {
     pub limit: Option<u32>,
     pub direction: PaginationDirection,
     pub order_by: Vec<OrderBy>,
+    pub offset: Option<u32>,
 }
 
 impl Default for Pagination {
@@ -68,6 +69,7 @@ impl Default for Pagination {
             limit: None,
             direction: PaginationDirection::Forward,
             order_by: vec![],
+            offset: None,
         }
     }
 }
@@ -79,6 +81,7 @@ impl From<Pagination> for proto::types::Pagination {
             limit: value.limit.unwrap_or_default(),
             direction: value.direction as i32,
             order_by: value.order_by.into_iter().map(|o| o.into()).collect(),
+            offset: value.offset.unwrap_or_default(),
         }
     }
 }
@@ -102,6 +105,11 @@ impl From<proto::types::Pagination> for Pagination {
                 _ => unreachable!(),
             },
             order_by: value.order_by.into_iter().map(|o| o.into()).collect(),
+            offset: if value.offset == 0 {
+                None
+            } else {
+                Some(value.offset)
+            },
         }
     }
 }
@@ -273,16 +281,14 @@ impl From<proto::world::SubscribeIndexerResponse> for IndexerUpdate {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct OrderBy {
-    pub model: String,
-    pub member: String,
+    pub field: String,
     pub direction: OrderDirection,
 }
 
 impl From<OrderBy> for proto::types::OrderBy {
     fn from(value: OrderBy) -> Self {
         Self {
-            model: value.model,
-            member: value.member,
+            field: value.field,
             direction: value.direction as i32,
         }
     }
@@ -291,8 +297,7 @@ impl From<OrderBy> for proto::types::OrderBy {
 impl From<proto::types::OrderBy> for OrderBy {
     fn from(value: proto::types::OrderBy) -> Self {
         Self {
-            model: value.model,
-            member: value.member,
+            field: value.field,
             direction: match value.direction {
                 0 => OrderDirection::Asc,
                 1 => OrderDirection::Desc,

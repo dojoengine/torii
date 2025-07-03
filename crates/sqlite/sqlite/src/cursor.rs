@@ -88,16 +88,16 @@ pub fn build_cursor_conditions(
                 };
 
                 let condition = if i == 0 {
-                    format!("[{}.{}] {} ?", ob.model, ob.member, operator)
+                    format!("[{}] {} ?", ob.field, operator)
                 } else {
                     let prev = (0..i)
                         .map(|j| {
                             let prev_ob = &pagination.order_by[j];
-                            format!("[{}.{}] = ?", prev_ob.model, prev_ob.member)
+                            format!("[{}] = ?", prev_ob.field)
                         })
                         .collect::<Vec<_>>()
                         .join(" AND ");
-                    format!("({} AND [{}.{}] {} ?)", prev, ob.model, ob.member, operator)
+                    format!("({} AND [{}] {} ?)", prev, ob.field, operator)
                 };
                 conditions.push(condition);
                 binds.push(val.clone());
@@ -120,7 +120,7 @@ pub fn build_cursor_values(pagination: &Pagination, row: &SqliteRow) -> Result<V
     } else {
         let mut values = Vec::new();
         for ob in &pagination.order_by {
-            let col = format!("{}.{}", ob.model, ob.member);
+            let col = ob.field.clone();
             // Try as String first
             match row.try_get::<String, &str>(&col) {
                 Ok(val) => values.push(val),
@@ -185,6 +185,7 @@ mod tests {
             cursor: Some("cursor".to_string()),
             limit: Some(10),
             order_by: vec![],
+            offset: None,
         };
         let cursor_values = vec!["123".to_string()];
         let (conditions, binds) =
@@ -203,6 +204,7 @@ mod tests {
             cursor: Some("cursor".to_string()),
             limit: Some(10),
             order_by: vec![],
+            offset: None,
         };
         let cursor_values = vec!["123".to_string()];
         let (conditions, binds) =
@@ -221,10 +223,10 @@ mod tests {
             cursor: Some("cursor".to_string()),
             limit: Some(10),
             order_by: vec![OrderBy {
-                model: "Player".to_string(),
-                member: "score".to_string(),
+                field: "Player.score".to_string(),
                 direction: OrderDirection::Asc,
             }],
+            offset: None,
         };
         let cursor_values = vec!["100".to_string(), "123".to_string()];
         let (conditions, binds) =
@@ -245,6 +247,7 @@ mod tests {
             cursor: Some("cursor".to_string()),
             limit: Some(10),
             order_by: vec![],
+            offset: None,
         };
         let cursor_values = vec!["123".to_string(), "456".to_string()]; // Too many values
         let result = build_cursor_conditions(&pagination, Some(&cursor_values), "entities");
@@ -265,6 +268,7 @@ mod tests {
             cursor: None,
             limit: Some(10),
             order_by: vec![],
+            offset: None,
         };
         let (conditions, binds) = build_cursor_conditions(&pagination, None, "entities").unwrap();
 
