@@ -114,33 +114,31 @@ pub fn build_cursor_conditions(
     Ok((conditions, binds))
 }
 
-pub fn build_cursor_values(pagination: &Pagination, row: &SqliteRow) -> Result<Vec<String>, Error> {
-    if pagination.order_by.is_empty() {
-        Ok(vec![row.try_get("event_id")?])
-    } else {
-        let mut values = Vec::new();
-        for ob in &pagination.order_by {
-            let col = ob.field.clone();
-            // Try as String first
-            match row.try_get::<String, &str>(&col) {
-                Ok(val) => values.push(val),
-                Err(_) => {
-                    // Try as i64 (INTEGER)
-                    match row.try_get::<i64, &str>(&col) {
-                        Ok(val) => values.push(val.to_string()),
-                        Err(e) => {
-                            return Err(Error::Query(QueryError::InvalidCursor(format!(
-                                "Could not extract cursor value for column {}: {}",
-                                col, e
-                            ))));
-                        }
+pub fn build_cursor_values(
+    pagination: &Pagination,
+    row: &SqliteRow,
+) -> Result<Vec<String>, Error> {
+    let mut values = Vec::new();
+    for ob in &pagination.order_by {
+        let col = ob.field.clone();
+        // Try as String first
+        match row.try_get::<String, &str>(&col) {
+            Ok(val) => values.push(val),
+            Err(_) => {
+                // Try as i64 (INTEGER)
+                match row.try_get::<i64, &str>(&col) {
+                    Ok(val) => values.push(val.to_string()),
+                    Err(e) => {
+                        return Err(Error::Query(QueryError::InvalidCursor(format!(
+                            "Could not extract cursor value for column {}: {}",
+                            col, e
+                        ))));
                     }
                 }
             }
         }
-        values.push(row.try_get("event_id")?);
-        Ok(values)
     }
+    Ok(values)
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dojo_types::{naming::compute_selector_from_names, schema::Ty};
 use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
-use sqlx::sqlite::SqliteRow;
+use sqlx::{sqlite::SqliteRow, FromRow};
 use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
@@ -29,7 +29,7 @@ use crate::{
         ENTITIES_TABLE, EVENT_MESSAGES_ENTITY_RELATION_COLUMN, EVENT_MESSAGES_HISTORICAL_TABLE,
         EVENT_MESSAGES_MODEL_RELATION_TABLE, EVENT_MESSAGES_TABLE, TOKEN_TRANSFER_TABLE,
     },
-    cursor::encode_cursor,
+    cursor::{build_cursor_values, encode_cursor},
     executor::{RegisterErc20TokenQuery, RegisterNftTokenQuery},
     model::map_row_to_ty,
     query::QueryBuilder,
@@ -201,11 +201,7 @@ impl ReadOnlyStorage for Sql {
         };
 
         let mut builder = QueryBuilder::new();
-        builder
-            .select("address")
-            .select("username")
-            .select("deployed_at")
-            .from("controllers");
+        builder.from("controllers");
 
         // Add WHERE conditions
         if !usernames.is_empty() {
@@ -295,21 +291,26 @@ impl ReadOnlyStorage for Sql {
 
         // Build and execute the query
         let query = builder.build();
-        let mut query = sqlx::query_as(&query);
+        let mut query = sqlx::query(&query);
         for value in builder.get_bind_values() {
             query = query.bind(value);
         }
-        let mut tokens: Vec<torii_sqlite_types::Token> = query.fetch_all(&self.pool).await?;
+        let mut tokens: Vec<SqliteRow> = query.fetch_all(&self.pool).await?;
 
         // Handle pagination
         let next_cursor = if limit.is_some() && tokens.len() > limit.unwrap() {
             let last_token = tokens.pop().unwrap();
-            Some(encode_cursor(&last_token.id)?)
+            let cursor_values_str = build_cursor_values(&pagination, "id", &last_token)?.join("/");
+            Some(encode_cursor(&cursor_values_str)?)
         } else {
             None
         };
 
-        let items = tokens.into_iter().map(|t| t.into()).collect();
+        let items = tokens
+            .into_iter()
+            .map(|t| torii_sqlite_types::Token::from_row(&t))
+            .collect::<Result<Vec<_>, _>>()?;
+        let items = items.into_iter().map(|t| t.into()).collect();
 
         Ok(Page { items, next_cursor })
     }
@@ -373,22 +374,27 @@ impl ReadOnlyStorage for Sql {
 
         // Build and execute the query
         let query = builder.build();
-        let mut query = sqlx::query_as(&query);
+        let mut query = sqlx::query(&query);
         for value in builder.get_bind_values() {
             query = query.bind(value);
         }
-        let mut balances: Vec<torii_sqlite_types::TokenBalance> =
-            query.fetch_all(&self.pool).await?;
+        let mut balances: Vec<SqliteRow> = query.fetch_all(&self.pool).await?;
 
         // Handle pagination
         let next_cursor = if limit.is_some() && balances.len() > limit.unwrap() {
             let last_balance = balances.pop().unwrap();
-            Some(encode_cursor(&last_balance.id)?)
+            let cursor_values_str =
+                build_cursor_values(&pagination, "id", &last_balance)?.join("/");
+            Some(encode_cursor(&cursor_values_str)?)
         } else {
             None
         };
 
-        let items = balances.into_iter().map(|b| b.into()).collect();
+        let items = balances
+            .into_iter()
+            .map(|b| torii_sqlite_types::TokenBalance::from_row(&b))
+            .collect::<Result<Vec<_>, _>>()?;
+        let items = items.into_iter().map(|b| b.into()).collect();
 
         Ok(Page { items, next_cursor })
     }
@@ -462,22 +468,27 @@ impl ReadOnlyStorage for Sql {
 
         // Build and execute the query
         let query = builder.build();
-        let mut query = sqlx::query_as(&query);
+        let mut query = sqlx::query(&query);
         for value in builder.get_bind_values() {
             query = query.bind(value);
         }
-        let mut collections: Vec<torii_sqlite_types::TokenCollection> =
-            query.fetch_all(&self.pool).await?;
+        let mut collections: Vec<SqliteRow> = query.fetch_all(&self.pool).await?;
 
         // Handle pagination
         let next_cursor = if limit.is_some() && collections.len() > limit.unwrap() {
             let last_collection = collections.pop().unwrap();
-            Some(encode_cursor(&last_collection.contract_address)?)
+            let cursor_values_str =
+                build_cursor_values(&pagination, "contract_address", &last_collection)?.join("/");
+            Some(encode_cursor(&cursor_values_str)?)
         } else {
             None
         };
 
-        let items = collections.into_iter().map(|c| c.into()).collect();
+        let items = collections
+            .into_iter()
+            .map(|c| torii_sqlite_types::TokenCollection::from_row(&c))
+            .collect::<Result<Vec<_>, _>>()?;
+        let items = items.into_iter().map(|c| c.into()).collect();
 
         Ok(Page { items, next_cursor })
     }
@@ -495,14 +506,7 @@ impl ReadOnlyStorage for Sql {
         };
 
         let mut builder = QueryBuilder::new();
-        builder
-            .select("id")
-            .select("keys")
-            .select("data")
-            .select("transaction_hash")
-            .select("executed_at")
-            .select("created_at")
-            .from("events");
+        builder.from("events");
 
         // Add WHERE condition for keys
         if let Some(keys) = &query.keys {
@@ -518,22 +522,28 @@ impl ReadOnlyStorage for Sql {
 
         // Build and execute the query
         let query = builder.build();
-        let mut query = sqlx::query_as(&query);
+        let mut query = sqlx::query(&query);
         for value in builder.get_bind_values() {
             query = query.bind(value);
         }
-        let mut events: Vec<torii_sqlite_types::Event> = query.fetch_all(&self.pool).await?;
+        let mut events: Vec<SqliteRow> = query.fetch_all(&self.pool).await?;
 
         // Handle pagination
-        let next_cursor =
-            if pagination.limit.is_some() && events.len() > pagination.limit.unwrap() as usize {
-                let last_event = events.pop().unwrap();
-                Some(encode_cursor(&last_event.id)?)
-            } else {
-                None
-            };
+        let next_cursor = if pagination.limit.is_some()
+            && events.len() > pagination.limit.unwrap() as usize
+        {
+            let last_event = events.pop().unwrap();
+            let cursor_values_str = build_cursor_values(&pagination, "id", &last_event)?.join("/");
+            Some(encode_cursor(&cursor_values_str)?)
+        } else {
+            None
+        };
 
-        let items = events.into_iter().map(|e| e.into()).collect();
+        let items = events
+            .into_iter()
+            .map(|e| torii_sqlite_types::Event::from_row(&e))
+            .collect::<Result<Vec<_>, _>>()?;
+        let items = items.into_iter().map(|e| e.into()).collect();
 
         Ok(Page { items, next_cursor })
     }

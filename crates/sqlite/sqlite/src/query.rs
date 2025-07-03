@@ -1,8 +1,9 @@
-use torii_proto::{OrderDirection, Pagination, PaginationDirection};
+use sqlx::{sqlite::SqliteRow, SqlitePool};
+use torii_proto::{OrderDirection, Page, Pagination, PaginationDirection};
 
 use crate::{
-    cursor::{build_cursor_conditions, decode_cursor},
-    error::Error,
+    cursor::{build_cursor_conditions, build_cursor_values, decode_cursor, encode_cursor},
+    error::{Error, QueryError},
 };
 
 /// A builder for constructing SQL queries dynamically.
@@ -16,6 +17,9 @@ pub struct QueryBuilder {
     having_clauses: Vec<String>,
     order_by: Vec<String>,
     limit: Option<u32>,
+    offset: Option<u32>,
+    cursor_values: Vec<String>,
+    pagination: Option<Pagination>,
 }
 
 impl QueryBuilder {
@@ -31,6 +35,9 @@ impl QueryBuilder {
             having_clauses: Vec::new(),
             order_by: Vec::new(),
             limit: None,
+            offset: None,
+            cursor_values: Vec::new(),
+            pagination: None,
         }
     }
 
@@ -71,15 +78,21 @@ impl QueryBuilder {
         self
     }
 
-    /// Adds an ORDER BY clause.
-    pub fn order_by(&mut self, order: &str) -> &mut Self {
-        self.order_by.push(order.to_string());
-        self
-    }
-
     /// Sets the LIMIT for the query.
     pub fn limit(&mut self, limit: u32) -> &mut Self {
         self.limit = Some(limit);
+        self
+    }
+
+    /// Sets the OFFSET for the query.
+    pub fn offset(&mut self, offset: u32) -> &mut Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    /// Sets the ORDER BY clause.
+    pub fn order_by(&mut self, order: &str) -> &mut Self {
+        self.order_by.push(order.to_string());
         self
     }
 
@@ -87,7 +100,11 @@ impl QueryBuilder {
     pub fn build(&self) -> String {
         let mut query = format!(
             "SELECT {} FROM [{}]",
-            self.selections.join(", "),
+            if self.selections.is_empty() {
+                "*".to_string()
+            } else {
+                self.selections.join(", ")
+            },
             self.from_table.as_ref().expect("FROM table must be set")
         );
         if !self.joins.is_empty() {
@@ -105,44 +122,32 @@ impl QueryBuilder {
         if !self.order_by.is_empty() {
             query.push_str(&format!(" ORDER BY {}", self.order_by.join(", ")));
         }
+
+        if let Some(limit) = self.limit {
+            query.push_str(&format!(" LIMIT {}", limit));
+        }
+
+        if let Some(offset) = self.offset {
+            query.push_str(&format!(" OFFSET {}", offset));
+        }
+
         query
-    }
-
-    /// Returns the collected bind values for the query.
-    pub fn get_bind_values(&self) -> Vec<String> {
-        self.bind_values.clone()
-    }
-
-    /// Returns the limit value, if set.
-    pub fn get_limit(&self) -> Option<u32> {
-        self.limit
     }
 
     pub fn with_pagination(
         &mut self,
         pagination: &Pagination,
-        default_order: &str,
         table_name: &str,
     ) -> Result<&mut Self, Error> {
-        let order_clause = if pagination.order_by.is_empty() {
-            default_order.to_string() // e.g., "event_id DESC"
-        } else {
-            pagination
-                .order_by
-                .iter()
-                .map(|ob| {
-                    let dir = match (&ob.direction, &pagination.direction) {
-                        (OrderDirection::Asc, PaginationDirection::Forward) => "ASC",
-                        (OrderDirection::Asc, PaginationDirection::Backward) => "DESC",
-                        (OrderDirection::Desc, PaginationDirection::Forward) => "DESC",
-                        (OrderDirection::Desc, PaginationDirection::Backward) => "ASC",
-                    };
-                    format!("[{}] {}", ob.field, dir)
-                })
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-        self.order_by(&order_clause);
+        for order in &pagination.order_by {
+            let dir = match (&order.direction, &pagination.direction) {
+                (OrderDirection::Asc, PaginationDirection::Forward) => "ASC",
+                (OrderDirection::Asc, PaginationDirection::Backward) => "DESC",
+                (OrderDirection::Desc, PaginationDirection::Forward) => "DESC",
+                (OrderDirection::Desc, PaginationDirection::Backward) => "ASC",
+            };
+            self.order_by(&format!("[{}] {}", order.field, dir));
+        }
 
         if let Some(cursor) = &pagination.cursor {
             let decoded = decode_cursor(cursor).expect("Invalid cursor");
@@ -152,12 +157,45 @@ impl QueryBuilder {
             for (condition, bind) in cursor_where.iter().zip(cursor_binds.iter()) {
                 self.add_where(condition, vec![bind.clone()]);
             }
+            self.cursor_values = cursor_values;
         }
 
         if let Some(limit) = pagination.limit {
             self.limit(limit + 1);
         }
 
+        if let Some(offset) = pagination.offset {
+            self.offset(offset);
+        }
+
+        self.pagination = Some(pagination.clone());
+
         Ok(self)
+    }
+
+    pub async fn fetch_page(&self, pool: &SqlitePool) -> Result<Page<SqliteRow>, Error> {
+        let pagination = if let Some(pagination) = &self.pagination {
+            pagination
+        } else {
+            return Err(Error::Query(QueryError::MissingParam("pagination".to_string())));
+        };
+
+        let query = self.build();
+        let mut query = sqlx::query(&query);
+        for bind in &self.bind_values {
+            query = query.bind(bind);
+        }
+        let mut rows = query.fetch_all(pool).await?;
+        let next_cursor = if pagination.limit.is_some() && rows.len() > pagination.limit.unwrap() as usize {
+            let last_row = rows.pop().unwrap();
+            let cursor_values_str = build_cursor_values(pagination, &last_row)?.join("/");
+            Some(encode_cursor(&cursor_values_str)?)
+        } else {
+            None
+        };
+        Ok(Page {
+            items: rows,
+            next_cursor,
+        })
     }
 }

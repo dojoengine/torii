@@ -758,7 +758,7 @@ impl Sql {
         // Generate next cursor if there are more pages
         if has_more_pages {
             if let Some(last_row) = all_rows.last() {
-                let cursor_values_str = build_cursor_values(&pagination, last_row)?.join("/");
+                let cursor_values_str = build_cursor_values(&pagination, "event_id", last_row)?.join("/");
                 next_cursor = Some(encode_cursor(&cursor_values_str)?);
             }
         }
