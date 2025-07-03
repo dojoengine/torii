@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use dojo_world::contracts::world::WorldContractReader;
-use starknet::core::types::{Event, Felt, Transaction};
+use starknet::core::types::{Event, Felt, TransactionContent};
 use starknet::providers::Provider;
 use tokio::sync::Semaphore;
 use torii_cache::{Cache, ContractClassCache};
@@ -127,7 +127,7 @@ pub struct TransactionProcessorContext<P: Provider + Sync + std::fmt::Debug> {
     pub block_number: u64,
     pub block_timestamp: u64,
     pub transaction_hash: Felt,
-    pub transaction: Transaction,
+    pub transaction: TransactionContent,
     pub contract_addresses: HashSet<Felt>,
     pub contract_class_cache: Arc<ContractClassCache<P>>,
     pub unique_models: HashSet<Felt>,

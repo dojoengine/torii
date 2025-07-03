@@ -18,7 +18,7 @@ use proto::world::{
     RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventsRequest,
     RetrieveEventsResponse, UpdateEntitiesSubscriptionRequest,
 };
-use starknet::core::types::{Felt, TypedData};
+use starknet::core::types::Felt;
 use starknet::providers::Provider;
 use subscriptions::event::EventManager;
 use subscriptions::indexer::IndexerManager;
@@ -712,7 +712,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .iter()
             .map(|s| Felt::from_bytes_be_slice(s))
             .collect::<Vec<_>>();
-        let typed_data = serde_json::from_str::<TypedData>(&message)
+        let typed_data = serde_json::from_str(&message)
             .map_err(|_| Status::invalid_argument("Invalid message"))?;
         let entity_id = validate_and_set_entity(
             self.storage.clone(),
@@ -747,7 +747,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
                 .map(|s| Felt::from_bytes_be_slice(s))
                 .collect::<Vec<_>>();
             let message = message.message;
-            let typed_data = serde_json::from_str::<TypedData>(&message)
+            let typed_data = serde_json::from_str(&message)
                 .map_err(|_| Status::invalid_argument("Invalid message"))?;
 
             let entity_id = validate_and_set_entity(

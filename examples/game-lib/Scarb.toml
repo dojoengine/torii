@@ -10,4 +10,4 @@ description = "Example game library for Dojo"
 edition = "2024_07"
 
 [workspace.dependencies]
-dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.4.1" }
+dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.6.0-alpha.1" }
