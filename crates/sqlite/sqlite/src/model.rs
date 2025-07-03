@@ -857,6 +857,7 @@ fn combine_where_clauses(base: Option<&str>, cursor_conditions: &[String]) -> St
     parts.join(" AND ")
 }
 
+#[derive(Debug)]
 pub struct QueryBuilder {
     table_name: String,
     selections: Vec<String>,
@@ -972,6 +973,7 @@ impl QueryBuilder {
     }
 }
 
+#[derive(Debug)]
 pub struct PaginationExecutor {
     pool: Pool<Sqlite>,
 }
@@ -1027,21 +1029,12 @@ impl PaginationExecutor {
 
         let table_name = query_builder.table_name().to_string();
 
-        if pagination.order_by.is_empty() {
-            let direction = if pagination.direction == PaginationDirection::Forward {
-                OrderDirection::Desc
-            } else {
-                OrderDirection::Asc
-            };
-            query_builder = query_builder.order_by(&format!("{}.event_id", table_name), direction);
+        let direction = if pagination.direction == PaginationDirection::Forward {
+            OrderDirection::Desc
         } else {
-            let direction = if pagination.direction == PaginationDirection::Forward {
-                OrderDirection::Desc
-            } else {
-                OrderDirection::Asc
-            };
-            query_builder = query_builder.order_by(&format!("{}.event_id", table_name), direction);
-        }
+            OrderDirection::Asc
+        };
+        query_builder = query_builder.order_by(&format!("{}.event_id", table_name), direction);
 
         query_builder = query_builder.limit(fetch_limit);
 
