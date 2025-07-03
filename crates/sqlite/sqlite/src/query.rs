@@ -121,7 +121,6 @@ impl QueryBuilder {
         default_order: &str,
         table_name: &str,
     ) -> Result<&mut Self, Error> {
-        // 1. Set ORDER BY clause
         let order_clause = if pagination.order_by.is_empty() {
             default_order.to_string() // e.g., "event_id DESC"
         } else {
@@ -140,7 +139,6 @@ impl QueryBuilder {
         };
         self.order_by(&order_clause);
 
-        // 2. Handle cursor-based WHERE conditions
         if let Some(cursor) = &pagination.cursor {
             let decoded = decode_cursor(cursor).expect("Invalid cursor");
             let cursor_values: Vec<String> = decoded.split('/').map(|s| s.to_string()).collect();
@@ -150,9 +148,8 @@ impl QueryBuilder {
             }
         }
 
-        // 3. Set LIMIT (caller will adjust for pagination check)
         if let Some(limit) = pagination.limit {
-            self.limit(limit);
+            self.limit(limit+1);
         }
 
         Ok(self)
