@@ -1,6 +1,9 @@
 use torii_proto::{OrderDirection, Pagination, PaginationDirection};
 
-use crate::{cursor::{build_cursor_conditions, decode_cursor}, error::Error};
+use crate::{
+    cursor::{build_cursor_conditions, decode_cursor},
+    error::Error,
+};
 
 /// A builder for constructing SQL queries dynamically.
 pub struct QueryBuilder {
@@ -124,7 +127,9 @@ impl QueryBuilder {
         let order_clause = if pagination.order_by.is_empty() {
             default_order.to_string() // e.g., "event_id DESC"
         } else {
-            pagination.order_by.iter()
+            pagination
+                .order_by
+                .iter()
                 .map(|ob| {
                     let dir = match (&ob.direction, &pagination.direction) {
                         (OrderDirection::Asc, PaginationDirection::Forward) => "ASC",
@@ -142,17 +147,17 @@ impl QueryBuilder {
         if let Some(cursor) = &pagination.cursor {
             let decoded = decode_cursor(cursor).expect("Invalid cursor");
             let cursor_values: Vec<String> = decoded.split('/').map(|s| s.to_string()).collect();
-            let (cursor_where, cursor_binds) = build_cursor_conditions(pagination, Some(&cursor_values), table_name)?;
+            let (cursor_where, cursor_binds) =
+                build_cursor_conditions(pagination, Some(&cursor_values), table_name)?;
             for (condition, bind) in cursor_where.iter().zip(cursor_binds.iter()) {
                 self.add_where(condition, vec![bind.clone()]);
             }
         }
 
         if let Some(limit) = pagination.limit {
-            self.limit(limit+1);
+            self.limit(limit + 1);
         }
 
         Ok(self)
     }
-
 }

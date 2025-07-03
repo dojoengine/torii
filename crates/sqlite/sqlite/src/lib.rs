@@ -21,10 +21,10 @@ pub mod cursor;
 pub mod error;
 pub mod executor;
 pub mod model;
+pub mod query;
 pub mod simple_broker;
 pub mod storage;
 pub mod utils;
-pub mod query;
 
 pub use torii_sqlite_types as types;
 
