@@ -106,6 +106,14 @@ impl Runner {
         );
         let provider: Arc<_> = JsonRpcClient::new(transport).into();
 
+        // Check provider spec version. We only support v0.8.
+        let spec_version = provider.spec_version().await?;
+        if !spec_version.starts_with("0.8") {
+            return Err(anyhow::anyhow!(
+                "Provider spec version is not supported. Please use a provider that supports v0.8. Got: {spec_version}. You might need to add a `rpc/v0_8` to the end of the URL."
+            ));
+        }
+
         // Verify contracts are deployed
         if self.args.runner.check_contracts {
             let undeployed =

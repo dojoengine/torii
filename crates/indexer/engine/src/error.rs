@@ -5,13 +5,11 @@ pub enum Error {
     #[error(transparent)]
     Fetcher(#[from] torii_indexer_fetcher::Error),
     #[error(transparent)]
-    ProcessError(#[from] ProcessError),
+    Process(#[from] ProcessError),
     #[error(transparent)]
     SqliteError(#[from] torii_sqlite::error::Error),
     #[error(transparent)]
-    ProviderError(#[from] starknet::providers::ProviderError),
-    #[error(transparent)]
-    AnyhowError(#[from] anyhow::Error),
+    Provider(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
     ControllerSync(#[from] torii_sqlite::error::ControllerSyncError),
 }
