@@ -983,12 +983,11 @@ impl PaginationExecutor {
         Self { pool }
     }
 
-    pub async fn execute_paginated_query<T>(
+    pub async fn execute_paginated_query(
         &self,
         mut query_builder: QueryBuilder,
         pagination: Pagination,
-        row_mapper: impl Fn(&SqliteRow) -> Result<T, Error>,
-    ) -> Result<Page<T>, Error> {
+    ) -> Result<Page<SqliteRow>, Error> {
         let original_limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
         let fetch_limit = original_limit + 1;
 
@@ -1027,15 +1026,6 @@ impl PaginationExecutor {
             query_builder = query_builder.order_by(&field, direction);
         }
 
-        let table_name = query_builder.table_name().to_string();
-
-        let direction = if pagination.direction == PaginationDirection::Forward {
-            OrderDirection::Desc
-        } else {
-            OrderDirection::Asc
-        };
-        query_builder = query_builder.order_by(&format!("{}.event_id", table_name), direction);
-
         query_builder = query_builder.limit(fetch_limit);
 
         let bind_values = query_builder.bind_values().to_vec();
@@ -1053,7 +1043,6 @@ impl PaginationExecutor {
             rows.reverse();
         }
 
-        let mut items = Vec::new();
         let mut next_cursor = None;
 
         if has_more {
@@ -1064,11 +1053,10 @@ impl PaginationExecutor {
             }
         }
 
-        for row in rows {
-            items.push(row_mapper(&row)?);
-        }
-
-        Ok(Page { items, next_cursor })
+        Ok(Page {
+            items: rows,
+            next_cursor,
+        })
     }
 }
 

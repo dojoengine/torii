@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dojo_types::{naming::compute_selector_from_names, schema::Ty};
 use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
-use sqlx::{sqlite::SqliteRow, Row};
+use sqlx::{sqlite::SqliteRow, FromRow};
 use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
@@ -225,17 +225,12 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, pagination, |row| {
-                Ok(torii_sqlite_types::Controller {
-                    address: row.try_get("address")?,
-                    username: row.try_get("username")?,
-                    deployed_at: row.try_get("deployed_at")?,
-                }
-                .into())
-            })
-            .await?;
-
-        Ok(page)
+            .execute_paginated_query(query_builder, pagination).await?;
+        let items: Vec<Controller> = page.items.into_iter().map(|row| Result::<Controller, Error>::Ok(torii_sqlite_types::Controller::from_row(&row)?.into())).collect::<Result<Vec<_>, _>>()?;
+        Ok(Page {
+            items,
+            next_cursor: page.next_cursor,
+        })
     }
 
     async fn tokens(
@@ -280,21 +275,13 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, pagination, |row| {
-                Ok(torii_sqlite_types::Token {
-                    id: row.try_get("id")?,
-                    token_id: row.try_get("token_id")?,
-                    contract_address: row.try_get("contract_address")?,
-                    name: row.try_get("name")?,
-                    symbol: row.try_get("symbol")?,
-                    decimals: row.try_get("decimals")?,
-                    metadata: row.try_get("metadata")?,
-                }
-                .into())
-            })
+            .execute_paginated_query(query_builder, pagination)
             .await?;
-
-        Ok(page)
+        let items: Vec<Token> = page.items.into_iter().map(|row| Result::<Token, Error>::Ok(torii_sqlite_types::Token::from_row(&row)?.into())).collect::<Result<Vec<_>, _>>()?;
+        Ok(Page {
+            items,
+            next_cursor: page.next_cursor,
+        })
     }
 
     async fn token_balances(
@@ -352,19 +339,13 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, pagination, |row| {
-                Ok(torii_sqlite_types::TokenBalance {
-                    id: row.try_get("id")?,
-                    balance: row.try_get("balance")?,
-                    account_address: row.try_get("account_address")?,
-                    contract_address: row.try_get("contract_address")?,
-                    token_id: row.try_get("token_id")?,
-                }
-                .into())
-            })
+            .execute_paginated_query(query_builder, pagination)
             .await?;
-
-        Ok(page)
+        let items: Vec<TokenBalance> = page.items.into_iter().map(|row| Result::<TokenBalance, Error>::Ok(torii_sqlite_types::TokenBalance::from_row(&row)?.into())).collect::<Result<Vec<_>, _>>()?;
+        Ok(Page {
+            items,
+            next_cursor: page.next_cursor,
+        })
     }
 
     async fn token_collections(
@@ -430,20 +411,12 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, pagination, |row| {
-                Ok(torii_sqlite_types::TokenCollection {
-                    contract_address: row.try_get("contract_address")?,
-                    name: row.try_get("name")?,
-                    symbol: row.try_get("symbol")?,
-                    decimals: row.try_get("decimals")?,
-                    count: row.try_get("count")?,
-                    metadata: row.try_get("metadata")?,
-                }
-                .into())
-            })
-            .await?;
-
-        Ok(page)
+            .execute_paginated_query(query_builder, pagination).await?;
+        let items: Vec<TokenCollection> = page.items.into_iter().map(|row| Result::<TokenCollection, Error>::Ok(torii_sqlite_types::TokenCollection::from_row(&row)?.into())).collect::<Result<Vec<_>, _>>()?;
+        Ok(Page {
+            items,
+            next_cursor: page.next_cursor,
+        })
     }
 
     async fn events(&self, query: EventQuery) -> Result<Page<Event>, StorageError> {
