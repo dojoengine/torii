@@ -1,6 +1,7 @@
 use async_graphql::connection::PageInfo;
+use dojo_types::primitive::Felt;
 use torii_proto::{
-    Clause, CompositeClause, LogicalOperator, OrderBy, Page, Pagination, PaginationDirection, Query,
+    Clause, CompositeClause, KeysClause, LogicalOperator, OrderBy, Page, Pagination, PaginationDirection, PatternMatching, Query,
 };
 
 use crate::object::connection::ConnectionArguments;
@@ -53,8 +54,8 @@ pub fn filters_to_clause(filters: &Option<Vec<Filter>>) -> Option<Clause> {
 
         let clauses: Vec<Clause> = filters
             .iter()
-            .map(|filter| Clause::Keys {
-                keys: Some(vec![match &filter.value {
+            .map(|filter| {
+                let key_str = match &filter.value {
                     crate::query::filter::FilterValue::Int(i) => i.to_string(),
                     crate::query::filter::FilterValue::String(s) => s.clone(),
                     crate::query::filter::FilterValue::List(list) => list
@@ -66,7 +67,12 @@ pub fn filters_to_clause(filters: &Option<Vec<Filter>>) -> Option<Clause> {
                         })
                         .collect::<Vec<_>>()
                         .join(","),
-                }]),
+                };
+                Clause::Keys(KeysClause {
+                    keys: vec![Some(Felt::from_hex(&key_str).unwrap_or_default())],
+                    pattern_matching: PatternMatching::FixedLen,
+                    models: vec![],
+                })
             })
             .collect();
 
@@ -101,9 +107,11 @@ pub fn keys_to_clause(keys: &Option<Vec<String>>) -> Option<Clause> {
             .collect::<Vec<_>>()
             .join("/");
 
-        Some(Clause::Keys {
-            keys: Some(vec![format!("^{}.*", keys_pattern)]),
-        })
+        Some(Clause::Keys(KeysClause {
+            keys: vec![Some(Felt::from_hex(&format!("^{}.*", keys_pattern)).unwrap_or_default())],
+            pattern_matching: PatternMatching::VariableLen,
+            models: vec![],
+        }))
     } else {
         None
     }
@@ -112,7 +120,7 @@ pub fn keys_to_clause(keys: &Option<Vec<String>>) -> Option<Clause> {
 pub fn page_to_connection<T>(
     page: Page<T>,
     connection: &ConnectionArguments,
-    total_count: i64,
+    _total_count: i64,
 ) -> (Vec<T>, PageInfo) {
     let has_next_page = page.next_cursor.is_some();
     let has_previous_page = connection.after.is_some() || connection.before.is_some();
@@ -168,8 +176,8 @@ pub fn build_query(
 
     Query {
         clause,
-        pagination: Some(pagination),
-        models,
+        pagination,
+        models: models.unwrap_or_default(),
         historical,
         no_hashed_keys: false,
     }
