@@ -1,5 +1,5 @@
 use async_graphql::dynamic::{Enum, Field, FieldFuture, InputObject, Object, TypeRef};
-use async_graphql::Value;
+use async_graphql::{Name, Value};
 use dojo_types::naming::get_tag;
 use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
@@ -122,34 +122,37 @@ impl ResolvableObject for ModelDataObject {
                 let edges: Vec<Value> = entities
                     .into_iter()
                     .map(|entity| {
-                        let cursor = entity.id.clone();
+                        let cursor = entity.hashed_keys.to_hex();
                         let mut node = ValueMapping::new();
-                        node.insert("id".into(), Value::String(entity.id));
+                        node.insert(Name::new("id"), Value::String(entity.hashed_keys.to_hex()));
 
                         let mut edge = ValueMapping::new();
-                        edge.insert("node".into(), Value::Object(node));
-                        edge.insert("cursor".into(), Value::String(cursor));
+                        edge.insert(Name::new("node"), Value::Object(node));
+                        edge.insert(Name::new("cursor"), Value::String(cursor));
                         Value::Object(edge)
                     })
                     .collect();
 
                 let connection_result = ValueMapping::from([
-                    ("totalCount".into(), Value::from(total_count)),
-                    ("edges".into(), Value::List(edges)),
+                    (Name::new("totalCount"), Value::from(total_count)),
+                    (Name::new("edges"), Value::List(edges)),
                     (
-                        "pageInfo".into(),
+                        Name::new("pageInfo"),
                         Value::Object(ValueMapping::from([
-                            ("hasNextPage".into(), Value::from(page_info.has_next_page)),
                             (
-                                "hasPreviousPage".into(),
+                                Name::new("hasNextPage"),
+                                Value::from(page_info.has_next_page),
+                            ),
+                            (
+                                Name::new("hasPreviousPage"),
                                 Value::from(page_info.has_previous_page),
                             ),
                             (
-                                "startCursor".into(),
+                                Name::new("startCursor"),
                                 Value::from(page_info.start_cursor.unwrap_or_default()),
                             ),
                             (
-                                "endCursor".into(),
+                                Name::new("endCursor"),
                                 Value::from(page_info.end_cursor.unwrap_or_default()),
                             ),
                         ])),
@@ -239,17 +242,22 @@ pub fn object(type_name: &str, type_mapping: &TypeMapping, path_array: Vec<Strin
                                 );
                                 let page = storage.entities(&query).await?;
 
-                                if let Some(entity) =
-                                    page.items.into_iter().find(|e| e.id == entity_id)
+                                if let Some(entity) = page
+                                    .items
+                                    .into_iter()
+                                    .find(|e| e.hashed_keys.to_hex() == entity_id)
                                 {
                                     let mut entity_data = ValueMapping::new();
-                                    entity_data.insert("id".into(), Value::String(entity.id));
+                                    entity_data.insert(
+                                        Name::new("id"),
+                                        Value::String(entity.hashed_keys.to_hex()),
+                                    );
                                     Ok(Some(Value::Object(entity_data)))
                                 } else {
                                     Ok(None)
                                 }
                             }
-                            _ => Err("incorrect value, requires Value::Object".into()),
+                            _ => Err("incorrect value, requires Value::Object".to_string().into()),
                         };
                     }
 
@@ -258,7 +266,7 @@ pub fn object(type_name: &str, type_mapping: &TypeMapping, path_array: Vec<Strin
                         Value::Object(value_mapping) => {
                             Ok(Some(value_mapping.get(&field_name).unwrap().clone()))
                         }
-                        _ => Err("Incorrect value, requires Value::Object".into()),
+                        _ => Err("Incorrect value, requires Value::Object".to_string().into()),
                     };
                 }
 
@@ -268,7 +276,9 @@ pub fn object(type_name: &str, type_mapping: &TypeMapping, path_array: Vec<Strin
                     return Ok(Some(value_mapping.get(&field_name).unwrap().clone()));
                 }
 
-                Err("Field resolver only accepts Value or IndexMap".into())
+                Err("Field resolver only accepts Value or IndexMap"
+                    .to_string()
+                    .into())
             })
         });
 
@@ -289,9 +299,14 @@ fn entity_field() -> Field {
                     let query = build_query(&None, &None, &Default::default(), &None, None, false);
                     let page = storage.entities(&query).await?;
 
-                    if let Some(entity) = page.items.into_iter().find(|e| e.id == entity_id) {
+                    if let Some(entity) = page
+                        .items
+                        .into_iter()
+                        .find(|e| e.hashed_keys.to_hex() == entity_id)
+                    {
                         let mut entity_data = ValueMapping::new();
-                        entity_data.insert("id".into(), Value::String(entity.id));
+                        entity_data
+                            .insert(Name::new("id"), Value::String(entity.hashed_keys.to_hex()));
                         Ok(Some(Value::Object(entity_data)))
                     } else {
                         Ok(None)
@@ -318,18 +333,22 @@ fn event_message_field() -> Field {
                             build_query(&None, &None, &Default::default(), &None, None, false);
                         let page = storage.event_messages(&query).await?;
 
-                        if let Some(event_message_entity) =
-                            page.items.into_iter().find(|e| e.id == entity_id)
+                        if let Some(event_message_entity) = page
+                            .items
+                            .into_iter()
+                            .find(|e| e.hashed_keys.to_hex() == entity_id)
                         {
                             let mut event_message = ValueMapping::new();
-                            event_message
-                                .insert("id".into(), Value::String(event_message_entity.id));
+                            event_message.insert(
+                                Name::new("id"),
+                                Value::String(event_message_entity.hashed_keys.to_hex()),
+                            );
                             Ok(Some(Value::Object(event_message)))
                         } else {
                             Ok(None)
                         }
                     }
-                    _ => Err("incorrect value, requires Value::Object".into()),
+                    _ => Err("incorrect value, requires Value::Object".to_string().into()),
                 }
             })
         },

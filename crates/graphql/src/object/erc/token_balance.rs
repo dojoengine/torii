@@ -2,6 +2,7 @@ use async_graphql::connection::PageInfo;
 use async_graphql::dynamic::{
     Field, FieldFuture, FieldValue, InputValue, SubscriptionField, SubscriptionFieldFuture, TypeRef,
 };
+use async_graphql::{Name, Value};
 use convert_case::{Case, Casing};
 use serde::Deserialize;
 use sqlx::sqlite::SqliteRow;
@@ -12,6 +13,7 @@ use torii_sqlite::constants::TOKEN_BALANCE_TABLE;
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::TokenBalance;
 use torii_sqlite::utils::felt_to_sql_string;
+use torii_storage::Storage;
 use tracing::warn;
 
 use super::erc_token::{Erc20Token, ErcTokenType};
@@ -24,10 +26,11 @@ use crate::object::connection::{
 };
 use crate::object::erc::erc_token::{Erc1155Token, Erc721Token};
 use crate::object::{BasicObject, ResolvableObject};
+use crate::pagination::{build_query, page_to_connection};
 use crate::query::data::count_rows;
 use crate::query::filter::{Comparator, Filter, FilterValue};
 use crate::query::order::{CursorDirection, Direction};
-use crate::types::TypeMapping;
+use crate::types::{TypeMapping, ValueMapping};
 use crate::utils::extract;
 
 #[derive(Debug)]
@@ -71,34 +74,40 @@ impl ResolvableObject for ErcBalanceObject {
                     let edges: Vec<Value> = entities
                         .into_iter()
                         .map(|entity| {
-                            let cursor = entity.id.clone();
+                            let cursor = entity.hashed_keys.to_hex();
                             let mut node = ValueMapping::new();
-                            node.insert("id".into(), Value::String(entity.id));
+                            node.insert(
+                                Name::new("id"),
+                                Value::String(entity.hashed_keys.to_hex()),
+                            );
 
                             let mut edge = ValueMapping::new();
-                            edge.insert("node".into(), Value::Object(node));
-                            edge.insert("cursor".into(), Value::String(cursor));
+                            edge.insert(Name::new("node"), Value::Object(node));
+                            edge.insert(Name::new("cursor"), Value::String(cursor));
                             Value::Object(edge)
                         })
                         .collect();
 
                     let connection_result = ValueMapping::from([
-                        ("totalCount".into(), Value::from(total_count)),
-                        ("edges".into(), Value::List(edges)),
+                        (Name::new("totalCount"), Value::from(total_count)),
+                        (Name::new("edges"), Value::List(edges)),
                         (
-                            "pageInfo".into(),
+                            Name::new("pageInfo"),
                             Value::Object(ValueMapping::from([
-                                ("hasNextPage".into(), Value::from(page_info.has_next_page)),
                                 (
-                                    "hasPreviousPage".into(),
+                                    Name::new("hasNextPage"),
+                                    Value::from(page_info.has_next_page),
+                                ),
+                                (
+                                    Name::new("hasPreviousPage"),
                                     Value::from(page_info.has_previous_page),
                                 ),
                                 (
-                                    "startCursor".into(),
+                                    Name::new("startCursor"),
                                     Value::from(page_info.start_cursor.unwrap_or_default()),
                                 ),
                                 (
-                                    "endCursor".into(),
+                                    Name::new("endCursor"),
                                     Value::from(page_info.end_cursor.unwrap_or_default()),
                                 ),
                             ])),
@@ -165,11 +174,16 @@ impl ResolvableObject for ErcBalanceObject {
                                     Err(_) => return None,
                                 };
 
-                                if let Some(entity) =
-                                    page.items.into_iter().find(|e| e.id == token_balance.id)
+                                if let Some(entity) = page
+                                    .items
+                                    .into_iter()
+                                    .find(|e| e.hashed_keys.to_hex() == token_balance.id)
                                 {
                                     let mut balance_data = ValueMapping::new();
-                                    balance_data.insert("id".into(), Value::String(entity.id));
+                                    balance_data.insert(
+                                        Name::new("id"),
+                                        Value::String(entity.hashed_keys.to_hex()),
+                                    );
                                     Some(Ok(FieldValue::owned_any(balance_data)))
                                 } else {
                                     None

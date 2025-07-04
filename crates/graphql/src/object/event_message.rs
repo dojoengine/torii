@@ -128,15 +128,15 @@ fn model_union_field() -> Field {
                     let mut results = Vec::new();
                     for model in models {
                         let mut model_data = ValueMapping::new();
-                        model_data.insert("id".into(), Value::String(model.id));
-                        model_data.insert("name".into(), Value::String(model.name));
-                        model_data.insert("namespace".into(), Value::String(model.namespace));
+                        model_data.insert(Name::new("id"), Value::String(model.id));
+                        model_data.insert(Name::new("name"), Value::String(model.name));
+                        model_data.insert(Name::new("namespace"), Value::String(model.namespace));
                         results.push(Value::Object(model_data));
                     }
 
                     Ok(Some(Value::List(results)))
                 }
-                _ => Err("incorrect value, requires Value::Object".into()),
+                _ => Err("incorrect value, requires Value::Object".to_string().into()),
             }
         })
     })

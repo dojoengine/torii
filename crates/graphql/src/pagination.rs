@@ -1,5 +1,5 @@
 use async_graphql::connection::PageInfo;
-use starknet_types_core::felt::Felt;
+use starknet::core::types::Felt;
 use torii_proto::{
     Clause, CompositeClause, KeysClause, LogicalOperator, OrderBy, OrderDirection, Page,
     Pagination, PaginationDirection, PatternMatching, Query,

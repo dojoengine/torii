@@ -201,7 +201,7 @@ fn calls_field() -> Field {
 
                     Ok(Some(Value::List(results)))
                 }
-                _ => Err("incorrect value, requires Value::Object".into()),
+                _ => Err("incorrect value, requires Value::Object".to_string().into()),
             }
         })
     })
@@ -265,7 +265,7 @@ fn token_transfers_field() -> Field {
 
                         Ok(Some(FieldValue::list(results)))
                     }
-                    _ => Err("incorrect value, requires Value::Object".into()),
+                    _ => Err("incorrect value, requires Value::Object".to_string().into()),
                 }
             })
         },

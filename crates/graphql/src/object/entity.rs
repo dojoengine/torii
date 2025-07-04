@@ -138,9 +138,9 @@ impl EntityObject {
                     let edges: Vec<Value> = entities
                         .into_iter()
                         .map(|entity| {
-                            let cursor = entity.id.clone(); // Use entity ID as cursor
+                            let cursor = entity.hashed_keys.to_hex(); // Use entity hashed_keys as cursor
                             let node = EntityObject::value_mapping(Entity {
-                                id: entity.id,
+                                id: entity.hashed_keys.to_hex(),
                                 keys: entity.keys.unwrap_or_default(),
                                 event_id: entity.event_id.unwrap_or_default(),
                                 created_at: entity.created_at,
@@ -247,7 +247,7 @@ fn model_union_field() -> Field {
 
                     Ok(Some(FieldValue::list(results)))
                 }
-                _ => Err("incorrect value, requires Value::Object".into()),
+                _ => Err("incorrect value, requires Value::Object".to_string().into()),
             }
         })
     })

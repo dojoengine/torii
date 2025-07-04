@@ -72,7 +72,11 @@ pub trait BasicObject: Send + Sync {
                             )));
                         }
                         // if the parent is `Value` then it must be a Object
-                        Ok(_) => return Err("incorrect value, requires Value::Object".into()),
+                        Ok(_) => {
+                            return Err(async_graphql::Error::new(
+                                "incorrect value, requires Value::Object",
+                            ))
+                        }
                         _ => {}
                     };
 
@@ -101,7 +105,11 @@ pub trait BasicObject: Send + Sync {
                                     values.total_count,
                                 ))));
                             }
-                            _ => return Err("incorrect value, requires Value::Object".into()),
+                            _ => {
+                                return Err(async_graphql::Error::new(
+                                    "incorrect value, requires Value::Object",
+                                ))
+                            }
                         }
                     }
 
@@ -116,7 +124,11 @@ pub trait BasicObject: Send + Sync {
                                     values.cursor.clone(),
                                 ))));
                             }
-                            _ => return Err("incorrect value, requires Value::Object".into()),
+                            _ => {
+                                return Err(async_graphql::Error::new(
+                                    "incorrect value, requires Value::Object",
+                                ))
+                            }
                         }
                     }
 
@@ -142,7 +154,11 @@ pub trait BasicObject: Send + Sync {
                                     values.total_count,
                                 ))));
                             }
-                            _ => return Err("incorrect value, requires Value::Object".into()),
+                            _ => {
+                                return Err(async_graphql::Error::new(
+                                    "incorrect value, requires Value::Object",
+                                ))
+                            }
                         }
                     }
 
@@ -157,7 +173,11 @@ pub trait BasicObject: Send + Sync {
                                     values.cursor.clone(),
                                 ))));
                             }
-                            _ => return Err("incorrect value, requires Value::Object".into()),
+                            _ => {
+                                return Err(async_graphql::Error::new(
+                                    "incorrect value, requires Value::Object",
+                                ))
+                            }
                         }
                     }
 
@@ -186,7 +206,11 @@ pub trait BasicObject: Send + Sync {
                                     values.transaction_hash.clone(),
                                 ))));
                             }
-                            _ => return Err("incorrect value, requires Value::Object".into()),
+                            _ => {
+                                return Err(async_graphql::Error::new(
+                                    "incorrect value, requires Value::Object",
+                                ))
+                            }
                         }
                     }
 
@@ -194,7 +218,7 @@ pub trait BasicObject: Send + Sync {
                         return Ok(Some(values.clone().to_field_value()));
                     }
 
-                    Err("unexpected parent value".into())
+                    Err(async_graphql::Error::new("unexpected parent value"))
                 })
             });
 
@@ -274,9 +298,16 @@ pub fn resolve_one(
             let query = build_query(&None, &None, &Default::default(), &None, None, false);
             let page = storage.entities(&query).await?;
 
-            if let Some(entity) = page.items.into_iter().find(|e| e.id == id) {
+            if let Some(entity) = page
+                .items
+                .into_iter()
+                .find(|e| e.hashed_keys.to_hex() == id)
+            {
                 let mut model = ValueMapping::new();
-                model.insert("id".into(), Value::String(entity.id));
+                model.insert(
+                    async_graphql::Name::new("id"),
+                    Value::String(entity.hashed_keys.to_hex()),
+                );
                 Ok(Some(Value::Object(model)))
             } else {
                 Ok(None)
@@ -322,9 +353,16 @@ pub fn resolve_one_with_joins(
             let query = build_query(&None, &None, &Default::default(), &None, None, false);
             let page = storage.entities(&query).await?;
 
-            if let Some(entity) = page.items.into_iter().find(|e| e.id == id) {
+            if let Some(entity) = page
+                .items
+                .into_iter()
+                .find(|e| e.hashed_keys.to_hex() == id)
+            {
                 let mut model = ValueMapping::new();
-                model.insert("id".into(), Value::String(entity.id));
+                model.insert(
+                    async_graphql::Name::new("id"),
+                    Value::String(entity.hashed_keys.to_hex()),
+                );
                 Ok(Some(Value::Object(model)))
             } else {
                 Ok(None)
@@ -368,34 +406,43 @@ pub fn resolve_many(
                 let edges: Vec<Value> = entities
                     .into_iter()
                     .map(|entity| {
-                        let cursor = entity.id.clone();
+                        let cursor = entity.hashed_keys.to_hex();
                         let mut node = ValueMapping::new();
-                        node.insert("id".into(), Value::String(entity.id));
+                        node.insert(
+                            async_graphql::Name::new("id"),
+                            Value::String(entity.hashed_keys.to_hex()),
+                        );
 
                         let mut edge = ValueMapping::new();
-                        edge.insert("node".into(), Value::Object(node));
-                        edge.insert("cursor".into(), Value::String(cursor));
+                        edge.insert(async_graphql::Name::new("node"), Value::Object(node));
+                        edge.insert(async_graphql::Name::new("cursor"), Value::String(cursor));
                         Value::Object(edge)
                     })
                     .collect();
 
                 let connection_result = ValueMapping::from([
-                    ("totalCount".into(), Value::from(total_count)),
-                    ("edges".into(), Value::List(edges)),
                     (
-                        "pageInfo".into(),
+                        async_graphql::Name::new("totalCount"),
+                        Value::from(total_count),
+                    ),
+                    (async_graphql::Name::new("edges"), Value::List(edges)),
+                    (
+                        async_graphql::Name::new("pageInfo"),
                         Value::Object(ValueMapping::from([
-                            ("hasNextPage".into(), Value::from(page_info.has_next_page)),
                             (
-                                "hasPreviousPage".into(),
+                                async_graphql::Name::new("hasNextPage"),
+                                Value::from(page_info.has_next_page),
+                            ),
+                            (
+                                async_graphql::Name::new("hasPreviousPage"),
                                 Value::from(page_info.has_previous_page),
                             ),
                             (
-                                "startCursor".into(),
+                                async_graphql::Name::new("startCursor"),
                                 Value::from(page_info.start_cursor.unwrap_or_default()),
                             ),
                             (
-                                "endCursor".into(),
+                                async_graphql::Name::new("endCursor"),
                                 Value::from(page_info.end_cursor.unwrap_or_default()),
                             ),
                         ])),

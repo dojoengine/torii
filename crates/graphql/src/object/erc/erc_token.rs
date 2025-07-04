@@ -8,6 +8,7 @@ use sqlx::{Pool, Row, Sqlite, SqliteConnection};
 use tokio_stream::StreamExt;
 use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::Token;
+use torii_storage::Storage;
 use tracing::warn;
 
 use super::handle_cursor;
@@ -25,6 +26,7 @@ use crate::object::connection::{
 };
 use crate::object::erc::{Connection, ConnectionEdge};
 use crate::object::{BasicObject, ResolvableObject};
+use crate::pagination::{build_query, page_to_connection};
 use crate::query::order::{CursorDirection, Direction};
 use crate::types::{TypeMapping, ValueMapping};
 
@@ -386,37 +388,40 @@ impl ResolvableObject for TokenObject {
                             let edges: Vec<Value> = entities
                                 .into_iter()
                                 .map(|entity| {
-                                    let cursor = entity.id.clone();
+                                    let cursor = entity.hashed_keys.to_hex();
                                     let mut node = ValueMapping::new();
-                                    node.insert("id".into(), Value::String(entity.id));
+                                    node.insert(
+                                        Name::new("id"),
+                                        Value::String(entity.hashed_keys.to_hex()),
+                                    );
 
                                     let mut edge = ValueMapping::new();
-                                    edge.insert("node".into(), Value::Object(node));
-                                    edge.insert("cursor".into(), Value::String(cursor));
+                                    edge.insert(Name::new("node"), Value::Object(node));
+                                    edge.insert(Name::new("cursor"), Value::String(cursor));
                                     Value::Object(edge)
                                 })
                                 .collect();
 
                             let connection_result = ValueMapping::from([
-                                ("totalCount".into(), Value::from(total_count)),
-                                ("edges".into(), Value::List(edges)),
+                                (Name::new("totalCount"), Value::from(total_count)),
+                                (Name::new("edges"), Value::List(edges)),
                                 (
-                                    "pageInfo".into(),
+                                    Name::new("pageInfo"),
                                     Value::Object(ValueMapping::from([
                                         (
-                                            "hasNextPage".into(),
+                                            Name::new("hasNextPage"),
                                             Value::from(page_info.has_next_page),
                                         ),
                                         (
-                                            "hasPreviousPage".into(),
+                                            Name::new("hasPreviousPage"),
                                             Value::from(page_info.has_previous_page),
                                         ),
                                         (
-                                            "startCursor".into(),
+                                            Name::new("startCursor"),
                                             Value::from(page_info.start_cursor.unwrap_or_default()),
                                         ),
                                         (
-                                            "endCursor".into(),
+                                            Name::new("endCursor"),
                                             Value::from(page_info.end_cursor.unwrap_or_default()),
                                         ),
                                     ])),
@@ -450,9 +455,16 @@ impl ResolvableObject for TokenObject {
                             .and_then(|v| v.string().ok())
                             .unwrap_or_default();
 
-                        if let Some(entity) = page.items.into_iter().find(|e| e.id == token_id) {
+                        if let Some(entity) = page
+                            .items
+                            .into_iter()
+                            .find(|e| e.hashed_keys.to_hex() == token_id)
+                        {
                             let mut token_data = ValueMapping::new();
-                            token_data.insert("id".into(), Value::String(entity.id));
+                            token_data.insert(
+                                Name::new("id"),
+                                Value::String(entity.hashed_keys.to_hex()),
+                            );
                             Ok(Some(Value::Object(token_data)))
                         } else {
                             Ok(None)
@@ -491,10 +503,13 @@ impl ResolvableObject for TokenObject {
                                 if let Some(entity) = page
                                     .items
                                     .into_iter()
-                                    .find(|e| e.id == token.token_id.to_string())
+                                    .find(|e| e.hashed_keys.to_hex() == token.token_id.to_string())
                                 {
                                     let mut token_data = ValueMapping::new();
-                                    token_data.insert("id".into(), Value::String(entity.id));
+                                    token_data.insert(
+                                        Name::new("id"),
+                                        Value::String(entity.hashed_keys.to_hex()),
+                                    );
                                     Some(Ok(FieldValue::owned_any(token_data)))
                                 } else {
                                     None
