@@ -1,7 +1,8 @@
 use async_graphql::connection::PageInfo;
 use dojo_types::primitive::Felt;
 use torii_proto::{
-    Clause, CompositeClause, KeysClause, LogicalOperator, OrderBy, Page, Pagination, PaginationDirection, PatternMatching, Query,
+    Clause, CompositeClause, KeysClause, LogicalOperator, OrderBy, Page, Pagination,
+    PaginationDirection, PatternMatching, Query,
 };
 
 use crate::object::connection::ConnectionArguments;
@@ -108,7 +109,9 @@ pub fn keys_to_clause(keys: &Option<Vec<String>>) -> Option<Clause> {
             .join("/");
 
         Some(Clause::Keys(KeysClause {
-            keys: vec![Some(Felt::from_hex(&format!("^{}.*", keys_pattern)).unwrap_or_default())],
+            keys: vec![Some(
+                Felt::from_hex(&format!("^{}.*", keys_pattern)).unwrap_or_default(),
+            )],
             pattern_matching: PatternMatching::VariableLen,
             models: vec![],
         }))
