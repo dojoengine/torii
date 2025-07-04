@@ -329,7 +329,7 @@ mod tests {
 
         let stored_controllers = ctrls
             .storage
-            .controllers(&[], &[], None, None)
+            .controllers(&[], &[], None, Some(1000000))
             .await
             .unwrap()
             .items;
