@@ -279,6 +279,38 @@ pub struct Transaction {
     pub contract_addresses: HashSet<Felt>,
 }
 
+impl From<Transaction> for torii_proto::Transaction {
+    fn from(value: Transaction) -> Self {
+        let calldata = value
+            .calldata
+            .trim_end_matches('/')
+            .split('/')
+            .filter(|d| !d.is_empty())
+            .map(|d| Felt::from_str(d).unwrap())
+            .collect();
+
+        let signature = value
+            .signature
+            .trim_end_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .map(|s| Felt::from_str(s).unwrap())
+            .collect();
+
+        Self {
+            transaction_hash: Felt::from_str(&value.transaction_hash).unwrap(),
+            sender_address: Felt::from_str(&value.sender_address).unwrap(),
+            calldata,
+            max_fee: Felt::from_str(&value.max_fee).unwrap(),
+            signature,
+            nonce: Felt::from_str(&value.nonce).unwrap(),
+            transaction_type: value.transaction_type,
+            block_number: value.block_number,
+            executed_at: value.executed_at,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ModelIndices {
     pub model_tag: String,

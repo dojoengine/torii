@@ -14,7 +14,7 @@ use torii_math::I256;
 use torii_proto::{
     schema::Entity, Clause, CompositeClause, Controller, Event, EventQuery, LogicalOperator, Model,
     OrderBy, OrderDirection, Page, Pagination, PaginationDirection, Query, Token, TokenBalance,
-    TokenCollection,
+    TokenCollection, Transaction,
 };
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
@@ -596,6 +596,60 @@ impl ReadOnlyStorage for Sql {
             }
             None => Ok(None),
         }
+    }
+
+    async fn transactions(
+        &self,
+        transaction_hashes: &[Felt],
+        sender_addresses: &[Felt],
+        cursor: Option<String>,
+        limit: Option<usize>,
+    ) -> Result<Page<Transaction>, StorageError> {
+        let pagination = Pagination {
+            cursor,
+            limit: limit.map(|l| l as u32),
+            direction: PaginationDirection::Forward,
+            order_by: vec![OrderBy {
+                field: "executed_at".to_string(),
+                direction: OrderDirection::Desc,
+            }],
+        };
+
+        let executor = PaginationExecutor::new(self.pool.clone());
+        let mut query_builder = QueryBuilder::new("transactions").select(&["*".to_string()]);
+
+        if !transaction_hashes.is_empty() {
+            let placeholders = vec!["?"; transaction_hashes.len()].join(", ");
+            query_builder = query_builder.where_clause(&format!("transaction_hash IN ({})", placeholders));
+            for hash in transaction_hashes {
+                query_builder = query_builder.bind_value(format!("{:#x}", hash));
+            }
+        }
+
+        if !sender_addresses.is_empty() {
+            let placeholders = vec!["?"; sender_addresses.len()].join(", ");
+            query_builder = query_builder.where_clause(&format!("sender_address IN ({})", placeholders));
+            for addr in sender_addresses {
+                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+            }
+        }
+
+        let page = executor
+            .execute_paginated_query(query_builder, pagination)
+            .await?;
+        let items: Vec<Transaction> = page
+            .items
+            .into_iter()
+            .map(|row| {
+                Result::<Transaction, Error>::Ok(
+                    torii_sqlite_types::Transaction::from_row(&row)?.into(),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Page {
+            items,
+            next_cursor: page.next_cursor,
+        })
     }
 }
 
