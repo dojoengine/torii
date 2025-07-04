@@ -21,6 +21,7 @@ use erc::erc_token::ErcTokenType;
 use erc::token_transfer::TokenTransferNode;
 use erc::{Connection, ConnectionEdge};
 use sqlx::{Pool, Sqlite};
+use torii_storage::Storage;
 
 use self::connection::edge::EdgeObject;
 use self::connection::{
@@ -28,9 +29,8 @@ use self::connection::{
 };
 use self::inputs::keys_input::parse_keys_argument;
 use self::inputs::order_input::parse_order_argument;
-use crate::query::data::{
-    count_rows, fetch_multiple_rows, fetch_single_row, fetch_single_row_with_joins, JoinConfig,
-};
+use crate::pagination::{build_query, page_to_connection};
+use crate::query::data::{count_rows, fetch_single_row, fetch_single_row_with_joins, JoinConfig};
 use crate::query::value_mapping_from_row;
 use crate::types::{TypeMapping, ValueMapping};
 use crate::utils::extract;
@@ -354,7 +354,7 @@ pub fn resolve_many(
                 let order = parse_order_argument(&ctx);
                 let total_count = count_rows(&mut conn, &table_name, &keys, &None).await?;
 
-                let (data, page_info) = fetch_multiple_rows(
+                let (data, page_info) = crate::query::data::fetch_multiple_rows(
                     &mut conn,
                     &table_name,
                     &id_column,

@@ -28,6 +28,7 @@ strum_macros.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-stream = "0.1.11"
+torii-proto.workspace = true
 torii-sqlite.workspace = true
 torii-storage.workspace = true
 tracing.workspace = true

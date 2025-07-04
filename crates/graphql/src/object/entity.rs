@@ -17,8 +17,10 @@ use crate::constants::{
 };
 use crate::mapping::ENTITY_TYPE_MAPPING;
 use crate::object::{resolve_many, resolve_one};
+use crate::pagination::{build_query, page_to_connection};
 use crate::query::{build_type_mapping, value_mapping_from_row};
 use crate::utils;
+use torii_storage::Storage;
 #[derive(Debug)]
 pub struct EntityObject;
 
@@ -50,13 +52,7 @@ impl ResolvableObject for EntityObject {
             self.type_mapping(),
         );
 
-        let mut resolve_many = resolve_many(
-            ENTITY_TABLE,
-            EVENT_ID_COLUMN,
-            self.name().1,
-            self.type_name(),
-            self.type_mapping(),
-        );
+        let mut resolve_many = self.resolve_entities_with_storage();
         resolve_many = keys_argument(resolve_many);
 
         vec![resolve_one, resolve_many]
@@ -111,6 +107,89 @@ impl EntityObject {
                 Value::from(entity.executed_at.format(DATETIME_FORMAT).to_string()),
             ),
         ])
+    }
+
+    fn resolve_entities_with_storage(&self) -> Field {
+        use crate::object::connection::{connection_arguments, parse_connection_arguments};
+        use crate::object::inputs::keys_input::parse_keys_argument;
+        use crate::object::inputs::order_input::parse_order_argument;
+        use async_graphql::dynamic::{Field, FieldFuture, TypeRef};
+        use async_graphql::Value;
+
+        let type_mapping = self.type_mapping().clone();
+        let type_name = self.type_name().to_string();
+
+        let mut field = Field::new(
+            self.name().1,
+            TypeRef::named(format!("{}Connection", type_name)),
+            move |ctx| {
+                let type_mapping = type_mapping.clone();
+
+                FieldFuture::new(async move {
+                    let connection = parse_connection_arguments(&ctx)?;
+                    let keys = parse_keys_argument(&ctx)?;
+                    let order = parse_order_argument(&ctx);
+
+                    let storage = ctx.data::<Storage>()?;
+                    let query = build_query(&keys, &None, &connection, &order, None, false);
+
+                    let page = storage.entities(&query).await?;
+                    let total_count = page.items.len() as i64;
+                    let (entities, page_info) = page_to_connection(page, &connection, total_count);
+
+                    let edges: Vec<Value> = entities
+                        .into_iter()
+                        .map(|entity| {
+                            let cursor = entity.id.clone(); // Use entity ID as cursor
+                            let node = EntityObject::value_mapping(Entity {
+                                id: entity.id,
+                                keys: entity.keys.unwrap_or_default(),
+                                event_id: entity.event_id.unwrap_or_default(),
+                                created_at: entity.created_at,
+                                updated_at: entity.updated_at,
+                                executed_at: entity.executed_at,
+                            });
+
+                            let mut edge = ValueMapping::new();
+                            edge.insert(Name::new("node"), Value::Object(node));
+                            edge.insert(Name::new("cursor"), Value::String(cursor));
+                            Value::Object(edge)
+                        })
+                        .collect();
+
+                    let connection_result = ValueMapping::from([
+                        (Name::new("totalCount"), Value::from(total_count)),
+                        (Name::new("edges"), Value::List(edges)),
+                        (
+                            Name::new("pageInfo"),
+                            Value::Object(ValueMapping::from([
+                                (
+                                    Name::new("hasNextPage"),
+                                    Value::from(page_info.has_next_page),
+                                ),
+                                (
+                                    Name::new("hasPreviousPage"),
+                                    Value::from(page_info.has_previous_page),
+                                ),
+                                (
+                                    Name::new("startCursor"),
+                                    Value::from(page_info.start_cursor.unwrap_or_default()),
+                                ),
+                                (
+                                    Name::new("endCursor"),
+                                    Value::from(page_info.end_cursor.unwrap_or_default()),
+                                ),
+                            ])),
+                        ),
+                    ]);
+
+                    Ok(Some(Value::Object(connection_result)))
+                })
+            },
+        );
+
+        field = connection_arguments(field);
+        field
     }
 }
 

@@ -3,6 +3,7 @@ use async_graphql::dynamic::{Object, Scalar, Schema, Subscription, Union};
 use dojo_types::schema::Ty;
 use sqlx::SqlitePool;
 use torii_sqlite::types::Model;
+use torii_storage::Storage;
 
 use super::object::connection::page_info::PageInfoObject;
 use super::object::entity::EntityObject;
@@ -34,7 +35,7 @@ use crate::query::build_type_mapping;
 // the models until runtime. There are however, predefined objects such as entities and
 // events, their schema is known but we generate them dynamically as well because async-graphql
 // does not allow mixing of static and dynamic schemas.
-pub async fn build_schema(pool: &SqlitePool) -> Result<Schema> {
+pub async fn build_schema(pool: &SqlitePool, storage: Storage) -> Result<Schema> {
     // build world gql objects
     let (objects, unions) = build_objects(pool).await?;
 
@@ -108,6 +109,7 @@ pub async fn build_schema(pool: &SqlitePool) -> Result<Schema> {
         .register(query_root)
         .register(subscription_root)
         .data(pool.clone())
+        .data(storage)
         .finish()
         .map_err(|e| e.into())
 }
