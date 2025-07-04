@@ -13,7 +13,8 @@ use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
     schema::Entity, Clause, CompositeClause, Controller, Event, EventQuery, LogicalOperator, Model,
-    Page, Query, Token, TokenBalance, TokenCollection,
+    OrderBy, OrderDirection, Page, Pagination, PaginationDirection, Query, Token, TokenBalance,
+    TokenCollection,
 };
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
@@ -31,6 +32,7 @@ use crate::{
     cursor::{decode_cursor, encode_cursor},
     executor::{RegisterErc20TokenQuery, RegisterNftTokenQuery},
     model::map_row_to_ty,
+    query::{PaginationExecutor, QueryBuilder},
     utils::{build_keys_pattern, u256_to_sql_string},
 };
 use crate::{
@@ -187,9 +189,6 @@ impl ReadOnlyStorage for Sql {
         cursor: Option<String>,
         limit: Option<usize>,
     ) -> Result<Page<Controller>, StorageError> {
-        use crate::model::{PaginationExecutor, QueryBuilder};
-        use torii_proto::{OrderBy, OrderDirection, Pagination, PaginationDirection};
-
         let pagination = Pagination {
             cursor,
             limit: limit.map(|l| l as u32),
@@ -248,9 +247,6 @@ impl ReadOnlyStorage for Sql {
         cursor: Option<String>,
         limit: Option<usize>,
     ) -> Result<Page<Token>, StorageError> {
-        use crate::model::{PaginationExecutor, QueryBuilder};
-        use torii_proto::{OrderBy, OrderDirection, Pagination, PaginationDirection};
-
         let pagination = Pagination {
             cursor,
             limit: limit.map(|l| l as u32),
@@ -305,9 +301,6 @@ impl ReadOnlyStorage for Sql {
         cursor: Option<String>,
         limit: Option<usize>,
     ) -> Result<Page<TokenBalance>, StorageError> {
-        use crate::model::{PaginationExecutor, QueryBuilder};
-        use torii_proto::{OrderBy, OrderDirection, Pagination, PaginationDirection};
-
         let pagination = Pagination {
             cursor,
             limit: limit.map(|l| l as u32),
@@ -376,7 +369,7 @@ impl ReadOnlyStorage for Sql {
         cursor: Option<String>,
         limit: Option<usize>,
     ) -> Result<Page<TokenCollection>, StorageError> {
-        use crate::model::{PaginationExecutor, QueryBuilder};
+        use crate::query::{PaginationExecutor, QueryBuilder};
         use torii_proto::{OrderBy, OrderDirection, Pagination, PaginationDirection};
 
         let pagination = Pagination {
