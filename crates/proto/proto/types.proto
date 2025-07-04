@@ -47,6 +47,27 @@ message Event {
     bytes transaction_hash = 3;
 }
 
+message Transaction {
+    // The transaction hash
+    bytes transaction_hash = 1;
+    // The sender address
+    bytes sender_address = 2;
+    // The calldata
+    repeated bytes calldata = 3;
+    // The max fee
+    bytes max_fee = 4;
+    // The signature
+    repeated bytes signature = 5;
+    // The nonce
+    bytes nonce = 6;
+    // The transaction type
+    string transaction_type = 7;
+    // The block number
+    uint64 block_number = 8;
+    // The timestamp when the transaction was executed
+    uint64 executed_at_timestamp = 9;
+}
+
 message Query {
     Clause clause = 1;
     bool no_hashed_keys = 2;

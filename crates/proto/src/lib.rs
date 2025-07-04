@@ -253,6 +253,52 @@ impl TryFrom<proto::types::TokenBalance> for TokenBalance {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct Transaction {
+    pub transaction_hash: Felt,
+    pub sender_address: Felt,
+    pub calldata: Vec<Felt>,
+    pub max_fee: Felt,
+    pub signature: Vec<Felt>,
+    pub nonce: Felt,
+    pub transaction_type: String,
+    pub block_number: u64,
+    pub executed_at: DateTime<Utc>,
+}
+
+impl From<Transaction> for proto::types::Transaction {
+    fn from(value: Transaction) -> Self {
+        Self {
+            transaction_hash: value.transaction_hash.to_bytes_be().into(),
+            sender_address: value.sender_address.to_bytes_be().into(),
+            calldata: value.calldata.into_iter().map(|f| f.to_bytes_be().into()).collect(),
+            max_fee: value.max_fee.to_bytes_be().into(),
+            signature: value.signature.into_iter().map(|f| f.to_bytes_be().into()).collect(),
+            nonce: value.nonce.to_bytes_be().into(),
+            transaction_type: value.transaction_type,
+            block_number: value.block_number,
+            executed_at_timestamp: value.executed_at.timestamp() as u64,
+        }
+    }
+}
+
+impl TryFrom<proto::types::Transaction> for Transaction {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::Transaction) -> Result<Self, Self::Error> {
+        Ok(Self {
+            transaction_hash: Felt::from_bytes_be_slice(&value.transaction_hash),
+            sender_address: Felt::from_bytes_be_slice(&value.sender_address),
+            calldata: value.calldata.into_iter().map(|c| Felt::from_bytes_be_slice(&c)).collect(),
+            max_fee: Felt::from_bytes_be_slice(&value.max_fee),
+            signature: value.signature.into_iter().map(|s| Felt::from_bytes_be_slice(&s)).collect(),
+            nonce: Felt::from_bytes_be_slice(&value.nonce),
+            transaction_type: value.transaction_type,
+            block_number: value.block_number,
+            executed_at: DateTime::from_timestamp(value.executed_at_timestamp as i64, 0).unwrap(),
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct IndexerUpdate {
     pub head: i64,
     pub tps: i64,
