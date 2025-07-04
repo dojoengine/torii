@@ -1,11 +1,9 @@
 use dojo_types::naming::compute_selector_from_tag;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::collections::HashSet;
 use std::str::FromStr;
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, CompositeClause, LogicalOperator, MemberValue, OrderDirection, Page, Pagination,
-    PaginationDirection,
+    Clause, CompositeClause, LogicalOperator, MemberValue, OrderBy, OrderDirection, Page, Pagination, PaginationDirection
 };
 use torii_storage::ReadOnlyStorage;
 
@@ -662,9 +660,13 @@ impl Sql {
         entity_relation_column: &str,
         where_clause: Option<&str>,
         having_clause: Option<&str>,
-        pagination: Pagination,
+        mut pagination: Pagination,
         bind_values: Vec<String>,
     ) -> Result<Page<SqliteRow>, Error> {
+        pagination.order_by.push(OrderBy {
+            field: "entities.event_id".to_string(),
+            direction: OrderDirection::Desc,
+        });
         // Helper function to collect columns
         fn collect_columns(table_prefix: &str, path: &str, ty: &Ty, selections: &mut Vec<String>) {
             match ty {
@@ -715,16 +717,7 @@ impl Sql {
         let fetch_limit = original_limit + 1;
         let mut has_more_pages = false;
 
-        // Build order by clause with proper model joining
-        let order_by_models: HashSet<String> = pagination
-            .order_by
-            .iter()
-            .map(|ob| ob.field.clone())
-            .collect();
-
-        let order_clause = if pagination.order_by.is_empty() {
-            format!("{table_name}.event_id DESC")
-        } else {
+        let order_clause = {
             pagination
                 .order_by
                 .iter()
@@ -737,7 +730,6 @@ impl Sql {
                     };
                     format!("[{}] {direction}", ob.field)
                 })
-                .chain(std::iter::once(format!("{table_name}.event_id DESC")))
                 .collect::<Vec<_>>()
                 .join(", ")
         };
@@ -755,7 +747,7 @@ impl Sql {
 
         // Build cursor conditions
         let (cursor_conditions, cursor_binds) =
-            build_cursor_conditions(&pagination, cursor_values.as_deref(), table_name)?;
+            build_cursor_conditions(&pagination, cursor_values.as_deref())?;
 
         // Combine WHERE clauses
         let combined_where = combine_where_clauses(where_clause, &cursor_conditions);
@@ -779,13 +771,8 @@ impl Sql {
             // Add schema joins
             for model in chunk {
                 let model_table = model.name();
-                let join_type = if order_by_models.contains(&model_table) {
-                    "INNER"
-                } else {
-                    "LEFT"
-                };
                 joins.push(format!(
-                    "{join_type} JOIN [{model_table}] ON {table_name}.id = \
+                    "LEFT JOIN [{model_table}] ON {table_name}.id = \
                      [{model_table}].{entity_relation_column}",
                 ));
                 collect_columns(&model_table, "", model, &mut selections);
@@ -1004,7 +991,6 @@ impl PaginationExecutor {
         let (cursor_conditions, cursor_binds) = build_cursor_conditions(
             &pagination,
             cursor_values.as_deref(),
-            query_builder.table_name(),
         )?;
 
         for condition in cursor_conditions {

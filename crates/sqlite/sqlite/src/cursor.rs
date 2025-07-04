@@ -53,62 +53,39 @@ pub fn decode_cursor(encoded_cursor: &str) -> Result<String, Error> {
 pub fn build_cursor_conditions(
     pagination: &Pagination,
     cursor_values: Option<&[String]>,
-    table_name: &str,
 ) -> Result<(Vec<String>, Vec<String>), Error> {
     let mut conditions = Vec::new();
     let mut binds = Vec::new();
 
     if let Some(values) = cursor_values {
-        let expected_len = if pagination.order_by.is_empty() {
-            1
-        } else {
-            pagination.order_by.len() + 1
-        };
-        if values.len() != expected_len {
+        if values.len() != pagination.order_by.len() {
             return Err(Error::Query(QueryError::InvalidCursor(
                 "Invalid cursor values length".to_string(),
             )));
         }
 
-        if pagination.order_by.is_empty() {
-            let operator = if pagination.direction == PaginationDirection::Forward {
-                "<"
-            } else {
-                ">"
+        for (i, (ob, val)) in pagination.order_by.iter().zip(values).enumerate() {
+            let operator = match (&ob.direction, &pagination.direction) {
+                (OrderDirection::Asc, PaginationDirection::Forward) => ">",
+                (OrderDirection::Asc, PaginationDirection::Backward) => "<",
+                (OrderDirection::Desc, PaginationDirection::Forward) => "<",
+                (OrderDirection::Desc, PaginationDirection::Backward) => ">",
             };
-            conditions.push(format!("{}.event_id {} ?", table_name, operator));
-            binds.push(values[0].clone());
-        } else {
-            for (i, (ob, val)) in pagination.order_by.iter().zip(values).enumerate() {
-                let operator = match (&ob.direction, &pagination.direction) {
-                    (OrderDirection::Asc, PaginationDirection::Forward) => ">",
-                    (OrderDirection::Asc, PaginationDirection::Backward) => "<",
-                    (OrderDirection::Desc, PaginationDirection::Forward) => "<",
-                    (OrderDirection::Desc, PaginationDirection::Backward) => ">",
-                };
 
-                let condition = if i == 0 {
-                    format!("[{}] {} ?", ob.field, operator)
-                } else {
-                    let prev = (0..i)
-                        .map(|j| {
-                            let prev_ob = &pagination.order_by[j];
-                            format!("[{}] = ?", prev_ob.field)
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" AND ");
-                    format!("({} AND [{}] {} ?)", prev, ob.field, operator)
-                };
-                conditions.push(condition);
-                binds.push(val.clone());
-            }
-            let operator = if pagination.direction == PaginationDirection::Forward {
-                "<"
+            let condition = if i == 0 {
+                format!("[{}] {} ?", ob.field, operator)
             } else {
-                ">"
+                let prev = (0..i)
+                    .map(|j| {
+                        let prev_ob = &pagination.order_by[j];
+                        format!("[{}] = ?", prev_ob.field)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" AND ");
+                format!("({} AND [{}] {} ?)", prev, ob.field, operator)
             };
-            conditions.push(format!("{}.event_id {} ?", table_name, operator));
-            binds.push(values.last().unwrap().clone());
+            conditions.push(condition);
+            binds.push(val.clone());
         }
     }
     Ok((conditions, binds))
@@ -182,14 +159,19 @@ mod tests {
             direction: PaginationDirection::Forward,
             cursor: Some("cursor".to_string()),
             limit: Some(10),
-            order_by: vec![],
+            order_by: vec![
+                OrderBy {
+                    field: "entities.event_id".to_string(),
+                    direction: OrderDirection::Desc,
+                }
+            ],
         };
         let cursor_values = vec!["123".to_string()];
         let (conditions, binds) =
-            build_cursor_conditions(&pagination, Some(&cursor_values), "entities").unwrap();
+            build_cursor_conditions(&pagination, Some(&cursor_values)).unwrap();
 
         assert_eq!(conditions.len(), 1);
-        assert_eq!(conditions[0], "entities.event_id < ?");
+        assert_eq!(conditions[0], "[entities.event_id] < ?");
         assert_eq!(binds.len(), 1);
         assert_eq!(binds[0], "123");
     }
@@ -200,14 +182,19 @@ mod tests {
             direction: PaginationDirection::Backward,
             cursor: Some("cursor".to_string()),
             limit: Some(10),
-            order_by: vec![],
+            order_by: vec![
+                OrderBy {
+                    field: "entities.event_id".to_string(),
+                    direction: OrderDirection::Desc,
+                }
+            ],
         };
         let cursor_values = vec!["123".to_string()];
         let (conditions, binds) =
-            build_cursor_conditions(&pagination, Some(&cursor_values), "entities").unwrap();
+            build_cursor_conditions(&pagination, Some(&cursor_values)).unwrap();
 
         assert_eq!(conditions.len(), 1);
-        assert_eq!(conditions[0], "entities.event_id > ?");
+        assert_eq!(conditions[0], "[entities.event_id] > ?");
         assert_eq!(binds.len(), 1);
         assert_eq!(binds[0], "123");
     }
@@ -223,16 +210,14 @@ mod tests {
                 direction: OrderDirection::Asc,
             }],
         };
-        let cursor_values = vec!["100".to_string(), "123".to_string()];
+        let cursor_values = vec!["100".to_string()];
         let (conditions, binds) =
-            build_cursor_conditions(&pagination, Some(&cursor_values), "entities").unwrap();
+            build_cursor_conditions(&pagination, Some(&cursor_values)).unwrap();
 
-        assert_eq!(conditions.len(), 2);
+        assert_eq!(conditions.len(), 1);
         assert_eq!(conditions[0], "[Player.score] > ?");
-        assert_eq!(conditions[1], "entities.event_id < ?");
-        assert_eq!(binds.len(), 2);
+        assert_eq!(binds.len(), 1);
         assert_eq!(binds[0], "100");
-        assert_eq!(binds[1], "123");
     }
 
     #[test]
@@ -241,10 +226,15 @@ mod tests {
             direction: PaginationDirection::Forward,
             cursor: Some("cursor".to_string()),
             limit: Some(10),
-            order_by: vec![],
+            order_by: vec![
+                OrderBy {
+                    field: "Player.score".to_string(),
+                    direction: OrderDirection::Asc,
+                }
+            ],
         };
         let cursor_values = vec!["123".to_string(), "456".to_string()]; // Too many values
-        let result = build_cursor_conditions(&pagination, Some(&cursor_values), "entities");
+        let result = build_cursor_conditions(&pagination, Some(&cursor_values));
 
         assert!(result.is_err());
         match result.unwrap_err() {
@@ -263,7 +253,7 @@ mod tests {
             limit: Some(10),
             order_by: vec![],
         };
-        let (conditions, binds) = build_cursor_conditions(&pagination, None, "entities").unwrap();
+        let (conditions, binds) = build_cursor_conditions(&pagination, None).unwrap();
 
         assert_eq!(conditions.len(), 0);
         assert_eq!(binds.len(), 0);
