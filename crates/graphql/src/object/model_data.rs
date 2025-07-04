@@ -1,8 +1,9 @@
 use async_graphql::dynamic::{Enum, Field, FieldFuture, InputObject, Object, TypeRef};
-use async_graphql::Value;
+use async_graphql::{Name, Value};
 use dojo_types::naming::get_tag;
 use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
+use torii_storage::Storage;
 
 use super::connection::{connection_arguments, connection_output, parse_connection_arguments};
 use super::inputs::order_input::{order_argument, parse_order_argument, OrderInputObject};
@@ -14,6 +15,7 @@ use crate::constants::{
     ID_COLUMN, INTERNAL_ENTITY_ID_KEY,
 };
 use crate::mapping::ENTITY_TYPE_MAPPING;
+use crate::pagination::{build_query, page_to_connection};
 use crate::query::data::{count_rows, fetch_multiple_rows, fetch_single_row};
 use crate::query::value_mapping_from_row;
 use crate::types::TypeData;
@@ -107,35 +109,57 @@ impl ResolvableObject for ModelDataObject {
             let table_name = get_tag(&namespace, model);
 
             FieldFuture::new(async move {
-                let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                let storage = ctx.data::<Box<dyn Storage>>()?;
                 let order = parse_order_argument(&ctx);
                 let filters = parse_where_argument(&ctx, &where_mapping)?;
                 let connection = parse_connection_arguments(&ctx)?;
 
-                let total_count = count_rows(&mut conn, &table_name, &None, &filters).await?;
-                let (data, page_info) = fetch_multiple_rows(
-                    &mut conn,
-                    &table_name,
-                    "internal_event_id",
-                    &None,
-                    &order,
-                    &filters,
-                    &connection,
-                    total_count,
-                )
-                .await?;
-                let connection = connection_output(
-                    &data,
-                    &type_mapping,
-                    &order,
-                    "internal_event_id",
-                    total_count,
-                    false,
-                    false,
-                    page_info,
-                )?;
+                let query = build_query(&None, &filters, &connection, &order, None, false);
+                let page = storage.entities(&query).await?;
+                let total_count = page.items.len() as i64;
+                let (entities, page_info) = page_to_connection(page, &connection, total_count);
 
-                Ok(Some(Value::Object(connection)))
+                let edges: Vec<Value> = entities
+                    .into_iter()
+                    .map(|entity| {
+                        let cursor = entity.hashed_keys.to_hex();
+                        let mut node = ValueMapping::new();
+                        node.insert(Name::new("id"), Value::String(entity.hashed_keys.to_hex()));
+
+                        let mut edge = ValueMapping::new();
+                        edge.insert(Name::new("node"), Value::Object(node));
+                        edge.insert(Name::new("cursor"), Value::String(cursor));
+                        Value::Object(edge)
+                    })
+                    .collect();
+
+                let connection_result = ValueMapping::from([
+                    (Name::new("totalCount"), Value::from(total_count)),
+                    (Name::new("edges"), Value::List(edges)),
+                    (
+                        Name::new("pageInfo"),
+                        Value::Object(ValueMapping::from([
+                            (
+                                Name::new("hasNextPage"),
+                                Value::from(page_info.has_next_page),
+                            ),
+                            (
+                                Name::new("hasPreviousPage"),
+                                Value::from(page_info.has_previous_page),
+                            ),
+                            (
+                                Name::new("startCursor"),
+                                Value::from(page_info.start_cursor.unwrap_or_default()),
+                            ),
+                            (
+                                Name::new("endCursor"),
+                                Value::from(page_info.end_cursor.unwrap_or_default()),
+                            ),
+                        ])),
+                    ),
+                ]);
+
+                Ok(Some(Value::Object(connection_result)))
             })
         });
 
@@ -199,7 +223,7 @@ pub fn object(type_name: &str, type_mapping: &TypeMapping, path_array: Vec<Strin
                     if let TypeData::Nested((_, nested_mapping)) = type_data {
                         return match ctx.parent_value.try_to_value()? {
                             Value::Object(indexmap) => {
-                                let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                                let storage = ctx.data::<Box<dyn Storage>>()?;
                                 let entity_id =
                                     utils::extract::<String>(indexmap, INTERNAL_ENTITY_ID_KEY)?;
 
@@ -208,20 +232,32 @@ pub fn object(type_name: &str, type_mapping: &TypeMapping, path_array: Vec<Strin
                                     return Ok(Some(data.clone()));
                                 }
 
-                                // TODO: remove subqueries and use JOIN in parent query
-                                let data = fetch_single_row(
-                                    &mut conn,
-                                    &table_name,
-                                    ENTITY_ID_COLUMN,
-                                    &entity_id,
-                                )
-                                .await?;
-                                let result =
-                                    value_mapping_from_row(&data, &nested_mapping, false, false)?;
+                                let query = build_query(
+                                    &None,
+                                    &None,
+                                    &Default::default(),
+                                    &None,
+                                    None,
+                                    false,
+                                );
+                                let page = storage.entities(&query).await?;
 
-                                Ok(Some(Value::Object(result)))
+                                if let Some(entity) = page
+                                    .items
+                                    .into_iter()
+                                    .find(|e| e.hashed_keys.to_hex() == entity_id)
+                                {
+                                    let mut entity_data = ValueMapping::new();
+                                    entity_data.insert(
+                                        Name::new("id"),
+                                        Value::String(entity.hashed_keys.to_hex()),
+                                    );
+                                    Ok(Some(Value::Object(entity_data)))
+                                } else {
+                                    Ok(None)
+                                }
                             }
-                            _ => Err("incorrect value, requires Value::Object".into()),
+                            _ => Err("incorrect value, requires Value::Object".to_string().into()),
                         };
                     }
 
@@ -230,7 +266,7 @@ pub fn object(type_name: &str, type_mapping: &TypeMapping, path_array: Vec<Strin
                         Value::Object(value_mapping) => {
                             Ok(Some(value_mapping.get(&field_name).unwrap().clone()))
                         }
-                        _ => Err("Incorrect value, requires Value::Object".into()),
+                        _ => Err("Incorrect value, requires Value::Object".to_string().into()),
                     };
                 }
 
@@ -240,7 +276,9 @@ pub fn object(type_name: &str, type_mapping: &TypeMapping, path_array: Vec<Strin
                     return Ok(Some(value_mapping.get(&field_name).unwrap().clone()));
                 }
 
-                Err("Field resolver only accepts Value or IndexMap".into())
+                Err("Field resolver only accepts Value or IndexMap"
+                    .to_string()
+                    .into())
             })
         });
 
@@ -255,13 +293,24 @@ fn entity_field() -> Field {
         FieldFuture::new(async move {
             match ctx.parent_value.try_to_value()? {
                 Value::Object(indexmap) => {
-                    let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                    let storage = ctx.data::<Box<dyn Storage>>()?;
                     let entity_id = utils::extract::<String>(indexmap, INTERNAL_ENTITY_ID_KEY)?;
-                    let data =
-                        fetch_single_row(&mut conn, ENTITY_TABLE, ID_COLUMN, &entity_id).await?;
-                    let entity = value_mapping_from_row(&data, &ENTITY_TYPE_MAPPING, false, true)?;
 
-                    Ok(Some(Value::Object(entity)))
+                    let query = build_query(&None, &None, &Default::default(), &None, None, false);
+                    let page = storage.entities(&query).await?;
+
+                    if let Some(entity) = page
+                        .items
+                        .into_iter()
+                        .find(|e| e.hashed_keys.to_hex() == entity_id)
+                    {
+                        let mut entity_data = ValueMapping::new();
+                        entity_data
+                            .insert(Name::new("id"), Value::String(entity.hashed_keys.to_hex()));
+                        Ok(Some(Value::Object(entity_data)))
+                    } else {
+                        Ok(None)
+                    }
                 }
                 _ => Err("incorrect value, requires Value::Object".into()),
             }
@@ -277,17 +326,29 @@ fn event_message_field() -> Field {
             FieldFuture::new(async move {
                 match ctx.parent_value.try_to_value()? {
                     Value::Object(indexmap) => {
-                        let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                        let storage = ctx.data::<Box<dyn Storage>>()?;
                         let entity_id = utils::extract::<String>(indexmap, INTERNAL_ENTITY_ID_KEY)?;
-                        let data =
-                            fetch_single_row(&mut conn, EVENT_MESSAGE_TABLE, ID_COLUMN, &entity_id)
-                                .await?;
-                        let event_message =
-                            value_mapping_from_row(&data, &ENTITY_TYPE_MAPPING, false, true)?;
 
-                        Ok(Some(Value::Object(event_message)))
+                        let query =
+                            build_query(&None, &None, &Default::default(), &None, None, false);
+                        let page = storage.event_messages(&query).await?;
+
+                        if let Some(event_message_entity) = page
+                            .items
+                            .into_iter()
+                            .find(|e| e.hashed_keys.to_hex() == entity_id)
+                        {
+                            let mut event_message = ValueMapping::new();
+                            event_message.insert(
+                                Name::new("id"),
+                                Value::String(event_message_entity.hashed_keys.to_hex()),
+                            );
+                            Ok(Some(Value::Object(event_message)))
+                        } else {
+                            Ok(None)
+                        }
                     }
-                    _ => Err("incorrect value, requires Value::Object".into()),
+                    _ => Err("incorrect value, requires Value::Object".to_string().into()),
                 }
             })
         },

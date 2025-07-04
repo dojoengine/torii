@@ -82,25 +82,24 @@ pub fn parse_connection_arguments(ctx: &ResolverContext<'_>) -> Result<Connectio
     let limit = extract::<u64>(ctx.args.as_index_map(), "limit").ok();
 
     if first.is_some() && last.is_some() {
-        return Err(
-            "Passing both `first` and `last` to paginate a connection is not supported.".into(),
-        );
+        return Err(Error::new(
+            "Passing both `first` and `last` to paginate a connection is not supported.",
+        ));
     }
 
     if after.is_some() && before.is_some() {
-        return Err(
-            "Passing both `after` and `before` to paginate a connection is not supported.".into(),
-        );
+        return Err(Error::new(
+            "Passing both `after` and `before` to paginate a connection is not supported.",
+        ));
     }
 
     if (offset.is_some() || limit.is_some())
         && (first.is_some() || last.is_some() || before.is_some() || after.is_some())
     {
-        return Err(
+        return Err(Error::new(
             "Pass either `offset`/`limit` OR `first`/`last`/`after`/`before` to paginate \
-                    a connection."
-                .into(),
-        );
+                    a connection.",
+        ));
     }
 
     Ok(ConnectionArguments {

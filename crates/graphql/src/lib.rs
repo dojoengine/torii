@@ -5,6 +5,7 @@ pub mod object;
 mod constants;
 mod error;
 mod mapping;
+pub mod pagination;
 mod query;
 pub mod schema;
 pub mod server;
