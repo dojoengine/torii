@@ -88,16 +88,16 @@ pub fn build_cursor_conditions(
                 };
 
                 let condition = if i == 0 {
-                    format!("[{}.{}] {} ?", ob.model, ob.member, operator)
+                    format!("[{}] {} ?", ob.field, operator)
                 } else {
                     let prev = (0..i)
                         .map(|j| {
                             let prev_ob = &pagination.order_by[j];
-                            format!("[{}.{}] = ?", prev_ob.model, prev_ob.member)
+                            format!("[{}] = ?", prev_ob.field)
                         })
                         .collect::<Vec<_>>()
                         .join(" AND ");
-                    format!("({} AND [{}.{}] {} ?)", prev, ob.model, ob.member, operator)
+                    format!("({} AND [{}] {} ?)", prev, ob.field, operator)
                 };
                 conditions.push(condition);
                 binds.push(val.clone());
@@ -120,18 +120,16 @@ pub fn build_cursor_values(pagination: &Pagination, row: &SqliteRow) -> Result<V
     } else {
         let mut values = Vec::new();
         for ob in &pagination.order_by {
-            let col = format!("{}.{}", ob.model, ob.member);
-            // Try as String first
-            match row.try_get::<String, &str>(&col) {
+            match row.try_get::<String, &str>(&ob.field) {
                 Ok(val) => values.push(val),
                 Err(_) => {
                     // Try as i64 (INTEGER)
-                    match row.try_get::<i64, &str>(&col) {
+                    match row.try_get::<i64, &str>(&ob.field) {
                         Ok(val) => values.push(val.to_string()),
                         Err(e) => {
                             return Err(Error::Query(QueryError::InvalidCursor(format!(
                                 "Could not extract cursor value for column {}: {}",
-                                col, e
+                                ob.field, e
                             ))));
                         }
                     }
@@ -221,8 +219,7 @@ mod tests {
             cursor: Some("cursor".to_string()),
             limit: Some(10),
             order_by: vec![OrderBy {
-                model: "Player".to_string(),
-                member: "score".to_string(),
+                field: "Player.score".to_string(),
                 direction: OrderDirection::Asc,
             }],
         };

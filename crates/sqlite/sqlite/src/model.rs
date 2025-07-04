@@ -719,7 +719,7 @@ impl Sql {
         let order_by_models: HashSet<String> = pagination
             .order_by
             .iter()
-            .map(|ob| ob.model.clone())
+            .map(|ob| ob.field.clone())
             .collect();
 
         let order_clause = if pagination.order_by.is_empty() {
@@ -735,7 +735,7 @@ impl Sql {
                         (OrderDirection::Desc, PaginationDirection::Forward) => "DESC",
                         (OrderDirection::Desc, PaginationDirection::Backward) => "ASC",
                     };
-                    format!("[{}].[{}] {direction}", ob.model, ob.member)
+                    format!("[{}] {direction}", ob.field)
                 })
                 .chain(std::iter::once(format!("{table_name}.event_id DESC")))
                 .collect::<Vec<_>>()
@@ -1016,7 +1016,7 @@ impl PaginationExecutor {
         }
 
         for order_by in &pagination.order_by {
-            let field = format!("[{}].[{}]", order_by.model, order_by.member);
+            let field = format!("[{}]", order_by.field);
             let direction = match (&order_by.direction, &pagination.direction) {
                 (OrderDirection::Asc, PaginationDirection::Forward) => OrderDirection::Asc,
                 (OrderDirection::Asc, PaginationDirection::Backward) => OrderDirection::Desc,
