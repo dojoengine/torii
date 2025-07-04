@@ -195,8 +195,7 @@ impl ReadOnlyStorage for Sql {
             limit: limit.map(|l| l as u32),
             direction: PaginationDirection::Forward,
             order_by: vec![OrderBy {
-                model: "controllers".to_string(),
-                member: "deployed_at".to_string(),
+                field: "deployed_at".to_string(),
                 direction: OrderDirection::Desc,
             }],
         };
@@ -248,8 +247,7 @@ impl ReadOnlyStorage for Sql {
             limit: limit.map(|l| l as u32),
             direction: PaginationDirection::Forward,
             order_by: vec![OrderBy {
-                model: "tokens".to_string(),
-                member: "id".to_string(),
+                field: "id".to_string(),
                 direction: OrderDirection::Asc,
             }],
         };
@@ -300,8 +298,7 @@ impl ReadOnlyStorage for Sql {
             limit: limit.map(|l| l as u32),
             direction: PaginationDirection::Forward,
             order_by: vec![OrderBy {
-                model: "token_balances".to_string(),
-                member: "id".to_string(),
+                field: "id".to_string(),
                 direction: OrderDirection::Asc,
             }],
         };
@@ -364,8 +361,7 @@ impl ReadOnlyStorage for Sql {
             limit: limit.map(|l| l as u32),
             direction: PaginationDirection::Forward,
             order_by: vec![OrderBy {
-                model: "t".to_string(),
-                member: "id".to_string(),
+                field: "id".to_string(),
                 direction: OrderDirection::Asc,
             }],
         };

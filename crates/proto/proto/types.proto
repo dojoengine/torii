@@ -151,9 +151,8 @@ message TokenBalance {
 }
 
 message OrderBy {
-    string model = 1;
-    string member = 2;
-    OrderDirection direction = 3;
+    string field = 1;
+    OrderDirection direction = 2;
 }
 
 enum OrderDirection {
