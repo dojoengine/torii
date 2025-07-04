@@ -92,30 +92,25 @@ pub fn build_cursor_conditions(
 }
 
 pub fn build_cursor_values(pagination: &Pagination, row: &SqliteRow) -> Result<Vec<String>, Error> {
-    if pagination.order_by.is_empty() {
-        Ok(vec![row.try_get("event_id")?])
-    } else {
-        let mut values = Vec::new();
-        for ob in &pagination.order_by {
-            match row.try_get::<String, &str>(&ob.field) {
-                Ok(val) => values.push(val),
-                Err(_) => {
-                    // Try as i64 (INTEGER)
-                    match row.try_get::<i64, &str>(&ob.field) {
-                        Ok(val) => values.push(val.to_string()),
-                        Err(e) => {
-                            return Err(Error::Query(QueryError::InvalidCursor(format!(
-                                "Could not extract cursor value for column {}: {}",
-                                ob.field, e
-                            ))));
-                        }
+    let mut values = Vec::new();
+    for ob in &pagination.order_by {
+        match row.try_get::<String, &str>(&ob.field) {
+            Ok(val) => values.push(val),
+            Err(_) => {
+                // Try as i64 (INTEGER)
+                match row.try_get::<i64, &str>(&ob.field) {
+                    Ok(val) => values.push(val.to_string()),
+                    Err(e) => {
+                        return Err(Error::Query(QueryError::InvalidCursor(format!(
+                            "Could not extract cursor value for column {}: {}",
+                            ob.field, e
+                        ))));
                     }
                 }
             }
         }
-        values.push(row.try_get("event_id")?);
-        Ok(values)
     }
+    Ok(values)
 }
 
 #[cfg(test)]
@@ -159,12 +154,10 @@ mod tests {
             direction: PaginationDirection::Forward,
             cursor: Some("cursor".to_string()),
             limit: Some(10),
-            order_by: vec![
-                OrderBy {
-                    field: "entities.event_id".to_string(),
-                    direction: OrderDirection::Desc,
-                }
-            ],
+            order_by: vec![OrderBy {
+                field: "entities.event_id".to_string(),
+                direction: OrderDirection::Desc,
+            }],
         };
         let cursor_values = vec!["123".to_string()];
         let (conditions, binds) =
@@ -182,12 +175,10 @@ mod tests {
             direction: PaginationDirection::Backward,
             cursor: Some("cursor".to_string()),
             limit: Some(10),
-            order_by: vec![
-                OrderBy {
-                    field: "entities.event_id".to_string(),
-                    direction: OrderDirection::Desc,
-                }
-            ],
+            order_by: vec![OrderBy {
+                field: "entities.event_id".to_string(),
+                direction: OrderDirection::Desc,
+            }],
         };
         let cursor_values = vec!["123".to_string()];
         let (conditions, binds) =
@@ -226,12 +217,10 @@ mod tests {
             direction: PaginationDirection::Forward,
             cursor: Some("cursor".to_string()),
             limit: Some(10),
-            order_by: vec![
-                OrderBy {
-                    field: "Player.score".to_string(),
-                    direction: OrderDirection::Asc,
-                }
-            ],
+            order_by: vec![OrderBy {
+                field: "Player.score".to_string(),
+                direction: OrderDirection::Asc,
+            }],
         };
         let cursor_values = vec!["123".to_string(), "456".to_string()]; // Too many values
         let result = build_cursor_conditions(&pagination, Some(&cursor_values));
