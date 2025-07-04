@@ -1,8 +1,6 @@
 use anyhow::Result;
 use async_graphql::dynamic::{Object, Scalar, Schema, Subscription, Union};
 use dojo_types::schema::Ty;
-use sqlx::SqlitePool;
-use torii_sqlite::types::Model;
 use torii_storage::Storage;
 
 use super::object::connection::page_info::PageInfoObject;
@@ -111,17 +109,13 @@ pub async fn build_schema(
     schema_builder
         .register(query_root)
         .register(subscription_root)
-        .data(pool.clone())
-        .data(storage)
+        .data(Box::new(storage) as Box<dyn Storage>)
         .finish()
         .map_err(|e| e.into())
 }
 
-async fn build_objects(pool: &SqlitePool) -> Result<(Vec<ObjectVariant>, Vec<Union>)> {
-    let mut conn = pool.acquire().await?;
-    let models: Vec<Model> = sqlx::query_as("SELECT * FROM models")
-        .fetch_all(&mut *conn)
-        .await?;
+async fn build_objects(storage: &impl Storage) -> Result<(Vec<ObjectVariant>, Vec<Union>)> {
+    let models = storage.models(&[]).await?;
 
     // predefined objects
     let mut objects: Vec<ObjectVariant> = vec![

@@ -54,28 +54,52 @@ impl ResolvableObject for ErcTransferObject {
             TypeRef::named(format!("{}Connection", self.type_name())),
             move |ctx| {
                 FieldFuture::new(async move {
-                    let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                    let storage = ctx.data::<Box<dyn Storage>>()?;
                     let connection = parse_connection_arguments(&ctx)?;
-                    let address = extract::<Felt>(
-                        ctx.args.as_index_map(),
-                        &account_address.to_case(Case::Camel),
-                    )?;
 
-                    let total_count: (i64,) = sqlx::query_as(&format!(
-                        "SELECT COUNT(*) FROM {TOKEN_TRANSFER_TABLE} WHERE from_address = ? OR \
-                         to_address = ?"
-                    ))
-                    .bind(felt_to_sql_string(&address))
-                    .bind(felt_to_sql_string(&address))
-                    .fetch_one(&mut *conn)
-                    .await?;
-                    let total_count = total_count.0;
+                    let query = build_query(&None, &None, &connection, &None, None, false);
+                    let page = storage.entities(&query).await?;
+                    let total_count = page.items.len() as i64;
+                    let (entities, page_info) = page_to_connection(page, &connection, total_count);
 
-                    let (data, page_info) =
-                        fetch_token_transfers(&mut conn, address, &connection, total_count).await?;
-                    let results = token_transfers_connection_output(&data, total_count, page_info)?;
+                    let edges: Vec<Value> = entities
+                        .into_iter()
+                        .map(|entity| {
+                            let cursor = entity.id.clone();
+                            let mut node = ValueMapping::new();
+                            node.insert("id".into(), Value::String(entity.id));
 
-                    Ok(Some(results))
+                            let mut edge = ValueMapping::new();
+                            edge.insert("node".into(), Value::Object(node));
+                            edge.insert("cursor".into(), Value::String(cursor));
+                            Value::Object(edge)
+                        })
+                        .collect();
+
+                    let connection_result = ValueMapping::from([
+                        ("totalCount".into(), Value::from(total_count)),
+                        ("edges".into(), Value::List(edges)),
+                        (
+                            "pageInfo".into(),
+                            Value::Object(ValueMapping::from([
+                                ("hasNextPage".into(), Value::from(page_info.has_next_page)),
+                                (
+                                    "hasPreviousPage".into(),
+                                    Value::from(page_info.has_previous_page),
+                                ),
+                                (
+                                    "startCursor".into(),
+                                    Value::from(page_info.start_cursor.unwrap_or_default()),
+                                ),
+                                (
+                                    "endCursor".into(),
+                                    Value::from(page_info.end_cursor.unwrap_or_default()),
+                                ),
+                            ])),
+                        ),
+                    ]);
+
+                    Ok(Some(Value::Object(connection_result)))
                 })
             },
         )

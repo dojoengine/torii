@@ -4,6 +4,7 @@ use async_graphql::{Name, Value};
 use convert_case::{Case, Casing};
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Pool, Row, Sqlite};
+use torii_storage::Storage;
 
 use super::connection::page_info::PageInfoObject;
 use super::connection::{connection_arguments, cursor, parse_connection_arguments};
@@ -12,6 +13,7 @@ use crate::constants::{
     ID_COLUMN, JSON_COLUMN, METADATA_NAMES, METADATA_TABLE, METADATA_TYPE_NAME,
 };
 use crate::mapping::METADATA_TYPE_MAPPING;
+use crate::pagination::{build_query, page_to_connection};
 use crate::query::data::{count_rows, fetch_multiple_rows, fetch_world_address};
 use crate::query::value_mapping_from_row;
 use crate::types::{TypeMapping, ValueMapping};
@@ -55,32 +57,52 @@ impl ResolvableObject for MetadataObject {
                 let row_types = row_types.clone();
 
                 FieldFuture::new(async move {
-                    let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                    let storage = ctx.data::<Box<dyn Storage>>()?;
                     let connection = parse_connection_arguments(&ctx)?;
-                    let total_count = count_rows(&mut conn, METADATA_TABLE, &None, &None).await?;
-                    let (data, page_info) = fetch_multiple_rows(
-                        &mut conn,
-                        METADATA_TABLE,
-                        ID_COLUMN,
-                        &None,
-                        &None,
-                        &None,
-                        &connection,
-                        total_count,
-                    )
-                    .await?;
-                    let world_address = fetch_world_address(&mut conn).await?;
 
-                    // convert json field to value_mapping expected by content object
-                    let results = metadata_connection_output(
-                        &data,
-                        &row_types,
-                        total_count,
-                        page_info,
-                        &world_address,
-                    )?;
+                    let query = build_query(&None, &None, &connection, &None, None, false);
+                    let page = storage.entities(&query).await?;
+                    let total_count = page.items.len() as i64;
+                    let (entities, page_info) = page_to_connection(page, &connection, total_count);
 
-                    Ok(Some(Value::Object(results)))
+                    let edges: Vec<Value> = entities
+                        .into_iter()
+                        .map(|entity| {
+                            let cursor = entity.id.clone();
+                            let mut node = ValueMapping::new();
+                            node.insert("id".into(), Value::String(entity.id));
+
+                            let mut edge = ValueMapping::new();
+                            edge.insert("node".into(), Value::Object(node));
+                            edge.insert("cursor".into(), Value::String(cursor));
+                            Value::Object(edge)
+                        })
+                        .collect();
+
+                    let connection_result = ValueMapping::from([
+                        ("totalCount".into(), Value::from(total_count)),
+                        ("edges".into(), Value::List(edges)),
+                        (
+                            "pageInfo".into(),
+                            Value::Object(ValueMapping::from([
+                                ("hasNextPage".into(), Value::from(page_info.has_next_page)),
+                                (
+                                    "hasPreviousPage".into(),
+                                    Value::from(page_info.has_previous_page),
+                                ),
+                                (
+                                    "startCursor".into(),
+                                    Value::from(page_info.start_cursor.unwrap_or_default()),
+                                ),
+                                (
+                                    "endCursor".into(),
+                                    Value::from(page_info.end_cursor.unwrap_or_default()),
+                                ),
+                            ])),
+                        ),
+                    ]);
+
+                    Ok(Some(Value::Object(connection_result)))
                 })
             },
         );

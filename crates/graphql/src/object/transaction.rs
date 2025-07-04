@@ -177,11 +177,12 @@ fn calls_field() -> Field {
         FieldFuture::new(async move {
             match ctx.parent_value.try_to_value()? {
                 Value::Object(indexmap) => {
-                    let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                    let storage = ctx.data::<Box<dyn Storage>>()?;
 
                     let transaction_hash = utils::extract::<String>(indexmap, "transactionHash")?;
 
-                    // Fetch all function calls for this transaction
+                    let query = build_query(&None, &None, &Default::default(), &None, None, false);
+                    let page = storage.entities(&query).await?;
                     let query = &format!(
                         "SELECT * FROM {TRANSACTION_CALLS_TABLE} WHERE transaction_hash = ?"
                     );
@@ -214,10 +215,14 @@ fn token_transfers_field() -> Field {
             FieldFuture::new(async move {
                 match ctx.parent_value.try_to_value()? {
                     Value::Object(indexmap) => {
-                        let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                        let storage = ctx.data::<Box<dyn Storage>>()?;
 
                         let transaction_hash =
                             utils::extract::<String>(indexmap, "transactionHash")?;
+
+                        let query =
+                            build_query(&None, &None, &Default::default(), &None, None, false);
+                        let page = storage.entities(&query).await?;
 
                         // Fetch all token transfers for this transaction
                         let query = format!(

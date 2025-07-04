@@ -20,6 +20,7 @@ use crate::mapping::ENTITY_TYPE_MAPPING;
 use crate::object::{resolve_many, resolve_one};
 use crate::query::{build_type_mapping, value_mapping_from_row};
 use crate::utils;
+use torii_storage::Storage;
 
 #[derive(Debug)]
 pub struct EventMessageObject;
@@ -118,53 +119,22 @@ fn model_union_field() -> Field {
         FieldFuture::new(async move {
             match ctx.parent_value.try_to_value()? {
                 Value::Object(indexmap) => {
-                    let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                    let storage = ctx.data::<Box<dyn Storage>>()?;
 
                     let entity_id = utils::extract::<String>(indexmap, "id")?;
-                    // fetch name from the models table
-                    let model_ids: Vec<(String, String, String)> = sqlx::query_as(
-                        "SELECT namespace, name, schema
-                        FROM models
-                        WHERE id IN (    
-                            SELECT model_id
-                            FROM event_model
-                            WHERE entity_id = ?
-                        )",
-                    )
-                    .bind(&entity_id)
-                    .fetch_all(&mut *conn)
-                    .await?;
 
-                    let mut results: Vec<FieldValue<'_>> = Vec::new();
-                    for (namespace, name, schema) in model_ids {
-                        let schema: Ty = serde_json::from_str(&schema).map_err(|e| {
-                            anyhow::anyhow!(format!("Failed to parse model schema: {e}"))
-                        })?;
-                        let type_mapping = build_type_mapping(&namespace, &schema);
+                    let models = storage.models(&[]).await?;
 
-                        // Get the table name
-                        let table_name = get_tag(&namespace, &name);
-
-                        // Fetch the row data
-                        let query = format!(
-                            "SELECT * FROM [{}] WHERE internal_event_message_id = ?",
-                            table_name
-                        );
-                        let row = sqlx::query(&query)
-                            .bind(&entity_id)
-                            .fetch_one(&mut *conn)
-                            .await?;
-
-                        // Use value_mapping_from_row to handle nested structures
-                        let data = value_mapping_from_row(&row, &type_mapping, false, false)?;
-
-                        results.push(FieldValue::with_type(
-                            FieldValue::owned_any(data),
-                            utils::type_name_from_names(&namespace, &name),
-                        ))
+                    let mut results = Vec::new();
+                    for model in models {
+                        let mut model_data = ValueMapping::new();
+                        model_data.insert("id".into(), Value::String(model.id));
+                        model_data.insert("name".into(), Value::String(model.name));
+                        model_data.insert("namespace".into(), Value::String(model.namespace));
+                        results.push(Value::Object(model_data));
                     }
 
-                    Ok(Some(FieldValue::list(results)))
+                    Ok(Some(Value::List(results)))
                 }
                 _ => Err("incorrect value, requires Value::Object".into()),
             }

@@ -22,13 +22,13 @@ pub fn connection_args_to_pagination(
     let cursor = connection.after.clone().or(connection.before.clone());
 
     let direction = match (&connection.first, &connection.last, order) {
-        (Some(_), _, _) => Some(PaginationDirection::Forward),
-        (_, Some(_), _) => Some(PaginationDirection::Backward),
+        (Some(_), _, _) => PaginationDirection::Forward,
+        (_, Some(_), _) => PaginationDirection::Backward,
         (_, _, Some(order)) => match order.direction {
-            Direction::Asc => Some(PaginationDirection::Forward),
-            Direction::Desc => Some(PaginationDirection::Backward),
+            Direction::Asc => PaginationDirection::Forward,
+            Direction::Desc => PaginationDirection::Backward,
         },
-        _ => Some(PaginationDirection::Forward),
+        _ => PaginationDirection::Forward,
     };
 
     let order_by = order.as_ref().map(|o| OrderBy {

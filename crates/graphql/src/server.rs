@@ -5,7 +5,6 @@ use async_graphql::dynamic::Schema;
 use async_graphql::http::GraphiQLSource;
 use async_graphql::Request;
 use async_graphql_warp::graphql_subscription;
-use sqlx::{Pool, Sqlite};
 use tokio::sync::broadcast::Receiver;
 use torii_storage::Storage;
 use warp::{Filter, Rejection, Reply};
@@ -14,10 +13,9 @@ use super::schema::build_schema;
 
 pub async fn new(
     mut shutdown_rx: Receiver<()>,
-    pool: &Pool<Sqlite>,
     storage: impl Storage + Clone + 'static,
 ) -> (SocketAddr, impl Future<Output = ()> + 'static) {
-    let schema = build_schema(pool, storage).await.unwrap();
+    let schema = build_schema(storage).await.unwrap();
     let routes = graphql_filter(schema);
     warp::serve(routes).bind_with_graceful_shutdown(([127, 0, 0, 1], 0), async move {
         shutdown_rx.recv().await.ok();

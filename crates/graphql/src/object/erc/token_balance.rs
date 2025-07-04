@@ -60,28 +60,52 @@ impl ResolvableObject for ErcBalanceObject {
             TypeRef::named(format!("{}Connection", self.type_name())),
             move |ctx| {
                 FieldFuture::new(async move {
-                    let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                    let storage = ctx.data::<Box<dyn Storage>>()?;
                     let connection = parse_connection_arguments(&ctx)?;
-                    let address = extract::<Felt>(
-                        ctx.args.as_index_map(),
-                        &account_address.to_case(Case::Camel),
-                    )?;
 
-                    let filter = vec![Filter {
-                        field: "account_address".to_string(),
-                        comparator: Comparator::Eq,
-                        value: FilterValue::String(felt_to_sql_string(&address)),
-                    }];
+                    let query = build_query(&None, &None, &connection, &None, None, false);
+                    let page = storage.entities(&query).await?;
+                    let total_count = page.items.len() as i64;
+                    let (entities, page_info) = page_to_connection(page, &connection, total_count);
 
-                    let total_count =
-                        count_rows(&mut conn, TOKEN_BALANCE_TABLE, &None, &Some(filter)).await?;
+                    let edges: Vec<Value> = entities
+                        .into_iter()
+                        .map(|entity| {
+                            let cursor = entity.id.clone();
+                            let mut node = ValueMapping::new();
+                            node.insert("id".into(), Value::String(entity.id));
 
-                    let (data, page_info) =
-                        fetch_token_balances(&mut conn, address, &connection, total_count).await?;
+                            let mut edge = ValueMapping::new();
+                            edge.insert("node".into(), Value::Object(node));
+                            edge.insert("cursor".into(), Value::String(cursor));
+                            Value::Object(edge)
+                        })
+                        .collect();
 
-                    let results = token_balances_connection_output(&data, total_count, page_info)?;
+                    let connection_result = ValueMapping::from([
+                        ("totalCount".into(), Value::from(total_count)),
+                        ("edges".into(), Value::List(edges)),
+                        (
+                            "pageInfo".into(),
+                            Value::Object(ValueMapping::from([
+                                ("hasNextPage".into(), Value::from(page_info.has_next_page)),
+                                (
+                                    "hasPreviousPage".into(),
+                                    Value::from(page_info.has_previous_page),
+                                ),
+                                (
+                                    "startCursor".into(),
+                                    Value::from(page_info.start_cursor.unwrap_or_default()),
+                                ),
+                                (
+                                    "endCursor".into(),
+                                    Value::from(page_info.end_cursor.unwrap_or_default()),
+                                ),
+                            ])),
+                        ),
+                    ]);
 
-                    Ok(Some(results))
+                    Ok(Some(Value::Object(connection_result)))
                 })
             },
         )
@@ -102,11 +126,11 @@ impl ResolvableObject for ErcBalanceObject {
                         None => None,
                     };
 
-                    let pool = ctx.data::<Pool<Sqlite>>()?;
+                    let storage = ctx.data::<Box<dyn Storage>>()?;
                     Ok(SimpleBroker::<TokenBalance>::subscribe()
                         .then(move |token_balance| {
                             let address = address.clone();
-                            let pool = pool.clone();
+                            let storage = storage.clone();
                             async move {
                                 // Filter by account address if provided
                                 if let Some(addr) = &address {
@@ -128,33 +152,27 @@ impl ResolvableObject for ErcBalanceObject {
                                     TOKEN_BALANCE_TABLE
                                 );
 
-                                let row = match sqlx::query(&query)
-                                    .bind(&token_balance.id)
-                                    .fetch_one(&pool)
-                                    .await
+                                let query = build_query(
+                                    &None,
+                                    &None,
+                                    &Default::default(),
+                                    &None,
+                                    None,
+                                    false,
+                                );
+                                let page = match storage.entities(&query).await {
+                                    Ok(page) => page,
+                                    Err(_) => return None,
+                                };
+
+                                if let Some(entity) =
+                                    page.items.into_iter().find(|e| e.id == token_balance.id)
                                 {
-                                    Ok(row) => row,
-                                    Err(_) => return None,
-                                };
-
-                                let row = match BalanceQueryResultRaw::from_row(&row) {
-                                    Ok(row) => row,
-                                    Err(_) => return None,
-                                };
-
-                                // Use the extracted mapping function
-                                match token_balance_mapping_from_row(&row) {
-                                    Ok(balance_value) => {
-                                        Some(Ok(FieldValue::owned_any(balance_value)))
-                                    }
-                                    Err(err) => {
-                                        warn!(
-                                            "Failed to transform row to token balance in \
-                                                 subscription: {}",
-                                            err
-                                        );
-                                        None
-                                    }
+                                    let mut balance_data = ValueMapping::new();
+                                    balance_data.insert("id".into(), Value::String(entity.id));
+                                    Some(Ok(FieldValue::owned_any(balance_data)))
+                                } else {
+                                    None
                                 }
                             }
                         })

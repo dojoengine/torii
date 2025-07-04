@@ -128,7 +128,7 @@ impl EntityObject {
                     let keys = parse_keys_argument(&ctx)?;
                     let order = parse_order_argument(&ctx);
 
-                    let storage = ctx.data::<dyn Storage>()?;
+                    let storage = ctx.data::<Box<dyn Storage>>()?;
                     let query = build_query(&keys, &None, &connection, &order, None, false);
 
                     let page = storage.entities(&query).await?;

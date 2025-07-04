@@ -374,47 +374,56 @@ impl ResolvableObject for TokenObject {
                     TypeRef::named_nn(format!("{}Connection", self.type_name())),
                     move |ctx| {
                         FieldFuture::new(async move {
-                            let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                            let storage = ctx.data::<Box<dyn Storage>>()?;
                             let connection = parse_connection_arguments(&ctx)?;
-                            let contract_address = ctx
-                                .args
-                                .get("contractAddress")
-                                .map(|v| v.string().unwrap().to_string());
 
-                            let mut count_query =
-                                "SELECT COUNT(*) as count FROM tokens t".to_string();
-                            if let Some(addr) = &contract_address {
-                                count_query
-                                    .push_str(&format!(" WHERE t.contract_address = '{}'", addr));
-                            }
+                            let query = build_query(&None, &None, &connection, &None, None, false);
+                            let page = storage.entities(&query).await?;
+                            let total_count = page.items.len() as i64;
+                            let (entities, page_info) =
+                                page_to_connection(page, &connection, total_count);
 
-                            let total_count: i64 = sqlx::query(&count_query)
-                                .fetch_one(&mut *conn)
-                                .await?
-                                .get("count");
+                            let edges: Vec<Value> = entities
+                                .into_iter()
+                                .map(|entity| {
+                                    let cursor = entity.id.clone();
+                                    let mut node = ValueMapping::new();
+                                    node.insert("id".into(), Value::String(entity.id));
 
-                            let (data, page_info) =
-                                fetch_tokens(&mut conn, contract_address, &connection, total_count)
-                                    .await?;
+                                    let mut edge = ValueMapping::new();
+                                    edge.insert("node".into(), Value::Object(node));
+                                    edge.insert("cursor".into(), Value::String(cursor));
+                                    Value::Object(edge)
+                                })
+                                .collect();
 
-                            let mut edges = Vec::new();
-                            for row in data {
-                                let token_metadata = create_token_metadata_from_row(&row)?;
+                            let connection_result = ValueMapping::from([
+                                ("totalCount".into(), Value::from(total_count)),
+                                ("edges".into(), Value::List(edges)),
+                                (
+                                    "pageInfo".into(),
+                                    Value::Object(ValueMapping::from([
+                                        (
+                                            "hasNextPage".into(),
+                                            Value::from(page_info.has_next_page),
+                                        ),
+                                        (
+                                            "hasPreviousPage".into(),
+                                            Value::from(page_info.has_previous_page),
+                                        ),
+                                        (
+                                            "startCursor".into(),
+                                            Value::from(page_info.start_cursor.unwrap_or_default()),
+                                        ),
+                                        (
+                                            "endCursor".into(),
+                                            Value::from(page_info.end_cursor.unwrap_or_default()),
+                                        ),
+                                    ])),
+                                ),
+                            ]);
 
-                                edges.push(ConnectionEdge {
-                                    node: token_metadata,
-                                    cursor: cursor::encode(
-                                        &row.get::<String, _>("id"),
-                                        &row.get::<String, _>("id"),
-                                    ),
-                                });
-                            }
-
-                            Ok(Some(FieldValue::owned_any(Connection {
-                                total_count,
-                                edges,
-                                page_info: PageInfoObject::value(page_info),
-                            })))
+                            Ok(Some(Value::Object(connection_result)))
                         })
                     },
                 )
@@ -429,30 +438,24 @@ impl ResolvableObject for TokenObject {
                 TypeRef::named_nn(self.type_name()),
                 move |ctx| {
                     FieldFuture::new(async move {
-                        let pool = ctx.data::<Pool<Sqlite>>()?;
+                        let storage = ctx.data::<Box<dyn Storage>>()?;
+
+                        let query =
+                            build_query(&None, &None, &Default::default(), &None, None, false);
+                        let page = storage.entities(&query).await?;
+
                         let token_id = ctx
                             .args
                             .get("id")
                             .and_then(|v| v.string().ok())
-                            .ok_or_else(|| async_graphql::Error::new("Token ID is required"))?;
+                            .unwrap_or_default();
 
-                        let query = "SELECT t.*, c.contract_type 
-                                   FROM tokens t 
-                                   JOIN contracts c ON t.contract_address = c.contract_address 
-                                   WHERE t.id = ?";
-
-                        let row = sqlx::query(query)
-                            .bind(token_id)
-                            .fetch_optional(pool)
-                            .await?;
-
-                        match row {
-                            Some(row) => {
-                                let token_metadata = create_token_metadata_from_row(&row)?;
-
-                                Ok(Some(FieldValue::owned_any(token_metadata)))
-                            }
-                            None => Ok(None),
+                        if let Some(entity) = page.items.into_iter().find(|e| e.id == token_id) {
+                            let mut token_data = ValueMapping::new();
+                            token_data.insert("id".into(), Value::String(entity.id));
+                            Ok(Some(Value::Object(token_data)))
+                        } else {
+                            Ok(None)
                         }
                     })
                 },
@@ -467,153 +470,35 @@ impl ResolvableObject for TokenObject {
             TypeRef::named_nn(self.type_name()),
             |ctx| {
                 SubscriptionFieldFuture::new(async move {
-                    let pool = ctx.data::<Pool<Sqlite>>()?;
+                    let storage = ctx.data::<Box<dyn Storage>>()?;
                     Ok(SimpleBroker::<Token>::subscribe()
                         .then(move |token| {
-                            let pool = pool.clone();
+                            let storage = storage.clone();
                             async move {
-                                // Fetch complete token data including contract type
-                                let query = "SELECT t.*, c.contract_type 
-                                               FROM tokens t 
-                                               JOIN contracts c ON t.contract_address = \
-                                             c.contract_address 
-                                               WHERE t.id = ?";
-
-                                let row =
-                                    match sqlx::query(query).bind(&token.id).fetch_one(&pool).await
-                                    {
-                                        Ok(row) => row,
-                                        Err(_) => return None,
-                                    };
-
-                                let contract_type: String = row.get("contract_type");
-                                let token_metadata = match contract_type.to_lowercase().as_str() {
-                                    "erc20" => {
-                                        let token = Erc20Token {
-                                            contract_address: row.get("contract_address"),
-                                            name: row.get("name"),
-                                            symbol: row.get("symbol"),
-                                            decimals: row.get("decimals"),
-                                            amount: "0".to_string(), // New token has no balance
-                                        };
-                                        ErcTokenType::Erc20(token)
-                                    }
-                                    "erc721" => {
-                                        let id = row.get::<String, _>("id");
-                                        let token_id =
-                                            id.split(':').collect::<Vec<&str>>()[1].to_string();
-
-                                        let metadata_str: String = row.get("metadata");
-                                        let (
-                                            metadata_str,
-                                            metadata_name,
-                                            metadata_description,
-                                            metadata_attributes,
-                                            image_path,
-                                        ) = if metadata_str.is_empty() {
-                                            (String::new(), None, None, None, String::new())
-                                        } else {
-                                            let metadata: serde_json::Value =
-                                                serde_json::from_str(&metadata_str)
-                                                    .expect("metadata is always json");
-                                            let metadata_name = metadata.get("name").map(|v| {
-                                                v.to_string().trim_matches('"').to_string()
-                                            });
-                                            let metadata_description =
-                                                metadata.get("description").map(|v| {
-                                                    v.to_string().trim_matches('"').to_string()
-                                                });
-                                            let metadata_attributes =
-                                                metadata.get("attributes").map(|v| {
-                                                    v.to_string().trim_matches('"').to_string()
-                                                });
-
-                                            let image_path =
-                                                format!("{}/image", id.replace(":", "/"));
-                                            (
-                                                metadata_str,
-                                                metadata_name,
-                                                metadata_description,
-                                                metadata_attributes,
-                                                image_path,
-                                            )
-                                        };
-
-                                        let token = Erc721Token {
-                                            name: row.get("name"),
-                                            metadata: metadata_str,
-                                            contract_address: row.get("contract_address"),
-                                            symbol: row.get("symbol"),
-                                            token_id,
-                                            metadata_name,
-                                            metadata_description,
-                                            metadata_attributes,
-                                            image_path,
-                                        };
-                                        ErcTokenType::Erc721(token)
-                                    }
-                                    "erc1155" => {
-                                        let id = row.get::<String, _>("id");
-                                        let token_id =
-                                            id.split(':').collect::<Vec<&str>>()[1].to_string();
-
-                                        let metadata_str: String = row.get("metadata");
-                                        let (
-                                            metadata_str,
-                                            metadata_name,
-                                            metadata_description,
-                                            metadata_attributes,
-                                            image_path,
-                                        ) = if metadata_str.is_empty() {
-                                            (String::new(), None, None, None, String::new())
-                                        } else {
-                                            let metadata: serde_json::Value =
-                                                serde_json::from_str(&metadata_str)
-                                                    .expect("metadata is always json");
-                                            let metadata_name = metadata.get("name").map(|v| {
-                                                v.to_string().trim_matches('"').to_string()
-                                            });
-                                            let metadata_description =
-                                                metadata.get("description").map(|v| {
-                                                    v.to_string().trim_matches('"').to_string()
-                                                });
-                                            let metadata_attributes =
-                                                metadata.get("attributes").map(|v| {
-                                                    v.to_string().trim_matches('"').to_string()
-                                                });
-
-                                            let image_path =
-                                                format!("{}/image", id.replace(":", "/"));
-                                            (
-                                                metadata_str,
-                                                metadata_name,
-                                                metadata_description,
-                                                metadata_attributes,
-                                                image_path,
-                                            )
-                                        };
-
-                                        let token = Erc1155Token {
-                                            name: row.get("name"),
-                                            metadata: metadata_str,
-                                            contract_address: row.get("contract_address"),
-                                            symbol: row.get("symbol"),
-                                            token_id,
-                                            amount: "0".to_string(),
-                                            metadata_name,
-                                            metadata_description,
-                                            metadata_attributes,
-                                            image_path,
-                                        };
-                                        ErcTokenType::Erc1155(token)
-                                    }
-                                    _ => {
-                                        warn!("Unknown contract type: {}", contract_type);
-                                        return None;
-                                    }
+                                let query = build_query(
+                                    &None,
+                                    &None,
+                                    &Default::default(),
+                                    &None,
+                                    None,
+                                    false,
+                                );
+                                let page = match storage.entities(&query).await {
+                                    Ok(page) => page,
+                                    Err(_) => return None,
                                 };
 
-                                Some(Ok(FieldValue::owned_any(token_metadata)))
+                                if let Some(entity) = page
+                                    .items
+                                    .into_iter()
+                                    .find(|e| e.id == token.token_id.to_string())
+                                {
+                                    let mut token_data = ValueMapping::new();
+                                    token_data.insert("id".into(), Value::String(entity.id));
+                                    Some(Ok(FieldValue::owned_any(token_data)))
+                                } else {
+                                    None
+                                }
                             }
                         })
                         .filter_map(|result| result))

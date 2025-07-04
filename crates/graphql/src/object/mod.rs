@@ -20,7 +20,6 @@ use convert_case::{Case, Casing};
 use erc::erc_token::ErcTokenType;
 use erc::token_transfer::TokenTransferNode;
 use erc::{Connection, ConnectionEdge};
-use sqlx::{Pool, Sqlite};
 
 use self::connection::edge::EdgeObject;
 use self::connection::{
@@ -28,10 +27,12 @@ use self::connection::{
 };
 use self::inputs::keys_input::parse_keys_argument;
 use self::inputs::order_input::parse_order_argument;
+use crate::pagination::{build_query, page_to_connection};
 use crate::query::data::{count_rows, fetch_single_row, fetch_single_row_with_joins, JoinConfig};
 use crate::query::value_mapping_from_row;
 use crate::types::{TypeMapping, ValueMapping};
 use crate::utils::extract;
+use torii_storage::Storage;
 
 #[allow(missing_debug_implementations)]
 pub enum ObjectVariant {
@@ -266,12 +267,20 @@ pub fn resolve_one(
         let id_column = id_column.to_owned();
 
         FieldFuture::new(async move {
-            let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+            let storage = ctx.data::<Box<dyn Storage>>()?;
             let id: String =
                 extract::<String>(ctx.args.as_index_map(), &id_column.to_case(Case::Camel))?;
-            let data = fetch_single_row(&mut conn, &table_name, &id_column, &id).await?;
-            let model = value_mapping_from_row(&data, &type_mapping, false, true)?;
-            Ok(Some(Value::Object(model)))
+
+            let query = build_query(&None, &None, &Default::default(), &None, None, false);
+            let page = storage.entities(&query).await?;
+
+            if let Some(entity) = page.items.into_iter().find(|e| e.id == id) {
+                let mut model = ValueMapping::new();
+                model.insert("id".into(), Value::String(entity.id));
+                Ok(Some(Value::Object(model)))
+            } else {
+                Ok(None)
+            }
         })
     })
     .argument(argument)
@@ -306,20 +315,20 @@ pub fn resolve_one_with_joins(
         let select_columns = select_columns.to_owned();
 
         FieldFuture::new(async move {
-            let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+            let storage = ctx.data::<Box<dyn Storage>>()?;
             let id: String =
                 extract::<String>(ctx.args.as_index_map(), &id_column.to_case(Case::Camel))?;
-            let data = fetch_single_row_with_joins(
-                &mut conn,
-                &table_name,
-                &id_column,
-                &id,
-                joins,
-                select_columns,
-            )
-            .await?;
-            let model = value_mapping_from_row(&data, &type_mapping, false, true)?;
-            Ok(Some(Value::Object(model)))
+
+            let query = build_query(&None, &None, &Default::default(), &None, None, false);
+            let page = storage.entities(&query).await?;
+
+            if let Some(entity) = page.items.into_iter().find(|e| e.id == id) {
+                let mut model = ValueMapping::new();
+                model.insert("id".into(), Value::String(entity.id));
+                Ok(Some(Value::Object(model)))
+            } else {
+                Ok(None)
+            }
         })
     })
     .argument(argument)
@@ -346,35 +355,54 @@ pub fn resolve_many(
             let id_column = id_column.to_owned();
 
             FieldFuture::new(async move {
-                let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
+                let storage = ctx.data::<Box<dyn Storage>>()?;
                 let connection = parse_connection_arguments(&ctx)?;
                 let keys = parse_keys_argument(&ctx)?;
                 let order = parse_order_argument(&ctx);
-                let total_count = count_rows(&mut conn, &table_name, &keys, &None).await?;
 
-                let (data, page_info) = crate::query::data::fetch_multiple_rows(
-                    &mut conn,
-                    &table_name,
-                    &id_column,
-                    &keys,
-                    &order,
-                    &None,
-                    &connection,
-                    total_count,
-                )
-                .await?;
-                let results = connection_output(
-                    &data,
-                    &type_mapping,
-                    &order,
-                    &id_column,
-                    total_count,
-                    false,
-                    true,
-                    page_info,
-                )?;
+                let query = build_query(&keys, &None, &connection, &order, None, false);
+                let page = storage.entities(&query).await?;
+                let total_count = page.items.len() as i64;
+                let (entities, page_info) = page_to_connection(page, &connection, total_count);
 
-                Ok(Some(Value::Object(results)))
+                let edges: Vec<Value> = entities
+                    .into_iter()
+                    .map(|entity| {
+                        let cursor = entity.id.clone();
+                        let mut node = ValueMapping::new();
+                        node.insert("id".into(), Value::String(entity.id));
+
+                        let mut edge = ValueMapping::new();
+                        edge.insert("node".into(), Value::Object(node));
+                        edge.insert("cursor".into(), Value::String(cursor));
+                        Value::Object(edge)
+                    })
+                    .collect();
+
+                let connection_result = ValueMapping::from([
+                    ("totalCount".into(), Value::from(total_count)),
+                    ("edges".into(), Value::List(edges)),
+                    (
+                        "pageInfo".into(),
+                        Value::Object(ValueMapping::from([
+                            ("hasNextPage".into(), Value::from(page_info.has_next_page)),
+                            (
+                                "hasPreviousPage".into(),
+                                Value::from(page_info.has_previous_page),
+                            ),
+                            (
+                                "startCursor".into(),
+                                Value::from(page_info.start_cursor.unwrap_or_default()),
+                            ),
+                            (
+                                "endCursor".into(),
+                                Value::from(page_info.end_cursor.unwrap_or_default()),
+                            ),
+                        ])),
+                    ),
+                ]);
+
+                Ok(Some(Value::Object(connection_result)))
             })
         },
     );
