@@ -1,8 +1,8 @@
 use async_graphql::connection::PageInfo;
-use dojo_types::primitive::Felt;
+use starknet::core::types::Felt;
 use torii_proto::{
-    Clause, CompositeClause, KeysClause, LogicalOperator, OrderBy, Page, Pagination,
-    PaginationDirection, PatternMatching, Query,
+    Clause, CompositeClause, KeysClause, LogicalOperator, OrderBy, OrderDirection, Page,
+    Pagination, PaginationDirection, PatternMatching, Query,
 };
 
 use crate::object::connection::ConnectionArguments;
@@ -22,20 +22,21 @@ pub fn connection_args_to_pagination(
     let cursor = connection.after.clone().or(connection.before.clone());
 
     let direction = match (&connection.first, &connection.last, order) {
-        (Some(_), _, _) => Some(PaginationDirection::Next),
-        (_, Some(_), _) => Some(PaginationDirection::Previous),
+        (Some(_), _, _) => Some(PaginationDirection::Forward),
+        (_, Some(_), _) => Some(PaginationDirection::Backward),
         (_, _, Some(order)) => match order.direction {
-            Direction::Asc => Some(PaginationDirection::Next),
-            Direction::Desc => Some(PaginationDirection::Previous),
+            Direction::Asc => Some(PaginationDirection::Forward),
+            Direction::Desc => Some(PaginationDirection::Backward),
         },
-        _ => Some(PaginationDirection::Next),
+        _ => Some(PaginationDirection::Forward),
     };
 
     let order_by = order.as_ref().map(|o| OrderBy {
-        field: o.field.clone(),
+        model: String::new(),
+        member: o.field.clone(),
         direction: match o.direction {
-            Direction::Asc => PaginationDirection::Next,
-            Direction::Desc => PaginationDirection::Previous,
+            Direction::Asc => OrderDirection::Asc,
+            Direction::Desc => OrderDirection::Desc,
         },
     });
 
@@ -43,7 +44,7 @@ pub fn connection_args_to_pagination(
         limit,
         cursor,
         direction,
-        order_by,
+        order_by: order_by.map_or(vec![], |o| vec![o]),
     }
 }
 

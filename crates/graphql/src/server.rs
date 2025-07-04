@@ -15,7 +15,7 @@ use super::schema::build_schema;
 pub async fn new(
     mut shutdown_rx: Receiver<()>,
     pool: &Pool<Sqlite>,
-    storage: Storage,
+    storage: impl Storage + Clone + 'static,
 ) -> (SocketAddr, impl Future<Output = ()> + 'static) {
     let schema = build_schema(pool, storage).await.unwrap();
     let routes = graphql_filter(schema);

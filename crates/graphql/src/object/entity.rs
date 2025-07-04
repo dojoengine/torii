@@ -16,7 +16,7 @@ use crate::constants::{
     DATETIME_FORMAT, ENTITY_NAMES, ENTITY_TABLE, ENTITY_TYPE_NAME, EVENT_ID_COLUMN, ID_COLUMN,
 };
 use crate::mapping::ENTITY_TYPE_MAPPING;
-use crate::object::{resolve_many, resolve_one};
+use crate::object::resolve_one;
 use crate::pagination::{build_query, page_to_connection};
 use crate::query::{build_type_mapping, value_mapping_from_row};
 use crate::utils;
@@ -130,7 +130,7 @@ impl EntityObject {
                     let keys = parse_keys_argument(&ctx)?;
                     let order = parse_order_argument(&ctx);
 
-                    let storage = ctx.data::<Storage>()?;
+                    let storage = ctx.data::<dyn Storage>()?;
                     let query = build_query(&keys, &None, &connection, &order, None, false);
 
                     let page = storage.entities(&query).await?;
@@ -148,6 +148,8 @@ impl EntityObject {
                                 created_at: entity.created_at,
                                 updated_at: entity.updated_at,
                                 executed_at: entity.executed_at,
+                                deleted: false,
+                                updated_model: None,
                             });
 
                             let mut edge = ValueMapping::new();

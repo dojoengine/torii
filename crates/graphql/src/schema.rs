@@ -35,7 +35,10 @@ use crate::query::build_type_mapping;
 // the models until runtime. There are however, predefined objects such as entities and
 // events, their schema is known but we generate them dynamically as well because async-graphql
 // does not allow mixing of static and dynamic schemas.
-pub async fn build_schema(pool: &SqlitePool, storage: Storage) -> Result<Schema> {
+pub async fn build_schema(
+    pool: &SqlitePool,
+    storage: impl Storage + Clone + 'static,
+) -> Result<Schema> {
     // build world gql objects
     let (objects, unions) = build_objects(pool).await?;
 

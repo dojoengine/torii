@@ -29,7 +29,6 @@ use self::connection::{
 };
 use self::inputs::keys_input::parse_keys_argument;
 use self::inputs::order_input::parse_order_argument;
-use crate::pagination::{build_query, page_to_connection};
 use crate::query::data::{count_rows, fetch_single_row, fetch_single_row_with_joins, JoinConfig};
 use crate::query::value_mapping_from_row;
 use crate::types::{TypeMapping, ValueMapping};
