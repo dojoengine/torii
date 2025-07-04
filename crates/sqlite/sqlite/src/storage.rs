@@ -224,8 +224,17 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, pagination).await?;
-        let items: Vec<Controller> = page.items.into_iter().map(|row| Result::<Controller, Error>::Ok(torii_sqlite_types::Controller::from_row(&row)?.into())).collect::<Result<Vec<_>, _>>()?;
+            .execute_paginated_query(query_builder, pagination)
+            .await?;
+        let items: Vec<Controller> = page
+            .items
+            .into_iter()
+            .map(|row| {
+                Result::<Controller, Error>::Ok(
+                    torii_sqlite_types::Controller::from_row(&row)?.into(),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Page {
             items,
             next_cursor: page.next_cursor,
@@ -275,7 +284,13 @@ impl ReadOnlyStorage for Sql {
         let page = executor
             .execute_paginated_query(query_builder, pagination)
             .await?;
-        let items: Vec<Token> = page.items.into_iter().map(|row| Result::<Token, Error>::Ok(torii_sqlite_types::Token::from_row(&row)?.into())).collect::<Result<Vec<_>, _>>()?;
+        let items: Vec<Token> = page
+            .items
+            .into_iter()
+            .map(|row| {
+                Result::<Token, Error>::Ok(torii_sqlite_types::Token::from_row(&row)?.into())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Page {
             items,
             next_cursor: page.next_cursor,
@@ -338,7 +353,15 @@ impl ReadOnlyStorage for Sql {
         let page = executor
             .execute_paginated_query(query_builder, pagination)
             .await?;
-        let items: Vec<TokenBalance> = page.items.into_iter().map(|row| Result::<TokenBalance, Error>::Ok(torii_sqlite_types::TokenBalance::from_row(&row)?.into())).collect::<Result<Vec<_>, _>>()?;
+        let items: Vec<TokenBalance> = page
+            .items
+            .into_iter()
+            .map(|row| {
+                Result::<TokenBalance, Error>::Ok(
+                    torii_sqlite_types::TokenBalance::from_row(&row)?.into(),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Page {
             items,
             next_cursor: page.next_cursor,
@@ -407,8 +430,17 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, pagination).await?;
-        let items: Vec<TokenCollection> = page.items.into_iter().map(|row| Result::<TokenCollection, Error>::Ok(torii_sqlite_types::TokenCollection::from_row(&row)?.into())).collect::<Result<Vec<_>, _>>()?;
+            .execute_paginated_query(query_builder, pagination)
+            .await?;
+        let items: Vec<TokenCollection> = page
+            .items
+            .into_iter()
+            .map(|row| {
+                Result::<TokenCollection, Error>::Ok(
+                    torii_sqlite_types::TokenCollection::from_row(&row)?.into(),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Page {
             items,
             next_cursor: page.next_cursor,

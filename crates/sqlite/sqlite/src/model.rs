@@ -3,7 +3,8 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::str::FromStr;
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, CompositeClause, LogicalOperator, MemberValue, OrderBy, OrderDirection, Page, Pagination, PaginationDirection
+    Clause, CompositeClause, LogicalOperator, MemberValue, OrderBy, OrderDirection, Page,
+    Pagination, PaginationDirection,
 };
 use torii_storage::ReadOnlyStorage;
 
@@ -664,7 +665,7 @@ impl Sql {
         bind_values: Vec<String>,
     ) -> Result<Page<SqliteRow>, Error> {
         pagination.order_by.push(OrderBy {
-            field: "entities.event_id".to_string(),
+            field: "event_id".to_string(),
             direction: OrderDirection::Desc,
         });
         // Helper function to collect columns
@@ -988,10 +989,8 @@ impl PaginationExecutor {
             .transpose()
             .map_err(|e: Error| Error::Query(QueryError::InvalidCursor(e.to_string())))?;
 
-        let (cursor_conditions, cursor_binds) = build_cursor_conditions(
-            &pagination,
-            cursor_values.as_deref(),
-        )?;
+        let (cursor_conditions, cursor_binds) =
+            build_cursor_conditions(&pagination, cursor_values.as_deref())?;
 
         for condition in cursor_conditions {
             query_builder = query_builder.where_clause(&condition);
