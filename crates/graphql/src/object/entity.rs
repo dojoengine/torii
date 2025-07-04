@@ -12,9 +12,7 @@ use torii_sqlite::types::Entity;
 
 use super::inputs::keys_input::keys_argument;
 use super::{BasicObject, ResolvableObject, TypeMapping, ValueMapping};
-use crate::constants::{
-    DATETIME_FORMAT, ENTITY_NAMES, ENTITY_TABLE, ENTITY_TYPE_NAME, EVENT_ID_COLUMN, ID_COLUMN,
-};
+use crate::constants::{DATETIME_FORMAT, ENTITY_NAMES, ENTITY_TABLE, ENTITY_TYPE_NAME, ID_COLUMN};
 use crate::mapping::ENTITY_TYPE_MAPPING;
 use crate::object::resolve_one;
 use crate::pagination::{build_query, page_to_connection};

@@ -21,7 +21,6 @@ use erc::erc_token::ErcTokenType;
 use erc::token_transfer::TokenTransferNode;
 use erc::{Connection, ConnectionEdge};
 use sqlx::{Pool, Sqlite};
-use torii_storage::Storage;
 
 use self::connection::edge::EdgeObject;
 use self::connection::{
