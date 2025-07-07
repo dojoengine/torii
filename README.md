@@ -44,6 +44,38 @@ Finally, you can run the tests with:
 KATANA_RUNNER_BIN=katana cargo nextest run --all-features --workspace --build-jobs 12
 ```
 
+## Monitoring and Metrics
+
+Torii includes comprehensive Prometheus metrics for monitoring indexer performance:
+
+### Enable Metrics
+
+```bash
+torii --metrics --metrics.addr 0.0.0.0 --metrics.port 9200
+```
+
+### Grafana Integration
+
+Torii includes pre-configured Grafana dashboards for visualizing metrics:
+
+1. **Start Grafana and Prometheus**:
+   ```bash
+   docker-compose -f docker-compose.grafana.yml up -d
+   ```
+
+2. **Access Grafana**:
+   - Open http://localhost:3000
+   - Login: admin/admin
+   - Navigate to "Torii Indexer Overview" dashboard
+
+The dashboard provides insights into:
+- Indexer fetch and process durations
+- Event processing rates by contract type
+- RPC call performance and error rates
+- System backoff delays and error tracking
+
+For detailed setup instructions, see [docs/grafana-setup.md](docs/grafana-setup.md).
+
 ## Linting
 
 To check linting, several scripts are available. They also usually have a `--fix` option to automatically fix the linting errors.
