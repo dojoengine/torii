@@ -2,10 +2,10 @@ use std::convert::Infallible;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
-use std::path::Path;
 use std::io::BufReader;
 use std::fs::File;
 
+use anyhow;
 use http::header::CONTENT_TYPE;
 use http::{HeaderName, Method};
 use hyper::client::connect::dns::GaiResolver;
@@ -120,7 +120,7 @@ impl Proxy {
         pool: Arc<SqlitePool>,
         version_spec: String,
         tls_config: TlsConfig,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> anyhow::Result<Self> {
         let server_config = Self::load_tls_config(&tls_config)?;
         
         let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(vec![
@@ -140,7 +140,7 @@ impl Proxy {
         })
     }
 
-    fn load_tls_config(config: &TlsConfig) -> Result<ServerConfig, Box<dyn std::error::Error>> {
+    fn load_tls_config(config: &TlsConfig) -> anyhow::Result<ServerConfig> {
         // Load certificates
         let cert_file = File::open(&config.cert_path)?;
         let mut cert_reader = BufReader::new(cert_file);
@@ -162,7 +162,7 @@ impl Proxy {
         }
 
         if keys.is_empty() {
-            return Err("No private keys found in key file".into());
+            anyhow::bail!("No private keys found in key file");
         }
 
         let key = PrivateKey(keys[0].clone());
@@ -181,75 +181,54 @@ impl Proxy {
         handlers[0] = Box::new(GraphQLHandler::new(Some(addr)));
     }
 
+    fn create_cors_layer(&self) -> Option<CorsLayer> {
+        let cors = CorsLayer::new()
+            .max_age(DEFAULT_MAX_AGE)
+            .allow_methods([Method::GET, Method::POST])
+            .allow_headers(
+                DEFAULT_ALLOW_HEADERS
+                    .iter()
+                    .cloned()
+                    .map(HeaderName::from_static)
+                    .collect::<Vec<HeaderName>>(),
+            )
+            .expose_headers(
+                DEFAULT_EXPOSED_HEADERS
+                    .iter()
+                    .cloned()
+                    .map(HeaderName::from_static)
+                    .collect::<Vec<HeaderName>>(),
+            );
+
+        self.allowed_origins
+            .clone()
+            .map(|allowed_origins| match allowed_origins.as_slice() {
+                [origin] if origin == "*" => {
+                    cors.allow_origin(AllowOrigin::mirror_request())
+                }
+                origins => cors.allow_origin(
+                    origins
+                        .iter()
+                        .map(|o| {
+                            let _ = o.parse::<http::Uri>().expect("Invalid URI");
+                            o.parse().expect("Invalid origin")
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            })
+    }
+
     pub async fn start(
         &self,
         mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> anyhow::Result<()> {
         let addr = self.addr;
-        let allowed_origins = self.allowed_origins.clone();
         let tls_config = self.tls_config.clone();
 
-        let make_svc = make_service_fn(move |conn: &AddrStream| {
-            let remote_addr = conn.remote_addr().ip();
-
-            let cors = CorsLayer::new()
-                .max_age(DEFAULT_MAX_AGE)
-                .allow_methods([Method::GET, Method::POST])
-                .allow_headers(
-                    DEFAULT_ALLOW_HEADERS
-                        .iter()
-                        .cloned()
-                        .map(HeaderName::from_static)
-                        .collect::<Vec<HeaderName>>(),
-                )
-                .expose_headers(
-                    DEFAULT_EXPOSED_HEADERS
-                        .iter()
-                        .cloned()
-                        .map(HeaderName::from_static)
-                        .collect::<Vec<HeaderName>>(),
-                );
-
-            let cors =
-                allowed_origins
-                    .clone()
-                    .map(|allowed_origins| match allowed_origins.as_slice() {
-                        [origin] if origin == "*" => {
-                            cors.allow_origin(AllowOrigin::mirror_request())
-                        }
-                        origins => cors.allow_origin(
-                            origins
-                                .iter()
-                                .map(|o| {
-                                    let _ = o.parse::<http::Uri>().expect("Invalid URI");
-
-                                    o.parse().expect("Invalid origin")
-                                })
-                                .collect::<Vec<_>>(),
-                        ),
-                    });
-
-            let handlers = self.handlers.clone();
-            let version_spec = self.version_spec.clone();
-            let service = ServiceBuilder::new()
-                .option_layer(cors)
-                .service_fn(move |req| {
-                    let handlers = handlers.clone();
-                    let version_spec = version_spec.clone();
-                    async move {
-                        let handlers = handlers.read().await;
-                        handle(remote_addr, req, &handlers, &version_spec).await
-                    }
-                });
-
-            async { Ok::<_, Infallible>(service) }
-        });
-
-        let server = Server::bind(&addr);
-        
         // Configure server with or without TLS
         if let Some(tls_config) = tls_config {
             let tls_acceptor = TlsAcceptor::from(tls_config);
+            let cors_layer = self.create_cors_layer();
             
             // For HTTPS, we need to manually accept connections and handle TLS
             let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -262,50 +241,13 @@ impl Proxy {
                                 let tls_acceptor = tls_acceptor.clone();
                                 let handlers = self.handlers.clone();
                                 let version_spec = self.version_spec.clone();
-                                let allowed_origins = self.allowed_origins.clone();
+                                let cors_layer = cors_layer.clone();
                                 
                                 tokio::spawn(async move {
                                     match tls_acceptor.accept(stream).await {
                                         Ok(tls_stream) => {
-                                            let cors = CorsLayer::new()
-                                                .max_age(DEFAULT_MAX_AGE)
-                                                .allow_methods([Method::GET, Method::POST])
-                                                .allow_headers(
-                                                    DEFAULT_ALLOW_HEADERS
-                                                        .iter()
-                                                        .cloned()
-                                                        .map(HeaderName::from_static)
-                                                        .collect::<Vec<HeaderName>>(),
-                                                )
-                                                .expose_headers(
-                                                    DEFAULT_EXPOSED_HEADERS
-                                                        .iter()
-                                                        .cloned()
-                                                        .map(HeaderName::from_static)
-                                                        .collect::<Vec<HeaderName>>(),
-                                                );
-
-                                            let cors =
-                                                allowed_origins
-                                                    .clone()
-                                                    .map(|allowed_origins| match allowed_origins.as_slice() {
-                                                        [origin] if origin == "*" => {
-                                                            cors.allow_origin(AllowOrigin::mirror_request())
-                                                        }
-                                                        origins => cors.allow_origin(
-                                                            origins
-                                                                .iter()
-                                                                .map(|o| {
-                                                                    let _ = o.parse::<http::Uri>().expect("Invalid URI");
-
-                                                                    o.parse().expect("Invalid origin")
-                                                                })
-                                                                .collect::<Vec<_>>(),
-                                                        ),
-                                                    });
-
                                             let service = ServiceBuilder::new()
-                                                .option_layer(cors)
+                                                .option_layer(cors_layer)
                                                 .service_fn(move |req| {
                                                     let handlers = handlers.clone();
                                                     let version_spec = version_spec.clone();
@@ -342,13 +284,35 @@ impl Proxy {
             Ok(())
         } else {
             // HTTP server
+            let cors_layer = self.create_cors_layer();
+            let make_svc = make_service_fn(move |conn: &AddrStream| {
+                let remote_addr = conn.remote_addr().ip();
+                let handlers = self.handlers.clone();
+                let version_spec = self.version_spec.clone();
+                let cors_layer = cors_layer.clone();
+                
+                let service = ServiceBuilder::new()
+                    .option_layer(cors_layer)
+                    .service_fn(move |req| {
+                        let handlers = handlers.clone();
+                        let version_spec = version_spec.clone();
+                        async move {
+                            let handlers = handlers.read().await;
+                            handle(remote_addr, req, &handlers, &version_spec).await
+                        }
+                    });
+
+                async { Ok::<_, Infallible>(service) }
+            });
+
+            let server = Server::bind(&addr);
             server
                 .serve(make_svc)
                 .with_graceful_shutdown(async move {
                     shutdown_rx.recv().await.ok();
                 })
                 .await
-                .map_err(|e| e.into())
+                .map_err(anyhow::Error::from)
         }
     }
 }
