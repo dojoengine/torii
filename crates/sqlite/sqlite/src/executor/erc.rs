@@ -2,8 +2,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use cainome::cairo_serde::CairoSerde;
-use starknet::macros::selector;
 use starknet::core::types::{BlockId, BlockTag, FunctionCall, U256};
+use starknet::macros::selector;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use tracing::{debug, warn};
