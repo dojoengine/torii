@@ -20,6 +20,7 @@ dojo-metrics.workspace = true
 dojo-types.workspace = true
 dojo-utils.workspace = true
 dojo-world.workspace = true
+metrics.workspace = true
 either = "1.9.0"
 futures.workspace = true
 http-body = "0.4.5"

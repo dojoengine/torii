@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use dojo_world::contracts::world::WorldContractReader;
 use lazy_static::lazy_static;
+use metrics::{counter, gauge, histogram};
 use starknet::core::types::{Event, TransactionContent};
 use starknet::macros::selector;
 use starknet::providers::Provider;
@@ -186,8 +187,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     if let Some(last_fetch_result) = cached_data.as_ref() {
                         Result::<_, Error>::Ok(last_fetch_result.clone())
                     } else {
+                        let fetch_start = Instant::now();
                         let cursors = self.storage.cursors().await?;
                         let fetch_result = self.fetcher.fetch(&cursors).await?;
+                        histogram!("torii_indexer_fetch_duration_seconds").record(fetch_start.elapsed().as_secs_f64());
+                        counter!("torii_indexer_fetch_total", "status" => "success").increment(1);
                         Ok(Arc::new(fetch_result))
                     }
                 } => {
@@ -196,29 +200,36 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                             if fetching_erroring_out && cached_data.is_none() {
                                 fetching_erroring_out = false;
                                 fetching_backoff_delay = Duration::from_secs(1);
+                                gauge!("torii_indexer_backoff_delay_seconds", "operation" => "fetch").set(0.0);
                                 info!(target: LOG_TARGET, "Fetching reestablished.");
                             }
 
                             // Cache the fetch result for retry
                             cached_data = Some(fetch_result.clone());
 
-                            let instant = Instant::now();
+                            let process_start = Instant::now();
                             match self.process(&fetch_result).await {
                                 Ok(_) => {
+                                    histogram!("torii_indexer_process_duration_seconds").record(process_start.elapsed().as_secs_f64());
+                                    counter!("torii_indexer_process_total", "status" => "success").increment(1);
+
                                     // Only reset backoff delay after successful processing
                                     if processing_erroring_out {
                                         processing_erroring_out = false;
                                         processing_backoff_delay = Duration::from_secs(1);
+                                        gauge!("torii_indexer_backoff_delay_seconds", "operation" => "process").set(0.0);
                                         info!(target: LOG_TARGET, "Processing reestablished.");
                                     }
                                     // Reset the cached data
                                     cached_data = None;
                                     // Sync controllers
                                     if let Some(controllers) = &self.controllers {
-                                        let instant = Instant::now();
+                                        let controller_start = Instant::now();
                                         debug!(target: LOG_TARGET, "Syncing controllers.");
                                         let num_controllers = controllers.sync().await.map_err(Error::ControllerSync)?;
-                                        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), num_controllers = num_controllers, "Synced controllers.");
+                                        histogram!("torii_indexer_controller_sync_duration_seconds").record(controller_start.elapsed().as_secs_f64());
+                                        counter!("torii_indexer_controllers_synced_total").increment(num_controllers as u64);
+                                        debug!(target: LOG_TARGET, duration = ?controller_start.elapsed(), num_controllers = num_controllers, "Synced controllers.");
                                         if num_controllers > 0 {
                                             info!(target: LOG_TARGET, num_controllers = num_controllers, "Synced controllers.");
                                         }
@@ -226,10 +237,13 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                     self.storage.execute().await?;
                                 },
                                 Err(e) => {
+                                    counter!("torii_indexer_process_total", "status" => "error").increment(1);
+                                    counter!("torii_indexer_errors_total", "operation" => "process").increment(1);
                                     error!(target: LOG_TARGET, error = ?e, "Processing fetched data.");
                                     processing_erroring_out = true;
                                     self.storage.rollback().await?;
                                     self.task_manager.clear_tasks();
+                                    gauge!("torii_indexer_backoff_delay_seconds", "operation" => "process").set(processing_backoff_delay.as_secs_f64());
                                     sleep(processing_backoff_delay).await;
                                     if processing_backoff_delay < max_backoff_delay {
                                         processing_backoff_delay *= 2;
@@ -237,12 +251,15 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                 }
                             }
 
-                            debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed fetched data.");
+                            debug!(target: LOG_TARGET, duration = ?process_start.elapsed(), "Processed fetched data.");
                         }
                         Err(e) => {
+                            counter!("torii_indexer_fetch_total", "status" => "error").increment(1);
+                            counter!("torii_indexer_errors_total", "operation" => "fetch").increment(1);
                             fetching_erroring_out = true;
                             cached_data = None;
                             error!(target: LOG_TARGET, error = ?e, "Fetching data.");
+                            gauge!("torii_indexer_backoff_delay_seconds", "operation" => "fetch").set(fetching_backoff_delay.as_secs_f64());
                             sleep(fetching_backoff_delay).await;
                             if fetching_backoff_delay < max_backoff_delay {
                                 fetching_backoff_delay *= 2;
@@ -298,11 +315,16 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Process parallelized events
         debug!(target: LOG_TARGET, "Processing parallelized events.");
         let instant = Instant::now();
+        let task_count = self.task_manager.pending_tasks_count();
+        counter!("torii_indexer_parallelized_tasks_total").increment(task_count as u64);
+
         self.task_manager
             .process_tasks()
             .await
             .map_err(ProcessError::Processors)?;
 
+        histogram!("torii_indexer_parallelized_tasks_duration_seconds")
+            .record(instant.elapsed().as_secs_f64());
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed parallelized events.");
 
         // Apply ERC balances cache diff
@@ -350,7 +372,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         // Process parallelized events
         debug!(target: LOG_TARGET, "Processing parallelized events.");
         let instant = Instant::now();
+        let task_count = self.task_manager.pending_tasks_count();
+        counter!("torii_indexer_parallelized_tasks_total").increment(task_count as u64);
+
         self.task_manager.process_tasks().await?;
+        histogram!("torii_indexer_parallelized_tasks_duration_seconds")
+            .record(instant.elapsed().as_secs_f64());
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed parallelized events.");
 
         // Apply ERC balances cache diff
@@ -400,6 +427,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             if contract_type == ContractType::WORLD && DOJO_RELATED_EVENTS.contains(&event_key) {
                 unique_models.insert(event.keys[1]);
             }
+
+            counter!("torii_indexer_events_processed_total",
+                "contract_type" => contract_type.to_string().as_str(),
+                "event_key" => format!("{:#x}", event_key).as_str()
+            )
+            .increment(1);
 
             self.process_event(
                 block_number,

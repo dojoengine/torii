@@ -23,6 +23,7 @@ use dojo_metrics::exporters::prometheus::PrometheusRecorder;
 use dojo_types::naming::compute_selector_from_tag;
 use dojo_world::contracts::world::WorldContractReader;
 use futures::future::join_all;
+use metrics::{counter, histogram};
 use sqlx::sqlite::{
     SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
 };
@@ -454,15 +455,59 @@ impl Runner {
             let prometheus_handle = PrometheusRecorder::install("torii")?;
             let server = dojo_metrics::Server::new(prometheus_handle).with_process_metrics();
             tokio::spawn(server.start(addr));
+
+            counter!("torii_service_starts_total", "service" => "engine").increment(0);
+            counter!("torii_service_starts_total", "service" => "proxy").increment(0);
+            counter!("torii_service_starts_total", "service" => "grpc").increment(0);
+            counter!("torii_service_starts_total", "service" => "graphql").increment(0);
+            counter!("torii_service_starts_total", "service" => "libp2p_relay").increment(0);
         }
 
-        let engine_handle = tokio::spawn(async move { engine.start().await });
-        let proxy_server_handle =
-            tokio::spawn(async move { proxy_server.start(shutdown_tx.subscribe()).await });
-        let graphql_server_handle = tokio::spawn(graphql_server);
-        let grpc_server_handle = tokio::spawn(grpc_server);
-        let libp2p_relay_server_handle =
-            tokio::spawn(async move { libp2p_relay_server.run().await });
+        counter!("torii_service_starts_total", "service" => "engine").increment(1);
+        let engine_handle = tokio::spawn(async move {
+            let result = engine.start().await;
+            if result.is_err() {
+                counter!("torii_service_errors_total", "service" => "engine").increment(1);
+            }
+            result
+        });
+
+        counter!("torii_service_starts_total", "service" => "proxy").increment(1);
+        let proxy_server_handle = tokio::spawn(async move {
+            let result = proxy_server.start(shutdown_tx.subscribe()).await;
+            if result.is_err() {
+                counter!("torii_service_errors_total", "service" => "proxy").increment(1);
+            }
+            result
+        });
+
+        counter!("torii_service_starts_total", "service" => "graphql").increment(1);
+        let graphql_server_handle = tokio::spawn(async move {
+            let result = graphql_server.await;
+            if result.is_err() {
+                counter!("torii_service_errors_total", "service" => "graphql").increment(1);
+            }
+            result
+        });
+
+        counter!("torii_service_starts_total", "service" => "grpc").increment(1);
+        let grpc_server_handle = tokio::spawn(async move {
+            let result = grpc_server.await;
+            if result.is_err() {
+                counter!("torii_service_errors_total", "service" => "grpc").increment(1);
+            }
+            result
+        });
+
+        counter!("torii_service_starts_total", "service" => "libp2p_relay").increment(1);
+        let libp2p_relay_server_handle = tokio::spawn(async move {
+            let result = libp2p_relay_server.run().await;
+            if result.is_err() {
+                counter!("torii_service_errors_total", "service" => "libp2p_relay").increment(1);
+            }
+            result
+        });
+
         let artifacts_server_handle = tokio::spawn(artifacts_server);
 
         tokio::select! {
