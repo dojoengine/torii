@@ -428,9 +428,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 unique_models.insert(event.keys[1]);
             }
 
+            let contract_type_str = contract_type.to_string();
+            let event_key_str = format!("{:#x}", event_key);
             counter!("torii_indexer_events_processed_total",
-                "contract_type" => contract_type.to_string().as_str(),
-                "event_key" => format!("{:#x}", event_key).as_str()
+                "contract_type" => contract_type_str.as_str(),
+                "event_key" => event_key_str.as_str()
             )
             .increment(1);
 
