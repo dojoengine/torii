@@ -454,27 +454,19 @@ impl Runner {
             let prometheus_handle = PrometheusRecorder::install("torii")?;
             let server = dojo_metrics::Server::new(prometheus_handle).with_process_metrics();
             tokio::spawn(server.start(addr));
-
-            counter!("torii_service_starts_total", "service" => "engine").increment(0);
-            counter!("torii_service_starts_total", "service" => "proxy").increment(0);
-            counter!("torii_service_starts_total", "service" => "grpc").increment(0);
-            counter!("torii_service_starts_total", "service" => "graphql").increment(0);
-            counter!("torii_service_starts_total", "service" => "libp2p_relay").increment(0);
         }
 
         let engine_handle = tokio::spawn(async move { engine.start().await });
 
-        let proxy_server_handle = tokio::spawn(async move {
-            proxy_server.start(shutdown_tx.subscribe()).await
-        });
+        let proxy_server_handle =
+            tokio::spawn(async move { proxy_server.start(shutdown_tx.subscribe()).await });
 
         let graphql_server_handle = tokio::spawn(graphql_server);
 
         let grpc_server_handle = tokio::spawn(grpc_server);
 
-        let libp2p_relay_server_handle = tokio::spawn(async move {
-            libp2p_relay_server.run().await
-        });
+        let libp2p_relay_server_handle =
+            tokio::spawn(async move { libp2p_relay_server.run().await });
 
         let artifacts_server_handle = tokio::spawn(artifacts_server);
 
