@@ -1,9 +1,9 @@
 use std::convert::Infallible;
+use std::fs::File;
+use std::io::BufReader;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
-use std::io::BufReader;
-use std::fs::File;
 
 use anyhow;
 use http::header::CONTENT_TYPE;
@@ -14,13 +14,13 @@ use hyper::server::conn::AddrStream;
 use hyper::service::make_service_fn;
 use hyper::{Body, Client, Request, Response, Server, StatusCode};
 use hyper_reverse_proxy::ReverseProxy;
+use rustls::{Certificate, PrivateKey, ServerConfig};
 use serde_json::json;
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
+use tokio_rustls::TlsAcceptor;
 use tower::ServiceBuilder;
 use tower_http::cors::{AllowOrigin, CorsLayer};
-use rustls::{Certificate, PrivateKey, ServerConfig};
-use tokio_rustls::TlsAcceptor;
 
 use crate::handlers::graphql::GraphQLHandler;
 use crate::handlers::grpc::GrpcHandler;
@@ -111,33 +111,10 @@ impl Proxy {
         }
     }
 
-    pub fn with_tls_config(
-        addr: SocketAddr,
-        allowed_origins: Option<Vec<String>>,
-        grpc_addr: Option<SocketAddr>,
-        graphql_addr: Option<SocketAddr>,
-        artifacts_addr: Option<SocketAddr>,
-        pool: Arc<SqlitePool>,
-        version_spec: String,
-        tls_config: TlsConfig,
-    ) -> anyhow::Result<Self> {
+    pub fn with_tls_config(mut self, tls_config: TlsConfig) -> anyhow::Result<Self> {
         let server_config = Self::load_tls_config(&tls_config)?;
-        
-        let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(vec![
-            Box::new(GraphQLHandler::new(graphql_addr)),
-            Box::new(GrpcHandler::new(grpc_addr)),
-            Box::new(McpHandler::new(pool.clone())),
-            Box::new(SqlHandler::new(pool.clone())),
-            Box::new(StaticHandler::new(artifacts_addr)),
-        ]));
-
-        Ok(Self {
-            addr,
-            allowed_origins,
-            handlers,
-            version_spec,
-            tls_config: Some(Arc::new(server_config)),
-        })
+        self.tls_config = Some(Arc::new(server_config));
+        Ok(self)
     }
 
     fn load_tls_config(config: &TlsConfig) -> anyhow::Result<ServerConfig> {
@@ -153,7 +130,7 @@ impl Proxy {
         let key_file = File::open(&config.key_path)?;
         let mut key_reader = BufReader::new(key_file);
         let mut keys = rustls_pemfile::pkcs8_private_keys(&mut key_reader)?;
-        
+
         // Try RSA keys if PKCS8 fails
         if keys.is_empty() {
             let key_file = File::open(&config.key_path)?;
@@ -203,9 +180,7 @@ impl Proxy {
         self.allowed_origins
             .clone()
             .map(|allowed_origins| match allowed_origins.as_slice() {
-                [origin] if origin == "*" => {
-                    cors.allow_origin(AllowOrigin::mirror_request())
-                }
+                [origin] if origin == "*" => cors.allow_origin(AllowOrigin::mirror_request()),
                 origins => cors.allow_origin(
                     origins
                         .iter()
@@ -229,10 +204,10 @@ impl Proxy {
         if let Some(tls_config) = tls_config {
             let tls_acceptor = TlsAcceptor::from(tls_config);
             let cors_layer = self.create_cors_layer();
-            
+
             // For HTTPS, we need to manually accept connections and handle TLS
             let listener = tokio::net::TcpListener::bind(addr).await?;
-            
+
             loop {
                 tokio::select! {
                     result = listener.accept() => {
@@ -242,7 +217,7 @@ impl Proxy {
                                 let handlers = self.handlers.clone();
                                 let version_spec = self.version_spec.clone();
                                 let cors_layer = cors_layer.clone();
-                                
+
                                 tokio::spawn(async move {
                                     match tls_acceptor.accept(stream).await {
                                         Ok(tls_stream) => {
@@ -256,7 +231,7 @@ impl Proxy {
                                                         handle(remote_addr.ip(), req, &handlers, &version_spec).await
                                                     }
                                                 });
-                                            
+
                                             if let Err(e) = hyper::server::conn::Http::new()
                                                 .serve_connection(tls_stream, service)
                                                 .await
@@ -280,7 +255,7 @@ impl Proxy {
                     }
                 }
             }
-            
+
             Ok(())
         } else {
             // HTTP server
@@ -290,17 +265,18 @@ impl Proxy {
                 let handlers = self.handlers.clone();
                 let version_spec = self.version_spec.clone();
                 let cors_layer = cors_layer.clone();
-                
-                let service = ServiceBuilder::new()
-                    .option_layer(cors_layer)
-                    .service_fn(move |req| {
-                        let handlers = handlers.clone();
-                        let version_spec = version_spec.clone();
-                        async move {
-                            let handlers = handlers.read().await;
-                            handle(remote_addr, req, &handlers, &version_spec).await
-                        }
-                    });
+
+                let service =
+                    ServiceBuilder::new()
+                        .option_layer(cors_layer)
+                        .service_fn(move |req| {
+                            let handlers = handlers.clone();
+                            let version_spec = version_spec.clone();
+                            async move {
+                                let handlers = handlers.read().await;
+                                handle(remote_addr, req, &handlers, &version_spec).await
+                            }
+                        });
 
                 async { Ok::<_, Infallible>(service) }
             });

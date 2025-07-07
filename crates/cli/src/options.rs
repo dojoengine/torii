@@ -254,6 +254,22 @@ pub struct ServerOptions {
     #[arg(long = "http.cors_origins")]
     #[arg(value_delimiter = ',')]
     pub http_cors_origins: Option<Vec<String>>,
+
+    /// Path to the SSL certificate file (.pem)
+    #[arg(
+        long = "http.tls_cert_path",
+        value_name = "PATH",
+        help = "Path to the SSL certificate file (.pem). If provided, the server will use HTTPS instead of HTTP."
+    )]
+    pub tls_cert_path: Option<String>,
+
+    /// Path to the SSL private key file (.pem)
+    #[arg(
+        long = "http.tls_key_path",
+        value_name = "PATH",
+        help = "Path to the SSL private key file (.pem). Required when tls_cert_path is provided."
+    )]
+    pub tls_key_path: Option<String>,
 }
 
 impl Default for ServerOptions {
@@ -262,6 +278,8 @@ impl Default for ServerOptions {
             http_addr: DEFAULT_HTTP_ADDR,
             http_port: DEFAULT_HTTP_PORT,
             http_cors_origins: None,
+            tls_cert_path: None,
+            tls_key_path: None,
         }
     }
 }
