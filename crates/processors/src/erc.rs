@@ -342,7 +342,14 @@ pub async fn fetch_metadata(token_uri: &str) -> Result<serde_json::Value, TokenM
 
             Ok(json)
         }
-        uri => Err(TokenMetadataError::UnsupportedUriScheme(uri.to_string())),
+        uri => {
+            // Fallback: try to parse the URI content as raw JSON
+            debug!(uri = %uri, "Attempting to parse URI content as raw JSON");
+            match serde_json::from_str::<serde_json::Value>(uri) {
+                Ok(json) => Ok(json),
+                Err(_) => Err(TokenMetadataError::UnsupportedUriScheme(uri.to_string())),
+            }
+        }
     }
 }
 
