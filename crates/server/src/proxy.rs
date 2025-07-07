@@ -2,6 +2,9 @@ use std::convert::Infallible;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
+use std::path::Path;
+use std::io::BufReader;
+use std::fs::File;
 
 use http::header::CONTENT_TYPE;
 use http::{HeaderName, Method};
@@ -16,6 +19,8 @@ use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 use tower::ServiceBuilder;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use rustls::{Certificate, PrivateKey, ServerConfig};
+use tokio_rustls::TlsAcceptor;
 
 use crate::handlers::graphql::GraphQLHandler;
 use crate::handlers::grpc::GrpcHandler;
@@ -70,6 +75,13 @@ pub struct Proxy {
     allowed_origins: Option<Vec<String>>,
     handlers: Arc<RwLock<Vec<Box<dyn Handler>>>>,
     version_spec: String,
+    tls_config: Option<Arc<ServerConfig>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TlsConfig {
+    pub cert_path: String,
+    pub key_path: String,
 }
 
 impl Proxy {
@@ -95,7 +107,73 @@ impl Proxy {
             allowed_origins,
             handlers,
             version_spec,
+            tls_config: None,
         }
+    }
+
+    pub fn with_tls_config(
+        addr: SocketAddr,
+        allowed_origins: Option<Vec<String>>,
+        grpc_addr: Option<SocketAddr>,
+        graphql_addr: Option<SocketAddr>,
+        artifacts_addr: Option<SocketAddr>,
+        pool: Arc<SqlitePool>,
+        version_spec: String,
+        tls_config: TlsConfig,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let server_config = Self::load_tls_config(&tls_config)?;
+        
+        let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(vec![
+            Box::new(GraphQLHandler::new(graphql_addr)),
+            Box::new(GrpcHandler::new(grpc_addr)),
+            Box::new(McpHandler::new(pool.clone())),
+            Box::new(SqlHandler::new(pool.clone())),
+            Box::new(StaticHandler::new(artifacts_addr)),
+        ]));
+
+        Ok(Self {
+            addr,
+            allowed_origins,
+            handlers,
+            version_spec,
+            tls_config: Some(Arc::new(server_config)),
+        })
+    }
+
+    fn load_tls_config(config: &TlsConfig) -> Result<ServerConfig, Box<dyn std::error::Error>> {
+        // Load certificates
+        let cert_file = File::open(&config.cert_path)?;
+        let mut cert_reader = BufReader::new(cert_file);
+        let certs = rustls_pemfile::certs(&mut cert_reader)?
+            .into_iter()
+            .map(Certificate)
+            .collect::<Vec<_>>();
+
+        // Load private key
+        let key_file = File::open(&config.key_path)?;
+        let mut key_reader = BufReader::new(key_file);
+        let mut keys = rustls_pemfile::pkcs8_private_keys(&mut key_reader)?;
+        
+        // Try RSA keys if PKCS8 fails
+        if keys.is_empty() {
+            let key_file = File::open(&config.key_path)?;
+            let mut key_reader = BufReader::new(key_file);
+            keys = rustls_pemfile::rsa_private_keys(&mut key_reader)?;
+        }
+
+        if keys.is_empty() {
+            return Err("No private keys found in key file".into());
+        }
+
+        let key = PrivateKey(keys[0].clone());
+
+        // Create server config
+        let server_config = ServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)?;
+
+        Ok(server_config)
     }
 
     pub async fn set_graphql_addr(&self, addr: SocketAddr) {
@@ -106,9 +184,10 @@ impl Proxy {
     pub async fn start(
         &self,
         mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
-    ) -> Result<(), hyper::Error> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let addr = self.addr;
         let allowed_origins = self.allowed_origins.clone();
+        let tls_config = self.tls_config.clone();
 
         let make_svc = make_service_fn(move |conn: &AddrStream| {
             let remote_addr = conn.remote_addr().ip();
@@ -166,13 +245,111 @@ impl Proxy {
             async { Ok::<_, Infallible>(service) }
         });
 
-        let server = Server::bind(&addr).serve(make_svc);
-        server
-            .with_graceful_shutdown(async move {
-                // Wait for the shutdown signal
-                shutdown_rx.recv().await.ok();
-            })
-            .await
+        let server = Server::bind(&addr);
+        
+        // Configure server with or without TLS
+        if let Some(tls_config) = tls_config {
+            let tls_acceptor = TlsAcceptor::from(tls_config);
+            
+            // For HTTPS, we need to manually accept connections and handle TLS
+            let listener = tokio::net::TcpListener::bind(addr).await?;
+            
+            loop {
+                tokio::select! {
+                    result = listener.accept() => {
+                        match result {
+                            Ok((stream, remote_addr)) => {
+                                let tls_acceptor = tls_acceptor.clone();
+                                let handlers = self.handlers.clone();
+                                let version_spec = self.version_spec.clone();
+                                let allowed_origins = self.allowed_origins.clone();
+                                
+                                tokio::spawn(async move {
+                                    match tls_acceptor.accept(stream).await {
+                                        Ok(tls_stream) => {
+                                            let cors = CorsLayer::new()
+                                                .max_age(DEFAULT_MAX_AGE)
+                                                .allow_methods([Method::GET, Method::POST])
+                                                .allow_headers(
+                                                    DEFAULT_ALLOW_HEADERS
+                                                        .iter()
+                                                        .cloned()
+                                                        .map(HeaderName::from_static)
+                                                        .collect::<Vec<HeaderName>>(),
+                                                )
+                                                .expose_headers(
+                                                    DEFAULT_EXPOSED_HEADERS
+                                                        .iter()
+                                                        .cloned()
+                                                        .map(HeaderName::from_static)
+                                                        .collect::<Vec<HeaderName>>(),
+                                                );
+
+                                            let cors =
+                                                allowed_origins
+                                                    .clone()
+                                                    .map(|allowed_origins| match allowed_origins.as_slice() {
+                                                        [origin] if origin == "*" => {
+                                                            cors.allow_origin(AllowOrigin::mirror_request())
+                                                        }
+                                                        origins => cors.allow_origin(
+                                                            origins
+                                                                .iter()
+                                                                .map(|o| {
+                                                                    let _ = o.parse::<http::Uri>().expect("Invalid URI");
+
+                                                                    o.parse().expect("Invalid origin")
+                                                                })
+                                                                .collect::<Vec<_>>(),
+                                                        ),
+                                                    });
+
+                                            let service = ServiceBuilder::new()
+                                                .option_layer(cors)
+                                                .service_fn(move |req| {
+                                                    let handlers = handlers.clone();
+                                                    let version_spec = version_spec.clone();
+                                                    async move {
+                                                        let handlers = handlers.read().await;
+                                                        handle(remote_addr.ip(), req, &handlers, &version_spec).await
+                                                    }
+                                                });
+                                            
+                                            if let Err(e) = hyper::server::conn::Http::new()
+                                                .serve_connection(tls_stream, service)
+                                                .await
+                                            {
+                                                eprintln!("Error serving connection: {}", e);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            eprintln!("TLS handshake failed: {}", e);
+                                        }
+                                    }
+                                });
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to accept connection: {}", e);
+                            }
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        break;
+                    }
+                }
+            }
+            
+            Ok(())
+        } else {
+            // HTTP server
+            server
+                .serve(make_svc)
+                .with_graceful_shutdown(async move {
+                    shutdown_rx.recv().await.ok();
+                })
+                .await
+                .map_err(|e| e.into())
+        }
     }
 }
 

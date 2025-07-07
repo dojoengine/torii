@@ -40,3 +40,8 @@ tokio-stream = "0.1.17"
 uuid = "1.15.1"
 regex.workspace = true
 torii-processors.workspace = true
+
+# TLS dependencies for HTTPS support
+tokio-rustls = "0.24.1"
+rustls = "0.21.12"
+rustls-pemfile = "1.0.4"
