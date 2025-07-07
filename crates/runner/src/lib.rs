@@ -374,7 +374,7 @@ impl Runner {
 
         let addr = SocketAddr::new(self.args.server.http_addr, self.args.server.http_port);
 
-        let proxy_server = Arc::new(Proxy::new(
+        let mut proxy_server = Proxy::new(
             addr,
             self.args
                 .server
@@ -385,7 +385,29 @@ impl Runner {
             Some(artifacts_addr),
             Arc::new(readonly_pool.clone()),
             self.version_spec.clone(),
-        ));
+        );
+
+        // Configure TLS if certificates are provided
+        if let (Some(cert_path), Some(key_path)) = (
+            &self.args.server.tls_cert_path,
+            &self.args.server.tls_key_path,
+        ) {
+            let tls_config = torii_server::TlsConfig {
+                cert_path: cert_path.clone(),
+                key_path: key_path.clone(),
+            };
+
+            info!(target: LOG_TARGET, "Starting HTTPS server with TLS certificates");
+            proxy_server = proxy_server
+                .with_tls_config(tls_config)
+                .map_err(|e| anyhow::anyhow!("Failed to configure TLS: {}", e))?;
+        } else if self.args.server.tls_cert_path.is_some()
+            || self.args.server.tls_key_path.is_some()
+        {
+            warn!(target: LOG_TARGET, "TLS configuration incomplete. Both tls_cert_path and tls_key_path are required for HTTPS. Falling back to HTTP.");
+        }
+
+        let proxy_server = Arc::new(proxy_server);
 
         let graphql_server = spawn_rebuilding_graphql_server(
             shutdown_tx.clone(),
@@ -393,16 +415,24 @@ impl Runner {
             proxy_server.clone(),
         );
 
-        let gql_endpoint = format!("{addr}/graphql");
-        let mcp_endpoint = format!("{addr}/mcp");
-        let sql_endpoint = format!("{addr}/sql");
+        let protocol = if self.args.server.tls_cert_path.is_some()
+            && self.args.server.tls_key_path.is_some()
+        {
+            "https"
+        } else {
+            "http"
+        };
+
+        let gql_endpoint = format!("{}://{}/graphql", protocol, addr);
+        let mcp_endpoint = format!("{}://{}/mcp", protocol, addr);
+        let sql_endpoint = format!("{}://{}/sql", protocol, addr);
 
         let encoded: String = form_urlencoded::byte_serialize(
             gql_endpoint.replace("0.0.0.0", "localhost").as_bytes(),
         )
         .collect();
         let explorer_url = format!("https://worlds.dev/torii?url={}", encoded);
-        info!(target: LOG_TARGET, endpoint = %addr, "Starting torii endpoint.");
+        info!(target: LOG_TARGET, endpoint = %addr, protocol = %protocol, "Starting torii endpoint.");
         info!(target: LOG_TARGET, endpoint = %gql_endpoint, "Serving Graphql playground.");
         info!(target: LOG_TARGET, endpoint = %sql_endpoint, "Serving SQL playground.");
         info!(target: LOG_TARGET, endpoint = %mcp_endpoint, "Serving MCP endpoint.");
