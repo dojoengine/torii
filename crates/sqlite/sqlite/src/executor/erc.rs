@@ -2,8 +2,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use cainome::cairo_serde::CairoSerde;
+use starknet::macros::selector;
 use starknet::core::types::{BlockId, BlockTag, FunctionCall, U256};
-use starknet::core::utils::get_selector_from_name;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use tracing::{debug, warn};
@@ -147,7 +147,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     .call(
                         FunctionCall {
                             contract_address: Felt::from_str(contract_address).unwrap(),
-                            entry_point_selector: get_selector_from_name("balance_of").unwrap(),
+                            entry_point_selector: selector!("balance_of"),
                             calldata: vec![Felt::from_str(account_address).unwrap()],
                         },
                         block_id,
@@ -160,7 +160,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         .call(
                             FunctionCall {
                                 contract_address: Felt::from_str(contract_address).unwrap(),
-                                entry_point_selector: get_selector_from_name("balanceOf").unwrap(),
+                                entry_point_selector: selector!("balanceOf"),
                                 calldata: vec![Felt::from_str(account_address).unwrap()],
                             },
                             block_id,

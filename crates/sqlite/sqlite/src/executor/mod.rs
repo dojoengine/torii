@@ -9,7 +9,8 @@ use erc::UpdateNftMetadataQuery;
 use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
-use starknet::core::utils::{get_selector_from_name, parse_cairo_short_string};
+use starknet::core::utils::parse_cairo_short_string;
+use starknet::macros::selector;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
@@ -642,7 +643,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                             ProviderRequestData::Call(CallRequest {
                                 request: FunctionCall {
                                     contract_address: register_nft_token.contract_address,
-                                    entry_point_selector: get_selector_from_name("name").unwrap(),
+                                    entry_point_selector: selector!("name"),
                                     calldata: vec![],
                                 },
                                 block_id,
@@ -650,7 +651,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                             ProviderRequestData::Call(CallRequest {
                                 request: FunctionCall {
                                     contract_address: register_nft_token.contract_address,
-                                    entry_point_selector: get_selector_from_name("symbol").unwrap(),
+                                    entry_point_selector: selector!("symbol"),
                                     calldata: vec![],
                                 },
                                 block_id,

@@ -5,7 +5,7 @@ use data_url::{mime::Mime, DataUrl};
 use starknet::{
     core::{
         types::{requests::CallRequest, BlockId, BlockTag, FunctionCall, U256},
-        utils::{get_selector_from_name, parse_cairo_short_string},
+        utils::parse_cairo_short_string,
     },
     macros::selector,
     providers::{Provider, ProviderRequestData, ProviderResponseData},
@@ -184,7 +184,7 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
         .call(
             FunctionCall {
                 contract_address,
-                entry_point_selector: get_selector_from_name("token_uri").unwrap(),
+                entry_point_selector: selector!("token_uri"),
                 calldata: vec![token_id.low().into(), token_id.high().into()],
             },
             BlockId::Tag(BlockTag::Pending),
@@ -196,7 +196,7 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
         .call(
             FunctionCall {
                 contract_address,
-                entry_point_selector: get_selector_from_name("tokenURI").unwrap(),
+                entry_point_selector: selector!("tokenURI"),
                 calldata: vec![token_id.low().into(), token_id.high().into()],
             },
             BlockId::Tag(BlockTag::Pending),
@@ -208,7 +208,7 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
         .call(
             FunctionCall {
                 contract_address,
-                entry_point_selector: get_selector_from_name("uri").unwrap(),
+                entry_point_selector: selector!("uri"),
                 calldata: vec![token_id.low().into(), token_id.high().into()],
             },
             BlockId::Tag(BlockTag::Pending),

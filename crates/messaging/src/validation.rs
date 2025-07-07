@@ -4,7 +4,7 @@ use dojo_types::naming::is_valid_tag;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::naming::compute_selector_from_tag;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
-use starknet::core::utils::get_selector_from_name;
+use starknet::macros::selector;
 use starknet::providers::Provider;
 use starknet_core::types::typed_data::TypeReference;
 use starknet_core::types::TypedData;
@@ -27,7 +27,7 @@ pub async fn validate_signature<P: Provider + Sync>(
         .call(
             FunctionCall {
                 contract_address: entity_identity,
-                entry_point_selector: get_selector_from_name("is_valid_signature").unwrap(),
+                entry_point_selector: selector!("is_valid_signature"),
                 calldata,
             },
             BlockId::Tag(BlockTag::Pending),
