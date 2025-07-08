@@ -3016,48 +3016,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "dojo-types"
-version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
-dependencies = [
- "anyhow",
- "cainome 0.6.1",
- "crypto-bigint",
- "hex",
- "indexmap 2.7.1",
- "itertools 0.12.1",
- "num-traits 0.2.19",
- "regex",
- "serde",
- "serde_json",
- "starknet 0.14.0",
- "starknet-crypto 0.7.4",
- "strum 0.25.0",
- "strum_macros 0.25.3",
- "thiserror 1.0.63",
-]
-
-[[package]]
 name = "dojo-utils"
 version = "1.6.0-alpha.1"
 source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
-dependencies = [
- "anyhow",
- "colored_json",
- "futures",
- "reqwest",
- "rpassword",
- "serde_json",
- "starknet 0.14.0",
- "thiserror 1.0.63",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "dojo-utils"
-version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
 dependencies = [
  "anyhow",
  "colored_json",
@@ -3080,33 +3041,7 @@ dependencies = [
  "async-trait",
  "cainome 0.6.1",
  "cairo-lang-starknet-classes",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "hex",
- "hex-literal",
- "ipfs-api-backend-hyper",
- "num-bigint",
- "regex",
- "serde",
- "serde_json",
- "serde_with",
- "starknet 0.14.0",
- "starknet-crypto 0.7.4",
- "thiserror 1.0.63",
- "toml 0.8.19",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "dojo-world"
-version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
-dependencies = [
- "anyhow",
- "async-trait",
- "cainome 0.6.1",
- "cairo-lang-starknet-classes",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/dojoengine/dojo?rev=054623b)",
+ "dojo-types 1.6.0-alpha.1",
  "hex",
  "hex-literal",
  "ipfs-api-backend-hyper",
@@ -6941,8 +6876,8 @@ dependencies = [
 
 [[package]]
 name = "merge-options"
-version = "1.5.0"
-source = "git+https://github.com/dojoengine/dojo?rev=82fe9bd#82fe9bde8bb840db507dc11e26b3085a54dbd0d9"
+version = "1.6.0-alpha.1"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10096,16 +10031,16 @@ dependencies = [
 [[package]]
 name = "sozo-ops"
 version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
 dependencies = [
  "anyhow",
  "async-trait",
  "cainome 0.6.1",
  "colored",
  "colored_json",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/dojoengine/dojo?rev=054623b)",
- "dojo-utils 1.6.0-alpha.1 (git+https://github.com/dojoengine/dojo?rev=054623b)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/dojoengine/dojo?rev=054623b)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-utils",
+ "dojo-world",
  "futures",
  "num-traits 0.2.19",
  "serde",
@@ -10122,11 +10057,11 @@ dependencies = [
 [[package]]
 name = "sozo-scarbext"
 version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
 dependencies = [
  "anyhow",
  "camino",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/dojoengine/dojo?rev=054623b)",
+ "dojo-world",
  "scarb",
  "serde",
  "serde_json",
@@ -11609,8 +11544,8 @@ version = "1.6.0-alpha.1"
 dependencies = [
  "async-trait",
  "dashmap 6.1.0",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-world",
  "serde_json",
  "sqlx",
  "starknet 0.14.0",
@@ -11630,7 +11565,7 @@ dependencies = [
  "assert_matches",
  "camino",
  "clap",
- "dojo-utils 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-utils",
  "merge-options",
  "serde",
  "starknet 0.14.0",
@@ -11646,8 +11581,8 @@ version = "1.6.0-alpha.1"
 dependencies = [
  "async-trait",
  "crypto-bigint",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-world",
  "futures",
  "futures-util",
  "num-traits 0.2.19",
@@ -11697,9 +11632,9 @@ dependencies = [
  "chrono",
  "convert_case 0.6.0",
  "dojo-test-utils",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-utils 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-utils",
+ "dojo-world",
  "katana-runner",
  "lazy_static",
  "regex",
@@ -11734,7 +11669,7 @@ name = "torii-grpc-client"
 version = "1.6.0-alpha.1"
 dependencies = [
  "crypto-bigint",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
  "futures",
  "futures-util",
  "num-traits 0.2.19",
@@ -11765,9 +11700,9 @@ dependencies = [
  "crypto-bigint",
  "dashmap 6.1.0",
  "dojo-test-utils",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-utils 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-utils",
+ "dojo-world",
  "futures",
  "futures-util",
  "http 0.2.12",
@@ -11828,9 +11763,9 @@ dependencies = [
  "data-url",
  "dojo-metrics",
  "dojo-test-utils",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-utils 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-utils",
+ "dojo-world",
  "futures-channel",
  "futures-util",
  "hashlink",
@@ -11879,9 +11814,9 @@ dependencies = [
  "data-url",
  "dojo-metrics",
  "dojo-test-utils",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-utils 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-utils",
+ "dojo-world",
  "futures-channel",
  "futures-util",
  "hashlink",
@@ -11918,8 +11853,8 @@ dependencies = [
  "anyhow",
  "chrono",
  "crypto-bigint",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-world",
  "futures",
  "indexmap 2.7.1",
  "katana-runner",
@@ -11965,8 +11900,8 @@ version = "1.6.0-alpha.1"
 dependencies = [
  "anyhow",
  "crypto-bigint",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-world",
  "serde",
  "serde_json",
  "sqlx",
@@ -11992,8 +11927,8 @@ dependencies = [
  "cainome-cairo-serde-derive",
  "chrono",
  "data-url",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-world",
  "futures-util",
  "hashlink",
  "ipfs-api-backend-hyper",
@@ -12021,8 +11956,8 @@ version = "1.6.0-alpha.1"
 dependencies = [
  "chrono",
  "crypto-bigint",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-world",
  "prost 0.12.6",
  "prost 0.13.3",
  "serde",
@@ -12049,9 +11984,9 @@ dependencies = [
  "chrono",
  "ctrlc",
  "dojo-metrics",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-utils 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-utils",
+ "dojo-world",
  "either",
  "futures",
  "http 0.2.12",
@@ -12149,9 +12084,9 @@ dependencies = [
  "dashmap 6.1.0",
  "data-url",
  "dojo-test-utils",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-utils 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-utils",
+ "dojo-world",
  "flate2",
  "futures",
  "futures-channel",
@@ -12190,7 +12125,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "crypto-bigint",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
  "serde",
  "sqlx",
  "starknet 0.14.0",
@@ -12205,8 +12140,8 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
+ "dojo-world",
  "serde",
  "starknet 0.14.0",
  "torii-math",
@@ -12231,7 +12166,7 @@ version = "1.6.0-alpha.1"
 dependencies = [
  "cainome 0.8.0",
  "crypto-bigint",
- "dojo-types 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-types 1.6.0-alpha.1",
  "indexmap 2.7.1",
  "serde",
  "serde_json",
@@ -13860,8 +13795,8 @@ version = "1.6.0-alpha.1"
 dependencies = [
  "anyhow",
  "dojo-test-utils",
- "dojo-utils 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
- "dojo-world 1.6.0-alpha.1 (git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5)",
+ "dojo-utils",
+ "dojo-world",
  "katana-runner",
  "reqwest",
  "scarb",
