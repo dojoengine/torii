@@ -1115,6 +1115,20 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
+    let res = account
+        .execute_v1(vec![Call {
+            to: actions_address,
+            selector: get_selector_from_name("update_player_config_items").unwrap(),
+            calldata: vec![],
+        }])
+        .send_with_cfg(&TxnConfig::init_wait())
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(res.transaction_hash, &provider)
+        .await
+        .unwrap();
+
     let world_reader = WorldContractReader::new(world_address, Arc::clone(&provider));
 
     let tempfile = NamedTempFile::new().unwrap();
