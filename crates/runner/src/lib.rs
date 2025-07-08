@@ -31,7 +31,7 @@ use starknet::core::types::{BlockId, BlockTag};
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
 use tempfile::{NamedTempFile, TempDir};
-use terminal_size::{Width, Height, terminal_size};
+use terminal_size::{terminal_size, Height, Width};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
@@ -67,25 +67,27 @@ fn create_progress_bar_template() -> String {
         let min_width = 80;
         let max_width = 120;
         let effective_width = cmp::max(min_width, cmp::min(width, max_width));
-        
+
+        // Calculate message width first (needs space for " XX.Xs" format)
+        let msg_width = cmp::max(8, cmp::min(20, effective_width / 8)); // Ensure at least 8 chars for seconds
+
         // Calculate progress bar width (reserve space for other elements)
         // " {spinner:.yellow} snapshot [BAR] {bytes}/{total_bytes} Downloading{msg}"
-        let reserved_space = 50; // Space for spinner, labels, bytes, etc.
+        let reserved_space = 45 + msg_width; // Space for spinner, labels, bytes, and message
         let bar_width = if effective_width > reserved_space {
-            effective_width - reserved_space
+            // Use most of the available space for the bar
+            let available_space = effective_width - reserved_space;
+            cmp::min(60, (available_space * 8) / 10) // Max 60 chars, 80% of available
         } else {
             30 // Minimum bar width
         };
-        
-        // Calculate message width
-        let msg_width = cmp::min(20, cmp::max(10, (effective_width - reserved_space) / 4));
-        
+
         (bar_width, msg_width)
     } else {
         // Default values if terminal size cannot be determined
         (40, 20)
     };
-    
+
     format!(
         " {{spinner:.yellow}} snapshot [{{bar:{}.cyan/blue}}] {{bytes}}/{{total_bytes}} Downloading{{wide_msg:>{}.blue}}",
         terminal_width, msg_width
