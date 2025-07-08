@@ -1090,7 +1090,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
         .unwrap();
 
     let res = account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("update_player_config_items").unwrap(),
             calldata: vec![],
