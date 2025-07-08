@@ -615,10 +615,12 @@ async fn generate_mkcert_certificates() -> anyhow::Result<(String, String)> {
         return Err(anyhow::anyhow!("mkcert is not installed. Please install mkcert first: https://github.com/FiloSottile/mkcert"));
     }
 
-    // Create a temporary directory for certificates
-    let temp_dir = TempDir::new()?;
-    let cert_path = temp_dir.path().join("localhost.pem");
-    let key_path = temp_dir.path().join("localhost-key.pem");
+    // Create persistent directory for certificates
+    let cert_dir = std::env::current_dir()?.join(".torii-certs");
+    tokio::fs::create_dir_all(&cert_dir).await?;
+
+    let cert_path = cert_dir.join("localhost.pem");
+    let key_path = cert_dir.join("localhost-key.pem");
 
     // Install the CA certificate
     let install_output = tokio::process::Command::new("mkcert")
@@ -651,15 +653,8 @@ async fn generate_mkcert_certificates() -> anyhow::Result<(String, String)> {
         ));
     }
 
-    // Convert temp paths to permanent paths to avoid cleanup
-    let permanent_cert_path = std::env::temp_dir().join("torii-cert.pem");
-    let permanent_key_path = std::env::temp_dir().join("torii-key.pem");
-
-    tokio::fs::copy(&cert_path, &permanent_cert_path).await?;
-    tokio::fs::copy(&key_path, &permanent_key_path).await?;
-
     Ok((
-        permanent_cert_path.to_string_lossy().to_string(),
-        permanent_key_path.to_string_lossy().to_string(),
+        cert_path.to_string_lossy().to_string(),
+        key_path.to_string_lossy().to_string(),
     ))
 }
