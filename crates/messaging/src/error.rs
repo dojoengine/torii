@@ -1,6 +1,6 @@
 use dojo_types::primitive::PrimitiveError;
 use dojo_types::schema::EnumError;
-use starknet_core::types::FromStrError;
+use starknet::core::types::FromStrError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -34,6 +34,9 @@ pub enum MessagingError {
 
     #[error(transparent)]
     EnumError(#[from] EnumError),
+
+    #[error(transparent)]
+    StorageError(#[from] torii_storage::StorageError),
 
     #[error(transparent)]
     SqliteError(#[from] torii_sqlite::error::Error),

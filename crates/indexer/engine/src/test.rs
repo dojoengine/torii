@@ -20,11 +20,13 @@ use starknet::providers::{JsonRpcClient, Provider};
 use starknet_crypto::poseidon_hash_many;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
-use torii_sqlite::cache::ModelCache;
+use torii_cache::{Cache, InMemoryCache};
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::{Contract, ContractType, Token};
+use torii_sqlite::types::Token;
 use torii_sqlite::utils::u256_to_sql_string;
 use torii_sqlite::Sql;
+use torii_storage::types::{Contract, ContractType};
+use torii_storage::Storage;
 
 use crate::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
@@ -32,7 +34,8 @@ use torii_processors::processors::Processors;
 
 pub async fn bootstrap_engine<P>(
     world: WorldContractReader<P>,
-    mut db: Sql,
+    db: Sql,
+    cache: Arc<dyn Cache>,
     provider: P,
     contracts: &[Contract],
 ) -> Result<Engine<P>, Box<dyn std::error::Error>>
@@ -42,7 +45,8 @@ where
     let (shutdown_tx, _) = broadcast::channel(1);
     let mut engine = Engine::new(
         world,
-        db.clone(),
+        Arc::new(db.clone()),
+        Arc::clone(&cache),
         provider.clone(),
         Processors {
             ..Processors::default()
@@ -62,7 +66,9 @@ where
     let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();
 
-    db.apply_cache_diff(cursors).await.unwrap();
+    db.apply_balances_diff(cache.balances_diff().await, cursors)
+        .await
+        .unwrap();
     db.execute().await.unwrap();
 
     Ok(engine)
@@ -103,7 +109,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     // spawn
     let tx = &account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("spawn").unwrap(),
             calldata: vec![],
@@ -118,7 +124,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     // move
     let tx = &account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("move").unwrap(),
             calldata: vec![Felt::ONE],
@@ -157,17 +163,12 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -280,7 +281,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
 
     // mint 123456789 wei tokens
     let tx = &account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("mint").unwrap(),
             calldata: vec![Felt::from(123456789), Felt::ZERO],
@@ -296,7 +297,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
 
     // transfer 12345 tokens to some other address
     let tx = &account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("transfer").unwrap(),
             calldata: vec![Felt::ONE, Felt::from(12345), Felt::ZERO],
@@ -335,17 +336,12 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
         r#type: ContractType::ERC20,
     }];
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -424,7 +420,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
     // Mint multiple NFTs with different IDs
     for token_id in 1..=5 {
         let tx = &account
-            .execute_v1(vec![Call {
+            .execute_v3(vec![Call {
                 to: badge_address,
                 selector: get_selector_from_name("mint").unwrap(),
                 calldata: vec![Felt::from(token_id), Felt::ZERO],
@@ -441,7 +437,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
     // Transfer NFT ID 1 and 2 to another address
     for token_id in 1..=2 {
         let tx = &account
-            .execute_v1(vec![Call {
+            .execute_v3(vec![Call {
                 to: badge_address,
                 selector: get_selector_from_name("transfer_from").unwrap(),
                 calldata: vec![
@@ -484,17 +480,11 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
         address: badge_address,
         r#type: ContractType::ERC721,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
-
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -623,7 +613,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
 
     for (token_id, amount) in &token_amounts {
         let tx = &account
-            .execute_v1(vec![Call {
+            .execute_v3(vec![Call {
                 to: rewards_address,
                 selector: get_selector_from_name("mint").unwrap(),
                 calldata: vec![
@@ -645,7 +635,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
     // Transfer half of each token amount to another address
     for (token_id, amount) in &token_amounts {
         let tx = &account
-            .execute_v1(vec![Call {
+            .execute_v3(vec![Call {
                 to: rewards_address,
                 selector: get_selector_from_name("transfer_from").unwrap(),
                 calldata: vec![
@@ -690,17 +680,11 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
         address: rewards_address,
         r#type: ContractType::ERC1155,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
-
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -816,7 +800,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
 
     // spawn
     let res = account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("spawn").unwrap(),
             calldata: vec![],
@@ -831,7 +815,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
 
     // Set player config.
     let res = account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("set_player_config").unwrap(),
             // Empty ByteArray.
@@ -846,7 +830,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
         .unwrap();
 
     let res = account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("reset_player_config").unwrap(),
             calldata: vec![],
@@ -885,17 +869,12 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -966,7 +945,7 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
 
     // Send spawn transaction
     let spawn_res = account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("spawn").unwrap(),
             calldata: vec![],
@@ -981,7 +960,7 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
 
     // Send move transaction
     let move_res = account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("move").unwrap(),
             calldata: vec![Felt::ZERO],
@@ -1021,17 +1000,12 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 }
@@ -1071,7 +1045,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
 
     // spawn
     let res = account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("spawn").unwrap(),
             calldata: vec![],
@@ -1086,7 +1060,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
 
     // Set player config.
     let res = account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("set_player_config").unwrap(),
             // Empty ByteArray.
@@ -1102,7 +1076,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
 
     let name = ByteArray::from_string("mimi").unwrap();
     let res = account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("update_player_config_name").unwrap(),
             calldata: ByteArray::cairo_serialize(&name),
@@ -1155,17 +1129,12 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
         address: world_reader.address,
         r#type: ContractType::WORLD,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
-    let _ = bootstrap_engine(world_reader, db.clone(), provider, &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 
@@ -1222,7 +1191,7 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
         .unwrap();
 
     let tx = &account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: rewards_address,
             selector: get_selector_from_name("mint").unwrap(),
             calldata: vec![Felt::from(1), Felt::ZERO, Felt::from(1), Felt::ZERO],
@@ -1237,7 +1206,7 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
 
     let owner_account = sequencer.account(3);
     let tx = &owner_account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: rewards_address,
             selector: get_selector_from_name("update_token_metadata").unwrap(),
             calldata: vec![Felt::from(1), Felt::ZERO],
@@ -1276,17 +1245,12 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
         address: rewards_address,
         r#type: ContractType::ERC1155,
     }];
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let db = Sql::new(
-        pool.clone(),
-        sender.clone(),
-        &contracts,
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
-    let _ = bootstrap_engine(world_reader, db.clone(), Arc::clone(&provider), &contracts)
+    let _ = bootstrap_engine(world_reader, db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
 

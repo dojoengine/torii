@@ -1,67 +1,39 @@
-use std::collections::{HashMap, HashSet};
-use std::str::FromStr;
+use std::collections::HashSet;
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
-use dojo_types::naming::get_tag;
 use dojo_types::primitive::SqlType;
-use dojo_types::schema::{Struct, Ty};
-use dojo_world::config::WorldMetadata;
-use dojo_world::contracts::abigen::model::Layout;
-use dojo_world::contracts::naming::compute_selector_from_names;
-use executor::{EntityQuery, StoreTransactionQuery};
+use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
-use starknet::core::types::{Event, Felt};
-use starknet_crypto::poseidon_hash_many;
+use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::Semaphore;
-use torii_sqlite_types::{ContractCursor, HookEvent, ParsedCall};
-use utils::felts_to_sql_string;
+use torii_cache::Cache;
+use torii_storage::types::{Contract, Cursor};
+use torii_storage::Storage;
 
-use crate::constants::SQL_FELT_DELIMITER;
 use crate::error::{Error, ParseError};
 use crate::executor::error::ExecutorQueryError;
-use crate::executor::{
-    Argument, DeleteEntityQuery, EventMessageQuery, QueryMessage, QueryType, UpdateCursorsQuery,
-};
+use crate::executor::{Argument, QueryMessage};
 use crate::utils::utc_dt_string_from_timestamp;
-use torii_sqlite_types::{Contract, Hook, ModelIndices};
+use torii_sqlite_types::{Hook, ModelIndices};
 
-pub mod cache;
 pub mod constants;
-pub mod controllers;
-pub mod erc;
+pub mod cursor;
 pub mod error;
 pub mod executor;
 pub mod model;
+pub mod query;
 pub mod simple_broker;
+pub mod storage;
 pub mod utils;
 
-#[cfg(test)]
-pub mod test_utils;
-
-use cache::{LocalCache, Model, ModelCache};
 pub use torii_sqlite_types as types;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SqlConfig {
     pub all_model_indices: bool,
     pub model_indices: Vec<ModelIndices>,
     pub historical_models: HashSet<Felt>,
     pub hooks: Vec<Hook>,
-    pub max_metadata_tasks: usize,
-}
-
-impl Default for SqlConfig {
-    fn default() -> Self {
-        Self {
-            all_model_indices: false,
-            model_indices: vec![],
-            historical_models: HashSet::new(),
-            hooks: vec![],
-            max_metadata_tasks: 10,
-        }
-    }
 }
 
 impl SqlConfig {
@@ -74,17 +46,8 @@ impl SqlConfig {
 pub struct Sql {
     pub pool: Pool<Sqlite>,
     pub executor: UnboundedSender<QueryMessage>,
-    nft_metadata_semaphore: Arc<Semaphore>,
-    model_cache: Arc<ModelCache>,
-    local_cache: Arc<LocalCache>,
     pub config: SqlConfig,
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct Cursor {
-    pub last_pending_block_tx: Option<Felt>,
-    pub head: Option<u64>,
-    pub last_block_timestamp: Option<u64>,
+    pub cache: Option<Arc<dyn Cache>>,
 }
 
 impl Sql {
@@ -92,16 +55,14 @@ impl Sql {
         pool: Pool<Sqlite>,
         executor: UnboundedSender<QueryMessage>,
         contracts: &[Contract],
-        model_cache: Arc<ModelCache>,
     ) -> Result<Self, Error> {
-        Self::new_with_config(pool, executor, contracts, model_cache, Default::default()).await
+        Self::new_with_config(pool, executor, contracts, Default::default()).await
     }
 
     pub async fn new_with_config(
         pool: Pool<Sqlite>,
         executor: UnboundedSender<QueryMessage>,
         contracts: &[Contract],
-        model_cache: Arc<ModelCache>,
         config: SqlConfig,
     ) -> Result<Self, Error> {
         for contract in contracts {
@@ -117,15 +78,11 @@ impl Sql {
             )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }
 
-        let local_cache = LocalCache::new(pool.clone()).await;
-        let nft_metadata_semaphore = Arc::new(Semaphore::new(config.max_metadata_tasks));
         let db = Self {
             pool: pool.clone(),
             executor,
-            model_cache,
-            local_cache: Arc::new(local_cache),
             config,
-            nft_metadata_semaphore,
+            cache: None,
         };
 
         db.execute().await?;
@@ -133,532 +90,11 @@ impl Sql {
         Ok(db)
     }
 
-    pub fn set_last_pending_block_contract_tx(
-        &mut self,
-        contract: Felt,
-        last_pending_block_contract_tx: Option<Felt>,
-    ) -> Result<(), Error> {
-        let last_pending_block_contract_tx = if let Some(f) = last_pending_block_contract_tx {
-            Argument::String(format!("{:#x}", f))
-        } else {
-            Argument::Null
-        };
-
-        let id = Argument::FieldElement(contract);
-
-        self.executor
-            .send(QueryMessage::other(
-                "UPDATE contracts SET last_pending_block_contract_tx = ? WHERE id = ?".to_string(),
-                vec![last_pending_block_contract_tx, id],
-            ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        Ok(())
-    }
-
-    pub fn set_last_pending_block_tx(
-        &mut self,
-        last_pending_block_tx: Option<Felt>,
-    ) -> Result<(), Error> {
-        let last_pending_block_tx = if let Some(f) = last_pending_block_tx {
-            Argument::String(format!("{:#x}", f))
-        } else {
-            Argument::Null
-        };
-
-        self.executor
-            .send(QueryMessage::other(
-                "UPDATE contracts SET last_pending_block_tx = ? WHERE 1=1".to_string(),
-                vec![last_pending_block_tx],
-            ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        Ok(())
-    }
-
-    pub async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, Error> {
-        let cursors = sqlx::query_as::<_, ContractCursor>("SELECT * FROM contracts")
-            .fetch_all(&self.pool)
-            .await?;
-
-        let mut cursors_map = HashMap::new();
-        for c in cursors {
-            let contract_address = Felt::from_str(&c.contract_address)
-                .map_err(|e| Error::Parse(ParseError::FromStr(e)))?;
-            let last_pending_block_tx = c
-                .last_pending_block_tx
-                .map(|tx| Felt::from_str(&tx).map_err(|e| Error::Parse(ParseError::FromStr(e))))
-                .transpose()?;
-            let cursor = Cursor {
-                last_pending_block_tx,
-                head: c.head.map(|h| h as u64),
-                last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
-            };
-            cursors_map.insert(contract_address, cursor);
+    pub fn with_cache(self, cache: Arc<dyn Cache>) -> Self {
+        Self {
+            cache: Some(cache),
+            ..self
         }
-        Ok(cursors_map)
-    }
-
-    pub async fn update_cursors(
-        &self,
-        cursors: HashMap<Felt, Cursor>,
-        cursor_transactions: HashMap<Felt, HashSet<Felt>>,
-    ) -> Result<(), Error> {
-        let (query, recv) = QueryMessage::new_recv(
-            "".to_string(),
-            vec![],
-            QueryType::UpdateCursors(UpdateCursorsQuery {
-                cursors,
-                cursor_transactions,
-            }),
-        );
-
-        self.executor
-            .send(query)
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        recv.await
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?
-            .map_err(|e| Error::ExecutorQuery(Box::new(e)))
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn register_model(
-        &mut self,
-        namespace: &str,
-        model: &Ty,
-        layout: Layout,
-        class_hash: Felt,
-        contract_address: Felt,
-        packed_size: u32,
-        unpacked_size: u32,
-        block_timestamp: u64,
-        schema_diff: Option<&Ty>,
-        upgrade_diff: Option<&Ty>,
-    ) -> Result<(), Error> {
-        let selector = compute_selector_from_names(namespace, &model.name());
-        let namespaced_name = get_tag(namespace, &model.name());
-        let namespaced_schema = Ty::Struct(Struct {
-            name: namespaced_name.clone(),
-            children: model.as_struct().unwrap().children.clone(),
-        });
-
-        let insert_models =
-            "INSERT INTO models (id, namespace, name, class_hash, contract_address, layout, \
-             schema, packed_size, unpacked_size, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, \
-             ?) ON CONFLICT(id) DO UPDATE SET contract_address=EXCLUDED.contract_address, \
-             class_hash=EXCLUDED.class_hash, layout=EXCLUDED.layout, schema=EXCLUDED.schema, \
-             packed_size=EXCLUDED.packed_size, unpacked_size=EXCLUDED.unpacked_size, \
-             executed_at=EXCLUDED.executed_at RETURNING *";
-        let arguments = vec![
-            Argument::FieldElement(selector),
-            Argument::String(namespace.to_string()),
-            Argument::String(model.name().to_string()),
-            Argument::FieldElement(class_hash),
-            Argument::FieldElement(contract_address),
-            Argument::String(
-                serde_json::to_string(&layout)
-                    .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?,
-            ),
-            Argument::String(
-                serde_json::to_string(&namespaced_schema)
-                    .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?,
-            ),
-            Argument::Int(packed_size as i64),
-            Argument::Int(unpacked_size as i64),
-            Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
-        ];
-        self.executor
-            .send(QueryMessage::new(
-                insert_models.to_string(),
-                arguments,
-                QueryType::RegisterModel,
-            ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        self.build_model_query(
-            vec![namespaced_name.clone()],
-            model,
-            schema_diff,
-            upgrade_diff,
-        )?;
-
-        // we set the model in the cache directly
-        // because entities might be using it before the query queue is processed
-        self.model_cache
-            .set(
-                selector,
-                Model {
-                    namespace: namespace.to_string(),
-                    name: model.name().to_string(),
-                    selector,
-                    class_hash,
-                    contract_address,
-                    packed_size,
-                    unpacked_size,
-                    layout,
-                    schema: namespaced_schema,
-                },
-            )
-            .await;
-
-        for hook in self.config.hooks.iter() {
-            if let HookEvent::ModelRegistered { model_tag } = &hook.event {
-                if namespaced_name == *model_tag {
-                    self.executor
-                        .send(QueryMessage::other(
-                            hook.statement.clone(),
-                            vec![Argument::FieldElement(selector)],
-                        ))
-                        .map_err(|e| {
-                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
-                        })?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn set_entity(
-        &self,
-        entity: Ty,
-        event_id: &str,
-        block_timestamp: u64,
-        entity_id: Felt,
-        model_selector: Felt,
-        keys_str: Option<&str>,
-    ) -> Result<(), Error> {
-        let namespaced_name = entity.name();
-
-        let entity_id = format!("{:#x}", entity_id);
-        let model_id = format!("{:#x}", model_selector);
-
-        let insert_entities = if keys_str.is_some() {
-            "INSERT INTO entities (id, event_id, executed_at, keys) VALUES (?, ?, ?, ?) ON \
-             CONFLICT(id) DO UPDATE SET updated_at=CURRENT_TIMESTAMP, \
-             executed_at=EXCLUDED.executed_at, event_id=EXCLUDED.event_id, keys=EXCLUDED.keys \
-             RETURNING *"
-        } else {
-            "INSERT INTO entities (id, event_id, executed_at) VALUES (?, ?, ?) ON CONFLICT(id) DO \
-             UPDATE SET updated_at=CURRENT_TIMESTAMP, executed_at=EXCLUDED.executed_at, \
-             event_id=EXCLUDED.event_id RETURNING *"
-        };
-
-        let mut arguments = vec![
-            Argument::String(entity_id.clone()),
-            Argument::String(event_id.to_string()),
-            Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
-        ];
-
-        if let Some(keys) = keys_str {
-            arguments.push(Argument::String(keys.to_string()));
-        }
-
-        self.executor
-            .send(QueryMessage::new(
-                insert_entities.to_string(),
-                arguments,
-                QueryType::SetEntity(EntityQuery {
-                    event_id: event_id.to_string(),
-                    block_timestamp: utc_dt_string_from_timestamp(block_timestamp),
-                    entity_id: entity_id.clone(),
-                    model_id: model_id.clone(),
-                    keys_str: keys_str.map(|s| s.to_string()),
-                    ty: entity.clone(),
-                    is_historical: self.config.is_historical(&model_selector),
-                }),
-            ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        self.executor.send(QueryMessage::other(
-            "INSERT INTO entity_model (entity_id, model_id) VALUES (?, ?) ON CONFLICT(entity_id, \
-             model_id) DO NOTHING"
-                .to_string(),
-            vec![
-                Argument::String(entity_id.clone()),
-                Argument::String(model_id.clone()),
-            ],
-        )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        self.set_entity_model(
-            &namespaced_name,
-            event_id,
-            &entity_id,
-            &entity,
-            block_timestamp,
-        )?;
-
-        for hook in self.config.hooks.iter() {
-            if let HookEvent::ModelUpdated { model_tag } = &hook.event {
-                if namespaced_name == *model_tag {
-                    self.executor
-                        .send(QueryMessage::other(
-                            hook.statement.clone(),
-                            vec![Argument::String(entity_id.clone())],
-                        ))
-                        .map_err(|e| {
-                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
-                        })?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn set_event_message(
-        &mut self,
-        entity: Ty,
-        event_id: &str,
-        block_timestamp: u64,
-    ) -> Result<(), Error> {
-        let keys = if let Ty::Struct(s) = &entity {
-            let mut keys = Vec::new();
-            for m in s.keys() {
-                keys.extend(m.serialize()?);
-            }
-            keys
-        } else {
-            return Err(Error::Parse(ParseError::InvalidTyEntity));
-        };
-
-        let namespaced_name = entity.name();
-        let (model_namespace, model_name) = namespaced_name.split_once('-').unwrap();
-
-        let entity_id = format!("{:#x}", poseidon_hash_many(&keys));
-        let model_selector = compute_selector_from_names(model_namespace, model_name);
-        let model_id = format!("{:#x}", model_selector);
-
-        let keys_str = felts_to_sql_string(&keys);
-        let block_timestamp_str = utc_dt_string_from_timestamp(block_timestamp);
-
-        let insert_entities = "INSERT INTO event_messages (id, keys, event_id, executed_at) \
-                               VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET \
-                               updated_at=CURRENT_TIMESTAMP, executed_at=EXCLUDED.executed_at, \
-                               event_id=EXCLUDED.event_id RETURNING *";
-        self.executor
-            .send(QueryMessage::new(
-                insert_entities.to_string(),
-                vec![
-                    Argument::String(entity_id.clone()),
-                    Argument::String(keys_str.clone()),
-                    Argument::String(event_id.to_string()),
-                    Argument::String(block_timestamp_str.clone()),
-                ],
-                QueryType::EventMessage(EventMessageQuery {
-                    entity_id: entity_id.clone(),
-                    model_id: model_id.clone(),
-                    keys_str: keys_str.clone(),
-                    event_id: event_id.to_string(),
-                    block_timestamp: block_timestamp_str.clone(),
-                    ty: entity.clone(),
-                    is_historical: self.config.is_historical(&model_selector),
-                }),
-            ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        self.set_entity_model(
-            &namespaced_name,
-            event_id,
-            &format!("event:{}", entity_id),
-            &entity,
-            block_timestamp,
-        )?;
-
-        for hook in self.config.hooks.iter() {
-            if let HookEvent::ModelUpdated { model_tag } = &hook.event {
-                if namespaced_name == *model_tag {
-                    self.executor
-                        .send(QueryMessage::other(
-                            hook.statement.clone(),
-                            vec![Argument::String(entity_id.clone())],
-                        ))
-                        .map_err(|e| {
-                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
-                        })?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn delete_entity(
-        &mut self,
-        entity_id: Felt,
-        model_id: Felt,
-        entity: Ty,
-        event_id: &str,
-        block_timestamp: u64,
-    ) -> Result<(), Error> {
-        let entity_id = format!("{:#x}", entity_id);
-        let model_id = format!("{:#x}", model_id);
-        let model_table = entity.name();
-
-        self.executor
-            .send(QueryMessage::new(
-                format!("DELETE FROM [{model_table}] WHERE internal_id = ?").to_string(),
-                vec![Argument::String(entity_id.clone())],
-                QueryType::DeleteEntity(DeleteEntityQuery {
-                    model_id: model_id.clone(),
-                    entity_id: entity_id.clone(),
-                    event_id: event_id.to_string(),
-                    block_timestamp: utc_dt_string_from_timestamp(block_timestamp),
-                    ty: entity.clone(),
-                }),
-            ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        for hook in self.config.hooks.iter() {
-            if let HookEvent::ModelDeleted { model_tag } = &hook.event {
-                if model_table == *model_tag {
-                    self.executor
-                        .send(QueryMessage::other(
-                            hook.statement.clone(),
-                            vec![Argument::String(entity_id.clone())],
-                        ))
-                        .map_err(|e| {
-                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
-                        })?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn set_metadata(
-        &mut self,
-        resource: &Felt,
-        uri: &str,
-        block_timestamp: u64,
-    ) -> Result<(), Error> {
-        let resource = Argument::FieldElement(*resource);
-        let uri = Argument::String(uri.to_string());
-        let executed_at = Argument::String(utc_dt_string_from_timestamp(block_timestamp));
-
-        self.executor
-            .send(QueryMessage::other(
-                "INSERT INTO metadata (id, uri, executed_at) VALUES (?, ?, ?) ON CONFLICT(id) DO \
-             UPDATE SET id=excluded.id, executed_at=excluded.executed_at, \
-             updated_at=CURRENT_TIMESTAMP"
-                    .to_string(),
-                vec![resource, uri, executed_at],
-            ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        Ok(())
-    }
-
-    pub fn update_metadata(
-        &mut self,
-        resource: &Felt,
-        uri: &str,
-        metadata: &WorldMetadata,
-        icon_img: &Option<String>,
-        cover_img: &Option<String>,
-    ) -> Result<(), Error> {
-        let json = serde_json::to_string(metadata).unwrap(); // safe unwrap
-
-        let mut update = vec!["uri=?", "json=?", "updated_at=CURRENT_TIMESTAMP"];
-        let mut arguments = vec![Argument::String(uri.to_string()), Argument::String(json)];
-
-        if let Some(icon) = icon_img {
-            update.push("icon_img=?");
-            arguments.push(Argument::String(icon.clone()));
-        }
-
-        if let Some(cover) = cover_img {
-            update.push("cover_img=?");
-            arguments.push(Argument::String(cover.clone()));
-        }
-
-        let statement = format!("UPDATE metadata SET {} WHERE id = ?", update.join(","));
-        arguments.push(Argument::FieldElement(*resource));
-
-        self.executor
-            .send(QueryMessage::other(statement, arguments))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        Ok(())
-    }
-
-    pub async fn model(&self, selector: Felt) -> Result<Model, Error> {
-        self.model_cache.model(&selector).await
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn store_transaction(
-        &mut self,
-        transaction_hash: Felt,
-        sender_address: Felt,
-        calldata: &[Felt],
-        max_fee: Felt,
-        signature: &[Felt],
-        nonce: Felt,
-        block_number: u64,
-        contract_addresses: &HashSet<Felt>,
-        transaction_type: &str,
-        block_timestamp: u64,
-        calls: &[ParsedCall],
-        unique_models: &HashSet<Felt>,
-    ) -> Result<(), Error> {
-        // Store the transaction in the transactions table
-        self.executor
-            .send(QueryMessage::new(
-                "INSERT INTO transactions (id, transaction_hash, sender_address, calldata, \
-             max_fee, signature, nonce, transaction_type, executed_at, block_number) VALUES (?, \
-             ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET transaction_hash=excluded.transaction_hash RETURNING *"
-                    .to_string(),
-                vec![
-                    Argument::FieldElement(transaction_hash),
-                    Argument::FieldElement(transaction_hash),
-                    Argument::FieldElement(sender_address),
-                    Argument::String(felts_to_sql_string(calldata)),
-                    Argument::FieldElement(max_fee),
-                    Argument::String(felts_to_sql_string(signature)),
-                    Argument::FieldElement(nonce),
-                    Argument::String(transaction_type.to_string()),
-                    Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
-                    Argument::String(block_number.to_string()),
-                ],
-                QueryType::StoreTransaction(StoreTransactionQuery {
-                    contract_addresses: contract_addresses.clone(),
-                    calls: calls.to_vec(),
-                    unique_models: unique_models.clone(),
-                }),
-            ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        Ok(())
-    }
-
-    pub fn store_event(
-        &mut self,
-        event_id: &str,
-        event: &Event,
-        transaction_hash: Felt,
-        block_timestamp: u64,
-    ) -> Result<(), Error> {
-        let id = Argument::String(event_id.to_string());
-        let keys = Argument::String(felts_to_sql_string(&event.keys));
-        let data = Argument::String(felts_to_sql_string(&event.data));
-        let hash = Argument::FieldElement(transaction_hash);
-        let executed_at = Argument::String(utc_dt_string_from_timestamp(block_timestamp));
-
-        self.executor
-            .send(QueryMessage::new(
-                "INSERT INTO events (id, keys, data, transaction_hash, executed_at) VALUES \
-             (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING *"
-                    .to_string(),
-                vec![id, keys, data, hash, executed_at],
-                QueryType::StoreEvent,
-            ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-
-        Ok(())
     }
 
     fn set_entity_model(
@@ -782,7 +218,7 @@ impl Sql {
 
     #[allow(clippy::too_many_arguments)]
     fn build_model_query(
-        &mut self,
+        &self,
         path: Vec<String>,
         model: &Ty,
         schema_diff: Option<&Ty>,
@@ -1128,60 +564,6 @@ impl Sql {
                 }
             }
         }
-
-        Ok(())
-    }
-
-    pub async fn execute(&self) -> Result<(), Error> {
-        let (execute, recv) = QueryMessage::execute_recv();
-        self.executor
-            .send(execute)
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-        let res = recv
-            .await
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?;
-        res.map_err(|e| Error::ExecutorQuery(Box::new(e)))
-    }
-
-    pub async fn rollback(&self) -> Result<(), Error> {
-        let (rollback, recv) = QueryMessage::rollback_recv();
-        self.executor
-            .send(rollback)
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
-        let res = recv
-            .await
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?;
-        res.map_err(|e| Error::ExecutorQuery(Box::new(e)))
-    }
-
-    pub async fn add_controller(
-        &self,
-        username: &str,
-        address: &str,
-        timestamp: DateTime<Utc>,
-    ) -> Result<(), Error> {
-        let insert_controller = "
-            INSERT INTO controllers (id, username, address, deployed_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                username=EXCLUDED.username,
-                address=EXCLUDED.address,
-                deployed_at=EXCLUDED.deployed_at
-            RETURNING *";
-
-        let arguments = vec![
-            Argument::String(username.to_string()),
-            Argument::String(username.to_string()),
-            Argument::String(address.to_string()),
-            Argument::String(timestamp.to_rfc3339()),
-        ];
-
-        self.executor
-            .send(QueryMessage::other(
-                insert_controller.to_string(),
-                arguments,
-            ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
         Ok(())
     }

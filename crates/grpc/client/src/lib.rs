@@ -94,24 +94,27 @@ impl WorldClient {
     }
 
     /// Retrieve the metadata of the World.
-    pub async fn metadata(&mut self) -> Result<dojo_types::WorldMetadata, Error> {
+    pub async fn metadata(&mut self) -> Result<torii_proto::World, Error> {
         self.inner
             .world_metadata(WorldMetadataRequest {})
             .await
             .map_err(Error::Grpc)
             .and_then(|res| {
                 res.into_inner()
-                    .metadata
+                    .world
                     .ok_or(Error::Proto(ProtoError::MissingExpectedData(
-                        "metadata".to_string(),
+                        "world".to_string(),
                     )))
             })
-            .and_then(|metadata| metadata.try_into().map_err(Error::Proto))
+            .and_then(|world| world.try_into().map_err(Error::Proto))
     }
 
     pub async fn retrieve_controllers(
         &mut self,
         contract_addresses: Vec<Felt>,
+        usernames: Vec<String>,
+        limit: Option<u32>,
+        cursor: Option<String>,
     ) -> Result<RetrieveControllersResponse, Error> {
         self.inner
             .retrieve_controllers(RetrieveControllersRequest {
@@ -119,6 +122,9 @@ impl WorldClient {
                     .into_iter()
                     .map(|c| c.to_bytes_be().to_vec())
                     .collect(),
+                usernames: usernames.into_iter().map(|u| u.to_string()).collect(),
+                limit: limit.unwrap_or_default(),
+                cursor: cursor.unwrap_or_default(),
             })
             .await
             .map_err(Error::Grpc)

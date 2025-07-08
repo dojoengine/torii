@@ -5,15 +5,15 @@ pub enum Error {
     #[error(transparent)]
     Fetcher(#[from] torii_indexer_fetcher::Error),
     #[error(transparent)]
-    ProcessError(#[from] ProcessError),
+    Process(#[from] ProcessError),
     #[error(transparent)]
-    SqliteError(#[from] torii_sqlite::error::Error),
+    Cache(#[from] torii_cache::error::Error),
     #[error(transparent)]
-    ProviderError(#[from] starknet::providers::ProviderError),
+    Storage(#[from] torii_storage::StorageError),
     #[error(transparent)]
-    AnyhowError(#[from] anyhow::Error),
+    Provider(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
-    ControllerSync(#[from] torii_sqlite::error::ControllerSyncError),
+    ControllerSync(#[from] torii_controllers::error::Error),
 }
 
 #[derive(Error, Debug)]
@@ -21,7 +21,9 @@ pub enum ProcessError {
     #[error(transparent)]
     Provider(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
-    Sqlite(#[from] torii_sqlite::error::Error),
-    #[error(transparent)]
     Processors(#[from] torii_processors::error::Error),
+    #[error(transparent)]
+    Cache(#[from] torii_cache::error::Error),
+    #[error(transparent)]
+    Storage(#[from] torii_storage::StorageError),
 }

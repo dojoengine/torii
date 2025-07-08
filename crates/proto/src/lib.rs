@@ -24,12 +24,11 @@ use core::fmt;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-#[cfg(feature = "server")]
-use crypto_bigint::Encoding;
-use crypto_bigint::U256;
+use chrono::{DateTime, Utc};
+use crypto_bigint::{Encoding, U256};
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::Ty;
-use dojo_world::contracts::naming;
+use dojo_world::contracts::abigen::model::Layout;
 use error::ProtoError;
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
@@ -57,16 +56,27 @@ pub struct Message {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Pagination {
     pub cursor: Option<String>,
-    pub limit: u32,
+    pub limit: Option<u32>,
     pub direction: PaginationDirection,
     pub order_by: Vec<OrderBy>,
+}
+
+impl Default for Pagination {
+    fn default() -> Self {
+        Self {
+            cursor: None,
+            limit: None,
+            direction: PaginationDirection::Forward,
+            order_by: vec![],
+        }
+    }
 }
 
 impl From<Pagination> for proto::types::Pagination {
     fn from(value: Pagination) -> Self {
         Self {
             cursor: value.cursor.unwrap_or_default(),
-            limit: value.limit,
+            limit: value.limit.unwrap_or_default(),
             direction: value.direction as i32,
             order_by: value.order_by.into_iter().map(|o| o.into()).collect(),
         }
@@ -81,7 +91,11 @@ impl From<proto::types::Pagination> for Pagination {
             } else {
                 Some(value.cursor)
             },
-            limit: value.limit,
+            limit: if value.limit == 0 {
+                None
+            } else {
+                Some(value.limit)
+            },
             direction: match value.direction {
                 0 => PaginationDirection::Forward,
                 1 => PaginationDirection::Backward,
@@ -92,39 +106,21 @@ impl From<proto::types::Pagination> for Pagination {
     }
 }
 
-#[cfg(feature = "server")]
-impl From<proto::types::Pagination> for torii_sqlite_types::Pagination {
-    fn from(value: proto::types::Pagination) -> Self {
-        torii_sqlite_types::Pagination {
-            cursor: if value.cursor.is_empty() {
-                None
-            } else {
-                Some(value.cursor)
-            },
-            limit: if value.limit == 0 {
-                None
-            } else {
-                Some(value.limit)
-            },
-            direction: match value.direction {
-                0 => torii_sqlite_types::PaginationDirection::Forward,
-                1 => torii_sqlite_types::PaginationDirection::Backward,
-                _ => unreachable!(),
-            },
-            order_by: value
-                .order_by
-                .into_iter()
-                .map(|order_by| order_by.into())
-                .collect(),
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Controller {
     pub address: Felt,
     pub username: String,
-    pub deployed_at: u64,
+    pub deployed_at: DateTime<Utc>,
+}
+
+impl From<Controller> for proto::types::Controller {
+    fn from(value: Controller) -> Self {
+        Self {
+            address: value.address.to_bytes_be().into(),
+            username: value.username,
+            deployed_at_timestamp: value.deployed_at.timestamp() as u64,
+        }
+    }
 }
 
 impl TryFrom<proto::types::Controller> for Controller {
@@ -133,7 +129,7 @@ impl TryFrom<proto::types::Controller> for Controller {
         Ok(Self {
             address: Felt::from_bytes_be_slice(&value.address),
             username: value.username,
-            deployed_at: value.deployed_at_timestamp,
+            deployed_at: DateTime::from_timestamp(value.deployed_at_timestamp as i64, 0).unwrap(),
         })
     }
 }
@@ -146,6 +142,19 @@ pub struct Token {
     pub symbol: String,
     pub decimals: u8,
     pub metadata: String,
+}
+
+impl From<Token> for proto::types::Token {
+    fn from(value: Token) -> Self {
+        Self {
+            token_id: value.token_id.to_be_bytes().to_vec(),
+            contract_address: value.contract_address.to_bytes_be().into(),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u32,
+            metadata: value.metadata.into_bytes(),
+        }
+    }
 }
 
 impl TryFrom<proto::types::Token> for Token {
@@ -175,29 +184,6 @@ impl TryFrom<proto::types::TokenCollection> for Token {
     }
 }
 
-#[cfg(feature = "server")]
-impl From<torii_sqlite_types::Token> for proto::types::Token {
-    fn from(value: torii_sqlite_types::Token) -> Self {
-        Self {
-            token_id: if value.token_id.is_empty() {
-                U256::ZERO.to_be_bytes().to_vec()
-            } else {
-                U256::from_be_hex(value.token_id.trim_start_matches("0x"))
-                    .to_be_bytes()
-                    .to_vec()
-            },
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            name: value.name,
-            symbol: value.symbol,
-            decimals: value.decimals as u32,
-            metadata: value.metadata.as_bytes().to_vec(),
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct TokenCollection {
     pub contract_address: Felt,
@@ -206,6 +192,19 @@ pub struct TokenCollection {
     pub decimals: u8,
     pub count: u32,
     pub metadata: String,
+}
+
+impl From<TokenCollection> for proto::types::TokenCollection {
+    fn from(value: TokenCollection) -> Self {
+        Self {
+            contract_address: value.contract_address.to_bytes_be().into(),
+            name: value.name,
+            symbol: value.symbol,
+            decimals: value.decimals as u32,
+            count: value.count,
+            metadata: value.metadata.into_bytes(),
+        }
+    }
 }
 
 impl TryFrom<proto::types::TokenCollection> for TokenCollection {
@@ -222,29 +221,23 @@ impl TryFrom<proto::types::TokenCollection> for TokenCollection {
     }
 }
 
-#[cfg(feature = "server")]
-impl From<torii_sqlite_types::TokenCollection> for proto::types::TokenCollection {
-    fn from(value: torii_sqlite_types::TokenCollection) -> Self {
-        Self {
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            name: value.name,
-            symbol: value.symbol,
-            decimals: value.decimals as u32,
-            count: value.count,
-            metadata: value.metadata.as_bytes().to_vec(),
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct TokenBalance {
     pub balance: U256,
     pub account_address: Felt,
     pub contract_address: Felt,
     pub token_id: U256,
+}
+
+impl From<TokenBalance> for proto::types::TokenBalance {
+    fn from(value: TokenBalance) -> Self {
+        Self {
+            balance: value.balance.to_be_bytes().to_vec(),
+            account_address: value.account_address.to_bytes_be().into(),
+            contract_address: value.contract_address.to_bytes_be().into(),
+            token_id: value.token_id.to_be_bytes().to_vec(),
+        }
+    }
 }
 
 impl TryFrom<proto::types::TokenBalance> for TokenBalance {
@@ -256,34 +249,6 @@ impl TryFrom<proto::types::TokenBalance> for TokenBalance {
             contract_address: Felt::from_bytes_be_slice(&value.contract_address),
             token_id: U256::from_be_slice(&value.token_id),
         })
-    }
-}
-
-#[cfg(feature = "server")]
-impl From<torii_sqlite_types::TokenBalance> for proto::types::TokenBalance {
-    fn from(value: torii_sqlite_types::TokenBalance) -> Self {
-        let id = value.token_id.split(':').collect::<Vec<&str>>();
-
-        Self {
-            balance: U256::from_be_hex(value.balance.trim_start_matches("0x"))
-                .to_be_bytes()
-                .to_vec(),
-            account_address: Felt::from_str(&value.account_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            contract_address: Felt::from_str(&value.contract_address)
-                .unwrap()
-                .to_bytes_be()
-                .to_vec(),
-            token_id: if id.len() == 2 {
-                U256::from_be_hex(id[1].trim_start_matches("0x"))
-                    .to_be_bytes()
-                    .to_vec()
-            } else {
-                U256::ZERO.to_be_bytes().to_vec()
-            },
-        }
     }
 }
 
@@ -308,16 +273,14 @@ impl From<proto::world::SubscribeIndexerResponse> for IndexerUpdate {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct OrderBy {
-    pub model: String,
-    pub member: String,
+    pub field: String,
     pub direction: OrderDirection,
 }
 
 impl From<OrderBy> for proto::types::OrderBy {
     fn from(value: OrderBy) -> Self {
         Self {
-            model: value.model,
-            member: value.member,
+            field: value.field,
             direction: value.direction as i32,
         }
     }
@@ -326,26 +289,10 @@ impl From<OrderBy> for proto::types::OrderBy {
 impl From<proto::types::OrderBy> for OrderBy {
     fn from(value: proto::types::OrderBy) -> Self {
         Self {
-            model: value.model,
-            member: value.member,
+            field: value.field,
             direction: match value.direction {
                 0 => OrderDirection::Asc,
                 1 => OrderDirection::Desc,
-                _ => unreachable!(),
-            },
-        }
-    }
-}
-
-#[cfg(feature = "server")]
-impl From<proto::types::OrderBy> for torii_sqlite_types::OrderBy {
-    fn from(value: proto::types::OrderBy) -> Self {
-        torii_sqlite_types::OrderBy {
-            model: value.model,
-            member: value.member,
-            direction: match value.direction {
-                0 => torii_sqlite_types::OrderDirection::Asc,
-                1 => torii_sqlite_types::OrderDirection::Desc,
                 _ => unreachable!(),
             },
         }
@@ -358,7 +305,7 @@ pub enum OrderDirection {
     Desc,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct Query {
     pub clause: Option<Clause>,
     pub pagination: Pagination,
@@ -515,41 +462,80 @@ pub enum ValueType {
     Bytes(Vec<u8>),
 }
 
-impl TryFrom<proto::types::ModelMetadata> for dojo_types::schema::ModelMetadata {
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct Model {
+    /// Namespace of the model
+    pub namespace: String,
+    /// The name of the model
+    pub name: String,
+    /// The selector of the model
+    pub selector: Felt,
+    /// The class hash of the model
+    pub class_hash: Felt,
+    /// The contract address of the model
+    pub contract_address: Felt,
+    pub packed_size: u32,
+    pub unpacked_size: u32,
+    pub layout: Layout,
+    pub schema: Ty,
+}
+
+impl TryFrom<proto::types::Model> for Model {
     type Error = ProtoError;
-    fn try_from(value: proto::types::ModelMetadata) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::types::Model) -> Result<Self, Self::Error> {
         let schema: Ty = serde_json::from_slice(&value.schema).map_err(ProtoError::FromJson)?;
-        let layout: Vec<Felt> = value.layout.into_iter().map(Felt::from).collect();
+        let layout: Layout = serde_json::from_slice(&value.layout).map_err(ProtoError::FromJson)?;
         Ok(Self {
+            selector: Felt::from_bytes_be_slice(&value.selector),
             schema,
             layout,
             name: value.name,
             namespace: value.namespace,
             packed_size: value.packed_size,
             unpacked_size: value.unpacked_size,
-            class_hash: Felt::from_str(&value.class_hash)?,
-            contract_address: Felt::from_str(&value.contract_address)?,
+            class_hash: Felt::from_bytes_be_slice(&value.class_hash),
+            contract_address: Felt::from_bytes_be_slice(&value.contract_address),
         })
     }
 }
 
-impl TryFrom<proto::types::WorldMetadata> for dojo_types::WorldMetadata {
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct World {
+    pub world_address: Felt,
+    pub models: HashMap<Felt, Model>,
+}
+
+impl TryFrom<proto::types::World> for World {
     type Error = ProtoError;
-    fn try_from(value: proto::types::WorldMetadata) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::types::World) -> Result<Self, Self::Error> {
         let models = value
             .models
             .into_iter()
             .map(|component| {
                 Ok((
-                    naming::compute_selector_from_names(&component.namespace, &component.name),
+                    Felt::from_bytes_be_slice(&component.selector),
                     component.try_into()?,
                 ))
             })
-            .collect::<Result<HashMap<_, dojo_types::schema::ModelMetadata>, ProtoError>>()?;
+            .collect::<Result<HashMap<_, Model>, ProtoError>>()?;
 
-        Ok(dojo_types::WorldMetadata {
+        Ok(World {
             models,
             world_address: Felt::from_str(&value.world_address)?,
+        })
+    }
+}
+
+impl TryFrom<proto::types::Query> for Query {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::Query) -> Result<Self, Self::Error> {
+        let clause = value.clause.map(|c| c.try_into()).transpose()?;
+        Ok(Self {
+            clause,
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
+            no_hashed_keys: value.no_hashed_keys,
+            models: value.models,
+            historical: value.historical,
         })
     }
 }
@@ -770,6 +756,24 @@ pub struct Event {
     pub transaction_hash: Felt,
 }
 
+impl From<Event> for proto::types::Event {
+    fn from(value: Event) -> Self {
+        Self {
+            keys: value
+                .keys
+                .into_iter()
+                .map(|k| k.to_bytes_be().into())
+                .collect(),
+            data: value
+                .data
+                .into_iter()
+                .map(|d| d.to_bytes_be().into())
+                .collect(),
+            transaction_hash: value.transaction_hash.to_bytes_be().into(),
+        }
+    }
+}
+
 impl From<proto::types::Event> for Event {
     fn from(value: proto::types::Event) -> Self {
         let keys = value
@@ -793,17 +797,35 @@ impl From<proto::types::Event> for Event {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct EventQuery {
-    pub keys: KeysClause,
-    pub limit: u32,
+    pub keys: Option<KeysClause>,
     pub cursor: Option<String>,
+    pub limit: Option<usize>,
 }
 
 impl From<EventQuery> for proto::types::EventQuery {
     fn from(value: EventQuery) -> Self {
         Self {
-            keys: Some(value.keys.into()),
-            limit: value.limit,
+            keys: value.keys.map(|k| k.into()),
             cursor: value.cursor.unwrap_or_default(),
+            limit: value.limit.unwrap_or_default() as u32,
+        }
+    }
+}
+
+impl From<proto::types::EventQuery> for EventQuery {
+    fn from(value: proto::types::EventQuery) -> Self {
+        Self {
+            keys: value.keys.map(|k| k.into()),
+            cursor: if value.cursor.is_empty() {
+                None
+            } else {
+                Some(value.cursor)
+            },
+            limit: if value.limit == 0 {
+                None
+            } else {
+                Some(value.limit as usize)
+            },
         }
     }
 }

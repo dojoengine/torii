@@ -6,12 +6,12 @@ use starknet::macros::felt;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
 use starknet_crypto::Felt;
-use torii_sqlite::Cursor;
+use torii_storage::types::Cursor;
 use url::Url;
 
 use crate::{Fetcher, FetcherConfig};
 
-const CARTRIDGE_NODE_MAINNET: &str = "https://api.cartridge.gg/x/starknet/mainnet";
+const CARTRIDGE_NODE_MAINNET: &str = "https://api.cartridge.gg/x/starknet/mainnet/rpc/v0_8";
 const ETERNUM_ADDRESS: Felt =
     felt!("0x5c6d0020a9927edca9ddc984b97305439c0b32a1ec8d3f0eaf6291074cc9799");
 
@@ -56,6 +56,7 @@ async fn test_range_one_block() {
             last_pending_block_tx: None,
             head: Some(eternum_block - 1),
             last_block_timestamp: None,
+            tps: None,
         },
     )]);
 
@@ -74,11 +75,11 @@ async fn test_range_one_block() {
         let expected_tx = expected
             .transactions
             .iter()
-            .find(|tx| tx.transaction.transaction_hash() == torii_tx_hash);
+            .find(|tx| tx.receipt.transaction_hash() == torii_tx_hash);
         assert!(expected_tx.is_some());
         assert_eq!(
             torii_tx_hash,
-            expected_tx.unwrap().transaction.transaction_hash()
+            expected_tx.unwrap().receipt.transaction_hash()
         );
     }
 }

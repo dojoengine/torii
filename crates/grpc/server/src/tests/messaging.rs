@@ -1,6 +1,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
+use dojo_types::naming::compute_selector_from_names;
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Member, Struct, Ty};
 use dojo_world::contracts::abigen::model::Layout;
@@ -17,10 +18,10 @@ use tokio::time::{sleep, Duration};
 use tonic::Request;
 use torii_libp2p_relay::Relay;
 use torii_proto::proto::world::PublishMessageRequest;
-use torii_sqlite::cache::ModelCache;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::{Contract, ContractType};
 use torii_sqlite::Sql;
+use torii_storage::types::{Contract, ContractType};
+use torii_storage::Storage;
 use torii_typed_data::typed_data::{Domain, Field, SimpleField, TypedData};
 
 use crate::{DojoWorld, GrpcConfig};
@@ -55,24 +56,24 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
-    let mut db = Sql::new(
-        pool.clone(),
-        sender,
-        &[Contract {
-            address: Felt::ZERO,
-            r#type: ContractType::WORLD,
-        }],
-        model_cache.clone(),
-    )
-    .await
-    .unwrap();
+    let db = Arc::new(
+        Sql::new(
+            pool.clone(),
+            sender,
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
+        )
+        .await
+        .unwrap(),
+    );
 
     // Register the model for our Message
     db.register_model(
-        "types_test",
+        compute_selector_from_names("types_test", "Message"),
         &Ty::Struct(Struct {
-            name: "Message".to_string(),
+            name: "types_test-Message".to_string(),
             children: vec![
                 Member {
                     name: "identity".to_string(),
@@ -86,7 +87,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
                 },
             ],
         }),
-        Layout::Fixed(vec![]),
+        &Layout::Fixed(vec![]),
         Felt::ZERO,
         Felt::ZERO,
         0,
@@ -101,10 +102,9 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
 
     // Create DojoWorld instance
     let grpc = DojoWorld::new(
-        db,
+        db.clone(),
         provider.clone(),
         Felt::ZERO, // world_address
-        model_cache,
         None,
         GrpcConfig::default(),
     );
@@ -187,16 +187,68 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     assert!(!entity_id.is_empty());
 
     // Verify the message was stored in the database by checking entities table
-    let entity_exists: bool = sqlx::query_scalar("SELECT COUNT(*) > 0 FROM entities WHERE id = ?")
-        .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
-        .fetch_one(&pool)
-        .await
+    let message: String =
+        sqlx::query_scalar("SELECT message FROM [types_test-Message] WHERE internal_id = ?")
+            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    assert_eq!(message, "test message");
+
+    // Publish again with another message
+    typed_data.message.insert(
+        "message".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String("test message 2".to_string()),
+    );
+
+    let message_hash = typed_data.encode(account_data.address).unwrap();
+    let signature =
+        SigningKey::from_secret_scalar(account_data.private_key.clone().unwrap().secret_scalar())
+            .sign(&message_hash)
+            .unwrap();
+
+    let request = Request::new(PublishMessageRequest {
+        message: serde_json::to_string(&typed_data).unwrap(),
+        signature: vec![
+            signature.r.to_bytes_be().to_vec(),
+            signature.s.to_bytes_be().to_vec(),
+        ],
+    });
+
+    // Publish the message using the gRPC service
+    let response = grpc.publish_message(request).await.unwrap();
+    let entity_id = response.into_inner().entity_id;
+
+    // Verify the entity was created
+    assert!(!entity_id.is_empty());
+
+    // Verify the message was stored in the database by checking entities table
+    let message: String =
+        sqlx::query_scalar("SELECT message FROM [types_test-Message] WHERE internal_id = ?")
+            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    assert_eq!(message, "test message 2");
+
+    // Check that message is not updated with bad signature
+    let message_hash = typed_data.encode(account_data.address).unwrap();
+    let signature = SigningKey::from_secret_scalar(Felt::ZERO)
+        .sign(&message_hash)
         .unwrap();
 
-    assert!(
-        entity_exists,
-        "Entity should exist in database after publishing message"
-    );
+    let request = Request::new(PublishMessageRequest {
+        message: serde_json::to_string(&typed_data).unwrap(),
+        signature: vec![
+            signature.r.to_bytes_be().to_vec(),
+            signature.s.to_bytes_be().to_vec(),
+        ],
+    });
+
+    let result = grpc.publish_message(request).await;
+    assert!(result.is_err());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -253,18 +305,18 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         executor1.run().await.unwrap();
     });
 
-    let model_cache1 = Arc::new(ModelCache::new(pool1.clone()).await.unwrap());
-    let mut db1 = Sql::new(
-        pool1.clone(),
-        sender1,
-        &[Contract {
-            address: Felt::ZERO,
-            r#type: ContractType::WORLD,
-        }],
-        model_cache1.clone(),
-    )
-    .await
-    .unwrap();
+    let mut db1 = Arc::new(
+        Sql::new(
+            pool1.clone(),
+            sender1,
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
+        )
+        .await
+        .unwrap(),
+    );
 
     // Setup second server components
     let (shutdown_tx2, _) = broadcast::channel(1);
@@ -276,22 +328,22 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         executor2.run().await.unwrap();
     });
 
-    let model_cache2 = Arc::new(ModelCache::new(pool2.clone()).await.unwrap());
-    let mut db2 = Sql::new(
-        pool2.clone(),
-        sender2,
-        &[Contract {
-            address: Felt::ZERO,
-            r#type: ContractType::WORLD,
-        }],
-        model_cache2.clone(),
-    )
-    .await
-    .unwrap();
+    let mut db2 = Arc::new(
+        Sql::new(
+            pool2.clone(),
+            sender2,
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
+        )
+        .await
+        .unwrap(),
+    );
 
     // Register the message model on both databases
     let message_model = Ty::Struct(Struct {
-        name: "Message".to_string(),
+        name: "types_test-Message".to_string(),
         children: vec![
             Member {
                 name: "identity".to_string(),
@@ -308,9 +360,9 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
 
     for db in [&mut db1, &mut db2] {
         db.register_model(
-            "types_test",
+            compute_selector_from_names("types_test", "Message"),
             &message_model,
-            Layout::Fixed(vec![]),
+            &Layout::Fixed(vec![]),
             Felt::ZERO,
             Felt::ZERO,
             0,
@@ -366,7 +418,6 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         db1,
         provider.clone(),
         Felt::ZERO, // world_address
-        model_cache1,
         Some(cross_messaging_tx1),
         GrpcConfig::default(),
     );
@@ -474,5 +525,185 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     assert!(
         entity_exists_server2,
         "Entity should exist in second server database after cross messaging"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[katana_runner::test(accounts = 10)]
+async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
+    let tempfile = NamedTempFile::new().unwrap();
+    let path = tempfile.path().to_string_lossy();
+    let options = SqliteConnectOptions::from_str(&path)
+        .unwrap()
+        .create_if_missing(true)
+        .with_regexp();
+    let pool = SqlitePoolOptions::new()
+        .min_connections(1)
+        .idle_timeout(None)
+        .max_lifetime(None)
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+
+    let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
+    let account_data = sequencer.account_data(0);
+    let wrong_account_data = sequencer.account_data(1); // Different account for wrong signature
+
+    let (shutdown_tx, _) = broadcast::channel(1);
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
+    tokio::spawn(async move {
+        executor.run().await.unwrap();
+    });
+
+    let db = Arc::new(
+        Sql::new(
+            pool.clone(),
+            sender,
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
+        )
+        .await
+        .unwrap(),
+    );
+
+    // Register the model for our Message
+    db.register_model(
+        compute_selector_from_names("types_test", "Message"),
+        &Ty::Struct(Struct {
+            name: "types_test-Message".to_string(),
+            children: vec![
+                Member {
+                    name: "identity".to_string(),
+                    ty: Ty::Primitive(Primitive::ContractAddress(None)),
+                    key: true,
+                },
+                Member {
+                    name: "message".to_string(),
+                    ty: Ty::ByteArray("".to_string()),
+                    key: false,
+                },
+            ],
+        }),
+        &Layout::Fixed(vec![]),
+        Felt::ZERO,
+        Felt::ZERO,
+        0,
+        0,
+        0,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    db.execute().await.unwrap();
+
+    // Create DojoWorld instance
+    let grpc = DojoWorld::new(
+        db.clone(),
+        provider.clone(),
+        Felt::ZERO, // world_address
+        None,
+        GrpcConfig::default(),
+    );
+
+    // Create typed data for the message
+    let mut typed_data = TypedData::new(
+        IndexMap::from_iter(vec![
+            (
+                "types_test-Message".to_string(),
+                vec![
+                    Field::SimpleType(SimpleField {
+                        name: "identity".to_string(),
+                        r#type: "ContractAddress".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "message".to_string(),
+                        r#type: "string".to_string(),
+                    }),
+                ],
+            ),
+            (
+                "StarknetDomain".to_string(),
+                vec![
+                    Field::SimpleType(SimpleField {
+                        name: "name".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "version".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "chainId".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "revision".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                ],
+            ),
+        ]),
+        "types_test-Message",
+        Domain::new("types_test-Message", "1", "0x0", Some("1")),
+        IndexMap::new(),
+    );
+
+    typed_data.message.insert(
+        "identity".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String(account_data.address.to_string()),
+    );
+
+    typed_data.message.insert(
+        "message".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String("malicious message".to_string()),
+    );
+
+    // Sign the message hash with the WRONG private key (simulating impersonation attempt)
+    let message_hash = typed_data.encode(account_data.address).unwrap();
+    let bad_signature = SigningKey::from_secret_scalar(
+        wrong_account_data
+            .private_key
+            .clone()
+            .unwrap()
+            .secret_scalar(),
+    )
+    .sign(&message_hash)
+    .unwrap();
+
+    // Create the publish message request with bad signature
+    let request = Request::new(PublishMessageRequest {
+        message: serde_json::to_string(&typed_data).unwrap(),
+        signature: vec![
+            bad_signature.r.to_bytes_be().to_vec(),
+            bad_signature.s.to_bytes_be().to_vec(),
+        ],
+    });
+
+    // Attempt to publish the message using the gRPC service
+    use torii_proto::proto::world::world_server::World;
+    let result = grpc.publish_message(request).await;
+
+    // Verify that the request failed due to invalid signature
+    assert!(
+        result.is_err(),
+        "Publishing message with bad signature should fail"
+    );
+
+    // Verify that no entity was created in the database
+    let entity_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM entities")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        entity_count, 0,
+        "No entities should be created when signature verification fails"
     );
 }

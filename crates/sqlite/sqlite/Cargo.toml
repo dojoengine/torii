@@ -41,6 +41,12 @@ tokio-util.workspace = true
 tracing.workspace = true
 flate2.workspace = true
 dashmap.workspace = true
+torii-storage.workspace = true
+torii-cache.workspace = true
+torii-math.workspace = true
+torii-proto.workspace = true
+rayon.workspace = true
+futures.workspace = true
 
 [dev-dependencies]
 dojo-test-utils.workspace = true
@@ -50,5 +56,3 @@ scarb.workspace = true
 sozo-scarbext.workspace = true
 tempfile.workspace = true
 torii-indexer.workspace = true
-mockito = "1.2"
-url.workspace = true

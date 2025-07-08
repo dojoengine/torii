@@ -1,0 +1,24 @@
+[package]
+name = "torii-controllers"
+edition.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+chrono.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+torii-storage.workspace = true
+tracing.workspace = true
+serde_json.workspace = true
+starknet-crypto.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+mockito = "1.2"
+url.workspace = true
+tempfile.workspace = true
+torii-sqlite.workspace = true
+starknet.workspace = true
+sqlx.workspace = true

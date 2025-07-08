@@ -1,26 +1,13 @@
-use std::cmp::Ordering;
-use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::str::FromStr;
-use std::time::Duration;
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{DateTime, Utc};
-use futures_util::TryStreamExt;
-use ipfs_api_backend_hyper::{IpfsApi, IpfsClient, TryFromUri};
-use once_cell::sync::Lazy;
-use reqwest::Client;
 use sqlx::{Column, Row, TypeInfo};
 use starknet::core::types::U256;
 use starknet_crypto::Felt;
-use tokio_util::bytes::Bytes;
-use tracing::debug;
 
-use crate::constants::{
-    IPFS_CLIENT_PASSWORD, IPFS_CLIENT_URL, IPFS_CLIENT_USERNAME, REQ_MAX_RETRIES,
-    SQL_FELT_DELIMITER,
-};
-use crate::error::HttpError;
+use crate::constants::SQL_FELT_DELIMITER;
 
 pub fn must_utc_datetime_from_timestamp(timestamp: u64) -> DateTime<Utc> {
     let naive_dt = DateTime::from_timestamp(timestamp as i64, 0)
@@ -58,170 +45,39 @@ pub fn sql_string_to_u256(sql_string: &str) -> U256 {
     U256::from(crypto_bigint::U256::from_be_hex(sql_string))
 }
 
+pub fn build_keys_pattern(clause: &torii_proto::KeysClause) -> String {
+    const KEY_PATTERN: &str = "0x[0-9a-fA-F]+";
+
+    let keys = if clause.keys.is_empty() {
+        vec![KEY_PATTERN.to_string()]
+    } else {
+        clause
+            .keys
+            .iter()
+            .map(|felt| {
+                if let Some(felt) = felt {
+                    format!("{:#x}", felt)
+                } else {
+                    KEY_PATTERN.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut keys_pattern = format!("^{}", keys.join("/"));
+
+    if clause.pattern_matching == torii_proto::PatternMatching::VariableLen {
+        keys_pattern += &format!("(/{})*", KEY_PATTERN);
+    }
+    keys_pattern += "/$";
+
+    keys_pattern
+}
+
 pub fn sql_string_to_felts(sql_string: &str) -> Vec<Felt> {
     sql_string
         .split(SQL_FELT_DELIMITER)
         .map(|felt| Felt::from_str(felt).unwrap())
         .collect()
-}
-
-pub fn format_event_id(
-    block_number: u64,
-    transaction_hash: &Felt,
-    contract_address: &Felt,
-    event_idx: u64,
-) -> String {
-    format!(
-        "{:#064x}:{:#x}:{:#x}:{:#04x}",
-        block_number, transaction_hash, contract_address, event_idx
-    )
-}
-
-type BlockNumber = u64;
-type TransactionHash = Felt;
-type ContractAddress = Felt;
-type EventIdx = u64;
-
-pub fn parse_event_id(event_id: &str) -> (BlockNumber, TransactionHash, ContractAddress, EventIdx) {
-    let parts: Vec<&str> = event_id.split(':').collect();
-    (
-        u64::from_str_radix(parts[0].trim_start_matches("0x"), 16).unwrap(),
-        Felt::from_str(parts[1]).unwrap(),
-        Felt::from_str(parts[2]).unwrap(),
-        u64::from_str_radix(parts[3].trim_start_matches("0x"), 16).unwrap(),
-    )
-}
-
-/// Sanitizes a JSON string by escaping unescaped double quotes within string values.
-pub fn sanitize_json_string(s: &str) -> String {
-    let mut result = String::new();
-    let mut chars = s.chars().peekable();
-    let mut in_string = false;
-    let mut backslash_count = 0;
-
-    while let Some(c) = chars.next() {
-        if !in_string {
-            if c == '"' {
-                in_string = true;
-                backslash_count = 0;
-                result.push('"');
-            } else {
-                result.push(c);
-            }
-        } else if c == '\\' {
-            backslash_count += 1;
-            result.push('\\');
-        } else if c == '"' {
-            if backslash_count % 2 == 0 {
-                // Unescaped double quote
-                let mut temp_chars = chars.clone();
-                // Skip whitespace
-                while let Some(&next_c) = temp_chars.peek() {
-                    if next_c.is_whitespace() {
-                        temp_chars.next();
-                    } else {
-                        break;
-                    }
-                }
-                // Check next non-whitespace character
-                if let Some(&next_c) = temp_chars.peek() {
-                    if next_c == ':' || next_c == ',' || next_c == '}' {
-                        // End of string
-                        result.push('"');
-                        in_string = false;
-                    } else {
-                        // Internal unescaped quote, escape it
-                        result.push_str("\\\"");
-                    }
-                } else {
-                    // End of input, treat as end of string
-                    result.push('"');
-                    in_string = false;
-                }
-            } else {
-                // Escaped double quote, part of string
-                result.push('"');
-            }
-            backslash_count = 0;
-        } else {
-            result.push(c);
-            backslash_count = 0;
-        }
-    }
-
-    result
-}
-
-// Global clients
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
-    Client::builder()
-        .timeout(Duration::from_secs(10))
-        .pool_idle_timeout(Duration::from_secs(90))
-        .build()
-        .expect("Failed to create HTTP client")
-});
-
-static IPFS_CLIENT: Lazy<IpfsClient> = Lazy::new(|| {
-    IpfsClient::from_str(IPFS_CLIENT_URL)
-        .expect("Failed to create IPFS client")
-        .with_credentials(IPFS_CLIENT_USERNAME, IPFS_CLIENT_PASSWORD)
-});
-
-const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
-
-/// Fetch content from HTTP URL with retries
-pub async fn fetch_content_from_http(url: &str) -> Result<Bytes, HttpError> {
-    let mut retries = 0;
-    let mut backoff = INITIAL_BACKOFF;
-
-    loop {
-        match HTTP_CLIENT.get(url).send().await {
-            Ok(response) => {
-                if !response.status().is_success() {
-                    return Err(HttpError::StatusCode(
-                        response.status(),
-                        response.text().await.unwrap_or_default(),
-                    ));
-                }
-                return response.bytes().await.map_err(HttpError::Reqwest);
-            }
-            Err(e) => {
-                if retries >= REQ_MAX_RETRIES {
-                    return Err(HttpError::Reqwest(e));
-                }
-                debug!(error = ?e, retry = retries, "Request failed, retrying after backoff");
-                tokio::time::sleep(backoff).await;
-                retries += 1;
-                backoff *= 2;
-            }
-        }
-    }
-}
-
-/// Fetch content from IPFS with retries
-pub async fn fetch_content_from_ipfs(cid: &str) -> Result<Bytes, ipfs_api_backend_hyper::Error> {
-    let mut retries = 0;
-    let mut backoff = INITIAL_BACKOFF;
-
-    loop {
-        match IPFS_CLIENT
-            .cat(cid)
-            .map_ok(|chunk| chunk.to_vec())
-            .try_concat()
-            .await
-        {
-            Ok(stream) => return Ok(Bytes::from(stream)),
-            Err(e) => {
-                if retries >= REQ_MAX_RETRIES {
-                    return Err(e);
-                }
-                debug!(error = ?e, retry = retries, "Request failed, retrying after backoff");
-                tokio::time::sleep(backoff).await;
-                retries += 1;
-                backoff *= 2;
-            }
-        }
-    }
 }
 
 // Map a SQLite row to a JSON value
@@ -272,130 +128,11 @@ pub fn map_row_to_json(row: &sqlx::sqlite::SqliteRow) -> serde_json::Value {
     serde_json::Value::Object(obj)
 }
 
-// type used to do calculation on inmemory balances
-#[derive(Debug, Clone, Copy)]
-pub struct I256 {
-    pub value: U256,
-    pub is_negative: bool,
-}
-
-impl Default for I256 {
-    fn default() -> Self {
-        Self {
-            value: U256::from(0u8),
-            is_negative: false,
-        }
-    }
-}
-
-impl From<U256> for I256 {
-    fn from(value: U256) -> Self {
-        Self {
-            value,
-            is_negative: false,
-        }
-    }
-}
-
-impl From<u8> for I256 {
-    fn from(value: u8) -> Self {
-        Self {
-            value: U256::from(value),
-            is_negative: false,
-        }
-    }
-}
-
-impl Add for I256 {
-    type Output = I256;
-
-    fn add(self, other: I256) -> I256 {
-        // Special case: if both are negative zero, return positive zero
-        if self.value == U256::from(0u8)
-            && other.value == U256::from(0u8)
-            && self.is_negative
-            && other.is_negative
-        {
-            return I256 {
-                value: U256::from(0u8),
-                is_negative: false,
-            };
-        }
-
-        if self.is_negative == other.is_negative {
-            // Same sign: add the values and keep the sign
-            I256 {
-                value: self.value + other.value,
-                is_negative: self.is_negative,
-            }
-        } else {
-            // Different signs: subtract the smaller value from the larger one
-            match self.value.cmp(&other.value) {
-                Ordering::Greater => I256 {
-                    value: self.value - other.value,
-                    is_negative: self.is_negative,
-                },
-                Ordering::Less => I256 {
-                    value: other.value - self.value,
-                    is_negative: other.is_negative,
-                },
-                // If both values are equal, the result is zero and not negative
-                Ordering::Equal => I256 {
-                    value: U256::from(0u8),
-                    is_negative: false,
-                },
-            }
-        }
-    }
-}
-
-impl Sub for I256 {
-    type Output = I256;
-
-    fn sub(self, other: I256) -> I256 {
-        let new_sign = if other.value == U256::from(0u8) {
-            false
-        } else {
-            !other.is_negative
-        };
-        let negated_other = I256 {
-            value: other.value,
-            is_negative: new_sign,
-        };
-        self.add(negated_other)
-    }
-}
-
-impl AddAssign for I256 {
-    fn add_assign(&mut self, other: I256) {
-        *self = *self + other;
-    }
-}
-
-impl SubAssign for I256 {
-    fn sub_assign(&mut self, other: I256) {
-        *self = *self - other;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 
     use super::*;
-
-    #[test]
-    fn test_sanitize_json_string() {
-        let input = r#"{"name":""Rage Shout" DireWolf"}"#;
-        let expected = r#"{"name":"\"Rage Shout\" DireWolf"}"#;
-        let sanitized = sanitize_json_string(input);
-        assert_eq!(sanitized, expected);
-
-        let input_escaped = r#"{"name":"\"Properly Escaped\" Wolf"}"#;
-        let expected_escaped = r#"{"name":"\"Properly Escaped\" Wolf"}"#;
-        let sanitized_escaped = sanitize_json_string(input_escaped);
-        assert_eq!(sanitized_escaped, expected_escaped);
-    }
 
     #[test]
     fn test_must_utc_datetime_from_timestamp() {
@@ -425,303 +162,137 @@ mod tests {
     }
 
     #[test]
-    fn test_add_zero_false_and_zero_false() {
-        // 0,false + 0,false == 0,false
-        let a = I256::default();
-        let b = I256::default();
-        let result = a + b;
-        assert_eq!(result.value, U256::from(0u8));
-        assert!(!result.is_negative);
+    fn test_build_keys_pattern_fixed_len_specific_keys() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::ONE), Some(Felt::TWO)],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x1/0x2/$");
     }
 
     #[test]
-    fn test_add_zero_true_and_zero_false() {
-        // 0,true + 0,false == 0,false
-        let a = I256 {
-            value: U256::from(0u8),
-            is_negative: true,
+    fn test_build_keys_pattern_fixed_len_with_wildcards() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::ONE), None, Some(Felt::TWO)],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
         };
-        let b = I256::default();
-        let result = a + b;
-        assert_eq!(result.value, U256::from(0u8));
-        assert!(!result.is_negative);
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x1/0x[0-9a-fA-F]+/0x2/$");
     }
 
     #[test]
-    fn test_sub_zero_false_and_zero_false() {
-        // 0,false - 0,false == 0,false
-        let a = I256::default();
-        let b = I256::default();
-        let result = a - b;
-        assert_eq!(result.value, U256::from(0u8));
-        assert!(!result.is_negative);
+    fn test_build_keys_pattern_variable_len_specific_keys() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::ONE), Some(Felt::TWO)],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
+        };
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x1/0x2(/0x[0-9a-fA-F]+)*/$");
     }
 
     #[test]
-    fn test_sub_zero_true_and_zero_false() {
-        // 0,true - 0,false == 0,false
-        let a = I256 {
-            value: U256::from(0u8),
-            is_negative: true,
+    fn test_build_keys_pattern_variable_len_with_wildcards() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::ONE), None],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
         };
-        let b = I256::default();
-        let result = a - b;
-        assert_eq!(result.value, U256::from(0u8));
-        assert!(!result.is_negative);
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x1/0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$");
     }
 
     #[test]
-    fn test_add_positive_and_negative_equal_values() {
-        // 5,false + 5,true == 0,false
-        let a = I256::from(U256::from(5u8));
-        let b = I256 {
-            value: U256::from(5u8),
-            is_negative: true,
+    fn test_build_keys_pattern_all_wildcards_fixed_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![None, None, None],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
         };
-        let result = a + b;
-        assert_eq!(result.value, U256::from(0u8));
-        assert!(!result.is_negative);
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x[0-9a-fA-F]+/0x[0-9a-fA-F]+/0x[0-9a-fA-F]+/$");
     }
 
     #[test]
-    fn test_sub_positive_and_negative() {
-        // 10,false - 5,true == 15,false
-        let a = I256::from(U256::from(10u8));
-        let b = I256 {
-            value: U256::from(5u8),
-            is_negative: true,
+    fn test_build_keys_pattern_all_wildcards_variable_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![None, None],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
         };
-        let result = a - b;
-        assert_eq!(result.value, U256::from(15u8));
-        assert!(!result.is_negative);
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(
+            pattern,
+            "^0x[0-9a-fA-F]+/0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$"
+        );
     }
 
     #[test]
-    fn test_sub_larger_from_smaller() {
-        // 5,false - 10,true == 15,true
-        let a = I256::from(U256::from(5u8));
-        let b = I256 {
-            value: U256::from(10u8),
-            is_negative: true,
+    fn test_build_keys_pattern_empty_keys_fixed_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
         };
-        let result = a - b;
-        assert_eq!(result.value, U256::from(15u8));
-        assert!(!result.is_negative);
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x[0-9a-fA-F]+/$");
     }
 
     #[test]
-    fn test_add_mixed_signs() {
-        // 15,false + 10,true == 5,false
-        let a = I256::from(U256::from(15u8));
-        let b = I256 {
-            value: U256::from(10u8),
-            is_negative: true,
+    fn test_build_keys_pattern_empty_keys_variable_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
         };
-        let result = a + b;
-        assert_eq!(result.value, U256::from(5u8));
-        assert!(!result.is_negative);
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$");
     }
 
     #[test]
-    fn test_sub_mixed_signs() {
-        // 5,false - 10,true == 15,false
-        let a = I256::from(U256::from(5u8));
-        let b = I256 {
-            value: U256::from(10u8),
-            is_negative: true,
+    fn test_build_keys_pattern_single_specific_key_fixed_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::from_hex("0x123").unwrap())],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
         };
-        let result = a - b;
-        assert_eq!(result.value, U256::from(15u8));
-        assert!(!result.is_negative);
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x123/$");
     }
 
     #[test]
-    fn test_add_negative_and_negative() {
-        // -5,true + -3,true == -8,true
-        let a = I256 {
-            value: U256::from(5u8),
-            is_negative: true,
+    fn test_build_keys_pattern_single_specific_key_variable_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![Some(Felt::from_hex("0x123").unwrap())],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
         };
-        let b = I256 {
-            value: U256::from(3u8),
-            is_negative: true,
-        };
-        let result = a + b;
-        assert_eq!(result.value, U256::from(8u8));
-        assert!(result.is_negative);
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x123(/0x[0-9a-fA-F]+)*/$");
     }
 
     #[test]
-    fn test_sub_negative_and_negative() {
-        // -5,true - -3,true == -2,true
-        let a = I256 {
-            value: U256::from(5u8),
-            is_negative: true,
+    fn test_build_keys_pattern_single_wildcard_fixed_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![None],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
         };
-        let b = I256 {
-            value: U256::from(3u8),
-            is_negative: true,
-        };
-        let result = a - b;
-        assert_eq!(result.value, U256::from(2u8));
-        assert!(result.is_negative);
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x[0-9a-fA-F]+/$");
     }
 
     #[test]
-    fn test_subtraction_resulting_zero() {
-        // 5,false - 5,false == 0,false
-        let a = I256::from(U256::from(5u8));
-        let b = I256::from(U256::from(5u8));
-        let result = a - b;
-        assert_eq!(result.value, U256::from(0u8));
-        assert!(!result.is_negative);
-    }
-
-    #[test]
-    fn test_subtraction_resulting_zero_negative() {
-        // 5,true - 5,true == 0,false
-        let a = I256 {
-            value: U256::from(5u8),
-            is_negative: true,
+    fn test_build_keys_pattern_single_wildcard_variable_len() {
+        let keys = torii_proto::KeysClause {
+            keys: vec![None],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
         };
-        let b = I256 {
-            value: U256::from(5u8),
-            is_negative: true,
-        };
-        let result = a - b;
-        assert_eq!(result.value, U256::from(0u8));
-        assert!(!result.is_negative);
-    }
-
-    #[test]
-    fn test_add_negative_and_positive_result_positive() {
-        // -10,true + 15,false == 5,false
-        let a = I256 {
-            value: U256::from(10u8),
-            is_negative: true,
-        };
-        let b = I256::from(U256::from(15u8));
-        let result = a + b;
-        assert_eq!(result.value, U256::from(5u8));
-        assert!(!result.is_negative);
-    }
-
-    #[test]
-    fn test_add_negative_and_positive_result_negative() {
-        // -15,true + 5,false == -10,true
-        let a = I256 {
-            value: U256::from(15u8),
-            is_negative: true,
-        };
-        let b = I256::from(U256::from(5u8));
-        let result = a + b;
-        assert_eq!(result.value, U256::from(10u8));
-        assert!(result.is_negative);
-    }
-
-    #[test]
-    fn test_add_zero_true_and_fifteen_true() {
-        // 0,true + 15,true == 15,true
-        let a = I256 {
-            value: U256::from(0u8),
-            is_negative: true,
-        };
-        let b = I256 {
-            value: U256::from(15u8),
-            is_negative: true,
-        };
-        let result = a + b;
-        assert_eq!(result.value, U256::from(15u8));
-        assert!(result.is_negative);
-    }
-
-    #[test]
-    fn test_sub_zero_true_and_fifteen_true() {
-        // 0,true - 15,true == 15,false
-        let a = I256 {
-            value: U256::from(0u8),
-            is_negative: true,
-        };
-        let b = I256 {
-            value: U256::from(15u8),
-            is_negative: true,
-        };
-        let result = a - b;
-        assert_eq!(result.value, U256::from(15u8));
-        assert!(!result.is_negative);
-    }
-
-    #[test]
-    fn test_add_fifteen_true_and_zero_true() {
-        // 15,true + 0,true == 15,true
-        let a = I256 {
-            value: U256::from(15u8),
-            is_negative: true,
-        };
-        let b = I256 {
-            value: U256::from(0u8),
-            is_negative: true,
-        };
-        let result = a + b;
-        assert_eq!(result.value, U256::from(15u8));
-        assert!(result.is_negative);
-    }
-
-    #[test]
-    fn test_sub_fifteen_true_and_zero_true() {
-        // 15,true - 0,true == 15,true
-        let a = I256 {
-            value: U256::from(15u8),
-            is_negative: true,
-        };
-        let b = I256 {
-            value: U256::from(0u8),
-            is_negative: true,
-        };
-        let result = a - b;
-        assert_eq!(result.value, U256::from(15u8));
-        assert!(result.is_negative);
-    }
-
-    #[test]
-    fn test_negative_zero() {
-        // 0,true + 0,true == 0,false
-        let a = I256 {
-            value: U256::from(0u8),
-            is_negative: true,
-        };
-        let b = I256 {
-            value: U256::from(0u8),
-            is_negative: true,
-        };
-        let result = a + b;
-        assert_eq!(result.value, U256::from(0u8));
-        assert!(!result.is_negative);
-    }
-
-    #[test]
-    fn test_sub_positive_and_negative_zero() {
-        // 15,false - 0,true == 15,false
-        let a = I256::from(U256::from(15u8));
-        let b = I256 {
-            value: U256::from(0u8),
-            is_negative: true,
-        };
-        let result = a - b;
-        assert_eq!(result.value, U256::from(15u8));
-        assert!(!result.is_negative);
-    }
-
-    #[test]
-    fn test_add_positive_and_negative_zero() {
-        // 15,false + 0,true == 15,false
-        let a = I256::from(U256::from(15u8));
-        let b = I256 {
-            value: U256::from(0u8),
-            is_negative: true,
-        };
-        let result = a + b;
-        assert_eq!(result.value, U256::from(15u8));
-        assert!(!result.is_negative);
+        let pattern = build_keys_pattern(&keys);
+        assert_eq!(pattern, "^0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$");
     }
 }

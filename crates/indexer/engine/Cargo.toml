@@ -38,11 +38,15 @@ tokio = { version = "1.32.0", features = [ "macros", "sync" ], default-features 
 ipfs-api-backend-hyper.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
-torii-sqlite.workspace = true
 lazy_static.workspace = true
+dojo-metrics.workspace = true
+metrics.workspace = true
 torii-processors.workspace = true
 torii-indexer-fetcher.workspace = true
 bitflags.workspace = true
+torii-storage.workspace = true
+torii-cache.workspace = true
+torii-controllers.workspace = true
 
 [dev-dependencies]
 dojo-test-utils.workspace = true
@@ -53,3 +57,4 @@ sozo-scarbext.workspace = true
 tempfile.workspace = true
 sqlx.workspace = true
 url.workspace = true
+torii-sqlite.workspace = true

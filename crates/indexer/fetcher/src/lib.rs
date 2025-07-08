@@ -10,9 +10,9 @@ pub mod json_rpc;
 use bitflags::bitflags;
 use hashlink::LinkedHashMap;
 pub use json_rpc::Fetcher;
-use starknet::core::types::{Event, Transaction};
+use starknet::core::types::{Event, TransactionContent};
 use starknet_crypto::Felt;
-use torii_sqlite::Cursor;
+use torii_storage::types::Cursor;
 
 bitflags! {
     #[derive(Debug, Clone)]
@@ -57,7 +57,7 @@ pub struct FetchRangeBlock {
 pub struct FetchTransaction {
     // this is Some if the transactions indexing flag
     // is enabled
-    pub transaction: Option<Transaction>,
+    pub transaction: Option<TransactionContent>,
     pub events: Vec<Event>,
 }
 

@@ -1,11 +1,12 @@
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
-use base64::Engine;
-use flate2::read::DeflateDecoder;
-use flate2::write::DeflateEncoder;
-use flate2::Compression;
-use std::collections::HashSet;
-use std::io::prelude::*;
+use dojo_types::naming::compute_selector_from_tag;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::str::FromStr;
+use torii_proto::schema::Entity;
+use torii_proto::{
+    Clause, CompositeClause, LogicalOperator, MemberValue, OrderBy, OrderDirection, Page,
+    Pagination,
+};
+use torii_storage::ReadOnlyStorage;
 
 use async_trait::async_trait;
 use crypto_bigint::U256;
@@ -19,9 +20,10 @@ use sqlx::{Pool, Row, Sqlite};
 use starknet::core::types::Felt;
 
 use super::error::{self, Error};
-use crate::constants::{SQL_DEFAULT_LIMIT, SQL_MAX_JOINS};
+use crate::constants::SQL_MAX_JOINS;
 use crate::error::{ParseError, QueryError};
-use crate::types::{OrderDirection, Page, Pagination, PaginationDirection};
+use crate::utils::build_keys_pattern;
+use crate::Sql;
 
 #[derive(Debug)]
 pub struct ModelSQLReader {
@@ -296,364 +298,778 @@ pub fn map_row_to_ty(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn fetch_entities(
-    pool: &Pool<sqlx::Sqlite>,
+fn map_row_to_entity(
+    row: &SqliteRow,
     schemas: &[Ty],
-    table_name: &str,
-    model_relation_table: &str,
-    entity_relation_column: &str,
-    where_clause: Option<&str>,
-    having_clause: Option<&str>,
-    pagination: Pagination,
-    bind_values: Vec<String>,
-) -> Result<Page<SqliteRow>, Error> {
-    // Helper function to collect columns
-    fn collect_columns(table_prefix: &str, path: &str, ty: &Ty, selections: &mut Vec<String>) {
-        match ty {
-            Ty::Struct(s) => {
-                for child in &s.children {
-                    let new_path = if path.is_empty() {
-                        child.name.clone()
-                    } else {
-                        format!("{}.{}", path, child.name)
-                    };
-                    collect_columns(table_prefix, &new_path, &child.ty, selections);
-                }
-            }
-            Ty::Tuple(t) => {
-                for (i, child) in t.iter().enumerate() {
-                    let new_path = if path.is_empty() {
-                        format!("{}", i)
-                    } else {
-                        format!("{}.{}", path, i)
-                    };
-                    collect_columns(table_prefix, &new_path, child, selections);
-                }
-            }
-            Ty::Enum(e) => {
-                selections.push(format!(
-                    "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
-                ));
+    dont_include_hashed_keys: bool,
+) -> Result<Entity, Error> {
+    let hashed_keys = Felt::from_str(&row.get::<String, _>("id")).map_err(ParseError::FromStr)?;
+    let model_ids = row
+        .get::<String, _>("model_ids")
+        .split(',')
+        .map(|id| Felt::from_str(id).map_err(ParseError::FromStr))
+        .collect::<Result<Vec<_>, _>>()?;
 
-                for option in &e.options {
-                    if let Ty::Tuple(t) = &option.ty {
-                        if t.is_empty() {
-                            continue;
-                        }
-                    }
-                    let variant_path = format!("{}.{}", path, option.name);
-                    collect_columns(table_prefix, &variant_path, &option.ty, selections);
-                }
-            }
-            Ty::Array(_) | Ty::Primitive(_) | Ty::ByteArray(_) => {
-                selections.push(format!(
-                    "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
-                ));
-            }
-        }
-    }
-
-    let original_limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
-    let fetch_limit = original_limit + 1;
-    let mut has_more_pages = false;
-
-    // Build order by clause with proper model joining
-    let order_by_models: HashSet<String> = pagination
-        .order_by
+    let models = schemas
         .iter()
-        .map(|ob| ob.model.clone())
-        .collect();
-
-    let order_clause = if pagination.order_by.is_empty() {
-        format!("{table_name}.event_id DESC")
-    } else {
-        pagination
-            .order_by
-            .iter()
-            .map(|ob| {
-                let direction = match (&ob.direction, &pagination.direction) {
-                    (OrderDirection::Asc, PaginationDirection::Forward) => "ASC",
-                    (OrderDirection::Asc, PaginationDirection::Backward) => "DESC",
-                    (OrderDirection::Desc, PaginationDirection::Forward) => "DESC",
-                    (OrderDirection::Desc, PaginationDirection::Backward) => "ASC",
-                };
-                format!("[{}].[{}] {direction}", ob.model, ob.member)
-            })
-            .chain(std::iter::once(format!("{table_name}.event_id DESC")))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-
-    // Parse cursor
-    let cursor_values: Option<Vec<String>> = pagination
-        .cursor
-        .as_ref()
-        .map(|cursor_str| {
-            let decompressed_str = decode_cursor(cursor_str)?;
-            Ok(decompressed_str.split('/').map(|s| s.to_string()).collect())
+        .filter(|schema| model_ids.contains(&compute_selector_from_tag(&schema.name())))
+        .map(|schema| {
+            let mut ty = schema.clone();
+            map_row_to_ty("", &schema.name(), &mut ty, row)?;
+            Ok(ty.as_struct().unwrap().clone())
         })
-        .transpose()
-        .map_err(|e: Error| Error::Query(QueryError::InvalidCursor(e.to_string())))?;
+        .collect::<Result<Vec<_>, Error>>()?;
 
-    // Build cursor conditions
-    let (cursor_conditions, cursor_binds) =
-        build_cursor_conditions(&pagination, cursor_values.as_deref(), table_name)?;
-
-    // Combine WHERE clauses
-    let combined_where = combine_where_clauses(where_clause, &cursor_conditions);
-
-    // Process schemas in chunks
-    let mut all_rows = Vec::new();
-    let mut next_cursor = None;
-
-    for chunk in schemas.chunks(SQL_MAX_JOINS) {
-        let mut selections = vec![
-            format!("{}.id", table_name),
-            format!("{}.keys", table_name),
-            format!("{}.event_id", table_name),
-            format!(
-                "group_concat({}.model_id) as model_ids",
-                model_relation_table
-            ),
-        ];
-        let mut joins = Vec::new();
-
-        // Add schema joins
-        for model in chunk {
-            let model_table = model.name();
-            let join_type = if order_by_models.contains(&model_table) {
-                "INNER"
-            } else {
-                "LEFT"
-            };
-            joins.push(format!(
-                "{join_type} JOIN [{model_table}] ON {table_name}.id = \
-                 [{model_table}].{entity_relation_column}",
-            ));
-            collect_columns(&model_table, "", model, &mut selections);
-        }
-
-        joins.push(format!(
-            "JOIN {model_relation_table} ON {table_name}.id = {model_relation_table}.entity_id",
-        ));
-
-        // Build and execute query
-        let query = build_query(
-            &selections,
-            table_name,
-            &joins,
-            &combined_where,
-            having_clause,
-            &order_clause,
-        );
-
-        let mut stmt = sqlx::query(&query);
-        for value in bind_values.iter().chain(cursor_binds.iter()) {
-            stmt = stmt.bind(value);
-        }
-
-        stmt = stmt.bind(fetch_limit);
-
-        let mut rows = stmt.fetch_all(pool).await?;
-        let has_more = rows.len() >= fetch_limit as usize;
-
-        if pagination.direction == PaginationDirection::Backward {
-            rows.reverse();
-        }
-        if has_more {
-            // mark that there are more pages beyond the limit
-            has_more_pages = true;
-            rows.truncate(original_limit as usize);
-        }
-
-        all_rows.extend(rows);
-        if has_more {
-            break;
-        }
-    }
-
-    // Helper functions
-    // Replace generation of next cursor to only when there are more pages
-    if has_more_pages {
-        if let Some(last_row) = all_rows.last() {
-            let cursor_values_str = build_cursor_values(&pagination, last_row)?.join("/");
-            next_cursor = Some(encode_cursor(&cursor_values_str)?);
-        }
-    }
-
-    Ok(Page {
-        items: all_rows,
-        next_cursor,
+    Ok(Entity {
+        hashed_keys: if !dont_include_hashed_keys {
+            hashed_keys
+        } else {
+            Felt::ZERO
+        },
+        models,
     })
 }
 
-// Helper functions
-fn build_cursor_conditions(
-    pagination: &Pagination,
-    cursor_values: Option<&[String]>,
-    table_name: &str,
-) -> Result<(Vec<String>, Vec<String>), Error> {
-    let mut conditions = Vec::new();
-    let mut binds = Vec::new();
+// builds a composite clause for a query
+fn build_composite_clause(
+    table: &str,
+    model_relation_table: &str,
+    composite: &torii_proto::CompositeClause,
+    historical: bool,
+) -> Result<(String, Vec<String>), Error> {
+    let is_or = composite.operator == LogicalOperator::Or;
+    let mut where_clauses = Vec::new();
+    let mut bind_values = Vec::new();
 
-    if let Some(values) = cursor_values {
-        let expected_len = if pagination.order_by.is_empty() {
-            1
-        } else {
-            pagination.order_by.len() + 1
-        };
-        if values.len() != expected_len {
-            return Err(Error::Query(QueryError::InvalidCursor(
-                "Invalid cursor values length".to_string(),
-            )));
-        }
-
-        if pagination.order_by.is_empty() {
-            let operator = if pagination.direction == PaginationDirection::Forward {
-                "<"
-            } else {
-                ">"
-            };
-            conditions.push(format!("{}.event_id {} ?", table_name, operator));
-            binds.push(values[0].clone());
-        } else {
-            for (i, (ob, val)) in pagination.order_by.iter().zip(values).enumerate() {
-                let operator = match (&ob.direction, &pagination.direction) {
-                    (OrderDirection::Asc, PaginationDirection::Forward) => ">",
-                    (OrderDirection::Asc, PaginationDirection::Backward) => "<",
-                    (OrderDirection::Desc, PaginationDirection::Forward) => "<",
-                    (OrderDirection::Desc, PaginationDirection::Backward) => ">",
-                };
-
-                let condition = if i == 0 {
-                    format!("[{}.{}] {} ?", ob.model, ob.member, operator)
-                } else {
-                    let prev = (0..i)
-                        .map(|j| {
-                            let prev_ob = &pagination.order_by[j];
-                            format!("[{}.{}] = ?", prev_ob.model, prev_ob.member)
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" AND ");
-                    format!("({} AND [{}.{}] {} ?)", prev, ob.model, ob.member, operator)
-                };
-                conditions.push(condition);
-                binds.push(val.clone());
+    for clause in &composite.clauses {
+        match clause {
+            Clause::HashedKeys(hashed_keys) => {
+                let ids = hashed_keys
+                    .iter()
+                    .map(|id| {
+                        bind_values.push(format!("{:#x}", id));
+                        "?".to_string()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                where_clauses.push(format!("({table}.id IN ({}))", ids));
             }
-            let operator = if pagination.direction == PaginationDirection::Forward {
-                "<"
-            } else {
-                ">"
-            };
-            conditions.push(format!("{}.event_id {} ?", table_name, operator));
-            binds.push(values.last().unwrap().clone());
+            Clause::Keys(keys) => {
+                let keys_pattern = build_keys_pattern(keys);
+                bind_values.push(keys_pattern);
+                let model_selectors: Vec<String> = keys
+                    .models
+                    .iter()
+                    .map(|model| format!("{:#x}", compute_selector_from_tag(model)))
+                    .collect();
+
+                if model_selectors.is_empty() {
+                    where_clauses.push(format!("({table}.keys REGEXP ?)"));
+                } else {
+                    // Add bind value placeholders for each model selector
+                    let placeholders = vec!["?"; model_selectors.len()].join(", ");
+                    where_clauses.push(format!(
+                        "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
+                         {model_relation_table}.model_id NOT IN ({}))",
+                        placeholders, placeholders
+                    ));
+                    // Add each model selector twice (once for IN and once for NOT IN)
+                    bind_values.extend(model_selectors.clone());
+                    bind_values.extend(model_selectors);
+                }
+            }
+            Clause::Member(member) => {
+                fn prepare_comparison(
+                    value: &MemberValue,
+                    bind_values: &mut Vec<String>,
+                    historical: bool,
+                ) -> Result<String, Error> {
+                    match value {
+                        MemberValue::String(value) => {
+                            bind_values.push(value.to_string());
+                            Ok("?".to_string())
+                        }
+                        MemberValue::Primitive(value) => {
+                            let value = if historical {
+                                Ty::Primitive(*value).to_json_value()?.to_string()
+                            } else {
+                                value.to_sql_value()
+                            };
+                            bind_values.push(value);
+                            Ok("?".to_string())
+                        }
+                        MemberValue::List(values) => Ok(format!(
+                            "({})",
+                            values
+                                .iter()
+                                .map(|v| prepare_comparison(v, bind_values, historical))
+                                .collect::<Result<Vec<String>, Error>>()?
+                                .join(", ")
+                        )),
+                    }
+                }
+                let value = prepare_comparison(&member.value, &mut bind_values, historical)?;
+
+                let model = member.model.clone();
+                let operator = member.operator.clone();
+
+                if historical {
+                    // For historical data, query the JSON data column
+                    where_clauses.push(format!(
+                        "CAST(JSON_EXTRACT({table}.data, '$.{}') AS TEXT) {operator} {value}",
+                        member.member
+                    ));
+                } else {
+                    // Use the column name directly since it's already flattened
+                    where_clauses.push(format!(
+                        "([{model}].[{}] {operator} {value})",
+                        member.member
+                    ));
+                }
+            }
+            Clause::Composite(nested) => {
+                // Handle nested composite by recursively building the clause
+                let (nested_where, nested_values) =
+                    build_composite_clause(table, model_relation_table, nested, historical)?;
+
+                if !nested_where.is_empty() {
+                    where_clauses.push(nested_where);
+                }
+                bind_values.extend(nested_values);
+            }
         }
     }
-    Ok((conditions, binds))
-}
 
-fn combine_where_clauses(base: Option<&str>, cursor_conditions: &[String]) -> String {
-    let mut parts = Vec::new();
-    if let Some(base_where) = base {
-        parts.push(base_where.to_string());
-    }
-    parts.extend(cursor_conditions.iter().cloned());
-    parts.join(" AND ")
-}
-
-fn build_query(
-    selections: &[String],
-    table_name: &str,
-    joins: &[String],
-    where_clause: &str,
-    having_clause: Option<&str>,
-    order_clause: &str,
-) -> String {
-    let mut query = format!(
-        "SELECT {} FROM [{}] {}",
-        selections.join(", "),
-        table_name,
-        joins.join(" ")
-    );
-    if !where_clause.is_empty() {
-        query.push_str(&format!(" WHERE {}", where_clause));
-    }
-
-    query.push_str(&format!(" GROUP BY {}.id", table_name));
-
-    if let Some(having) = having_clause {
-        query.push_str(&format!(" HAVING {}", having));
-    }
-    query.push_str(&format!(" ORDER BY {} LIMIT ?", order_clause));
-    query
-}
-
-fn build_cursor_values(pagination: &Pagination, row: &SqliteRow) -> Result<Vec<String>, Error> {
-    if pagination.order_by.is_empty() {
-        Ok(vec![row.try_get("event_id")?])
+    let where_clause = if !where_clauses.is_empty() {
+        where_clauses.join(if is_or { " OR " } else { " AND " })
     } else {
-        let mut values = Vec::new();
-        for ob in &pagination.order_by {
-            let col = format!("{}.{}", ob.model, ob.member);
-            // Try as String first
-            match row.try_get::<String, &str>(&col) {
-                Ok(val) => values.push(val),
-                Err(_) => {
-                    // Try as i64 (INTEGER)
-                    match row.try_get::<i64, &str>(&col) {
-                        Ok(val) => values.push(val.to_string()),
-                        Err(e) => {
-                            return Err(Error::Query(QueryError::InvalidCursor(format!(
-                                "Could not extract cursor value for column {}: {}",
-                                col, e
-                            ))));
-                        }
+        String::new()
+    };
+
+    Ok((where_clause, bind_values))
+}
+
+impl Sql {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn query_by_composite(
+        &self,
+        table: &str,
+        model_relation_table: &str,
+        entity_relation_column: &str,
+        composite: &CompositeClause,
+        pagination: Pagination,
+        no_hashed_keys: bool,
+        models: Vec<String>,
+        historical: bool,
+    ) -> Result<Page<Entity>, Error> {
+        let (where_clause, bind_values) =
+            build_composite_clause(table, model_relation_table, composite, historical)?;
+
+        let models = models
+            .iter()
+            .map(|model| compute_selector_from_tag(model))
+            .collect::<Vec<_>>();
+        let schemas = self
+            .models(&models)
+            .await?
+            .iter()
+            .map(|m| m.schema.clone())
+            .collect::<Vec<_>>();
+
+        let having_clause = models
+            .iter()
+            .map(|model| format!("INSTR(model_ids, '{:#x}') > 0", model))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+
+        let page = if historical {
+            self.fetch_historical_entities(
+                table,
+                model_relation_table,
+                &where_clause,
+                &having_clause,
+                bind_values,
+                pagination,
+            )
+            .await?
+        } else {
+            let page = self
+                .fetch_entities(
+                    &schemas,
+                    table,
+                    model_relation_table,
+                    entity_relation_column,
+                    if where_clause.is_empty() {
+                        None
+                    } else {
+                        Some(&where_clause)
+                    },
+                    if having_clause.is_empty() {
+                        None
+                    } else {
+                        Some(&having_clause)
+                    },
+                    pagination,
+                    bind_values,
+                )
+                .await?;
+            Page {
+                items: page
+                    .items
+                    .par_iter()
+                    .map(|row| map_row_to_entity(row, &schemas, no_hashed_keys))
+                    .collect::<Result<Vec<_>, Error>>()?,
+                next_cursor: page.next_cursor,
+            }
+        };
+
+        Ok(page)
+    }
+
+    async fn fetch_historical_entities(
+        &self,
+        table: &str,
+        model_relation_table: &str,
+        where_clause: &str,
+        having_clause: &str,
+        bind_values: Vec<String>,
+        mut pagination: Pagination,
+    ) -> Result<Page<torii_proto::schema::Entity>, Error> {
+        use crate::query::{PaginationExecutor, QueryBuilder};
+
+        if !pagination.order_by.is_empty() {
+            return Err(QueryError::UnsupportedQuery(
+                "Order by is not supported for historical entities".to_string(),
+            )
+            .into());
+        }
+
+        // Set default ordering for historical entities
+        pagination.order_by.push(OrderBy {
+            field: "event_id".to_string(),
+            direction: OrderDirection::Asc,
+        });
+
+        let mut query_builder = QueryBuilder::new(table)
+            .select(&[
+                format!("{}.id", table),
+                format!("{}.data", table),
+                format!("{}.model_id", table),
+                format!("{}.event_id", table),
+                format!(
+                    "group_concat({}.model_id) as model_ids",
+                    model_relation_table
+                ),
+            ])
+            .join(&format!(
+                "JOIN {} ON {}.id = {}.entity_id",
+                model_relation_table, table, model_relation_table
+            ))
+            .group_by(&format!("{}.event_id", table));
+
+        // Add where clause if provided
+        if !where_clause.is_empty() {
+            query_builder = query_builder.where_clause(where_clause);
+        }
+
+        // Add bind values
+        for value in bind_values {
+            query_builder = query_builder.bind_value(value);
+        }
+
+        // Add having clause if provided
+        if !having_clause.is_empty() {
+            query_builder = query_builder.having(having_clause);
+        }
+
+        // Execute paginated query
+        let executor = PaginationExecutor::new(self.pool.clone());
+        let page = executor
+            .execute_paginated_query(query_builder, pagination)
+            .await?;
+
+        // Process the results to create Entity objects
+        let entities = page
+            .items
+            .iter()
+            .map(|row| async {
+                let id: String = row.get("id");
+                let data: String = row.get("data");
+                let model_id: String = row.get("model_id");
+
+                let hashed_keys = Felt::from_str(&id).map_err(ParseError::FromStr)?;
+                let model = self
+                    .cache
+                    .as_ref()
+                    .expect("Expected cache to be set")
+                    .model(Felt::from_str(&model_id).map_err(ParseError::FromStr)?)
+                    .await?;
+                let mut schema = model.schema;
+                schema.from_json_value(
+                    serde_json::from_str(&data).map_err(ParseError::FromJsonStr)?,
+                )?;
+
+                Ok::<_, Error>(torii_proto::schema::Entity {
+                    hashed_keys,
+                    models: vec![schema.as_struct().unwrap().clone()],
+                })
+            })
+            .collect::<Vec<_>>();
+
+        // Execute all the async mapping operations concurrently
+        let entities: Vec<torii_proto::schema::Entity> =
+            futures::future::try_join_all(entities).await?;
+
+        Ok(Page {
+            items: entities,
+            next_cursor: page.next_cursor,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn fetch_entities(
+        &self,
+        schemas: &[Ty],
+        table_name: &str,
+        model_relation_table: &str,
+        entity_relation_column: &str,
+        where_clause: Option<&str>,
+        having_clause: Option<&str>,
+        mut pagination: Pagination,
+        bind_values: Vec<String>,
+    ) -> Result<Page<SqliteRow>, Error> {
+        use crate::query::{PaginationExecutor, QueryBuilder};
+
+        pagination.order_by.push(OrderBy {
+            field: "event_id".to_string(),
+            direction: OrderDirection::Desc,
+        });
+
+        // Helper function to collect columns
+        fn collect_columns(table_prefix: &str, path: &str, ty: &Ty, selections: &mut Vec<String>) {
+            match ty {
+                Ty::Struct(s) => {
+                    for child in &s.children {
+                        let new_path = if path.is_empty() {
+                            child.name.clone()
+                        } else {
+                            format!("{}.{}", path, child.name)
+                        };
+                        collect_columns(table_prefix, &new_path, &child.ty, selections);
                     }
+                }
+                Ty::Tuple(t) => {
+                    for (i, child) in t.iter().enumerate() {
+                        let new_path = if path.is_empty() {
+                            format!("{}", i)
+                        } else {
+                            format!("{}.{}", path, i)
+                        };
+                        collect_columns(table_prefix, &new_path, child, selections);
+                    }
+                }
+                Ty::Enum(e) => {
+                    selections.push(format!(
+                        "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
+                    ));
+
+                    for option in &e.options {
+                        if let Ty::Tuple(t) = &option.ty {
+                            if t.is_empty() {
+                                continue;
+                            }
+                        }
+                        let variant_path = format!("{}.{}", path, option.name);
+                        collect_columns(table_prefix, &variant_path, &option.ty, selections);
+                    }
+                }
+                Ty::Array(_) | Ty::Primitive(_) | Ty::ByteArray(_) => {
+                    selections.push(format!(
+                        "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
+                    ));
                 }
             }
         }
-        values.push(row.try_get("event_id")?);
-        Ok(values)
+
+        // Process schemas in chunks
+        let mut all_rows = Vec::new();
+        let mut next_cursor = None;
+        let mut has_more_pages = false;
+        let executor = PaginationExecutor::new(self.pool.clone());
+
+        for chunk in schemas.chunks(SQL_MAX_JOINS) {
+            let mut query_builder = QueryBuilder::new(table_name);
+
+            // Build selections
+            let mut selections = vec![
+                format!("{}.id", table_name),
+                format!("{}.keys", table_name),
+                format!("{}.event_id", table_name),
+                format!(
+                    "group_concat({}.model_id) as model_ids",
+                    model_relation_table
+                ),
+            ];
+
+            // Add schema joins and collect columns
+            for model in chunk {
+                let model_table = model.name();
+                query_builder = query_builder.join(&format!(
+                    "LEFT JOIN [{model_table}] ON {table_name}.id = \
+                     [{model_table}].{entity_relation_column}",
+                ));
+                collect_columns(&model_table, "", model, &mut selections);
+            }
+
+            query_builder = query_builder
+                .join(&format!(
+                    "JOIN {model_relation_table} ON {table_name}.id = {model_relation_table}.entity_id",
+                ))
+                .select(&selections)
+                .group_by(&format!("{}.id", table_name));
+
+            // Add where clause
+            if let Some(where_clause) = where_clause {
+                query_builder = query_builder.where_clause(where_clause);
+            }
+
+            // Add bind values
+            for value in bind_values.iter() {
+                query_builder = query_builder.bind_value(value.clone());
+            }
+
+            // Add having clause
+            if let Some(having_clause) = having_clause {
+                query_builder = query_builder.having(having_clause);
+            }
+
+            // Execute paginated query
+            let page = executor
+                .execute_paginated_query(query_builder, pagination.clone())
+                .await?;
+
+            let has_more = page.next_cursor.is_some();
+            if has_more {
+                has_more_pages = true;
+                next_cursor = page.next_cursor;
+            }
+
+            all_rows.extend(page.items);
+
+            // If we have more results than requested, stop processing chunks
+            if has_more {
+                break;
+            }
+        }
+
+        Ok(Page {
+            items: all_rows,
+            next_cursor: if has_more_pages { next_cursor } else { None },
+        })
     }
 }
 
-/// Compresses a string using Deflate and then encodes it using Base64 (no padding).
-pub fn encode_cursor(value: &str) -> Result<String, Error> {
-    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(value.as_bytes()).map_err(|e| {
-        Error::Query(QueryError::InvalidCursor(format!(
-            "Cursor compression error: {}",
-            e
-        )))
-    })?;
-    let compressed_bytes = encoder.finish().map_err(|e| {
-        Error::Query(QueryError::InvalidCursor(format!(
-            "Cursor compression finish error: {}",
-            e
-        )))
-    })?;
+// Helper functions
 
-    Ok(BASE64_URL_SAFE_NO_PAD.encode(&compressed_bytes))
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use starknet::core::types::Felt;
+    use torii_proto::{
+        Clause, ComparisonOperator, CompositeClause, KeysClause, LogicalOperator, MemberClause,
+        MemberValue,
+    };
 
-/// Decodes a Base64 (no padding) string and then decompresses it using Deflate.
-pub fn decode_cursor(encoded_cursor: &str) -> Result<String, Error> {
-    let compressed_cursor_bytes = BASE64_URL_SAFE_NO_PAD.decode(encoded_cursor).map_err(|e| {
-        Error::Query(QueryError::InvalidCursor(format!(
-            "Base64 decode error: {}",
-            e
-        )))
-    })?;
+    #[test]
+    fn test_build_composite_clause_hashed_keys() {
+        let hashed_keys = vec![Felt::ONE, Felt::TWO];
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::HashedKeys(hashed_keys.clone())],
+        };
 
-    let mut decoder = DeflateDecoder::new(&compressed_cursor_bytes[..]);
-    let mut decompressed_str = String::new();
-    decoder.read_to_string(&mut decompressed_str).map_err(|e| {
-        Error::Query(QueryError::InvalidCursor(format!(
-            "Decompression error: {}",
-            e
-        )))
-    })?;
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
 
-    Ok(decompressed_str)
+        assert_eq!(where_clause, "(entities.id IN (?, ?))");
+        assert_eq!(
+            bind_values,
+            hashed_keys
+                .iter()
+                .map(|k| format!("{:#x}", k))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_build_composite_clause_keys_no_models() {
+        let keys = KeysClause {
+            keys: vec![Some(Felt::ONE), Some(Felt::TWO)],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Keys(keys)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "(entities.keys REGEXP ?)");
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_keys_with_models() {
+        let keys = KeysClause {
+            keys: vec![Some(Felt::ONE), Some(Felt::TWO)],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec!["ns-Player".to_string(), "ns-Position".to_string()],
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Keys(keys)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert!(where_clause.contains("entities.keys REGEXP ?"));
+        assert!(where_clause.contains("entity_model.model_id IN"));
+        assert!(where_clause.contains("entity_model.model_id NOT IN"));
+        assert_eq!(bind_values.len(), 5); // keys pattern + 2 model selectors + 2 model selectors again
+    }
+
+    #[test]
+    fn test_build_composite_clause_member_non_historical() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Eq,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "([Player].[score] = ?)");
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_member_historical() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Eq,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, true).unwrap();
+
+        assert!(where_clause.contains("CAST(JSON_EXTRACT(entities.data, '$.score') AS TEXT) = ?"));
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_member_string_value() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "name".to_string(),
+            operator: ComparisonOperator::Eq,
+            value: MemberValue::String("Alice".to_string()),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "([Player].[name] = ?)");
+        assert_eq!(bind_values, vec!["Alice".to_string()]);
+    }
+
+    #[test]
+    fn test_build_composite_clause_member_list_value() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "level".to_string(),
+            operator: ComparisonOperator::In,
+            value: MemberValue::List(vec![
+                MemberValue::Primitive(Primitive::U32(Some(1))),
+                MemberValue::Primitive(Primitive::U32(Some(2))),
+                MemberValue::Primitive(Primitive::U32(Some(3))),
+            ]),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "([Player].[level] IN (?, ?, ?))");
+        assert_eq!(bind_values.len(), 3);
+    }
+
+    #[test]
+    fn test_build_composite_clause_or_operator() {
+        let member1 = MemberClause {
+            model: "Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Gt,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let member2 = MemberClause {
+            model: "Player".to_string(),
+            member: "level".to_string(),
+            operator: ComparisonOperator::Lt,
+            value: MemberValue::Primitive(Primitive::U32(Some(5))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::Or,
+            clauses: vec![Clause::Member(member1), Clause::Member(member2)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert!(where_clause.contains("([Player].[score] > ?)"));
+        assert!(where_clause.contains("([Player].[level] < ?)"));
+        assert!(where_clause.contains(" OR "));
+        assert_eq!(bind_values.len(), 2);
+    }
+
+    #[test]
+    fn test_build_composite_clause_and_operator() {
+        let member1 = MemberClause {
+            model: "Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Gt,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let member2 = MemberClause {
+            model: "Player".to_string(),
+            member: "level".to_string(),
+            operator: ComparisonOperator::Lt,
+            value: MemberValue::Primitive(Primitive::U32(Some(5))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member1), Clause::Member(member2)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert!(where_clause.contains("([Player].[score] > ?)"));
+        assert!(where_clause.contains("([Player].[level] < ?)"));
+        assert!(where_clause.contains(" AND "));
+        assert_eq!(bind_values.len(), 2);
+    }
+
+    #[test]
+    fn test_build_composite_clause_nested() {
+        let inner_composite = CompositeClause {
+            operator: LogicalOperator::Or,
+            clauses: vec![
+                Clause::Member(MemberClause {
+                    model: "Player".to_string(),
+                    member: "score".to_string(),
+                    operator: ComparisonOperator::Gt,
+                    value: MemberValue::Primitive(Primitive::U32(Some(100))),
+                }),
+                Clause::Member(MemberClause {
+                    model: "Player".to_string(),
+                    member: "level".to_string(),
+                    operator: ComparisonOperator::Gt,
+                    value: MemberValue::Primitive(Primitive::U32(Some(10))),
+                }),
+            ],
+        };
+
+        let outer_composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![
+                Clause::Composite(inner_composite),
+                Clause::Member(MemberClause {
+                    model: "Player".to_string(),
+                    member: "active".to_string(),
+                    operator: ComparisonOperator::Eq,
+                    value: MemberValue::Primitive(Primitive::Bool(Some(true))),
+                }),
+            ],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &outer_composite, false).unwrap();
+
+        assert!(where_clause.contains("([Player].[score] > ?)"));
+        assert!(where_clause.contains("([Player].[level] > ?)"));
+        assert!(where_clause.contains("([Player].[active] = ?)"));
+        assert!(where_clause.contains(" OR "));
+        assert!(where_clause.contains(" AND "));
+        assert_eq!(bind_values.len(), 3);
+    }
+
+    #[test]
+    fn test_build_composite_clause_empty() {
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "");
+        assert_eq!(bind_values.len(), 0);
+    }
+
+    #[test]
+    fn test_build_composite_clause_mixed_types() {
+        let hashed_keys = vec![Felt::ONE];
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Eq,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let keys = KeysClause {
+            keys: vec![Some(Felt::ONE)],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![
+                Clause::HashedKeys(hashed_keys),
+                Clause::Member(member),
+                Clause::Keys(keys),
+            ],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert!(where_clause.contains("(entities.id IN (?))"));
+        assert!(where_clause.contains("([Player].[score] = ?)"));
+        assert!(where_clause.contains("(entities.keys REGEXP ?)"));
+        assert!(where_clause.contains(" AND "));
+        assert_eq!(bind_values.len(), 3);
+    }
 }

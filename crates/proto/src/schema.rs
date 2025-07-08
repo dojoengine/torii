@@ -13,6 +13,19 @@ pub struct Entity {
     pub models: Vec<Struct>,
 }
 
+impl From<Entity> for proto::types::Entity {
+    fn from(entity: Entity) -> Self {
+        proto::types::Entity {
+            hashed_keys: entity.hashed_keys.to_bytes_be().to_vec(),
+            models: entity
+                .models
+                .into_iter()
+                .map(Into::into)
+                .collect::<Vec<_>>(),
+        }
+    }
+}
+
 impl TryFrom<proto::types::Entity> for Entity {
     type Error = ProtoError;
     fn try_from(entity: proto::types::Entity) -> Result<Self, Self::Error> {

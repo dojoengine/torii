@@ -21,16 +21,20 @@ use starknet::providers::JsonRpcClient;
 use starknet_crypto::poseidon_hash_many;
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
+use tonic::Request;
+use torii_cache::InMemoryCache;
 use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
 use torii_processors::processors::Processors;
-use torii_sqlite::cache::ModelCache;
+use torii_proto::proto::world::world_server::World;
+use torii_proto::proto::world::RetrieveEntitiesRequest;
+use torii_proto::{Clause, KeysClause, PatternMatching, Query};
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::{Contract, ContractType, Pagination, PaginationDirection};
 use torii_sqlite::Sql;
 
-use torii_proto::proto::types::KeysClause;
 use torii_proto::schema::Entity;
+use torii_storage::types::{Contract, ContractType};
+use torii_storage::Storage;
 
 use crate::{DojoWorld, GrpcConfig};
 
@@ -84,7 +88,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
 
     // spawn
     let tx = account
-        .execute_v1(vec![Call {
+        .execute_v3(vec![Call {
             to: actions_address,
             selector: get_selector_from_name("spawn").unwrap(),
             calldata: vec![],
@@ -107,7 +111,6 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let db = Sql::new(
         pool.clone(),
         sender,
@@ -115,10 +118,11 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
             address: world_address,
             r#type: ContractType::WORLD,
         }],
-        model_cache,
     )
     .await
     .unwrap();
+
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
     let (shutdown_tx, _) = broadcast::channel(1);
 
@@ -128,7 +132,8 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     }];
     let mut engine = Engine::new(
         world_reader,
-        db.clone(),
+        Arc::new(db.clone()),
+        cache.clone(),
         Arc::clone(&provider),
         Processors {
             ..Processors::default()
@@ -150,43 +155,36 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
 
     db.execute().await.unwrap();
 
-    let model_cache = Arc::new(ModelCache::new(pool.clone()).await.unwrap());
     let grpc = DojoWorld::new(
-        db,
+        Arc::new(db),
         provider.clone(),
         world_address,
-        model_cache,
         None,
         GrpcConfig::default(),
     );
 
+    let query = Query {
+        clause: Some(Clause::Keys(KeysClause {
+            keys: vec![Some(account.address())],
+            pattern_matching: PatternMatching::FixedLen,
+            models: vec![],
+        })),
+        ..Default::default()
+    };
     let entities = grpc
-        .query_by_keys(
-            "entities",
-            "entity_model",
-            "internal_entity_id",
-            &KeysClause {
-                keys: vec![account.address().to_bytes_be().to_vec()],
-                pattern_matching: 0,
-                models: vec![],
-            },
-            Pagination {
-                cursor: None,
-                limit: Some(1),
-                direction: PaginationDirection::Forward,
-                order_by: vec![],
-            },
-            false,
-            vec!["ns-Moves".to_string(), "ns-Position".to_string()],
-        )
+        .retrieve_entities(Request::new(RetrieveEntitiesRequest {
+            query: Some(query.into()),
+        }))
         .await
         .unwrap()
-        .items;
+        .into_inner()
+        .entities;
 
     assert_eq!(entities.len(), 1);
 
     let entity: Entity = entities.first().unwrap().clone().try_into().unwrap();
-    assert_eq!(entity.models.first().unwrap().name, "ns-Moves");
-    assert_eq!(entity.models.get(1).unwrap().name, "ns-Position");
+    let model_names: Vec<&str> = entity.models.iter().map(|m| m.name.as_str()).collect();
+    assert!(model_names.contains(&"ns-Moves"));
+    assert!(model_names.contains(&"ns-Position"));
     assert_eq!(entity.hashed_keys, poseidon_hash_many(&[account.address()]));
 }

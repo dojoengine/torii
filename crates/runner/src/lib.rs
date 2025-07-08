@@ -36,19 +36,20 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
+use torii_cache::InMemoryCache;
 use torii_cli::ToriiArgs;
+use torii_controllers::sync::ControllersSync;
 use torii_grpc_server::GrpcConfig;
 use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer::{FetcherConfig, FetchingFlags, IndexingFlags};
 use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
-use torii_sqlite::cache::ModelCache;
-use torii_sqlite::controllers::ControllersSync;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::simple_broker::SimpleBroker;
-use torii_sqlite::types::{Contract, ContractType, Model};
+use torii_sqlite::types::Model;
 use torii_sqlite::{Sql, SqlConfig};
+use torii_storage::types::{Contract, ContractType};
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
@@ -105,6 +106,14 @@ impl Runner {
             format!("Torii/{}", self.version_spec),
         );
         let provider: Arc<_> = JsonRpcClient::new(transport).into();
+
+        // Check provider spec version. We only support v0.8.
+        let spec_version = provider.spec_version().await?;
+        if !spec_version.starts_with("0.8") {
+            return Err(anyhow::anyhow!(
+                "Provider spec version is not supported. Please use a provider that supports v0.8. Got: {spec_version}. You might need to add a `rpc/v0_8` to the end of the URL."
+            ));
+        }
 
         // Verify contracts are deployed
         if self.args.runner.check_contracts {
@@ -238,8 +247,6 @@ impl Runner {
             Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
 
-        let model_cache = Arc::new(ModelCache::new(readonly_pool.clone()).await?);
-
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
             warn!(
                 target: LOG_TARGET,
@@ -259,16 +266,16 @@ impl Runner {
             readonly_pool.clone(),
             sender.clone(),
             &self.args.indexing.contracts,
-            model_cache.clone(),
             SqlConfig {
                 all_model_indices: self.args.sql.all_model_indices,
                 model_indices: self.args.sql.model_indices.clone(),
                 historical_models: historical_models.clone(),
                 hooks: self.args.sql.hooks.clone(),
-                max_metadata_tasks: self.args.erc.max_metadata_tasks,
             },
         )
         .await?;
+        let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+        let db = db.with_cache(cache.clone());
 
         let processors = Processors::default();
 
@@ -284,15 +291,19 @@ impl Runner {
             fetching_flags.insert(FetchingFlags::PENDING_BLOCKS);
         }
 
+        let storage = Arc::new(db.clone());
         let controllers = if self.args.indexing.controllers {
-            Some(Arc::new(ControllersSync::new(db.clone()).await))
+            Some(Arc::new(
+                ControllersSync::new(storage.clone()).await.unwrap(),
+            ))
         } else {
             None
         };
 
         let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new_with_controllers(
             world,
-            db.clone(),
+            storage.clone(),
+            cache.clone(),
             provider.clone(),
             processors,
             EngineConfig {
@@ -310,6 +321,7 @@ impl Runner {
                     strict_model_reader: self.args.indexing.strict_model_reader,
                     namespaces: self.args.indexing.namespaces.into_iter().collect(),
                     historical_models,
+                    max_metadata_tasks: self.args.erc.max_metadata_tasks,
                 },
                 world_block: self.args.indexing.world_block,
             },
@@ -337,7 +349,7 @@ impl Runner {
         .await?;
 
         let (mut libp2p_relay_server, cross_messaging_tx) = Relay::new_with_peers(
-            db.clone(),
+            storage.clone(),
             provider.clone(),
             self.args.relay.port,
             self.args.relay.webrtc_port,
@@ -350,10 +362,9 @@ impl Runner {
 
         let (grpc_addr, grpc_server) = torii_grpc_server::new(
             shutdown_rx,
-            db.clone(),
+            storage.clone(),
             provider.clone(),
             world_address,
-            model_cache,
             cross_messaging_tx,
             GrpcConfig {
                 subscription_buffer_size: self.args.grpc.subscription_buffer_size,
@@ -363,7 +374,7 @@ impl Runner {
 
         let addr = SocketAddr::new(self.args.server.http_addr, self.args.server.http_port);
 
-        let proxy_server = Arc::new(Proxy::new(
+        let mut proxy_server = Proxy::new(
             addr,
             self.args
                 .server
@@ -374,7 +385,51 @@ impl Runner {
             Some(artifacts_addr),
             Arc::new(readonly_pool.clone()),
             self.version_spec.clone(),
-        ));
+        );
+
+        // Handle mkcert certificate generation
+        let (final_cert_path, final_key_path) = if self.args.server.mkcert {
+            if self.args.server.tls_cert_path.is_some() || self.args.server.tls_key_path.is_some() {
+                warn!(target: LOG_TARGET, "mkcert flag is set but explicit TLS paths are also provided. Using explicit paths.");
+                (
+                    self.args.server.tls_cert_path.clone(),
+                    self.args.server.tls_key_path.clone(),
+                )
+            } else {
+                match generate_mkcert_certificates().await {
+                    Ok((cert_path, key_path)) => {
+                        info!(target: LOG_TARGET, cert_path = %cert_path, key_path = %key_path, "Successfully generated mkcert certificates");
+                        (Some(cert_path), Some(key_path))
+                    }
+                    Err(e) => {
+                        error!(target: LOG_TARGET, error = ?e, "Failed to generate mkcert certificates. Falling back to HTTP.");
+                        (None, None)
+                    }
+                }
+            }
+        } else {
+            (
+                self.args.server.tls_cert_path.clone(),
+                self.args.server.tls_key_path.clone(),
+            )
+        };
+
+        // Configure TLS if certificates are provided
+        if let (Some(cert_path), Some(key_path)) = (&final_cert_path, &final_key_path) {
+            let tls_config = torii_server::TlsConfig {
+                cert_path: cert_path.clone(),
+                key_path: key_path.clone(),
+            };
+
+            info!(target: LOG_TARGET, "Starting HTTPS server with TLS certificates");
+            proxy_server = proxy_server
+                .with_tls_config(tls_config)
+                .map_err(|e| anyhow::anyhow!("Failed to configure TLS: {}", e))?;
+        } else if final_cert_path.is_some() || final_key_path.is_some() {
+            warn!(target: LOG_TARGET, "TLS configuration incomplete. Both tls_cert_path and tls_key_path are required for HTTPS. Falling back to HTTP.");
+        }
+
+        let proxy_server = Arc::new(proxy_server);
 
         let graphql_server = spawn_rebuilding_graphql_server(
             shutdown_tx.clone(),
@@ -382,16 +437,22 @@ impl Runner {
             proxy_server.clone(),
         );
 
-        let gql_endpoint = format!("{addr}/graphql");
-        let mcp_endpoint = format!("{addr}/mcp");
-        let sql_endpoint = format!("{addr}/sql");
+        let protocol = if final_cert_path.is_some() && final_key_path.is_some() {
+            "https"
+        } else {
+            "http"
+        };
+
+        let gql_endpoint = format!("{}://{}/graphql", protocol, addr);
+        let mcp_endpoint = format!("{}://{}/mcp", protocol, addr);
+        let sql_endpoint = format!("{}://{}/sql", protocol, addr);
 
         let encoded: String = form_urlencoded::byte_serialize(
             gql_endpoint.replace("0.0.0.0", "localhost").as_bytes(),
         )
         .collect();
         let explorer_url = format!("https://worlds.dev/torii?url={}", encoded);
-        info!(target: LOG_TARGET, endpoint = %addr, "Starting torii endpoint.");
+        info!(target: LOG_TARGET, endpoint = %addr, protocol = %protocol, "Starting torii endpoint.");
         info!(target: LOG_TARGET, endpoint = %gql_endpoint, "Serving Graphql playground.");
         info!(target: LOG_TARGET, endpoint = %sql_endpoint, "Serving SQL playground.");
         info!(target: LOG_TARGET, endpoint = %mcp_endpoint, "Serving MCP endpoint.");
@@ -416,12 +477,17 @@ impl Runner {
         }
 
         let engine_handle = tokio::spawn(async move { engine.start().await });
+
         let proxy_server_handle =
             tokio::spawn(async move { proxy_server.start(shutdown_tx.subscribe()).await });
+
         let graphql_server_handle = tokio::spawn(graphql_server);
+
         let grpc_server_handle = tokio::spawn(grpc_server);
+
         let libp2p_relay_server_handle =
             tokio::spawn(async move { libp2p_relay_server.run().await });
+
         let artifacts_server_handle = tokio::spawn(artifacts_server);
 
         tokio::select! {
@@ -541,4 +607,59 @@ async fn stream_snapshot_into_file(
     .instrument(span);
 
     instrumented_future.await
+}
+
+async fn generate_mkcert_certificates() -> anyhow::Result<(String, String)> {
+    // Check if mkcert is installed
+    let check_output = tokio::process::Command::new("mkcert")
+        .arg("-version")
+        .output()
+        .await;
+
+    if check_output.is_err() {
+        return Err(anyhow::anyhow!("mkcert is not installed. Please install mkcert first: https://github.com/FiloSottile/mkcert"));
+    }
+
+    // Create directory for certificates in temp dir
+    let cert_dir = std::env::temp_dir().join("torii-certs");
+    tokio::fs::create_dir_all(&cert_dir).await?;
+
+    let cert_path = cert_dir.join("localhost.pem");
+    let key_path = cert_dir.join("localhost-key.pem");
+
+    // Install the CA certificate
+    let install_output = tokio::process::Command::new("mkcert")
+        .arg("-install")
+        .output()
+        .await?;
+
+    if !install_output.status.success() {
+        return Err(anyhow::anyhow!(
+            "Failed to install mkcert CA: {}",
+            String::from_utf8_lossy(&install_output.stderr)
+        ));
+    }
+
+    // Generate certificates for localhost and 127.0.0.1
+    let output = tokio::process::Command::new("mkcert")
+        .arg("-cert-file")
+        .arg(&cert_path)
+        .arg("-key-file")
+        .arg(&key_path)
+        .arg("localhost")
+        .arg("127.0.0.1")
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        return Err(anyhow::anyhow!(
+            "Failed to generate mkcert certificates: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok((
+        cert_path.to_string_lossy().to_string(),
+        key_path.to_string_lossy().to_string(),
+    ))
 }

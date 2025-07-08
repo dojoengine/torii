@@ -1,18 +1,17 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 use async_trait::async_trait;
+use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{BlockId, Event};
 use starknet::providers::Provider;
-use torii_sqlite::Sql;
+use torii_proto::Model;
 use tracing::{debug, info};
 
 use crate::task_manager::TaskId;
-use crate::Result;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::EventProcessor;
+use crate::{EventProcessorContext, Result};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::upgrade_model";
 
@@ -40,19 +39,10 @@ where
         hasher.finish()
     }
 
-    async fn process(
-        &self,
-        world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        block_number: u64,
-        block_timestamp: u64,
-        _event_id: &str,
-        event: &Event,
-        config: &EventProcessorConfig,
-    ) -> Result<()> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<()> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
-        let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
+        let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
             panic!(
                 "Expected {} event to be well formed.",
                 <UpgradeModelProcessor as EventProcessor<P>>::event_key(self)
@@ -66,7 +56,7 @@ where
 
         // If the model does not exist, silently ignore it.
         // This can happen if only specific namespaces are indexed.
-        let model = match db.model(event.selector).await {
+        let model = match ctx.cache.model(event.selector).await {
             Ok(m) => m,
             Err(e) if e.to_string().contains("no rows") => {
                 debug!(
@@ -88,13 +78,19 @@ where
             &name,
             event.address.0,
             event.class_hash.0,
-            &world,
+            &ctx.world,
         )
         .await;
-        if config.strict_model_reader {
-            model.set_block(BlockId::Number(block_number)).await;
+        if ctx.config.strict_model_reader {
+            model.set_block(BlockId::Number(ctx.block_number)).await;
         }
-        let new_schema = model.schema().await?;
+        let mut new_schema = model.schema().await?;
+        match &mut new_schema {
+            Ty::Struct(struct_ty) => {
+                struct_ty.name = format!("{}-{}", namespace, struct_ty.name);
+            }
+            _ => unreachable!(),
+        }
         let schema_diff = new_schema.diff(&prev_schema);
         // // No changes to the schema. This can happen if torii is re-run with a fresh database.
         // // As the register model fetches the latest schema from the chain.
@@ -127,21 +123,39 @@ where
             "Upgraded model content."
         );
 
-        db.register_model(
-            &namespace,
-            &new_schema,
-            layout,
-            event.class_hash.into(),
-            event.address.into(),
-            packed_size,
-            unpacked_size,
-            block_timestamp,
-            Some(&schema_diff),
-            // This will be Some if we have an "upgrade" diff. Which means
-            // if some columns have been modified.
-            prev_schema.diff(&new_schema).as_ref(),
-        )
-        .await?;
+        ctx.storage
+            .register_model(
+                event.selector,
+                &new_schema,
+                &layout,
+                event.class_hash.into(),
+                event.address.into(),
+                packed_size,
+                unpacked_size,
+                ctx.block_timestamp,
+                Some(&schema_diff),
+                // This will be Some if we have an "upgrade" diff. Which means
+                // if some columns have been modified.
+                prev_schema.diff(&new_schema).as_ref(),
+            )
+            .await?;
+
+        ctx.cache
+            .register_model(
+                event.selector,
+                Model {
+                    selector: event.selector,
+                    namespace,
+                    name,
+                    class_hash: event.class_hash.into(),
+                    contract_address: event.address.into(),
+                    packed_size,
+                    unpacked_size,
+                    layout,
+                    schema: new_schema,
+                },
+            )
+            .await;
 
         Ok(())
     }

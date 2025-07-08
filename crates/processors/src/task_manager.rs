@@ -4,14 +4,16 @@ use dojo_world::contracts::WorldContractReader;
 use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
-use torii_sqlite::types::ContractType;
-use torii_sqlite::Sql;
+use tokio::sync::Semaphore;
+use torii_cache::Cache;
+use torii_storage::types::ContractType;
+use torii_storage::Storage;
 use torii_task_network::TaskNetwork;
 use tracing::{debug, error};
 
 use crate::error::Error;
 use crate::processors::Processors;
-use crate::{EventKey, EventProcessorConfig, IndexingMode};
+use crate::{EventKey, EventProcessorConfig, EventProcessorContext, IndexingMode};
 
 const LOG_TARGET: &str = "torii::indexer::task_manager";
 
@@ -36,28 +38,39 @@ struct TaskData {
 
 #[allow(missing_debug_implementations)]
 pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
-    db: Sql,
+    storage: Arc<dyn Storage>,
+    cache: Arc<dyn Cache>,
     world: Arc<WorldContractReader<P>>,
     task_network: TaskNetwork<TaskId, TaskData>,
     processors: Arc<Processors<P>>,
     event_processor_config: EventProcessorConfig,
+    nft_metadata_semaphore: Arc<Semaphore>,
 }
 
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
     pub fn new(
-        db: Sql,
+        storage: Arc<dyn Storage>,
+        cache: Arc<dyn Cache>,
         world: Arc<WorldContractReader<P>>,
         processors: Arc<Processors<P>>,
         max_concurrent_tasks: usize,
         event_processor_config: EventProcessorConfig,
     ) -> Self {
         Self {
-            db,
+            storage,
+            cache,
             world,
             task_network: TaskNetwork::new(max_concurrent_tasks),
             processors,
+            nft_metadata_semaphore: Arc::new(Semaphore::new(
+                event_processor_config.max_metadata_tasks,
+            )),
             event_processor_config,
         }
+    }
+
+    pub fn pending_tasks_count(&self) -> usize {
+        self.task_network.len()
     }
 
     pub fn add_parallelized_event(
@@ -122,21 +135,23 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
             return Ok(());
         }
 
-        let db = self.db.clone();
+        let storage = self.storage.clone();
         let world = self.world.clone();
         let processors = self.processors.clone();
         let event_processor_config = self.event_processor_config.clone();
+        let cache = self.cache.clone();
+        let nft_metadata_semaphore = self.nft_metadata_semaphore.clone();
 
         self.task_network
             .process_tasks(move |task_id, task_data| {
-                let db = db.clone();
+                let storage = storage.clone();
                 let world = world.clone();
                 let processors = processors.clone();
                 let event_processor_config = event_processor_config.clone();
+                let cache = cache.clone();
+                let nft_metadata_semaphore = nft_metadata_semaphore.clone();
 
                 async move {
-                    let mut local_db = db.clone();
-
                     // Process all events for this task sequentially
                     for ParallelizedEvent {
                         contract_type,
@@ -166,18 +181,19 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                                 "Processing parallelized event."
                             );
 
-                            if let Err(e) = processor
-                                .process(
-                                    world.clone(),
-                                    &mut local_db,
-                                    *block_number,
-                                    *block_timestamp,
-                                    event_id,
-                                    event,
-                                    &event_processor_config,
-                                )
-                                .await
-                            {
+                            let ctx = EventProcessorContext {
+                                storage: storage.clone(),
+                                cache: cache.clone(),
+                                block_number: *block_number,
+                                block_timestamp: *block_timestamp,
+                                event_id: event_id.clone(),
+                                event: event.clone(),
+                                config: event_processor_config.clone(),
+                                world: world.clone(),
+                                nft_metadata_semaphore: nft_metadata_semaphore.clone(),
+                            };
+
+                            if let Err(e) = processor.process(&ctx).await {
                                 error!(
                                     target: LOG_TARGET,
                                     event_name = processor.event_key(),

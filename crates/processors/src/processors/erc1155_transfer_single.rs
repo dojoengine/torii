@@ -1,17 +1,15 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
-use torii_sqlite::Sql;
 use tracing::debug;
 
+use crate::erc::{felt_and_u256_to_sql_string, try_register_nft_token_metadata};
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorContext};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc1155_transfer_single";
 
@@ -39,37 +37,43 @@ where
         hasher.finish()
     }
 
-    async fn process(
-        &self,
-        world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        _block_number: u64,
-        block_timestamp: u64,
-        event_id: &str,
-        event: &Event,
-        _config: &EventProcessorConfig,
-    ) -> Result<(), Error> {
-        let token_address = event.from_address;
-        let from = event.keys[2];
-        let to = event.keys[3];
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
+        let token_address = ctx.event.from_address;
+        let from = ctx.event.keys[2];
+        let to = ctx.event.keys[3];
 
-        let token_id = U256Cainome::cairo_deserialize(&event.data, 0)?;
+        let token_id = U256Cainome::cairo_deserialize(&ctx.event.data, 0)?;
         let token_id = U256::from_words(token_id.low, token_id.high);
 
-        let amount = U256Cainome::cairo_deserialize(&event.data, 2)?;
+        let amount = U256Cainome::cairo_deserialize(&ctx.event.data, 2)?;
         let amount = U256::from_words(amount.low, amount.high);
 
-        db.handle_nft_transfer(
-            world.provider(),
+        let id = felt_and_u256_to_sql_string(&token_address, &token_id);
+        try_register_nft_token_metadata(
+            &id,
             token_address,
-            from,
-            to,
             token_id,
-            amount,
-            block_timestamp,
-            event_id,
+            ctx.world.provider(),
+            ctx.cache.clone(),
+            ctx.storage.clone(),
+            ctx.nft_metadata_semaphore.clone(),
         )
         .await?;
+
+        ctx.cache.update_balance_diff(&id, from, to, amount).await;
+
+        ctx.storage
+            .store_erc_transfer_event(
+                token_address,
+                from,
+                to,
+                amount,
+                Some(token_id),
+                ctx.block_timestamp,
+                &ctx.event_id,
+            )
+            .await?;
+
         debug!(target: LOG_TARGET, from = ?from, to = ?to, token_id = ?token_id, amount = ?amount, "ERC1155 TransferSingle");
 
         Ok(())

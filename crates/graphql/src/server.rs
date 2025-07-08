@@ -35,10 +35,17 @@ fn graphql_filter(schema: Schema) -> impl Filter<Extract = impl Reply, Error = R
     let playground_filter = warp::path("graphql").map(move || {
         warp::reply::html(
             GraphiQLSource::build()
+                .plugins(&[async_graphql::http::graphiql_plugin_explorer()])
                 .subscription_endpoint("/ws")
                 // we patch the generated source to use the current URL instead of the origin
                 // for hosted services like SLOT
                 .finish()
+                // we need to patch how we set up the graphiql
+                .replace("@17", "@18")
+                .replace(
+                    "ReactDOM.render(",
+                    "ReactDOM.createRoot(document.getElementById(\"graphiql\")).render(",
+                )
                 .replace(
                     "new URL(endpoint, window.location.origin);",
                     "new URL(window.location.href.trimEnd('/') + endpoint)",
@@ -46,8 +53,20 @@ fn graphql_filter(schema: Schema) -> impl Filter<Extract = impl Reply, Error = R
                 // the playground source from async-graphql is broken as a new graphiql version has been released.
                 // we patch the source to use a working version.
                 .replace(
+                    "https://unpkg.com/@graphiql/plugin-explorer/dist/style.css",
+                    "https://unpkg.com/@graphiql/plugin-explorer@5.0.0-rc.1/dist/style.css",
+                )
+                .replace(
+                    "https://unpkg.com/@graphiql/plugin-explorer/dist/index.umd.js",
+                    "https://unpkg.com/@graphiql/plugin-explorer@5.0.0-rc.1/dist/index.umd.js",
+                )
+                .replace(
                     "https://unpkg.com/graphiql/graphiql.min.js",
-                    "https://unpkg.com/graphiql@3/graphiql.min.js",
+                    "https://unpkg.com/graphiql@5.0.0-rc.1/graphiql.min.js",
+                )
+                .replace(
+                    "https://unpkg.com/graphiql/graphiql.min.css",
+                    "https://unpkg.com/graphiql@5.0.0-rc.1/graphiql.min.css",
                 ),
         )
     });

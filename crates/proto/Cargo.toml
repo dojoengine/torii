@@ -27,8 +27,8 @@ strum.workspace = true
 strum_macros.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-torii-sqlite-types = { workspace = true, optional = true }
+chrono.workspace = true
 
 [features]
 client = []
-server = ["torii-sqlite-types"]
+server = []

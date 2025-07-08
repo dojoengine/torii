@@ -43,6 +43,8 @@ anyhow.workspace = true
 base64.workspace = true
 num_cpus = "1.16.0"
 dashmap.workspace = true
+torii-storage.workspace = true
+torii-cache.workspace = true
 
 [dev-dependencies]
 cainome.workspace = true
@@ -59,6 +61,8 @@ torii-processors = { workspace = true }
 torii-typed-data = { workspace = true }
 torii-libp2p-relay = { workspace = true }
 indexmap.workspace = true
+torii-cache.workspace = true
+starknet-core.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true

@@ -1,84 +1,173 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use dashmap::DashMap;
-use dojo_types::schema::Ty;
-use dojo_world::contracts::abigen::model::Layout;
-use sqlx::{Pool, Sqlite, SqlitePool};
+use dojo_types::naming;
 use starknet::core::types::contract::AbiEntry;
 use starknet::core::types::{
     BlockId, BlockTag, ContractClass, EntryPointsByType, LegacyContractAbiEntry, StarknetError,
 };
+use starknet::core::types::{Felt, U256};
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::{Provider, ProviderError};
-use starknet_crypto::Felt;
 use tokio::sync::{Mutex, RwLock};
+use torii_math::I256;
+use torii_proto::Model;
+use torii_storage::ReadOnlyStorage;
 
-use crate::constants::TOKENS_TABLE;
-use crate::error::{Error, ParseError};
-use crate::utils::I256;
+use crate::error::Error;
 
-#[derive(Debug, Clone)]
-pub struct Model {
-    /// Namespace of the model
-    pub namespace: String,
-    /// The name of the model
-    pub name: String,
-    /// The selector of the model
-    pub selector: Felt,
-    /// The class hash of the model
-    pub class_hash: Felt,
-    /// The contract address of the model
-    pub contract_address: Felt,
-    pub packed_size: u32,
-    pub unpacked_size: u32,
-    pub layout: Layout,
-    pub schema: Ty,
+pub mod error;
+
+pub type CacheError = Box<dyn std::error::Error + Send + Sync>;
+
+#[async_trait]
+pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
+    /// Get models by selectors. If selectors is empty, returns all models.
+    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, CacheError>;
+
+    /// Get a specific model by selector.
+    async fn model(&self, selector: Felt) -> Result<Model, CacheError>;
+
+    /// Check if a token is registered.
+    async fn is_token_registered(&self, token_id: &str) -> bool;
+
+    /// Get a token registration lock for coordination.
+    async fn get_token_registration_lock(&self, token_id: &str) -> Option<Arc<Mutex<()>>>;
+
+    /// Get the balances diff.
+    async fn balances_diff(&self) -> HashMap<String, I256>;
+}
+
+#[async_trait]
+pub trait Cache: ReadOnlyCache + Send + Sync + std::fmt::Debug {
+    /// Register a model in the cache.
+    async fn register_model(&self, selector: Felt, model: Model);
+
+    /// Clear all models from the cache.
+    async fn clear_models(&self);
+
+    /// Mark a token as registered.
+    async fn mark_token_registered(&self, token_id: &str);
+
+    /// Clear the balances diff.
+    async fn clear_balances_diff(&self);
+
+    /// Update the balances diff.
+    async fn update_balance_diff(&self, token_id: &str, from: Felt, to: Felt, value: U256);
+}
+
+#[derive(Debug)]
+pub struct InMemoryCache {
+    pub model_cache: ModelCache,
+    pub erc_cache: ErcCache,
+}
+
+impl InMemoryCache {
+    pub async fn new(storage: Arc<dyn ReadOnlyStorage>) -> Result<Self, Error> {
+        Ok(Self {
+            model_cache: ModelCache::new(storage.clone()).await?,
+            erc_cache: ErcCache::new(storage).await?,
+        })
+    }
+}
+
+#[async_trait]
+impl ReadOnlyCache for InMemoryCache {
+    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, CacheError> {
+        self.model_cache
+            .models(selectors)
+            .await
+            .map_err(|e| Box::new(e) as CacheError)
+    }
+
+    async fn model(&self, selector: Felt) -> Result<Model, CacheError> {
+        self.model_cache
+            .model(selector)
+            .await
+            .map_err(|e| Box::new(e) as CacheError)
+    }
+
+    async fn is_token_registered(&self, token_id: &str) -> bool {
+        self.erc_cache.is_token_registered(token_id).await
+    }
+
+    async fn get_token_registration_lock(&self, token_id: &str) -> Option<Arc<Mutex<()>>> {
+        self.erc_cache.get_token_registration_lock(token_id).await
+    }
+
+    async fn balances_diff(&self) -> HashMap<String, I256> {
+        self.erc_cache
+            .balances_diff
+            .iter()
+            .map(|t| (t.key().clone(), *t.value()))
+            .collect()
+    }
+}
+
+#[async_trait]
+impl Cache for InMemoryCache {
+    async fn register_model(&self, selector: Felt, model: Model) {
+        self.model_cache.set(selector, model).await
+    }
+
+    async fn clear_models(&self) {
+        self.model_cache.clear().await
+    }
+
+    async fn mark_token_registered(&self, token_id: &str) {
+        self.erc_cache.mark_token_registered(token_id).await
+    }
+
+    async fn clear_balances_diff(&self) {
+        self.erc_cache.balances_diff.clear();
+        self.erc_cache.balances_diff.shrink_to_fit();
+    }
+
+    async fn update_balance_diff(&self, token_id: &str, from: Felt, to: Felt, value: U256) {
+        if from != Felt::ZERO {
+            // from/token_id
+            let from_balance_id = format!("{:#x}/{}", from, token_id);
+            let mut from_balance = self
+                .erc_cache
+                .balances_diff
+                .entry(from_balance_id)
+                .or_default();
+            *from_balance -= I256::from(value);
+        }
+
+        if to != Felt::ZERO {
+            // to/token_id
+            let to_balance_id = format!("{:#x}/{}", to, token_id);
+            let mut to_balance = self
+                .erc_cache
+                .balances_diff
+                .entry(to_balance_id)
+                .or_default();
+            *to_balance += I256::from(value);
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct ModelCache {
-    pool: SqlitePool,
+    storage: Arc<dyn ReadOnlyStorage>,
     model_cache: RwLock<HashMap<Felt, Model>>,
 }
 
 impl ModelCache {
-    pub async fn new(pool: SqlitePool) -> Result<Self, Error> {
-        let models_rows: Vec<torii_sqlite_types::Model> = sqlx::query_as(
-            "SELECT id, namespace, name, class_hash, contract_address, packed_size, \
-             unpacked_size, layout, schema, executed_at, created_at FROM models",
-        )
-        .fetch_all(&pool)
-        .await?;
+    pub async fn new(storage: Arc<dyn ReadOnlyStorage>) -> Result<Self, Error> {
+        let models = storage.models(&[]).await?;
 
         let mut model_cache = HashMap::new();
-        for model in models_rows {
-            let selector = Felt::from_hex(&model.id).map_err(ParseError::FromStr)?;
-            let class_hash = Felt::from_hex(&model.class_hash).map_err(ParseError::FromStr)?;
-            let contract_address =
-                Felt::from_hex(&model.contract_address).map_err(ParseError::FromStr)?;
-
-            let layout = serde_json::from_str(&model.layout).map_err(ParseError::FromJsonStr)?;
-            let schema = serde_json::from_str(&model.schema).map_err(ParseError::FromJsonStr)?;
-
-            model_cache.insert(
-                selector,
-                Model {
-                    namespace: model.namespace,
-                    name: model.name,
-                    selector,
-                    class_hash,
-                    contract_address,
-                    packed_size: model.packed_size,
-                    unpacked_size: model.unpacked_size,
-                    layout,
-                    schema,
-                },
-            );
+        for model in models {
+            let selector = naming::compute_selector_from_names(&model.namespace, &model.name);
+            model_cache.insert(selector, model);
         }
 
         Ok(Self {
-            pool,
+            storage,
             model_cache: RwLock::new(model_cache),
         })
     }
@@ -90,16 +179,16 @@ impl ModelCache {
 
         let mut schemas = Vec::with_capacity(selectors.len());
         for selector in selectors {
-            schemas.push(self.model(selector).await?);
+            schemas.push(self.model(*selector).await?);
         }
 
         Ok(schemas)
     }
 
-    pub async fn model(&self, selector: &Felt) -> Result<Model, Error> {
+    pub async fn model(&self, selector: Felt) -> Result<Model, Error> {
         {
             let cache = self.model_cache.read().await;
-            if let Some(model) = cache.get(selector).cloned() {
+            if let Some(model) = cache.get(&selector).cloned() {
                 return Ok(model);
             }
         }
@@ -107,44 +196,12 @@ impl ModelCache {
         self.update_model(selector).await
     }
 
-    async fn update_model(&self, selector: &Felt) -> Result<Model, Error> {
-        let (
-            namespace,
-            name,
-            class_hash,
-            contract_address,
-            packed_size,
-            unpacked_size,
-            layout,
-            schema,
-        ): (String, String, String, String, u32, u32, String, String) = sqlx::query_as(
-            "SELECT namespace, name, class_hash, contract_address, packed_size, unpacked_size, \
-             layout, schema FROM models WHERE id = ?",
-        )
-        .bind(format!("{:#x}", selector))
-        .fetch_one(&self.pool)
-        .await?;
-
-        let class_hash = Felt::from_hex(&class_hash).map_err(ParseError::FromStr)?;
-        let contract_address = Felt::from_hex(&contract_address).map_err(ParseError::FromStr)?;
-
-        let layout = serde_json::from_str(&layout).map_err(ParseError::FromJsonStr)?;
-        let schema = serde_json::from_str(&schema).map_err(ParseError::FromJsonStr)?;
+    async fn update_model(&self, selector: Felt) -> Result<Model, Error> {
+        let model = self.storage.model(selector).await?;
 
         let mut cache = self.model_cache.write().await;
-
-        let model = Model {
-            namespace,
-            name,
-            selector: *selector,
-            class_hash,
-            contract_address,
-            packed_size,
-            unpacked_size,
-            layout,
-            schema,
-        };
-        cache.insert(*selector, model.clone());
+        let s = naming::compute_selector_from_names(&model.namespace, &model.name);
+        cache.insert(s, model.clone());
 
         Ok(model)
     }
@@ -167,29 +224,25 @@ pub enum TokenState {
 }
 
 #[derive(Debug)]
-pub struct LocalCache {
-    pub erc_cache: DashMap<String, I256>,
+pub struct ErcCache {
+    pub balances_diff: DashMap<String, I256>,
     // the registry is a map of token_id to a mutex that is used to track if the token is registered
     // we need a mutex for the token state to prevent race conditions in case of multiple token regs
     pub token_id_registry: DashMap<String, TokenState>,
 }
 
-impl LocalCache {
-    pub async fn new(pool: Pool<Sqlite>) -> Self {
+impl ErcCache {
+    pub async fn new(storage: Arc<dyn ReadOnlyStorage>) -> Result<Self, Error> {
         // read existing token_id's from balances table and cache them
-        let token_id_registry: Vec<String> =
-            sqlx::query_scalar(&format!("SELECT id FROM {TOKENS_TABLE}"))
-                .fetch_all(&pool)
-                .await
-                .expect("Should be able to read token_id's from blances table");
+        let token_id_registry: HashSet<String> = storage.token_ids().await?;
 
-        Self {
-            erc_cache: DashMap::new(),
+        Ok(Self {
+            balances_diff: DashMap::new(),
             token_id_registry: token_id_registry
                 .iter()
                 .map(|token_id| (token_id.clone(), TokenState::Registered))
                 .collect(),
-        }
+        })
     }
 
     pub async fn get_token_registration_lock(&self, token_id: &str) -> Option<Arc<Mutex<()>>> {
@@ -271,7 +324,7 @@ impl<P: Provider + Sync + std::fmt::Debug> ContractClassCache<P> {
                         .get_class_hash_at(block_id, contract_address)
                         .await?
                 }
-                _ => return Err(Error::ProviderError(e)),
+                _ => return Err(Error::Provider(e)),
             },
         };
         let class = match self

@@ -95,10 +95,20 @@ jobs:
           # See: https://github.com/jemalloc/jemalloc/issues/467
           echo "JEMALLOC_SYS_WITH_LG_PAGE=16" >> $GITHUB_ENV
 
+      # Workaround for https://github.com/actions/runner-images/issues/12432
+      # from https://github.com/rust-lang/rust/issues/141626#issuecomment-2919419236
+      # Visual Studio bug tracker https://developercommunity.visualstudio.com/t/Regression-from-1943:-linkexe-crashes/10912960
+      - name: Setup RUSTFLAGS (Windows)
+        if: ${{ matrix.job.target == 'x86_64-pc-windows-msvc' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('RUSTFLAGS', '-Csymbol-mangling-version=v0');
+
       - name: Build binary
         run: |
           cargo --version
-          cargo build -p torii --release --target ${{ matrix.job.target }}
+          cargo build --bin torii --release --target ${{ matrix.job.target }}
 
       - name: Archive binaries
         id: artifacts
@@ -114,6 +124,7 @@ jobs:
             gtar -czvf "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" -C ./target/${TARGET}/release torii
             echo "file_name=torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.tar.gz" >> $GITHUB_OUTPUT
           else
+            ls ./target/${TARGET}/release
             cd ./target/${TARGET}/release
             7z a -tzip "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" torii.exe
             mv "torii_${VERSION_NAME}_${PLATFORM_NAME}_${ARCH}.zip" ../../../

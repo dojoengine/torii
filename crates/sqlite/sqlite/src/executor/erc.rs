@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use cainome::cairo_serde::CairoSerde;
 use starknet::core::types::{BlockId, BlockTag, FunctionCall, U256};
-use starknet::core::utils::get_selector_from_name;
+use starknet::macros::selector;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use tracing::{debug, warn};
@@ -14,11 +14,11 @@ use crate::error::Error;
 use crate::executor::LOG_TARGET;
 use crate::simple_broker::SimpleBroker;
 use crate::types::{OptimisticTokenBalance, TokenBalance};
-use crate::utils::{sql_string_to_u256, u256_to_sql_string, I256};
+use crate::utils::{sql_string_to_u256, u256_to_sql_string};
+use torii_math::I256;
 
 #[derive(Debug, Clone)]
 pub struct RegisterNftTokenQuery {
-    pub id: String,
     pub contract_address: Felt,
     pub token_id: U256,
     pub metadata: String,
@@ -34,7 +34,6 @@ pub struct UpdateNftMetadataQuery {
 
 #[derive(Debug, Clone)]
 pub struct RegisterErc20TokenQuery {
-    pub token_id: String,
     pub contract_address: Felt,
     pub name: String,
     pub symbol: String,
@@ -47,8 +46,8 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         apply_balance_diff: ApplyBalanceDiffQuery,
         provider: Arc<P>,
     ) -> Result<(), Error> {
-        let erc_cache = apply_balance_diff.erc_cache;
-        for (id_str, balance) in erc_cache.iter() {
+        let balances_diff = apply_balance_diff.balances_diff;
+        for (id_str, balance) in balances_diff.iter() {
             let id = id_str.split(SQL_FELT_DELIMITER).collect::<Vec<&str>>();
             match id.len() {
                 2 => {
@@ -148,7 +147,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     .call(
                         FunctionCall {
                             contract_address: Felt::from_str(contract_address).unwrap(),
-                            entry_point_selector: get_selector_from_name("balance_of").unwrap(),
+                            entry_point_selector: selector!("balance_of"),
                             calldata: vec![Felt::from_str(account_address).unwrap()],
                         },
                         block_id,
@@ -161,7 +160,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         .call(
                             FunctionCall {
                                 contract_address: Felt::from_str(contract_address).unwrap(),
-                                entry_point_selector: get_selector_from_name("balanceOf").unwrap(),
+                                entry_point_selector: selector!("balanceOf"),
                                 calldata: vec![Felt::from_str(account_address).unwrap()],
                             },
                             block_id,

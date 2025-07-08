@@ -1,19 +1,18 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use dojo_types::naming::compute_selector_from_names;
+use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{BlockId, Event};
 use starknet::providers::Provider;
-use torii_sqlite::Sql;
+use torii_proto::Model;
 use tracing::{debug, info};
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorContext};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::register_event";
 
@@ -56,19 +55,10 @@ where
         hasher.finish()
     }
 
-    async fn process(
-        &self,
-        world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        block_number: u64,
-        block_timestamp: u64,
-        _event_id: &str,
-        event: &Event,
-        config: &EventProcessorConfig,
-    ) -> Result<(), Error> {
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
-        let event = match WorldEvent::try_from(event).unwrap_or_else(|_| {
+        let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
             panic!(
                 "Expected {} event to be well formed.",
                 <RegisterEventProcessor as EventProcessor<P>>::event_key(self)
@@ -83,10 +73,11 @@ where
         // Safe to unwrap, since it's coming from the chain.
         let namespace = event.namespace.to_string().unwrap();
         let name = event.name.to_string().unwrap();
+        let selector = compute_selector_from_names(&namespace, &name);
 
         // If the namespace is not in the list of namespaces to index, silently ignore it.
         // If our config is empty, we index all namespaces.
-        if !config.should_index(&namespace) {
+        if !ctx.config.should_index(&namespace) {
             return Ok(());
         }
 
@@ -97,13 +88,19 @@ where
             &name,
             event.address.0,
             event.class_hash.0,
-            &world,
+            &ctx.world,
         )
         .await;
-        if config.strict_model_reader {
-            model.set_block(BlockId::Number(block_number)).await;
+        if ctx.config.strict_model_reader {
+            model.set_block(BlockId::Number(ctx.block_number)).await;
         }
-        let schema = model.schema().await?;
+        let mut schema = model.schema().await?;
+        match &mut schema {
+            Ty::Struct(struct_ty) => {
+                struct_ty.name = format!("{}-{}", namespace, struct_ty.name);
+            }
+            _ => unreachable!(),
+        }
         let layout = model.layout().await?;
 
         // Events are never stored onchain, hence no packing or unpacking.
@@ -129,19 +126,37 @@ where
             "Registered event content."
         );
 
-        db.register_model(
-            &namespace,
-            &schema,
-            layout,
-            event.class_hash.into(),
-            event.address.into(),
-            packed_size,
-            unpacked_size,
-            block_timestamp,
-            None,
-            None,
-        )
-        .await?;
+        ctx.storage
+            .register_model(
+                selector,
+                &schema,
+                &layout,
+                event.class_hash.into(),
+                event.address.into(),
+                packed_size,
+                unpacked_size,
+                ctx.block_timestamp,
+                None,
+                None,
+            )
+            .await?;
+
+        ctx.cache
+            .register_model(
+                selector,
+                Model {
+                    selector,
+                    namespace,
+                    name,
+                    class_hash: event.class_hash.into(),
+                    contract_address: event.address.into(),
+                    packed_size,
+                    unpacked_size,
+                    layout,
+                    schema,
+                },
+            )
+            .await;
 
         Ok(())
     }

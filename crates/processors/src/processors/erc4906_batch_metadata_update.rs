@@ -1,18 +1,16 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
-use dojo_world::contracts::world::WorldContractReader;
 use futures_util::future::try_join_all;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
-use torii_sqlite::Sql;
 use tracing::debug;
 
-use crate::error::Error;
+use crate::erc::fetch_token_metadata;
+use crate::error::{Error, TokenMetadataError};
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorConfig};
+use crate::{EventProcessor, EventProcessorContext};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc4906_metadata_update_batch";
 
@@ -60,39 +58,35 @@ where
     //     dependencies
     // }
 
-    async fn process(
-        &self,
-        world: Arc<WorldContractReader<P>>,
-        db: &mut Sql,
-        _block_number: u64,
-        _block_timestamp: u64,
-        _event_id: &str,
-        event: &Event,
-        _config: &EventProcessorConfig,
-    ) -> Result<(), Error> {
-        let token_address = event.from_address;
-        let from_token_id = U256Cainome::cairo_deserialize(&event.keys, 1)?;
+    async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
+        let token_address = ctx.event.from_address;
+        let from_token_id = U256Cainome::cairo_deserialize(&ctx.event.keys, 1)?;
         let from_token_id = U256::from_words(from_token_id.low, from_token_id.high);
 
-        let to_token_id = U256Cainome::cairo_deserialize(&event.keys, 3)?;
+        let to_token_id = U256Cainome::cairo_deserialize(&ctx.event.keys, 3)?;
         let to_token_id = U256::from_words(to_token_id.low, to_token_id.high);
 
         let mut tasks = Vec::new();
         let mut token_id = from_token_id;
 
         while token_id <= to_token_id {
-            let mut db_clone = db.clone();
-            let world_clone = world.clone();
+            let storage = ctx.storage.clone();
+            let nft_metadata_semaphore = ctx.nft_metadata_semaphore.clone();
+            let world = ctx.world.clone();
             let token_address_clone = token_address;
             let current_token_id = token_id;
 
             tasks.push(tokio::spawn(async move {
-                db_clone
-                    .update_nft_metadata(
-                        world_clone.provider(),
-                        token_address_clone,
-                        current_token_id,
-                    )
+                let _permit = nft_metadata_semaphore
+                    .acquire()
+                    .await
+                    .map_err(TokenMetadataError::AcquireError)?;
+
+                let metadata =
+                    fetch_token_metadata(token_address_clone, current_token_id, world.provider())
+                        .await?;
+                storage
+                    .update_nft_metadata(token_address_clone, current_token_id, metadata)
                     .await?;
                 Result::<_, Error>::Ok(())
             }));
