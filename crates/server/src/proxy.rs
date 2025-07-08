@@ -21,6 +21,7 @@ use tokio::sync::RwLock;
 use tokio_rustls::TlsAcceptor;
 use tower::ServiceBuilder;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tracing::{debug, error, warn};
 
 use crate::handlers::graphql::GraphQLHandler;
 use crate::handlers::grpc::GrpcHandler;
@@ -28,6 +29,8 @@ use crate::handlers::mcp::McpHandler;
 use crate::handlers::sql::SqlHandler;
 use crate::handlers::static_files::StaticHandler;
 use crate::handlers::Handler;
+
+pub const LOG_TARGET: &str = "torii::server::proxy";
 
 const DEFAULT_ALLOW_HEADERS: [&str; 13] = [
     "accept",
@@ -236,18 +239,19 @@ impl Proxy {
                                                 .serve_connection(tls_stream, service)
                                                 .await
                                             {
-                                                eprintln!("Error serving connection: {}", e);
+                                                error!(target: LOG_TARGET, error = ?e, "Serving connection.");
                                             }
                                         }
                                         Err(_) => {
                                             // TLS handshake failures are typically user errors (HTTP to HTTPS)
-                                            // so we don't log them to avoid noise
+                                            // Log the client address for debugging purposes
+                                            debug!(target: LOG_TARGET, remote_addr = %remote_addr, "Failed TLS handshake.");
                                         }
                                     }
                                 });
                             }
                             Err(e) => {
-                                eprintln!("Failed to accept connection: {}", e);
+                                warn!(target: LOG_TARGET, error = ?e, "Failed to accept connection.");
                             }
                         }
                     }
