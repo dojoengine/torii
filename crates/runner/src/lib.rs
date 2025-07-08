@@ -576,27 +576,32 @@ async fn stream_snapshot_into_file(
     span.pb_set_style(
         &indicatif::ProgressStyle::default_bar()
             .template(
-                "{msg} [{elapsed_precise}] \n[{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {percent}%",
+                " {spinner:.cyan} snapshot [{bar:40.cyan/blue}]  {bytes}/{total_bytes} Downloading{wide_msg:>50.blue}",
             )?
-            .progress_chars("█▓░"),
+            .progress_chars("⣿⣤⠀")
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
     );
     span.pb_set_length(total_size);
-    span.pb_set_message(&format!("Downloading {}", url));
+    span.pb_set_message(&format!(" {:.1}s", 0.0));
 
     let instrumented_future = async {
         let mut file = File::create(destination_path).await?;
         let mut downloaded: u64 = 0;
         let mut stream = response.bytes_stream();
+        let start_time = std::time::Instant::now();
 
         while let Some(item) = stream.next().await {
             let chunk = item?;
             file.write_all(&chunk).await?;
             let new = cmp::min(downloaded.saturating_add(chunk.len() as u64), total_size);
             downloaded = new;
+            let elapsed = start_time.elapsed().as_secs_f64();
             Span::current().pb_set_position(new);
+            Span::current().pb_set_message(&format!(" {:.1}s", elapsed));
         }
 
-        Span::current().pb_set_message("Downloaded snapshot successfully");
+        let elapsed = start_time.elapsed().as_secs_f64();
+        Span::current().pb_set_message(&format!(" {:.1}s", elapsed));
         Ok(())
     }
     .instrument(span);
