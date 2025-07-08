@@ -69,6 +69,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         }
     }
 
+    pub fn pending_tasks_count(&self) -> usize {
+        self.task_network.len()
+    }
+
     pub fn add_parallelized_event(
         &mut self,
         task_identifier: TaskId,

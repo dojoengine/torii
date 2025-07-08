@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use futures_util::future::try_join_all;
 use hashlink::LinkedHashMap;
+use metrics::{counter, histogram};
 use starknet::core::types::requests::{
     GetBlockWithTxHashesRequest, GetEventsRequest, GetTransactionByHashRequest,
 };
@@ -39,23 +40,35 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
     }
 
     pub async fn fetch(&self, cursors: &HashMap<Felt, Cursor>) -> Result<FetchResult, Error> {
+        let fetch_start = Instant::now();
+
         let latest_block = self.provider.block_hash_and_number().await?;
         let latest_block_number = latest_block.block_number;
 
-        let instant = Instant::now();
+        let range_start = Instant::now();
         // Fetch all events from 'from' to our blocks chunk size
         let range = self.fetch_range(cursors, latest_block.clone()).await?;
-        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), cursors = ?cursors, "Fetched data for range.");
+        histogram!("torii_fetcher_range_duration_seconds")
+            .record(range_start.elapsed().as_secs_f64());
+        debug!(target: LOG_TARGET, duration = ?range_start.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
         let pending = if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
             && cursors
                 .values()
                 .any(|c| c.head == Some(latest_block_number))
         {
-            self.fetch_pending(latest_block, cursors).await?
+            let pending_start = Instant::now();
+            let pending_result = self.fetch_pending(latest_block, cursors).await?;
+            histogram!("torii_fetcher_pending_duration_seconds")
+                .record(pending_start.elapsed().as_secs_f64());
+            pending_result
         } else {
             None
         };
+
+        histogram!("torii_fetcher_total_duration_seconds")
+            .record(fetch_start.elapsed().as_secs_f64());
+        counter!("torii_fetcher_fetch_total", "status" => "success").increment(1);
 
         Ok(FetchResult { range, pending })
     }
@@ -103,10 +116,14 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         }
 
         // Step 2: Fetch all events recursively
-        events.extend(
-            self.fetch_events(event_requests, &mut cursors, latest_block.block_number)
-                .await?,
-        );
+        let events_start = Instant::now();
+        let fetched_events = self
+            .fetch_events(event_requests, &mut cursors, latest_block.block_number)
+            .await?;
+        histogram!("torii_fetcher_events_duration_seconds")
+            .record(events_start.elapsed().as_secs_f64());
+        counter!("torii_fetcher_events_fetched_total").increment(fetched_events.len() as u64);
+        events.extend(fetched_events);
 
         // Step 3: Collect unique block numbers from events and cursors
         for event in &events {
@@ -120,6 +137,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
 
         // Step 4: Fetch block data (timestamps and transaction hashes)
         let mut block_requests = Vec::new();
+        counter!("torii_fetcher_blocks_to_fetch_total").increment(block_numbers.len() as u64);
         for block_number in &block_numbers {
             block_requests.push(ProviderRequestData::GetBlockWithTxHashes(
                 GetBlockWithTxHashesRequest {
@@ -372,7 +390,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
 
             debug!(target: LOG_TARGET, "Retrieving events for contracts.");
             let instant = Instant::now();
+            histogram!("torii_fetcher_batch_size").record(batch_requests.len() as f64);
             let batch_results = self.chunked_batch_requests(&batch_requests).await?;
+            histogram!("torii_fetcher_rpc_batch_duration_seconds")
+                .record(instant.elapsed().as_secs_f64());
+            counter!("torii_fetcher_rpc_requests_total").increment(batch_requests.len() as u64);
             debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Retrieved events for contracts.");
 
             // Process results and prepare next batch of requests if needed
@@ -471,9 +493,20 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
             futures.push(async move {
                 let mut attempt = 0;
                 loop {
+                    let rpc_start = Instant::now();
                     match self.provider.batch_requests(chunk).await {
-                        Ok(results) => return Ok::<Vec<ProviderResponseData>, Error>(results),
+                        Ok(results) => {
+                            histogram!("torii_fetcher_rpc_duration_seconds")
+                                .record(rpc_start.elapsed().as_secs_f64());
+                            counter!("torii_fetcher_rpc_requests_total", "status" => "success")
+                                .increment(chunk.len() as u64);
+                            return Ok::<Vec<ProviderResponseData>, Error>(results);
+                        }
                         Err(e) => {
+                            counter!("torii_fetcher_rpc_requests_total", "status" => "error")
+                                .increment(chunk.len() as u64);
+                            counter!("torii_fetcher_errors_total", "operation" => "batch_request")
+                                .increment(1);
                             if attempt < MAX_RETRIES {
                                 let backoff = INITIAL_BACKOFF * 2u32.pow(attempt);
                                 warn!(

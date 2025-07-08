@@ -477,12 +477,17 @@ impl Runner {
         }
 
         let engine_handle = tokio::spawn(async move { engine.start().await });
+
         let proxy_server_handle =
             tokio::spawn(async move { proxy_server.start(shutdown_tx.subscribe()).await });
+
         let graphql_server_handle = tokio::spawn(graphql_server);
+
         let grpc_server_handle = tokio::spawn(grpc_server);
+
         let libp2p_relay_server_handle =
             tokio::spawn(async move { libp2p_relay_server.run().await });
+
         let artifacts_server_handle = tokio::spawn(artifacts_server);
 
         tokio::select! {
