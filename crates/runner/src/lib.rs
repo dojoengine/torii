@@ -391,7 +391,10 @@ impl Runner {
         let (final_cert_path, final_key_path) = if self.args.server.mkcert {
             if self.args.server.tls_cert_path.is_some() || self.args.server.tls_key_path.is_some() {
                 warn!(target: LOG_TARGET, "mkcert flag is set but explicit TLS paths are also provided. Using explicit paths.");
-                (self.args.server.tls_cert_path.clone(), self.args.server.tls_key_path.clone())
+                (
+                    self.args.server.tls_cert_path.clone(),
+                    self.args.server.tls_key_path.clone(),
+                )
             } else {
                 match generate_mkcert_certificates().await {
                     Ok((cert_path, key_path)) => {
@@ -405,7 +408,10 @@ impl Runner {
                 }
             }
         } else {
-            (self.args.server.tls_cert_path.clone(), self.args.server.tls_key_path.clone())
+            (
+                self.args.server.tls_cert_path.clone(),
+                self.args.server.tls_key_path.clone(),
+            )
         };
 
         // Configure TLS if certificates are provided
@@ -648,7 +654,7 @@ async fn generate_mkcert_certificates() -> anyhow::Result<(String, String)> {
     // Convert temp paths to permanent paths to avoid cleanup
     let permanent_cert_path = std::env::temp_dir().join("torii-cert.pem");
     let permanent_key_path = std::env::temp_dir().join("torii-key.pem");
-    
+
     tokio::fs::copy(&cert_path, &permanent_cert_path).await?;
     tokio::fs::copy(&key_path, &permanent_key_path).await?;
 
