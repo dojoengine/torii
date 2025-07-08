@@ -239,8 +239,9 @@ impl Proxy {
                                                 eprintln!("Error serving connection: {}", e);
                                             }
                                         }
-                                        Err(e) => {
-                                            eprintln!("TLS handshake failed: {}", e);
+                                        Err(_) => {
+                                            // TLS handshake failures are typically user errors (HTTP to HTTPS)
+                                            // so we don't log them to avoid noise
                                         }
                                     }
                                 });

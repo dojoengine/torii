@@ -387,11 +387,29 @@ impl Runner {
             self.version_spec.clone(),
         );
 
+        // Handle mkcert certificate generation
+        let (final_cert_path, final_key_path) = if self.args.server.mkcert {
+            if self.args.server.tls_cert_path.is_some() || self.args.server.tls_key_path.is_some() {
+                warn!(target: LOG_TARGET, "mkcert flag is set but explicit TLS paths are also provided. Using explicit paths.");
+                (self.args.server.tls_cert_path.clone(), self.args.server.tls_key_path.clone())
+            } else {
+                match generate_mkcert_certificates().await {
+                    Ok((cert_path, key_path)) => {
+                        info!(target: LOG_TARGET, cert_path = %cert_path, key_path = %key_path, "Successfully generated mkcert certificates");
+                        (Some(cert_path), Some(key_path))
+                    }
+                    Err(e) => {
+                        error!(target: LOG_TARGET, error = ?e, "Failed to generate mkcert certificates. Falling back to HTTP.");
+                        (None, None)
+                    }
+                }
+            }
+        } else {
+            (self.args.server.tls_cert_path.clone(), self.args.server.tls_key_path.clone())
+        };
+
         // Configure TLS if certificates are provided
-        if let (Some(cert_path), Some(key_path)) = (
-            &self.args.server.tls_cert_path,
-            &self.args.server.tls_key_path,
-        ) {
+        if let (Some(cert_path), Some(key_path)) = (&final_cert_path, &final_key_path) {
             let tls_config = torii_server::TlsConfig {
                 cert_path: cert_path.clone(),
                 key_path: key_path.clone(),
@@ -401,9 +419,7 @@ impl Runner {
             proxy_server = proxy_server
                 .with_tls_config(tls_config)
                 .map_err(|e| anyhow::anyhow!("Failed to configure TLS: {}", e))?;
-        } else if self.args.server.tls_cert_path.is_some()
-            || self.args.server.tls_key_path.is_some()
-        {
+        } else if final_cert_path.is_some() || final_key_path.is_some() {
             warn!(target: LOG_TARGET, "TLS configuration incomplete. Both tls_cert_path and tls_key_path are required for HTTPS. Falling back to HTTP.");
         }
 
@@ -415,9 +431,7 @@ impl Runner {
             proxy_server.clone(),
         );
 
-        let protocol = if self.args.server.tls_cert_path.is_some()
-            && self.args.server.tls_key_path.is_some()
-        {
+        let protocol = if final_cert_path.is_some() && final_key_path.is_some() {
             "https"
         } else {
             "http"
@@ -582,4 +596,64 @@ async fn stream_snapshot_into_file(
     .instrument(span);
 
     instrumented_future.await
+}
+
+async fn generate_mkcert_certificates() -> anyhow::Result<(String, String)> {
+    // Check if mkcert is installed
+    let check_output = tokio::process::Command::new("mkcert")
+        .arg("-version")
+        .output()
+        .await;
+
+    if check_output.is_err() {
+        return Err(anyhow::anyhow!("mkcert is not installed. Please install mkcert first: https://github.com/FiloSottile/mkcert"));
+    }
+
+    // Create a temporary directory for certificates
+    let temp_dir = TempDir::new()?;
+    let cert_path = temp_dir.path().join("localhost.pem");
+    let key_path = temp_dir.path().join("localhost-key.pem");
+
+    // Install the CA certificate
+    let install_output = tokio::process::Command::new("mkcert")
+        .arg("-install")
+        .output()
+        .await?;
+
+    if !install_output.status.success() {
+        return Err(anyhow::anyhow!(
+            "Failed to install mkcert CA: {}",
+            String::from_utf8_lossy(&install_output.stderr)
+        ));
+    }
+
+    // Generate certificates for localhost and 127.0.0.1
+    let output = tokio::process::Command::new("mkcert")
+        .arg("-cert-file")
+        .arg(&cert_path)
+        .arg("-key-file")
+        .arg(&key_path)
+        .arg("localhost")
+        .arg("127.0.0.1")
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        return Err(anyhow::anyhow!(
+            "Failed to generate mkcert certificates: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    // Convert temp paths to permanent paths to avoid cleanup
+    let permanent_cert_path = std::env::temp_dir().join("torii-cert.pem");
+    let permanent_key_path = std::env::temp_dir().join("torii-key.pem");
+    
+    tokio::fs::copy(&cert_path, &permanent_cert_path).await?;
+    tokio::fs::copy(&key_path, &permanent_key_path).await?;
+
+    Ok((
+        permanent_cert_path.to_string_lossy().to_string(),
+        permanent_key_path.to_string_lossy().to_string(),
+    ))
 }
