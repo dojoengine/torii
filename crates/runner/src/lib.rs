@@ -31,6 +31,7 @@ use starknet::core::types::{BlockId, BlockTag};
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
 use tempfile::{NamedTempFile, TempDir};
+use terminal_size::{Width, Height, terminal_size};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
@@ -57,6 +58,39 @@ use url::form_urlencoded;
 mod constants;
 
 use crate::constants::LOG_TARGET;
+
+/// Creates a responsive progress bar template based on terminal size
+fn create_progress_bar_template() -> String {
+    let (terminal_width, msg_width) = if let Some((Width(w), Height(_))) = terminal_size() {
+        // Calculate appropriate widths based on terminal size
+        let width = w as usize;
+        let min_width = 80;
+        let max_width = 120;
+        let effective_width = cmp::max(min_width, cmp::min(width, max_width));
+        
+        // Calculate progress bar width (reserve space for other elements)
+        // " {spinner:.yellow} snapshot [BAR] {bytes}/{total_bytes} Downloading{msg}"
+        let reserved_space = 50; // Space for spinner, labels, bytes, etc.
+        let bar_width = if effective_width > reserved_space {
+            effective_width - reserved_space
+        } else {
+            30 // Minimum bar width
+        };
+        
+        // Calculate message width
+        let msg_width = cmp::min(20, cmp::max(10, (effective_width - reserved_space) / 4));
+        
+        (bar_width, msg_width)
+    } else {
+        // Default values if terminal size cannot be determined
+        (40, 20)
+    };
+    
+    format!(
+        " {{spinner:.yellow}} snapshot [{{bar:{}.cyan/blue}}] {{bytes}}/{{total_bytes}} Downloading{{wide_msg:>{}.blue}}",
+        terminal_width, msg_width
+    )
+}
 
 #[derive(Debug)]
 pub struct Runner {
@@ -575,9 +609,7 @@ async fn stream_snapshot_into_file(
     let span = info_span!("download_snapshot", url);
     span.pb_set_style(
         &indicatif::ProgressStyle::default_bar()
-            .template(
-                " {spinner:.cyan} snapshot [{bar:40.cyan/blue}]  {bytes}/{total_bytes} Downloading{wide_msg:>50.blue}",
-            )?
+            .template(&create_progress_bar_template())?
             .progress_chars("⣿⣤⠀")
             .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
     );
