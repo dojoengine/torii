@@ -69,7 +69,7 @@ fn create_progress_bar_template() -> String {
         let effective_width = cmp::max(min_width, cmp::min(width, max_width));
 
         // Calculate message width first (needs space for " XX.Xs" format)
-        let msg_width = cmp::max(8, cmp::min(20, effective_width / 8)); // Ensure at least 8 chars for seconds
+        let msg_width = (effective_width / 8).clamp(8, 20); // Ensure at least 8 chars for seconds
 
         // Calculate progress bar width (reserve space for other elements)
         // " {spinner:.yellow} snapshot [BAR] {bytes}/{total_bytes} Downloading{msg}"
