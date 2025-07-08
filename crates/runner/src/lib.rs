@@ -615,8 +615,8 @@ async fn generate_mkcert_certificates() -> anyhow::Result<(String, String)> {
         return Err(anyhow::anyhow!("mkcert is not installed. Please install mkcert first: https://github.com/FiloSottile/mkcert"));
     }
 
-    // Create persistent directory for certificates
-    let cert_dir = std::env::current_dir()?.join(".torii-certs");
+    // Create directory for certificates in temp dir
+    let cert_dir = std::env::temp_dir().join("torii-certs");
     tokio::fs::create_dir_all(&cert_dir).await?;
 
     let cert_path = cert_dir.join("localhost.pem");
