@@ -270,6 +270,13 @@ pub struct ServerOptions {
         help = "Path to the SSL private key file (.pem). Required when tls_cert_path is provided."
     )]
     pub tls_key_path: Option<String>,
+
+    /// Use mkcert to generate and install local development certificates
+    #[arg(
+        long = "http.mkcert",
+        help = "Use mkcert to automatically generate and install local development certificates for HTTPS. This will create certificates for localhost and 127.0.0.1."
+    )]
+    pub mkcert: bool,
 }
 
 impl Default for ServerOptions {
@@ -280,6 +287,7 @@ impl Default for ServerOptions {
             http_cors_origins: None,
             tls_cert_path: None,
             tls_key_path: None,
+            mkcert: false,
         }
     }
 }
