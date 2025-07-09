@@ -41,10 +41,9 @@ impl Client {
     /// Returns a initialized [Client].
     pub async fn new(torii_url: String, world: Felt) -> Result<Self, Error> {
         let grpc_client = WorldClient::new(torii_url.clone(), world).await?;
-        
+
         // Initialize hyper client
-        let http_client = HyperClient::builder()
-            .build_http();
+        let http_client = HyperClient::builder().build_http();
 
         Ok(Self {
             inner: RwLock::new(grpc_client),
@@ -57,7 +56,7 @@ impl Client {
     /// Returns the JSON response from the server.
     pub async fn sql(&self, query: String) -> Result<Vec<Row>, Error> {
         let url = format!("{}/sql", self.torii_url);
-        
+
         let req = Request::builder()
             .method("POST")
             .uri(url)
@@ -65,12 +64,17 @@ impl Client {
             .body(Body::from(query))
             .map_err(|e| Error::Http(e.to_string()))?;
 
-        let res = self.http_client
+        let res = self
+            .http_client
             .request(req)
             .await
             .map_err(|e| Error::Http(e.to_string()))?;
 
-        let body_bytes = res.into_body().collect().await.map_err(|e| Error::Http(e.to_string()))?;
+        let body_bytes = res
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| Error::Http(e.to_string()))?;
 
         let rows = serde_json::from_slice(&body_bytes.to_bytes())
             .map_err(|e| Error::Http(e.to_string()))?;
