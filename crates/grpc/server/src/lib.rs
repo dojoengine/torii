@@ -346,7 +346,11 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(RetrieveTokenCollectionsResponse {
-            tokens: token_collections.items.into_iter().map(Into::into).collect(),
+            tokens: token_collections
+                .items
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             next_cursor: token_collections.next_cursor.unwrap_or_default(),
         }))
     }

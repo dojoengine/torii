@@ -12,7 +12,9 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    schema::Entity, Clause, CompositeClause, Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery
+    schema::Entity, Clause, CompositeClause, Controller, ControllerQuery, Event, EventQuery,
+    LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection,
+    TokenQuery,
 };
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
@@ -179,10 +181,7 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Returns the controllers for the storage.
-    async fn controllers(
-        &self,
-        query: &ControllerQuery,
-    ) -> Result<Page<Controller>, StorageError> {
+    async fn controllers(&self, query: &ControllerQuery) -> Result<Page<Controller>, StorageError> {
         let executor = PaginationExecutor::new(self.pool.clone());
         let mut query_builder = QueryBuilder::new("controllers").select(&[
             "address".to_string(),
@@ -224,10 +223,7 @@ impl ReadOnlyStorage for Sql {
         })
     }
 
-    async fn tokens(
-        &self,
-        query: &TokenQuery,
-    ) -> Result<Page<Token>, StorageError> {
+    async fn tokens(&self, query: &TokenQuery) -> Result<Page<Token>, StorageError> {
         let executor = PaginationExecutor::new(self.pool.clone());
         let mut query_builder = QueryBuilder::new("tokens").select(&["*".to_string()]);
 
@@ -244,7 +240,8 @@ impl ReadOnlyStorage for Sql {
             let placeholders = vec!["?"; query.token_ids.len()].join(", ");
             query_builder = query_builder.where_clause(&format!("token_id IN ({})", placeholders));
             for token_id in &query.token_ids {
-                query_builder = query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
+                query_builder =
+                    query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
             }
         }
 
@@ -296,7 +293,8 @@ impl ReadOnlyStorage for Sql {
                 placeholders
             ));
             for token_id in &query.token_ids {
-                query_builder = query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
+                query_builder =
+                    query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
             }
         }
 
@@ -360,7 +358,8 @@ impl ReadOnlyStorage for Sql {
             query_builder =
                 query_builder.where_clause(&format!("t.token_id IN ({})", placeholders));
             for token_id in &query.token_ids {
-                query_builder = query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
+                query_builder =
+                    query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
             }
         }
 

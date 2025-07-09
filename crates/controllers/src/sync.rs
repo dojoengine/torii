@@ -59,21 +59,19 @@ impl ControllersSync {
     pub async fn new(storage: Arc<dyn Storage>) -> Result<Self, Error> {
         // Our controllers are sorted by deployed_at in descending order, so we can use the first one as the cursor.
         let cursor: Option<DateTime<Utc>> = storage
-            .controllers(
-                &ControllerQuery {
-                    contract_addresses: vec![],
-                    usernames: vec![],
-                    pagination: Pagination {
-                        cursor: None,
-                        limit: Some(1),
-                        direction: PaginationDirection::Forward,
-                        order_by: vec![OrderBy {
-                            field: "deployed_at".to_string(),
-                            direction: OrderDirection::Desc,
-                        }],
-                    },
+            .controllers(&ControllerQuery {
+                contract_addresses: vec![],
+                usernames: vec![],
+                pagination: Pagination {
+                    cursor: None,
+                    limit: Some(1),
+                    direction: PaginationDirection::Forward,
+                    order_by: vec![OrderBy {
+                        field: "deployed_at".to_string(),
+                        direction: OrderDirection::Desc,
+                    }],
                 },
-            )
+            })
             .await?
             .items
             .first()

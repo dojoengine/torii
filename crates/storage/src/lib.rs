@@ -14,7 +14,8 @@ use torii_proto::schema::Entity;
 
 use crate::types::{Cursor, ParsedCall};
 use torii_proto::{
-    Controller, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenCollection, ControllerQuery, TokenQuery, TokenBalanceQuery,
+    Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance,
+    TokenBalanceQuery, TokenCollection, TokenQuery,
 };
 
 pub mod types;
@@ -42,16 +43,10 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     async fn token_ids(&self) -> Result<HashSet<String>, StorageError>;
 
     /// Returns the controllers for the storage.
-    async fn controllers(
-        &self,
-        query: &ControllerQuery,
-    ) -> Result<Page<Controller>, StorageError>;
+    async fn controllers(&self, query: &ControllerQuery) -> Result<Page<Controller>, StorageError>;
 
     /// Returns the tokens for the storage.
-    async fn tokens(
-        &self,
-        query: &TokenQuery,
-    ) -> Result<Page<Token>, StorageError>;
+    async fn tokens(&self, query: &TokenQuery) -> Result<Page<Token>, StorageError>;
 
     /// Returns the token balances for the storage.
     async fn token_balances(

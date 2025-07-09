@@ -32,7 +32,8 @@ use torii_proto::proto::world::{
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Event, EventQuery, IndexerUpdate, KeysClause, Message, Query, Token, TokenBalance,
+    Clause, ControllerQuery, Event, EventQuery, IndexerUpdate, KeysClause, Message, Query, Token,
+    TokenBalance, TokenBalanceQuery, TokenQuery,
 };
 
 pub use torii_proto as types;
@@ -111,20 +112,11 @@ impl WorldClient {
 
     pub async fn retrieve_controllers(
         &mut self,
-        contract_addresses: Vec<Felt>,
-        usernames: Vec<String>,
-        limit: Option<u32>,
-        cursor: Option<String>,
+        query: ControllerQuery,
     ) -> Result<RetrieveControllersResponse, Error> {
         self.inner
             .retrieve_controllers(RetrieveControllersRequest {
-                contract_addresses: contract_addresses
-                    .into_iter()
-                    .map(|c| c.to_bytes_be().to_vec())
-                    .collect(),
-                usernames: usernames.into_iter().map(|u| u.to_string()).collect(),
-                limit: limit.unwrap_or_default(),
-                cursor: cursor.unwrap_or_default(),
+                query: Some(query.into()),
             })
             .await
             .map_err(Error::Grpc)
@@ -133,23 +125,11 @@ impl WorldClient {
 
     pub async fn retrieve_tokens(
         &mut self,
-        contract_addresses: Vec<Felt>,
-        token_ids: Vec<U256>,
-        limit: Option<u32>,
-        cursor: Option<String>,
+        query: TokenQuery,
     ) -> Result<RetrieveTokensResponse, Error> {
         self.inner
             .retrieve_tokens(RetrieveTokensRequest {
-                contract_addresses: contract_addresses
-                    .into_iter()
-                    .map(|c| c.to_bytes_be().to_vec())
-                    .collect(),
-                token_ids: token_ids
-                    .into_iter()
-                    .map(|id| id.to_be_bytes().to_vec())
-                    .collect(),
-                limit: limit.unwrap_or_default(),
-                cursor: cursor.unwrap_or_default(),
+                query: Some(query.into()),
             })
             .await
             .map_err(Error::Grpc)
@@ -222,28 +202,11 @@ impl WorldClient {
 
     pub async fn retrieve_token_balances(
         &mut self,
-        account_addresses: Vec<Felt>,
-        contract_addresses: Vec<Felt>,
-        token_ids: Vec<U256>,
-        limit: Option<u32>,
-        cursor: Option<String>,
+        query: TokenBalanceQuery,
     ) -> Result<RetrieveTokenBalancesResponse, Error> {
         self.inner
             .retrieve_token_balances(RetrieveTokenBalancesRequest {
-                account_addresses: account_addresses
-                    .into_iter()
-                    .map(|a| a.to_bytes_be().to_vec())
-                    .collect(),
-                contract_addresses: contract_addresses
-                    .into_iter()
-                    .map(|c| c.to_bytes_be().to_vec())
-                    .collect(),
-                token_ids: token_ids
-                    .into_iter()
-                    .map(|id| id.to_be_bytes().to_vec())
-                    .collect(),
-                limit: limit.unwrap_or_default(),
-                cursor: cursor.unwrap_or_default(),
+                query: Some(query.into()),
             })
             .await
             .map_err(Error::Grpc)
@@ -252,28 +215,11 @@ impl WorldClient {
 
     pub async fn retrieve_token_collections(
         &mut self,
-        account_addresses: Vec<Felt>,
-        contract_addresses: Vec<Felt>,
-        token_ids: Vec<U256>,
-        limit: Option<u32>,
-        cursor: Option<String>,
+        query: TokenBalanceQuery,
     ) -> Result<RetrieveTokenCollectionsResponse, Error> {
         self.inner
             .retrieve_token_collections(RetrieveTokenCollectionsRequest {
-                account_addresses: account_addresses
-                    .into_iter()
-                    .map(|a| a.to_bytes_be().to_vec())
-                    .collect(),
-                contract_addresses: contract_addresses
-                    .into_iter()
-                    .map(|c| c.to_bytes_be().to_vec())
-                    .collect(),
-                token_ids: token_ids
-                    .into_iter()
-                    .map(|id| id.to_be_bytes().to_vec())
-                    .collect(),
-                limit: limit.unwrap_or_default(),
-                cursor: cursor.unwrap_or_default(),
+                query: Some(query.into()),
             })
             .await
             .map_err(Error::Grpc)

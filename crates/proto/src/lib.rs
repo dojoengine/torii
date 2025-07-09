@@ -262,7 +262,11 @@ pub struct ControllerQuery {
 impl From<ControllerQuery> for proto::types::ControllerQuery {
     fn from(value: ControllerQuery) -> Self {
         Self {
-            contract_addresses: value.contract_addresses.into_iter().map(|a| a.to_bytes_be().into()).collect(),
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().into())
+                .collect(),
             usernames: value.usernames,
             pagination: Some(value.pagination.into()),
         }
@@ -273,7 +277,11 @@ impl TryFrom<proto::types::ControllerQuery> for ControllerQuery {
     type Error = ProtoError;
     fn try_from(value: proto::types::ControllerQuery) -> Result<Self, Self::Error> {
         Ok(Self {
-            contract_addresses: value.contract_addresses.into_iter().map(|a| Felt::from_bytes_be_slice(&a)).collect(),
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
             usernames: value.usernames,
             pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
         })
@@ -290,8 +298,16 @@ pub struct TokenQuery {
 impl From<TokenQuery> for proto::types::TokenQuery {
     fn from(value: TokenQuery) -> Self {
         Self {
-            contract_addresses: value.contract_addresses.into_iter().map(|a| a.to_bytes_be().into()).collect(),
-            token_ids: value.token_ids.into_iter().map(|id| id.to_be_bytes().to_vec()).collect(),
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().into())
+                .collect(),
+            token_ids: value
+                .token_ids
+                .into_iter()
+                .map(|id| id.to_be_bytes().to_vec())
+                .collect(),
             pagination: Some(value.pagination.into()),
         }
     }
@@ -301,9 +317,17 @@ impl TryFrom<proto::types::TokenQuery> for TokenQuery {
     type Error = ProtoError;
     fn try_from(value: proto::types::TokenQuery) -> Result<Self, Self::Error> {
         Ok(Self {
-            contract_addresses: value.contract_addresses.into_iter().map(|a| Felt::from_bytes_be_slice(&a)).collect(),
-            token_ids: value.token_ids.into_iter().map(|id| U256::from_be_slice(&id)).collect(),
-            pagination: value.pagination.map(|p| p.into()).unwrap_or_default()
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
+            token_ids: value
+                .token_ids
+                .into_iter()
+                .map(|id| U256::from_be_slice(&id))
+                .collect(),
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
         })
     }
 }
@@ -319,9 +343,21 @@ pub struct TokenBalanceQuery {
 impl From<TokenBalanceQuery> for proto::types::TokenBalanceQuery {
     fn from(value: TokenBalanceQuery) -> Self {
         Self {
-            account_addresses: value.account_addresses.into_iter().map(|a| a.to_bytes_be().into()).collect(),
-            contract_addresses: value.contract_addresses.into_iter().map(|a| a.to_bytes_be().into()).collect(),
-            token_ids: value.token_ids.into_iter().map(|id| id.to_be_bytes().to_vec()).collect(),
+            account_addresses: value
+                .account_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().into())
+                .collect(),
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().into())
+                .collect(),
+            token_ids: value
+                .token_ids
+                .into_iter()
+                .map(|id| id.to_be_bytes().to_vec())
+                .collect(),
             pagination: Some(value.pagination.into()),
         }
     }
@@ -331,9 +367,21 @@ impl TryFrom<proto::types::TokenBalanceQuery> for TokenBalanceQuery {
     type Error = ProtoError;
     fn try_from(value: proto::types::TokenBalanceQuery) -> Result<Self, Self::Error> {
         Ok(Self {
-            account_addresses: value.account_addresses.into_iter().map(|a| Felt::from_bytes_be_slice(&a)).collect(),
-            contract_addresses: value.contract_addresses.into_iter().map(|a| Felt::from_bytes_be_slice(&a)).collect(),
-            token_ids: value.token_ids.into_iter().map(|id| U256::from_be_slice(&id)).collect(),
+            account_addresses: value
+                .account_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
+            token_ids: value
+                .token_ids
+                .into_iter()
+                .map(|id| U256::from_be_slice(&id))
+                .collect(),
             pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
         })
     }
@@ -885,7 +933,7 @@ impl From<proto::types::Event> for Event {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct EventQuery {
     pub keys: Option<KeysClause>,
-    pub pagination: Pagination
+    pub pagination: Pagination,
 }
 
 impl From<EventQuery> for proto::types::EventQuery {
