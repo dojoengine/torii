@@ -1,6 +1,11 @@
 pub mod error;
 
 use crypto_bigint::U256;
+use hyper::body::HttpBody;
+use hyper::client::connect::dns::GaiResolver;
+use hyper::client::HttpConnector;
+use hyper::{Body, Client as HyperClient, Request, StatusCode};
+use serde_json::{Map, Value};
 use starknet::core::types::Felt;
 use tokio::sync::RwLock;
 use torii_grpc_client::{
@@ -17,23 +22,72 @@ use torii_proto::{
     World,
 };
 
-use crate::error::Error;
+use crate::error::{Error, SqlError};
 
 #[allow(unused)]
 #[derive(Debug)]
 pub struct Client {
     /// The grpc client.
     inner: RwLock<WorldClient>,
+    /// The HTTP client for SQL queries.
+    http: HyperClient<HttpConnector<GaiResolver>>,
+    /// The base URL for the torii server.
+    torii_url: String,
 }
+
+pub type Row = Map<String, Value>;
 
 impl Client {
     /// Returns a initialized [Client].
     pub async fn new(torii_url: String, world: Felt) -> Result<Self, Error> {
-        let grpc_client = WorldClient::new(torii_url, world).await?;
+        let grpc_client = WorldClient::new(torii_url.clone(), world).await?;
+
+        // Initialize hyper client
+        let http = HyperClient::builder().build_http();
 
         Ok(Self {
             inner: RwLock::new(grpc_client),
+            http,
+            torii_url,
         })
+    }
+
+    /// Executes a SQL query against the torii server.
+    /// Returns the JSON response from the server.
+    pub async fn sql(&self, query: String) -> Result<Vec<Row>, Error> {
+        let url = format!("{}/sql", self.torii_url);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(url)
+            .header("content-type", "application/json")
+            .body(Body::from(query))
+            .map_err(|e| Error::Sql(SqlError::Http(e)))?;
+
+        let res = self
+            .http
+            .request(req)
+            .await
+            .map_err(|e| Error::Sql(SqlError::Hyper(e)))?;
+
+        let status = res.status();
+        let body_bytes = res
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| Error::Sql(SqlError::Hyper(e)))?;
+
+        if status != StatusCode::OK {
+            return Err(Error::Sql(SqlError::Query(
+                String::from_utf8(body_bytes.to_bytes().to_vec())
+                    .map_err(|e| Error::Sql(SqlError::FromUtf8(e)))?,
+            )));
+        }
+
+        let rows = serde_json::from_slice(&body_bytes.to_bytes())
+            .map_err(|e| Error::Sql(SqlError::Serde(e)))?;
+
+        Ok(rows)
     }
 
     /// Publishes an offchain message to the world.
