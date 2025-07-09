@@ -7,7 +7,6 @@ use hyper::client::HttpConnector;
 use hyper::{Body, Client as HyperClient, Request, StatusCode};
 use serde_json::{Map, Value};
 use starknet::core::types::Felt;
-use tokio::sync::RwLock;
 use torii_grpc_client::{
     EntityUpdateStreaming, EventUpdateStreaming, IndexerUpdateStreaming, TokenBalanceStreaming,
     TokenUpdateStreaming, WorldClient,
@@ -28,7 +27,7 @@ use crate::error::{Error, SqlError};
 #[derive(Debug)]
 pub struct Client {
     /// The grpc client.
-    inner: RwLock<WorldClient>,
+    inner: WorldClient,
     /// The HTTP client for SQL queries.
     http: HyperClient<HttpConnector<GaiResolver>>,
     /// The base URL for the torii server.
@@ -46,7 +45,7 @@ impl Client {
         let http = HyperClient::builder().build_http();
 
         Ok(Self {
-            inner: RwLock::new(grpc_client),
+            inner: grpc_client,
             http,
             torii_url,
         })
@@ -93,7 +92,7 @@ impl Client {
     /// Publishes an offchain message to the world.
     /// Returns the entity id of the offchain message.
     pub async fn publish_message(&self, message: Message) -> Result<Felt, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let entity_id = grpc_client.publish_message(message).await?;
         Ok(entity_id)
     }
@@ -101,14 +100,14 @@ impl Client {
     /// Publishes a set of offchain messages to the world.
     /// Returns the entity ids of the offchain messages.
     pub async fn publish_message_batch(&self, messages: Vec<Message>) -> Result<Vec<Felt>, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let entity_ids = grpc_client.publish_message_batch(messages).await?;
         Ok(entity_ids)
     }
 
     /// Returns a read lock on the World metadata that the client is connected to.
     pub async fn metadata(&self) -> Result<World, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let world = grpc_client.metadata().await?;
         Ok(world)
     }
@@ -121,7 +120,7 @@ impl Client {
         limit: Option<u32>,
         cursor: Option<String>,
     ) -> Result<Page<Controller>, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let RetrieveControllersResponse {
             controllers,
             next_cursor,
@@ -149,7 +148,7 @@ impl Client {
         limit: Option<u32>,
         cursor: Option<String>,
     ) -> Result<Page<Token>, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let RetrieveTokensResponse {
             tokens,
             next_cursor,
@@ -178,7 +177,7 @@ impl Client {
         limit: Option<u32>,
         cursor: Option<String>,
     ) -> Result<Page<TokenBalance>, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let RetrieveTokenBalancesResponse {
             balances,
             next_cursor,
@@ -213,7 +212,7 @@ impl Client {
         limit: Option<u32>,
         cursor: Option<String>,
     ) -> Result<Page<Token>, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let RetrieveTokenCollectionsResponse {
             tokens,
             next_cursor,
@@ -246,7 +245,7 @@ impl Client {
     /// model data. Specifying a clause can optimize the query by limiting the retrieval to specific
     /// type of entites matching keys and/or models.
     pub async fn entities(&self, query: Query) -> Result<Page<Entity>, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let RetrieveEntitiesResponse {
             entities,
             next_cursor,
@@ -266,7 +265,7 @@ impl Client {
 
     /// Similary to entities, this function retrieves event messages matching the query parameter.
     pub async fn event_messages(&self, query: Query) -> Result<Page<Entity>, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let RetrieveEntitiesResponse {
             entities,
             next_cursor,
@@ -287,7 +286,7 @@ impl Client {
     /// Retrieve raw starknet events matching the keys provided.
     /// If the keys are empty, it will return all events.
     pub async fn starknet_events(&self, query: EventQuery) -> Result<Page<Event>, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let RetrieveEventsResponse {
             events,
             next_cursor,
@@ -307,7 +306,7 @@ impl Client {
         &self,
         clause: Option<Clause>,
     ) -> Result<EntityUpdateStreaming, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let stream = grpc_client.subscribe_entities(clause).await?;
         Ok(stream)
     }
@@ -318,7 +317,7 @@ impl Client {
         subscription_id: u64,
         clause: Option<Clause>,
     ) -> Result<(), Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         grpc_client
             .update_entities_subscription(subscription_id, clause)
             .await?;
@@ -330,7 +329,7 @@ impl Client {
         &self,
         clause: Option<Clause>,
     ) -> Result<EntityUpdateStreaming, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let stream = grpc_client.subscribe_event_messages(clause).await?;
         Ok(stream)
     }
@@ -341,7 +340,7 @@ impl Client {
         subscription_id: u64,
         clause: Option<Clause>,
     ) -> Result<(), Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         grpc_client
             .update_event_messages_subscription(subscription_id, clause)
             .await?;
@@ -353,7 +352,7 @@ impl Client {
         &self,
         keys: Vec<KeysClause>,
     ) -> Result<EventUpdateStreaming, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let stream = grpc_client.subscribe_events(keys).await?;
         Ok(stream)
     }
@@ -364,7 +363,7 @@ impl Client {
         &self,
         contract_address: Option<Felt>,
     ) -> Result<IndexerUpdateStreaming, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let stream = grpc_client
             .subscribe_indexer(contract_address.unwrap_or_default())
             .await?;
@@ -381,7 +380,7 @@ impl Client {
         account_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
     ) -> Result<TokenBalanceStreaming, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let stream = grpc_client
             .subscribe_token_balances(contract_addresses, account_addresses, token_ids)
             .await?;
@@ -396,7 +395,7 @@ impl Client {
         account_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
     ) -> Result<(), Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         grpc_client
             .update_token_balances_subscription(
                 subscription_id,
@@ -414,7 +413,7 @@ impl Client {
         contract_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
     ) -> Result<TokenUpdateStreaming, Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         let stream = grpc_client
             .subscribe_tokens(contract_addresses, token_ids)
             .await?;
@@ -428,7 +427,7 @@ impl Client {
         contract_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
     ) -> Result<(), Error> {
-        let mut grpc_client = self.inner.write().await;
+        let mut grpc_client = self.inner.clone();
         grpc_client
             .update_tokens_subscription(subscription_id, contract_addresses, token_ids)
             .await?;

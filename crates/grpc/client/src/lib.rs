@@ -55,7 +55,7 @@ pub enum Error {
     Proto(#[from] ProtoError),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A lightweight wrapper around the grpc client.
 pub struct WorldClient {
     _world_address: Felt,
