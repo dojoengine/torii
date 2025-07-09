@@ -21,6 +21,8 @@ pub enum Error {
     UnsupportedQuery,
     #[error(transparent)]
     Proto(#[from] ProtoError),
+    #[error("HTTP error: {0}")]
+    Http(String),
 }
 
 #[derive(Debug, thiserror::Error)]

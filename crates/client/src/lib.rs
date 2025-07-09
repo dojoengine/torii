@@ -1,6 +1,11 @@
 pub mod error;
 
 use crypto_bigint::U256;
+use hyper::body::HttpBody;
+use hyper::client::connect::dns::GaiResolver;
+use hyper::client::HttpConnector;
+use hyper::{Body, Client as HyperClient, Request};
+use serde_json::{Map, Value};
 use starknet::core::types::Felt;
 use tokio::sync::RwLock;
 use torii_grpc_client::{
@@ -24,16 +29,53 @@ use crate::error::Error;
 pub struct Client {
     /// The grpc client.
     inner: RwLock<WorldClient>,
+    /// The HTTP client for SQL queries.
+    http_client: HyperClient<HttpConnector<GaiResolver>>,
+    /// The base URL for the torii server.
+    torii_url: String,
 }
+
+pub type Row = Map<String, Value>;
 
 impl Client {
     /// Returns a initialized [Client].
     pub async fn new(torii_url: String, world: Felt) -> Result<Self, Error> {
-        let grpc_client = WorldClient::new(torii_url, world).await?;
+        let grpc_client = WorldClient::new(torii_url.clone(), world).await?;
+        
+        // Initialize hyper client
+        let http_client = HyperClient::builder()
+            .build_http();
 
         Ok(Self {
             inner: RwLock::new(grpc_client),
+            http_client,
+            torii_url,
         })
+    }
+
+    /// Executes a SQL query against the torii server.
+    /// Returns the JSON response from the server.
+    pub async fn sql(&self, query: String) -> Result<Vec<Row>, Error> {
+        let url = format!("{}/sql", self.torii_url);
+        
+        let req = Request::builder()
+            .method("POST")
+            .uri(url)
+            .header("content-type", "application/json")
+            .body(Body::from(query))
+            .map_err(|e| Error::Http(e.to_string()))?;
+
+        let res = self.http_client
+            .request(req)
+            .await
+            .map_err(|e| Error::Http(e.to_string()))?;
+
+        let body_bytes = res.into_body().collect().await.map_err(|e| Error::Http(e.to_string()))?;
+
+        let rows = serde_json::from_slice(&body_bytes.to_bytes())
+            .map_err(|e| Error::Http(e.to_string()))?;
+
+        Ok(rows)
     }
 
     /// Publishes an offchain message to the world.
