@@ -152,7 +152,7 @@ impl PaginationExecutor {
             .map_err(|e: Error| Error::Query(QueryError::InvalidCursor(e.to_string())))?;
 
         let (cursor_conditions, cursor_binds) =
-            build_cursor_conditions(&pagination, cursor_values.as_deref())?;
+            build_cursor_conditions(pagination, cursor_values.as_deref())?;
 
         for condition in cursor_conditions {
             query_builder = query_builder.where_clause(&condition);
@@ -195,7 +195,7 @@ impl PaginationExecutor {
         if has_more {
             rows.truncate(original_limit as usize);
             if let Some(last_row) = rows.last() {
-                let cursor_values_str = build_cursor_values(&pagination, last_row)?.join("/");
+                let cursor_values_str = build_cursor_values(pagination, last_row)?.join("/");
                 next_cursor = Some(encode_cursor(&cursor_values_str)?);
             }
         }
