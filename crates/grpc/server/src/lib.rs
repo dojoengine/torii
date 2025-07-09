@@ -289,33 +289,15 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<RetrieveControllersRequest>,
     ) -> Result<Response<RetrieveControllersResponse>, Status> {
-        let RetrieveControllersRequest {
-            contract_addresses,
-            usernames,
-            limit,
-            cursor,
-        } = request.into_inner();
-        let contract_addresses = contract_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
+        let RetrieveControllersRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
         let controllers = self
             .storage
-            .controllers(
-                &contract_addresses,
-                &usernames,
-                if !cursor.is_empty() {
-                    Some(cursor)
-                } else {
-                    None
-                },
-                if limit > 0 {
-                    Some(limit as usize)
-                } else {
-                    None
-                },
-            )
+            .controllers(&query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -329,36 +311,18 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<RetrieveTokensRequest>,
     ) -> Result<Response<RetrieveTokensResponse>, Status> {
-        let RetrieveTokensRequest {
-            contract_addresses,
-            token_ids,
-            limit,
-            cursor,
-        } = request.into_inner();
-        let contract_addresses = contract_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let token_ids = token_ids
-            .iter()
-            .map(|id| crypto_bigint::U256::from_be_slice(id).into())
-            .collect::<Vec<_>>();
-        let limit = if limit > 0 {
-            Some(limit as usize)
-        } else {
-            None
-        };
-        let cursor = if !cursor.is_empty() {
-            Some(cursor)
-        } else {
-            None
-        };
+        let RetrieveTokensRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
         let tokens = self
             .storage
-            .tokens(&contract_addresses, &token_ids, cursor, limit)
+            .tokens(&query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
+
         Ok(Response::new(RetrieveTokensResponse {
             tokens: tokens.items.into_iter().map(Into::into).collect(),
             next_cursor: tokens.next_cursor.unwrap_or_default(),
@@ -369,48 +333,18 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<RetrieveTokenCollectionsRequest>,
     ) -> Result<Response<RetrieveTokenCollectionsResponse>, Status> {
-        let RetrieveTokenCollectionsRequest {
-            account_addresses,
-            contract_addresses,
-            token_ids,
-            limit,
-            cursor,
-        } = request.into_inner();
-
-        let account_addresses = account_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let contract_addresses = contract_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let token_ids = token_ids
-            .iter()
-            .map(|id| crypto_bigint::U256::from_be_slice(id).into())
-            .collect::<Vec<_>>();
-        let limit = if limit > 0 {
-            Some(limit as usize)
-        } else {
-            None
-        };
-        let cursor = if !cursor.is_empty() {
-            Some(cursor)
-        } else {
-            None
-        };
+        let RetrieveTokenCollectionsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
         let token_collections = self
             .storage
-            .token_collections(
-                &account_addresses,
-                &contract_addresses,
-                &token_ids,
-                cursor,
-                limit,
-            )
+            .token_collections(&query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
+
         Ok(Response::new(RetrieveTokenCollectionsResponse {
             tokens: token_collections
                 .items
@@ -476,45 +410,15 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<RetrieveTokenBalancesRequest>,
     ) -> Result<Response<RetrieveTokenBalancesResponse>, Status> {
-        let RetrieveTokenBalancesRequest {
-            account_addresses,
-            contract_addresses,
-            token_ids,
-            limit,
-            cursor,
-        } = request.into_inner();
-        let account_addresses = account_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let contract_addresses = contract_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let token_ids = token_ids
-            .iter()
-            .map(|id| U256::from_be_slice(id).into())
-            .collect::<Vec<_>>();
-        let limit = if limit > 0 {
-            Some(limit as usize)
-        } else {
-            None
-        };
-        let cursor = if !cursor.is_empty() {
-            Some(cursor)
-        } else {
-            None
-        };
+        let RetrieveTokenBalancesRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
         let balances = self
             .storage
-            .token_balances(
-                &account_addresses,
-                &contract_addresses,
-                &token_ids,
-                cursor,
-                limit,
-            )
+            .token_balances(&query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(RetrieveTokenBalancesResponse {

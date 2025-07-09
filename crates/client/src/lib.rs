@@ -17,8 +17,8 @@ use torii_proto::proto::world::{
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Controller, Event, EventQuery, KeysClause, Message, Page, Query, Token, TokenBalance,
-    World,
+    Clause, Controller, ControllerQuery, Event, EventQuery, KeysClause, Message, Page, Query,
+    Token, TokenBalance, TokenBalanceQuery, TokenQuery, World,
 };
 
 use crate::error::{Error, SqlError};
@@ -113,20 +113,12 @@ impl Client {
     }
 
     /// Retrieves controllers matching contract addresses.
-    pub async fn controllers(
-        &self,
-        contract_addresses: Vec<Felt>,
-        usernames: Vec<String>,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Result<Page<Controller>, Error> {
+    pub async fn controllers(&self, query: ControllerQuery) -> Result<Page<Controller>, Error> {
         let mut grpc_client = self.inner.clone();
         let RetrieveControllersResponse {
             controllers,
             next_cursor,
-        } = grpc_client
-            .retrieve_controllers(contract_addresses, usernames, limit, cursor)
-            .await?;
+        } = grpc_client.retrieve_controllers(query).await?;
         Ok(Page {
             items: controllers
                 .into_iter()
@@ -141,20 +133,12 @@ impl Client {
     }
 
     /// Retrieves tokens matching contract addresses.
-    pub async fn tokens(
-        &self,
-        contract_addresses: Vec<Felt>,
-        token_ids: Vec<U256>,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Result<Page<Token>, Error> {
+    pub async fn tokens(&self, query: TokenQuery) -> Result<Page<Token>, Error> {
         let mut grpc_client = self.inner.clone();
         let RetrieveTokensResponse {
             tokens,
             next_cursor,
-        } = grpc_client
-            .retrieve_tokens(contract_addresses, token_ids, limit, cursor)
-            .await?;
+        } = grpc_client.retrieve_tokens(query).await?;
         Ok(Page {
             items: tokens
                 .into_iter()
@@ -171,25 +155,13 @@ impl Client {
     /// Retrieves token balances for account addresses and contract addresses.
     pub async fn token_balances(
         &self,
-        account_addresses: Vec<Felt>,
-        contract_addresses: Vec<Felt>,
-        token_ids: Vec<U256>,
-        limit: Option<u32>,
-        cursor: Option<String>,
+        query: TokenBalanceQuery,
     ) -> Result<Page<TokenBalance>, Error> {
         let mut grpc_client = self.inner.clone();
         let RetrieveTokenBalancesResponse {
             balances,
             next_cursor,
-        } = grpc_client
-            .retrieve_token_balances(
-                account_addresses,
-                contract_addresses,
-                token_ids,
-                limit,
-                cursor,
-            )
-            .await?;
+        } = grpc_client.retrieve_token_balances(query).await?;
         Ok(Page {
             items: balances
                 .into_iter()
@@ -204,27 +176,12 @@ impl Client {
     }
 
     /// Retrieves tokens matching contract addresses.
-    pub async fn token_collections(
-        &self,
-        account_addresses: Vec<Felt>,
-        contract_addresses: Vec<Felt>,
-        token_ids: Vec<U256>,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Result<Page<Token>, Error> {
+    pub async fn token_collections(&self, query: TokenBalanceQuery) -> Result<Page<Token>, Error> {
         let mut grpc_client = self.inner.clone();
         let RetrieveTokenCollectionsResponse {
             tokens,
             next_cursor,
-        } = grpc_client
-            .retrieve_token_collections(
-                account_addresses,
-                contract_addresses,
-                token_ids,
-                limit,
-                cursor,
-            )
-            .await?;
+        } = grpc_client.retrieve_token_collections(query).await?;
         Ok(Page {
             items: tokens
                 .into_iter()
