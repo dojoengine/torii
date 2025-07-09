@@ -30,7 +30,7 @@ pub struct Client {
     /// The grpc client.
     inner: RwLock<WorldClient>,
     /// The HTTP client for SQL queries.
-    http_client: HyperClient<HttpConnector<GaiResolver>>,
+    http: HyperClient<HttpConnector<GaiResolver>>,
     /// The base URL for the torii server.
     torii_url: String,
 }
@@ -43,11 +43,11 @@ impl Client {
         let grpc_client = WorldClient::new(torii_url.clone(), world).await?;
 
         // Initialize hyper client
-        let http_client = HyperClient::builder().build_http();
+        let http = HyperClient::builder().build_http();
 
         Ok(Self {
             inner: RwLock::new(grpc_client),
-            http_client,
+            http,
             torii_url,
         })
     }
@@ -65,7 +65,7 @@ impl Client {
             .map_err(|e| Error::Sql(SqlError::Http(e)))?;
 
         let res = self
-            .http_client
+            .http
             .request(req)
             .await
             .map_err(|e| Error::Sql(SqlError::Hyper(e)))?;
