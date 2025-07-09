@@ -347,7 +347,10 @@ mod tests {
             .controllers(&ControllerQuery {
                 contract_addresses: vec![],
                 usernames: vec![],
-                pagination: Pagination::default(),
+                pagination: Pagination {
+                    limit: Some(1000000),
+                    ..Default::default()
+                },
             })
             .await
             .unwrap()
