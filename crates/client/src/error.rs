@@ -21,8 +21,8 @@ pub enum Error {
     UnsupportedQuery,
     #[error(transparent)]
     Proto(#[from] ProtoError),
-    #[error("HTTP error: {0}")]
-    Http(String),
+    #[error(transparent)]
+    Sql(#[from] SqlError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -35,4 +35,18 @@ pub enum ParseError {
     CairoShortStringToFelt(#[from] CairoShortStringToFeltError),
     #[error(transparent)]
     ParseCairoShortString(#[from] ParseCairoShortStringError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SqlError {
+    #[error(transparent)]
+    Http(#[from] hyper::http::Error),
+    #[error(transparent)]
+    Hyper(#[from] hyper::Error),
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
+    #[error("SQL query error: {0}")]
+    Query(String),
+    #[error(transparent)]
+    FromUtf8(#[from] std::string::FromUtf8Error),
 }

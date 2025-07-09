@@ -4,7 +4,7 @@ use crypto_bigint::U256;
 use hyper::body::HttpBody;
 use hyper::client::connect::dns::GaiResolver;
 use hyper::client::HttpConnector;
-use hyper::{Body, Client as HyperClient, Request};
+use hyper::{Body, Client as HyperClient, Request, StatusCode};
 use serde_json::{Map, Value};
 use starknet::core::types::Felt;
 use tokio::sync::RwLock;
@@ -22,7 +22,7 @@ use torii_proto::{
     World,
 };
 
-use crate::error::Error;
+use crate::error::{Error, SqlError};
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -62,22 +62,30 @@ impl Client {
             .uri(url)
             .header("content-type", "application/json")
             .body(Body::from(query))
-            .map_err(|e| Error::Http(e.to_string()))?;
+            .map_err(|e| Error::Sql(SqlError::Http(e)))?;
 
         let res = self
             .http_client
             .request(req)
             .await
-            .map_err(|e| Error::Http(e.to_string()))?;
+            .map_err(|e| Error::Sql(SqlError::Hyper(e)))?;
 
+        let status = res.status();
         let body_bytes = res
             .into_body()
             .collect()
             .await
-            .map_err(|e| Error::Http(e.to_string()))?;
+            .map_err(|e| Error::Sql(SqlError::Hyper(e)))?;
+
+        if status != StatusCode::OK {
+            return Err(Error::Sql(SqlError::Query(
+                String::from_utf8(body_bytes.to_bytes().to_vec())
+                    .map_err(|e| Error::Sql(SqlError::FromUtf8(e)))?,
+            )));
+        }
 
         let rows = serde_json::from_slice(&body_bytes.to_bytes())
-            .map_err(|e| Error::Http(e.to_string()))?;
+            .map_err(|e| Error::Sql(SqlError::Serde(e)))?;
 
         Ok(rows)
     }
