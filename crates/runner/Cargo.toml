@@ -58,6 +58,7 @@ webbrowser = "0.8"
 reqwest.workspace = true
 indicatif.workspace = true
 tracing-indicatif.workspace = true
+terminal_size.workspace = true
 rand.workspace = true
 
 [dev-dependencies]
