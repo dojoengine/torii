@@ -14,11 +14,13 @@ use torii_proto::schema::Entity;
 
 use crate::types::{Cursor, ParsedCall};
 use torii_proto::{
-    Controller, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenCollection,
+    Controller, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenCollection, ControllerQuery, TokenQuery, TokenBalanceQuery,
 };
 
 pub mod types;
 pub mod utils;
+
+pub use torii_proto as proto;
 
 pub type StorageError = Box<dyn Error + Send + Sync>;
 
@@ -42,39 +44,25 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     /// Returns the controllers for the storage.
     async fn controllers(
         &self,
-        contract_addresses: &[Felt],
-        usernames: &[String],
-        cursor: Option<String>,
-        limit: Option<usize>,
+        query: &ControllerQuery,
     ) -> Result<Page<Controller>, StorageError>;
 
     /// Returns the tokens for the storage.
     async fn tokens(
         &self,
-        contract_addresses: &[Felt],
-        token_ids: &[U256],
-        cursor: Option<String>,
-        limit: Option<usize>,
+        query: &TokenQuery,
     ) -> Result<Page<Token>, StorageError>;
 
     /// Returns the token balances for the storage.
     async fn token_balances(
         &self,
-        account_addresses: &[Felt],
-        contract_addresses: &[Felt],
-        token_ids: &[U256],
-        cursor: Option<String>,
-        limit: Option<usize>,
+        query: &TokenBalanceQuery,
     ) -> Result<Page<TokenBalance>, StorageError>;
 
     /// Returns the token collections for the storage.
     async fn token_collections(
         &self,
-        account_addresses: &[Felt],
-        contract_addresses: &[Felt],
-        token_ids: &[U256],
-        cursor: Option<String>,
-        limit: Option<usize>,
+        query: &TokenBalanceQuery,
     ) -> Result<Page<TokenCollection>, StorageError>;
 
     /// Returns events for the storage.

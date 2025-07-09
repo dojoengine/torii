@@ -136,7 +136,7 @@ impl PaginationExecutor {
     pub async fn execute_paginated_query(
         &self,
         mut query_builder: QueryBuilder,
-        pagination: Pagination,
+        pagination: &Pagination,
     ) -> Result<Page<SqliteRow>, Error> {
         let original_limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
         let fetch_limit = original_limit + 1;

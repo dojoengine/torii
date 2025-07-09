@@ -253,6 +253,93 @@ impl TryFrom<proto::types::TokenBalance> for TokenBalance {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct ControllerQuery {
+    pub contract_addresses: Vec<Felt>,
+    pub usernames: Vec<String>,
+    pub pagination: Pagination,
+}
+
+impl From<ControllerQuery> for proto::types::ControllerQuery {
+    fn from(value: ControllerQuery) -> Self {
+        Self {
+            contract_addresses: value.contract_addresses.into_iter().map(|a| a.to_bytes_be().into()).collect(),
+            usernames: value.usernames,
+            pagination: Some(value.pagination.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::ControllerQuery> for ControllerQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::ControllerQuery) -> Result<Self, Self::Error> {
+        Ok(Self {
+            contract_addresses: value.contract_addresses.into_iter().map(|a| Felt::from_bytes_be_slice(&a)).collect(),
+            usernames: value.usernames,
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct TokenQuery {
+    pub contract_addresses: Vec<Felt>,
+    pub token_ids: Vec<U256>,
+    pub pagination: Pagination,
+}
+
+impl From<TokenQuery> for proto::types::TokenQuery {
+    fn from(value: TokenQuery) -> Self {
+        Self {
+            contract_addresses: value.contract_addresses.into_iter().map(|a| a.to_bytes_be().into()).collect(),
+            token_ids: value.token_ids.into_iter().map(|id| id.to_be_bytes().to_vec()).collect(),
+            pagination: Some(value.pagination.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::TokenQuery> for TokenQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::TokenQuery) -> Result<Self, Self::Error> {
+        Ok(Self {
+            contract_addresses: value.contract_addresses.into_iter().map(|a| Felt::from_bytes_be_slice(&a)).collect(),
+            token_ids: value.token_ids.into_iter().map(|id| U256::from_be_slice(&id)).collect(),
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default()
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct TokenBalanceQuery {
+    pub account_addresses: Vec<Felt>,
+    pub contract_addresses: Vec<Felt>,
+    pub token_ids: Vec<U256>,
+    pub pagination: Pagination,
+}
+
+impl From<TokenBalanceQuery> for proto::types::TokenBalanceQuery {
+    fn from(value: TokenBalanceQuery) -> Self {
+        Self {
+            account_addresses: value.account_addresses.into_iter().map(|a| a.to_bytes_be().into()).collect(),
+            contract_addresses: value.contract_addresses.into_iter().map(|a| a.to_bytes_be().into()).collect(),
+            token_ids: value.token_ids.into_iter().map(|id| id.to_be_bytes().to_vec()).collect(),
+            pagination: Some(value.pagination.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::TokenBalanceQuery> for TokenBalanceQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::TokenBalanceQuery) -> Result<Self, Self::Error> {
+        Ok(Self {
+            account_addresses: value.account_addresses.into_iter().map(|a| Felt::from_bytes_be_slice(&a)).collect(),
+            contract_addresses: value.contract_addresses.into_iter().map(|a| Felt::from_bytes_be_slice(&a)).collect(),
+            token_ids: value.token_ids.into_iter().map(|id| U256::from_be_slice(&id)).collect(),
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct IndexerUpdate {
     pub head: i64,
     pub tps: i64,
@@ -798,16 +885,14 @@ impl From<proto::types::Event> for Event {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct EventQuery {
     pub keys: Option<KeysClause>,
-    pub cursor: Option<String>,
-    pub limit: Option<usize>,
+    pub pagination: Pagination
 }
 
 impl From<EventQuery> for proto::types::EventQuery {
     fn from(value: EventQuery) -> Self {
         Self {
             keys: value.keys.map(|k| k.into()),
-            cursor: value.cursor.unwrap_or_default(),
-            limit: value.limit.unwrap_or_default() as u32,
+            pagination: Some(value.pagination.into()),
         }
     }
 }
@@ -816,16 +901,7 @@ impl From<proto::types::EventQuery> for EventQuery {
     fn from(value: proto::types::EventQuery) -> Self {
         Self {
             keys: value.keys.map(|k| k.into()),
-            cursor: if value.cursor.is_empty() {
-                None
-            } else {
-                Some(value.cursor)
-            },
-            limit: if value.limit == 0 {
-                None
-            } else {
-                Some(value.limit as usize)
-            },
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
         }
     }
 }

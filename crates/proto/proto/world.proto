@@ -69,14 +69,7 @@ service World {
 }
 
 message RetrieveControllersRequest {
-    // The list of contract addresses to retrieve controllers for
-    repeated bytes contract_addresses = 1;
-    // The list of usernames to retrieve controllers for
-    repeated string usernames = 2;
-    // The number of controllers to retrieve
-    uint32 limit = 3;
-    // The cursor to start the query from
-    string cursor = 4;
+    types.ControllerQuery query = 1;
 }
 
 message RetrieveControllersResponse {
@@ -106,14 +99,7 @@ message SubscribeTokenBalancesResponse {
 
 // A request to retrieve tokens
 message RetrieveTokensRequest {
-    // The list of contract addresses to retrieve tokens for
-    repeated bytes contract_addresses = 1;
-    // The list of token IDs to retrieve tokens for
-    repeated bytes token_ids = 2;
-    // The number of tokens to retrieve
-    uint32 limit = 3;
-    // The cursor to start the query from
-    string cursor = 5;
+    types.TokenQuery query = 1;
 }
 
 // A request to subscribe to token updates
@@ -150,16 +136,7 @@ message UpdateTokenSubscriptionRequest {
 
 // A request to retrieve token balances
 message RetrieveTokenBalancesRequest {
-    // The account addresses to retrieve balances for
-    repeated bytes account_addresses = 1;
-    // The list of token contract addresses to retrieve balances for
-    repeated bytes contract_addresses = 2;
-    // The list of token IDs to retrieve balances for
-    repeated bytes token_ids = 3;
-    // The number of token balances to retrieve
-    uint32 limit = 4;
-    // The cursor to start the query from
-    string cursor = 6;
+    types.TokenBalanceQuery query = 1;
 }
 
 // A request to subscribe to token balance updates
@@ -180,16 +157,7 @@ message RetrieveTokenBalancesResponse {
 
 // A request to retrieve token collections 
 message RetrieveTokenCollectionsRequest {
-    // The account addresses to retrieve balances for
-    repeated bytes account_addresses = 1;
-    // The list of token contract addresses to retrieve balances for
-    repeated bytes contract_addresses = 2;
-    // The list of token IDs to retrieve balances for
-    repeated bytes token_ids = 3;
-    // The number of token balances to retrieve
-    uint32 limit = 4;
-    // The cursor to start the query from
-    string cursor = 6;
+    types.TokenBalanceQuery query = 1;
 }
 
 // A response containing token balances
