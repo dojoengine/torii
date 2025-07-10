@@ -58,6 +58,9 @@ service World {
     // Retrieve transactions
     rpc RetrieveTransactions (RetrieveTransactionsRequest) returns (RetrieveTransactionsResponse);
 
+    // Subscribe to transactions
+    rpc SubscribeTransactions (SubscribeTransactionsRequest) returns (stream SubscribeTransactionsResponse);
+
     // Retrieve controllers
     rpc RetrieveControllers (RetrieveControllersRequest) returns (RetrieveControllersResponse);
 
@@ -69,6 +72,26 @@ service World {
 
     // Publish a set of torii offchain messages
     rpc PublishMessageBatch (PublishMessageBatchRequest) returns (PublishMessageBatchResponse);
+}
+
+message SubscribeTransactionsRequest {
+    // The list of transaction hashes to subscribe to
+    repeated bytes transaction_hashes = 1;
+    // The list of caller addresses to filter by
+    repeated bytes caller_addresses = 2;
+    // The list of contract addresses to filter by (calls made to these contracts)
+    repeated bytes contract_addresses = 3;
+    // The list of entrypoints to filter by
+    repeated string entrypoints = 4;
+    // The list of model selectors to filter by
+    repeated bytes model_selectors = 5;
+    // The block number range to filter by
+    optional uint64 from_block = 6;
+    optional uint64 to_block = 7;
+}
+
+message SubscribeTransactionsResponse {
+    types.Transaction transaction = 1;
 }
 
 message RetrieveControllersRequest {

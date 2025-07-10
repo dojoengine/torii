@@ -12,6 +12,7 @@ pub mod event_message;
 pub mod indexer;
 pub mod token;
 pub mod token_balance;
+pub mod transaction;
 
 pub(crate) fn match_entity(
     id: Felt,

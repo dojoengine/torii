@@ -36,6 +36,8 @@ use torii_proto::error::ProtoError;
 use torii_storage::Storage;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
+use crate::subscriptions::transaction::TransactionManager;
+
 use self::subscriptions::entity::EntityManager;
 use self::subscriptions::event_message::EventMessageManager;
 use torii_proto::proto::world::world_server::WorldServer;
@@ -48,9 +50,9 @@ use torii_proto::proto::world::{
     SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
     SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
     SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, UpdateEventMessagesSubscriptionRequest,
-    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
-    WorldMetadataResponse,
+    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
+    UpdateTokenSubscriptionRequest, WorldMetadataRequest, WorldMetadataResponse,
 };
 use torii_proto::proto::{self};
 use torii_proto::Message;
@@ -69,6 +71,7 @@ pub struct DojoWorld<P: Provider + Sync> {
     indexer_manager: Arc<IndexerManager>,
     token_balance_manager: Arc<TokenBalanceManager>,
     token_manager: Arc<TokenManager>,
+    transaction_manager: Arc<TransactionManager>,
     _config: GrpcConfig,
 }
 
@@ -88,6 +91,8 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let token_balance_manager =
             Arc::new(TokenBalanceManager::new(config.subscription_buffer_size));
         let token_manager = Arc::new(TokenManager::new(config.subscription_buffer_size));
+        let transaction_manager =
+            Arc::new(TransactionManager::new(config.subscription_buffer_size));
 
         tokio::task::spawn(subscriptions::entity::Service::new(Arc::clone(
             &entity_manager,
@@ -113,6 +118,10 @@ impl<P: Provider + Sync> DojoWorld<P> {
             &token_manager,
         )));
 
+        tokio::task::spawn(subscriptions::transaction::Service::new(Arc::clone(
+            &transaction_manager,
+        )));
+
         Self {
             storage,
             provider,
@@ -124,6 +133,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             indexer_manager,
             token_balance_manager,
             token_manager,
+            transaction_manager,
             _config: config,
         }
     }
@@ -197,6 +207,8 @@ type SubscribeTokenBalancesResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokenBalancesResponse, Status>> + Send>>;
 type SubscribeTokensResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokensResponse, Status>> + Send>>;
+type SubscribeTransactionsResponseStream =
+    Pin<Box<dyn Stream<Item = Result<SubscribeTransactionsResponse, Status>> + Send>>;
 
 #[tonic::async_trait]
 impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for DojoWorld<P> {
@@ -206,6 +218,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
     type SubscribeIndexerStream = SubscribeIndexerResponseStream;
     type SubscribeTokenBalancesStream = SubscribeTokenBalancesResponseStream;
     type SubscribeTokensStream = SubscribeTokensResponseStream;
+    type SubscribeTransactionsStream = SubscribeTransactionsResponseStream;
 
     async fn world_metadata(
         &self,
@@ -241,6 +254,55 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             transactions: transactions.items.into_iter().map(Into::into).collect(),
             next_cursor: transactions.next_cursor.unwrap_or_default(),
         }))
+    }
+
+    async fn subscribe_transactions(
+        &self,
+        request: Request<SubscribeTransactionsRequest>,
+    ) -> ServiceResult<Self::SubscribeTransactionsStream> {
+        let SubscribeTransactionsRequest {
+            transaction_hashes,
+            caller_addresses,
+            contract_addresses,
+            entrypoints,
+            model_selectors,
+            from_block,
+            to_block,
+        } = request.into_inner();
+
+        let transaction_hashes = transaction_hashes
+            .iter()
+            .map(|hash| Felt::from_bytes_be_slice(hash))
+            .collect::<Vec<_>>();
+        let caller_addresses = caller_addresses
+            .iter()
+            .map(|address| Felt::from_bytes_be_slice(address))
+            .collect::<Vec<_>>();
+        let contract_addresses = contract_addresses
+            .iter()
+            .map(|address| Felt::from_bytes_be_slice(address))
+            .collect::<Vec<_>>();
+        let model_selectors = model_selectors
+            .iter()
+            .map(|selector| Felt::from_bytes_be_slice(selector))
+            .collect::<Vec<_>>();
+
+        let rx = self
+            .transaction_manager
+            .add_subscriber(
+                transaction_hashes,
+                caller_addresses,
+                contract_addresses,
+                entrypoints,
+                model_selectors,
+                from_block,
+                to_block,
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(Response::new(
+            Box::pin(ReceiverStream::new(rx)) as Self::SubscribeTransactionsStream
+        ))
     }
 
     async fn retrieve_entities(
