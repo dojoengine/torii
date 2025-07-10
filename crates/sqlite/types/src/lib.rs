@@ -76,10 +76,6 @@ pub struct EventMessage {
     pub executed_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-
-    // this should never be None
-    #[sqlx(skip)]
-    pub updated_model: Option<Ty>,
 }
 
 #[derive(FromRow, Deserialize, Debug, Clone)]
@@ -113,6 +109,22 @@ pub struct Model {
     pub created_at: DateTime<Utc>,
 }
 
+impl From<Model> for torii_proto::Model {
+    fn from(value: Model) -> Self {
+        Self {
+            namespace: value.namespace,
+            name: value.name,
+            selector: Felt::from_str(&value.id).unwrap(),
+            class_hash: Felt::from_str(&value.class_hash).unwrap(),
+            contract_address: Felt::from_str(&value.contract_address).unwrap(),
+            layout: serde_json::from_str(&value.layout).unwrap(),
+            schema: serde_json::from_str(&value.schema).unwrap(),
+            packed_size: value.packed_size,
+            unpacked_size: value.unpacked_size,
+        }
+    }
+}
+
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {
@@ -129,14 +141,12 @@ impl From<Event> for torii_proto::Event {
         Self {
             keys: value
                 .keys
-                .trim_end_matches('/')
                 .split('/')
                 .filter(|k| !k.is_empty())
                 .map(|k| Felt::from_str(k).unwrap())
                 .collect(),
             data: value
                 .data
-                .trim_end_matches('/')
                 .split('/')
                 .filter(|d| !d.is_empty())
                 .map(|d| Felt::from_str(d).unwrap())
@@ -302,6 +312,34 @@ pub struct Transaction {
     pub contract_addresses: HashSet<Felt>,
     #[sqlx(skip)]
     pub unique_models: HashSet<Felt>,
+}
+
+impl From<Transaction> for torii_proto::Transaction {
+    fn from(value: Transaction) -> Self {
+        Self {
+            transaction_hash: Felt::from_str(&value.transaction_hash).unwrap(),
+            sender_address: Felt::from_str(&value.sender_address).unwrap(),
+            calldata: value
+                .calldata
+                .split('/')
+                .filter(|d| !d.is_empty())
+                .map(|d| Felt::from_str(d).unwrap())
+                .collect(),
+            max_fee: Felt::from_str(&value.max_fee).unwrap(),
+            signature: value
+                .signature
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .map(|s| Felt::from_str(s).unwrap())
+                .collect(),
+            nonce: Felt::from_str(&value.nonce).unwrap(),
+            block_number: value.block_number,
+            transaction_type: value.transaction_type,
+            block_timestamp: value.executed_at,
+            calls: value.calls.into_iter().map(Into::into).collect(),
+            unique_models: value.unique_models.into_iter().collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

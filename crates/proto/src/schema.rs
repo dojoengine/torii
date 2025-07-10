@@ -10,6 +10,7 @@ use crate::proto;
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Entity {
     pub hashed_keys: Felt,
+    pub block_timestamp: u64,
     pub models: Vec<Struct>,
 }
 
@@ -17,6 +18,7 @@ impl From<Entity> for proto::types::Entity {
     fn from(entity: Entity) -> Self {
         proto::types::Entity {
             hashed_keys: entity.hashed_keys.to_bytes_be().to_vec(),
+            block_timestamp: entity.block_timestamp,
             models: entity
                 .models
                 .into_iter()
