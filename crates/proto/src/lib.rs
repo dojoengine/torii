@@ -1012,7 +1012,11 @@ impl From<TransactionCall> for proto::types::TransactionCall {
         Self {
             contract_address: value.contract_address.to_bytes_be().into(),
             entrypoint: value.entrypoint,
-            calldata: value.calldata.into_iter().map(|d| d.to_bytes_be().into()).collect(),
+            calldata: value
+                .calldata
+                .into_iter()
+                .map(|d| d.to_bytes_be().into())
+                .collect(),
             call_type: value.call_type as i32,
             caller_address: value.caller_address.to_bytes_be().into(),
         }
@@ -1026,7 +1030,11 @@ impl TryFrom<proto::types::TransactionCall> for TransactionCall {
         Ok(Self {
             contract_address: Felt::from_bytes_be_slice(&value.contract_address),
             entrypoint: value.entrypoint,
-            calldata: value.calldata.into_iter().map(|d| Felt::from_bytes_be_slice(&d)).collect(),
+            calldata: value
+                .calldata
+                .into_iter()
+                .map(|d| Felt::from_bytes_be_slice(&d))
+                .collect(),
             call_type,
             caller_address: Felt::from_bytes_be_slice(&value.caller_address),
         })
@@ -1053,15 +1061,27 @@ impl From<Transaction> for proto::types::Transaction {
         Self {
             transaction_hash: value.transaction_hash.to_bytes_be().into(),
             sender_address: value.sender_address.to_bytes_be().into(),
-            calldata: value.calldata.into_iter().map(|d| d.to_bytes_be().into()).collect(),
+            calldata: value
+                .calldata
+                .into_iter()
+                .map(|d| d.to_bytes_be().into())
+                .collect(),
             max_fee: value.max_fee.to_bytes_be().into(),
-            signature: value.signature.into_iter().map(|s| s.to_bytes_be().into()).collect(),
+            signature: value
+                .signature
+                .into_iter()
+                .map(|s| s.to_bytes_be().into())
+                .collect(),
             nonce: value.nonce.to_bytes_be().into(),
             block_number: value.block_number,
             transaction_type: value.transaction_type,
             block_timestamp: value.block_timestamp.timestamp() as u64,
             calls: value.calls.into_iter().map(|c| c.into()).collect(),
-            unique_models: value.unique_models.into_iter().map(|m| m.to_bytes_be().into()).collect(),
+            unique_models: value
+                .unique_models
+                .into_iter()
+                .map(|m| m.to_bytes_be().into())
+                .collect(),
         }
     }
 }
@@ -1072,15 +1092,31 @@ impl TryFrom<proto::types::Transaction> for Transaction {
         Ok(Self {
             transaction_hash: Felt::from_bytes_be_slice(&value.transaction_hash),
             sender_address: Felt::from_bytes_be_slice(&value.sender_address),
-            calldata: value.calldata.into_iter().map(|d| Felt::from_bytes_be_slice(&d)).collect(),
+            calldata: value
+                .calldata
+                .into_iter()
+                .map(|d| Felt::from_bytes_be_slice(&d))
+                .collect(),
             max_fee: Felt::from_bytes_be_slice(&value.max_fee),
-            signature: value.signature.into_iter().map(|s| Felt::from_bytes_be_slice(&s)).collect(),
+            signature: value
+                .signature
+                .into_iter()
+                .map(|s| Felt::from_bytes_be_slice(&s))
+                .collect(),
             nonce: Felt::from_bytes_be_slice(&value.nonce),
             block_number: value.block_number,
             transaction_type: value.transaction_type,
             block_timestamp: DateTime::from_timestamp(value.block_timestamp as i64, 0).unwrap(),
-            calls: value.calls.into_iter().map(|c| c.try_into()).collect::<Result<Vec<_>, _>>()?,
-            unique_models: value.unique_models.into_iter().map(|m| Felt::from_bytes_be_slice(&m)).collect(),
+            calls: value
+                .calls
+                .into_iter()
+                .map(|c| c.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+            unique_models: value
+                .unique_models
+                .into_iter()
+                .map(|m| Felt::from_bytes_be_slice(&m))
+                .collect(),
         })
     }
 }

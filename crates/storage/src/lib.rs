@@ -15,7 +15,7 @@ use torii_proto::schema::Entity;
 use crate::types::Cursor;
 use torii_proto::{
     Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance,
-    TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionQuery, TransactionCall,
+    TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery,
 };
 
 pub mod types;
@@ -61,7 +61,10 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     ) -> Result<Page<TokenCollection>, StorageError>;
 
     /// Returns transactions for the storage.
-    async fn transactions(&self, query: &TransactionQuery) -> Result<Page<Transaction>, StorageError>;
+    async fn transactions(
+        &self,
+        query: &TransactionQuery,
+    ) -> Result<Page<Transaction>, StorageError>;
 
     /// Returns events for the storage.
     async fn events(&self, query: EventQuery) -> Result<Page<Event>, StorageError>;

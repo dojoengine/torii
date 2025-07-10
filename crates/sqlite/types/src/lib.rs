@@ -7,8 +7,8 @@ use dojo_types::schema::Ty;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use starknet::core::types::Felt;
-use torii_proto::TransactionCall;
 use std::str::FromStr;
+use torii_proto::TransactionCall;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SQLFelt(pub Felt);
