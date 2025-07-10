@@ -23,7 +23,7 @@ use crate::error::Error;
 #[derive(Debug)]
 pub struct Client {
     /// The grpc client.
-    inner: RwLock<WorldClient>,
+    inner: WorldClient,
 }
 
 impl Client {
@@ -32,7 +32,7 @@ impl Client {
         let grpc_client = WorldClient::new(torii_url, world).await?;
 
         Ok(Self {
-            inner: RwLock::new(grpc_client),
+            inner: grpc_client,
         })
     }
 
