@@ -1324,7 +1324,7 @@ impl Sql {
                     .map_err(|e| Error::Parse(ParseError::FromStr(e)))?,
                 entrypoint,
                 calldata: sql_string_to_felts(&calldata),
-                call_type: CallType::from_str(&call_type).map_err(|e| Error::Proto(e))?,
+                call_type: CallType::from_str(&call_type).map_err(Error::Proto)?,
                 caller_address: Felt::from_str(&caller_address)
                     .map_err(|e| Error::Parse(ParseError::FromStr(e)))?,
             };
