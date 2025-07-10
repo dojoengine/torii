@@ -50,6 +50,8 @@ pub struct Entity {
     pub deleted: bool,
 }
 
+impl From<Entity> for torii_proto::Entity {
+
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OptimisticEntity {
