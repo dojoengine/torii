@@ -320,7 +320,8 @@ impl ReadOnlyStorage for Sql {
         use crate::query::{PaginationExecutor, QueryBuilder};
 
         let executor = PaginationExecutor::new(self.pool.clone());
-        let mut query_builder = QueryBuilder::new("tokens t")
+        let mut query_builder = QueryBuilder::new("tokens")
+            .alias("t")
             .select(&[
                 "t.contract_address as contract_address".to_string(),
                 "t.name as name".to_string(),
