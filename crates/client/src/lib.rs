@@ -14,11 +14,12 @@ use torii_grpc_client::{
 use torii_proto::proto::world::{
     RetrieveControllersResponse, RetrieveEntitiesResponse, RetrieveEventsResponse,
     RetrieveTokenBalancesResponse, RetrieveTokenCollectionsResponse, RetrieveTokensResponse,
+    RetrieveTransactionsResponse,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Controller, ControllerQuery, Event, EventQuery, KeysClause, Message, Page, Query,
-    Token, TokenBalance, TokenBalanceQuery, TokenQuery, World,
+    Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionQuery, World,
 };
 
 use crate::error::{Error, SqlError};
@@ -187,6 +188,26 @@ impl Client {
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<Token>, _>>()?,
+            next_cursor: if next_cursor.is_empty() {
+                None
+            } else {
+                Some(next_cursor)
+            },
+        })
+    }
+
+    /// Retrieves transactions matching query parameter.
+    pub async fn transactions(&self, query: TransactionQuery) -> Result<Page<Transaction>, Error> {
+        let mut grpc_client = self.inner.clone();
+        let RetrieveTransactionsResponse {
+            transactions,
+            next_cursor,
+        } = grpc_client.retrieve_transactions(query).await?;
+        Ok(Page {
+            items: transactions
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<Transaction>, _>>()?,
             next_cursor: if next_cursor.is_empty() {
                 None
             } else {

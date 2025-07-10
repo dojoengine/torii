@@ -23,17 +23,18 @@ use torii_proto::proto::world::{
     RetrieveEventMessagesRequest, RetrieveEventsRequest, RetrieveEventsResponse,
     RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
     RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
-    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
-    SubscribeEventsRequest, SubscribeEventsResponse, SubscribeIndexerRequest,
-    SubscribeIndexerResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokensRequest, SubscribeTokensResponse, UpdateEntitiesSubscriptionRequest,
+    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeEntitiesRequest,
+    SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsRequest,
+    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, UpdateEntitiesSubscriptionRequest,
     UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
     UpdateTokenSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, ControllerQuery, Event, EventQuery, IndexerUpdate, KeysClause, Message, Query, Token,
-    TokenBalance, TokenBalanceQuery, TokenQuery,
+    TokenBalance, TokenBalanceQuery, TokenQuery, TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -116,6 +117,19 @@ impl WorldClient {
     ) -> Result<RetrieveControllersResponse, Error> {
         self.inner
             .retrieve_controllers(RetrieveControllersRequest {
+                query: Some(query.into()),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
+    }
+
+    pub async fn retrieve_transactions(
+        &mut self,
+        query: TransactionQuery,
+    ) -> Result<RetrieveTransactionsResponse, Error> {
+        self.inner
+            .retrieve_transactions(RetrieveTransactionsRequest {
                 query: Some(query.into()),
             })
             .await
