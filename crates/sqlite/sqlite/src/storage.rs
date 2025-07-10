@@ -386,7 +386,8 @@ impl ReadOnlyStorage for Sql {
         use crate::utils::sql_string_to_felts;
 
         let executor = PaginationExecutor::new(self.pool.clone());
-        let mut query_builder = QueryBuilder::new("transactions t").select(&[
+        let mut query_builder = QueryBuilder::new("transactions").alias("t").select(&[
+            "t.id".to_string(),
             "t.transaction_hash".to_string(),
             "t.sender_address".to_string(),
             "t.calldata".to_string(),
@@ -396,6 +397,7 @@ impl ReadOnlyStorage for Sql {
             "t.block_number".to_string(),
             "t.transaction_type".to_string(),
             "t.executed_at".to_string(),
+            "t.created_at".to_string(),
         ]);
 
         // Apply filters
@@ -408,27 +410,42 @@ impl ReadOnlyStorage for Sql {
             }
         }
 
+        // Handle transaction calls filters
         if !query.contract_addresses.is_empty()
             || !query.entrypoints.is_empty()
             || !query.caller_addresses.is_empty()
         {
-            let contract_placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
-            let entrypoint_placeholders = vec!["?"; query.entrypoints.len()].join(", ");
-            let caller_placeholders = vec!["?"; query.caller_addresses.len()].join(", ");
             query_builder = query_builder
                 .join("JOIN transaction_calls tc ON tc.transaction_hash = t.transaction_hash");
-            query_builder = query_builder.where_clause(&format!(
-                "tc.contract_address IN ({}) OR tc.entrypoint IN ({}) OR tc.caller_address IN ({})",
-                contract_placeholders, entrypoint_placeholders, caller_placeholders
-            ));
-            for addr in &query.contract_addresses {
-                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+            
+            let mut call_conditions = Vec::new();
+            
+            if !query.contract_addresses.is_empty() {
+                let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
+                call_conditions.push(format!("tc.contract_address IN ({})", placeholders));
+                for addr in &query.contract_addresses {
+                    query_builder = query_builder.bind_value(format!("{:#x}", addr));
+                }
             }
-            for entrypoint in &query.entrypoints {
-                query_builder = query_builder.bind_value(entrypoint.clone());
+            
+            if !query.entrypoints.is_empty() {
+                let placeholders = vec!["?"; query.entrypoints.len()].join(", ");
+                call_conditions.push(format!("tc.entrypoint IN ({})", placeholders));
+                for entrypoint in &query.entrypoints {
+                    query_builder = query_builder.bind_value(entrypoint.clone());
+                }
             }
-            for caller in &query.caller_addresses {
-                query_builder = query_builder.bind_value(format!("{:#x}", caller));
+            
+            if !query.caller_addresses.is_empty() {
+                let placeholders = vec!["?"; query.caller_addresses.len()].join(", ");
+                call_conditions.push(format!("tc.caller_address IN ({})", placeholders));
+                for caller in &query.caller_addresses {
+                    query_builder = query_builder.bind_value(format!("{:#x}", caller));
+                }
+            }
+            
+            if !call_conditions.is_empty() {
+                query_builder = query_builder.where_clause(&format!("({})", call_conditions.join(" AND ")));
             }
         }
 
