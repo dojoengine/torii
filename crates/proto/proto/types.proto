@@ -207,3 +207,59 @@ message TokenBalanceQuery {
     // Pagination
     Pagination pagination = 4;
 }
+
+message TransactionCall {
+    // The contract address being called
+    bytes contract_address = 1;
+    // The function name being called
+    string entrypoint = 2;
+    // The calldata for the function call
+    repeated bytes calldata = 3;
+    // The type of call (EXECUTE, EXECUTE_FROM_OUTSIDE)
+    string call_type = 4;
+    // The address making the call
+    bytes caller_address = 5;
+}
+
+message Transaction {
+    // The transaction hash
+    bytes transaction_hash = 1;
+    // The sender address
+    bytes sender_address = 2;
+    // The transaction calldata
+    repeated bytes calldata = 3;
+    // The maximum fee for the transaction
+    bytes max_fee = 4;
+    // The transaction signature
+    repeated bytes signature = 5;
+    // The transaction nonce
+    bytes nonce = 6;
+    // The block number the transaction was included in
+    uint64 block_number = 7;
+    // The transaction type (INVOKE, L1_HANDLER, etc.)
+    string transaction_type = 8;
+    // The timestamp when the transaction was executed
+    uint64 block_timestamp = 9;
+    // The parsed calls within the transaction
+    repeated TransactionCall calls = 10;
+    // The unique models associated with this transaction
+    repeated bytes unique_models = 11;
+}
+
+message TransactionQuery {
+    // The list of transaction hashes to retrieve
+    repeated bytes transaction_hashes = 1;
+    // The list of caller addresses to filter by
+    repeated bytes caller_addresses = 2;
+    // The list of contract addresses to filter by (calls made to these contracts)
+    repeated bytes contract_addresses = 3;
+    // The list of entrypoints to filter by
+    repeated string entrypoints = 4;
+    // The list of model selectors to filter by
+    repeated bytes model_selectors = 5;
+    // The block number range to filter by
+    optional uint64 from_block = 6;
+    optional uint64 to_block = 7;
+    // Pagination
+    Pagination pagination = 8;
+}

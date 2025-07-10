@@ -7,14 +7,14 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dojo_types::{naming::compute_selector_from_names, schema::Ty};
 use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
-use sqlx::{sqlite::SqliteRow, FromRow};
+use sqlx::{sqlite::SqliteRow, FromRow, Row};
 use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
     schema::Entity, Clause, CompositeClause, Controller, ControllerQuery, Event, EventQuery,
     LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection,
-    TokenQuery,
+    TokenQuery, Transaction, TransactionQuery,
 };
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
@@ -377,6 +377,115 @@ impl ReadOnlyStorage for Sql {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Page {
             items,
+            next_cursor: page.next_cursor,
+        })
+    }
+
+    async fn transactions(&self, query: &TransactionQuery) -> Result<Page<Transaction>, StorageError> {
+        use crate::query::{PaginationExecutor, QueryBuilder};
+        use crate::utils::sql_string_to_felts;
+
+        let executor = PaginationExecutor::new(self.pool.clone());
+        let mut query_builder = QueryBuilder::new("transactions t")
+            .select(&[
+                "t.transaction_hash".to_string(),
+                "t.sender_address".to_string(),
+                "t.calldata".to_string(),
+                "t.max_fee".to_string(),
+                "t.signature".to_string(),
+                "t.nonce".to_string(),
+                "t.block_number".to_string(),
+                "t.transaction_type".to_string(),
+                "t.executed_at".to_string(),
+            ]);
+
+        // Apply filters
+        if !query.transaction_hashes.is_empty() {
+            let placeholders = vec!["?"; query.transaction_hashes.len()].join(", ");
+            query_builder =
+                query_builder.where_clause(&format!("t.transaction_hash IN ({})", placeholders));
+            for hash in &query.transaction_hashes {
+                query_builder = query_builder.bind_value(format!("{:#x}", hash));
+            }
+        }
+
+        if !query.contract_addresses.is_empty() || !query.entrypoints.is_empty() || !query.caller_addresses.is_empty() {
+            let contract_placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
+            let entrypoint_placeholders = vec!["?"; query.entrypoints.len()].join(", ");
+            let caller_placeholders = vec!["?"; query.caller_addresses.len()].join(", ");
+            query_builder = query_builder.join("JOIN transaction_calls tc ON tc.transaction_hash = t.transaction_hash");
+            query_builder = query_builder.where_clause(&format!("tc.contract_address IN ({}) OR tc.entrypoint IN ({}) OR tc.caller_address IN ({})", contract_placeholders, entrypoint_placeholders, caller_placeholders));
+            for addr in &query.contract_addresses {
+                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+            }
+            for entrypoint in &query.entrypoints {
+                query_builder = query_builder.bind_value(entrypoint.clone());
+            }
+            for caller in &query.caller_addresses {
+                query_builder = query_builder.bind_value(format!("{:#x}", caller));
+            }
+        }
+
+        if !query.model_selectors.is_empty() {
+            let placeholders = vec!["?"; query.model_selectors.len()].join(", ");
+            query_builder = query_builder.join("JOIN transaction_models tm ON tm.transaction_hash = t.transaction_hash");
+            query_builder =
+                query_builder.where_clause(&format!("tm.model_id IN ({})", placeholders));
+            for model in &query.model_selectors {
+                query_builder = query_builder.bind_value(format!("{:#x}", model));
+            }
+        }
+
+        if let Some(from_block) = query.from_block {
+            query_builder = query_builder.where_clause("t.block_number >= ?");
+            query_builder = query_builder.bind_value(from_block.to_string());
+        }
+
+        if let Some(to_block) = query.to_block {
+            query_builder = query_builder.where_clause("t.block_number <= ?");
+            query_builder = query_builder.bind_value(to_block.to_string());
+        }
+
+        let page = executor
+            .execute_paginated_query(query_builder, &query.pagination)
+            .await?;
+
+        let headers: Vec<torii_sqlite_types::Transaction> = page
+            .items
+            .into_iter()
+            .map(|row| {
+                Result::<torii_sqlite_types::Transaction, Error>::Ok(
+                    torii_sqlite_types::Transaction::from_row(&row)?,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut transactions = Vec::with_capacity(headers.len());
+        for header in headers {
+            let calls = self.fetch_transaction_calls(&header.transaction_hash).await?;
+            let unique_models = self.fetch_transaction_models(&header.transaction_hash).await?;
+            let transaction = Transaction {
+                transaction_hash: Felt::from_str(&header.transaction_hash)
+                    .map_err(|e| Error::Parse(ParseError::FromStr(e)))?,
+                sender_address: Felt::from_str(&header.sender_address)
+                    .map_err(|e| Error::Parse(ParseError::FromStr(e)))?,
+                calldata: sql_string_to_felts(&header.calldata),
+                max_fee: Felt::from_str(&header.max_fee)
+                    .map_err(|e| Error::Parse(ParseError::FromStr(e)))?,
+                signature: sql_string_to_felts(&header.signature),
+                nonce: Felt::from_str(&header.nonce)
+                    .map_err(|e| Error::Parse(ParseError::FromStr(e)))?,
+                block_number: header.block_number,
+                transaction_type: header.transaction_type,
+                block_timestamp: header.executed_at,
+                calls,
+                unique_models,
+            };
+            transactions.push(transaction);
+        }
+
+        Ok(Page {
+            items: transactions,
             next_cursor: page.next_cursor,
         })
     }
@@ -1172,5 +1281,63 @@ impl Storage for Sql {
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?;
         res.map_err(|e| Error::ExecutorQuery(Box::new(e)))?;
         Ok(())
+    }
+}
+
+impl Sql {
+    async fn fetch_transaction_calls(&self, transaction_hash: &str) -> Result<Vec<torii_proto::TransactionCall>, StorageError> {
+        use crate::utils::sql_string_to_felts;
+
+        let calls = sqlx::query(
+            "SELECT contract_address, entrypoint, calldata, call_type, caller_address 
+             FROM transaction_calls 
+             WHERE transaction_hash = ?"
+        )
+        .bind(transaction_hash)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut transaction_calls = Vec::new();
+        for row in calls {
+            let contract_address = row.try_get::<String, _>("contract_address")?;
+            let entrypoint = row.try_get::<String, _>("entrypoint")?;
+            let calldata = row.try_get::<String, _>("calldata")?;
+            let call_type = row.try_get::<String, _>("call_type")?;
+            let caller_address = row.try_get::<String, _>("caller_address")?;
+
+            let call = torii_proto::TransactionCall {
+                contract_address: Felt::from_str(&contract_address)
+                    .map_err(|e| Error::Parse(ParseError::FromStr(e)))?,
+                entrypoint,
+                calldata: sql_string_to_felts(&calldata),
+                call_type,
+                caller_address: Felt::from_str(&caller_address)
+                    .map_err(|e| Error::Parse(ParseError::FromStr(e)))?,
+            };
+
+            transaction_calls.push(call);
+        }
+
+        Ok(transaction_calls)
+    }
+
+    async fn fetch_transaction_models(&self, transaction_hash: &str) -> Result<Vec<Felt>, StorageError> {
+        let models = sqlx::query(
+            "SELECT model_id FROM transaction_models WHERE transaction_hash = ?"
+        )
+        .bind(transaction_hash)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut unique_models = Vec::new();
+        for row in models {
+            let model_id = row.try_get::<String, _>("model_id")?;
+            unique_models.push(
+                Felt::from_str(&model_id)
+                    .map_err(|e| Error::Parse(ParseError::FromStr(e)))?
+            );
+        }
+
+        Ok(unique_models)
     }
 }
