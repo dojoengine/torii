@@ -212,19 +212,22 @@ impl Service {
             }
 
             let resp: SubscribeTransactionsResponse = SubscribeTransactionsResponse {
-                transaction: Some(torii_proto::Transaction {
-                    transaction_hash,
-                    sender_address,
-                    calldata: calldata.clone(),
-                    max_fee,
-                    signature: signature.clone(),
-                    nonce,
-                    block_number: transaction.block_number,
-                    block_timestamp: transaction.executed_at,
-                    transaction_type: transaction.transaction_type.clone(),
-                    calls: transaction.calls.clone(),
-                    unique_models: transaction.unique_models.clone().into_iter().collect(),
-                }.into()),
+                transaction: Some(
+                    torii_proto::Transaction {
+                        transaction_hash,
+                        sender_address,
+                        calldata: calldata.clone(),
+                        max_fee,
+                        signature: signature.clone(),
+                        nonce,
+                        block_number: transaction.block_number,
+                        block_timestamp: transaction.executed_at,
+                        transaction_type: transaction.transaction_type.clone(),
+                        calls: transaction.calls.clone(),
+                        unique_models: transaction.unique_models.clone().into_iter().collect(),
+                    }
+                    .into(),
+                ),
             };
 
             // Use try_send to avoid blocking on slow subscribers

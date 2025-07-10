@@ -42,7 +42,17 @@ use self::subscriptions::entity::EntityManager;
 use self::subscriptions::event_message::EventMessageManager;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
-    PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest, PublishMessageResponse, RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest, RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest, SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse, UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest, WorldMetadataResponse
+    PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest,
+    PublishMessageResponse, RetrieveControllersRequest, RetrieveControllersResponse,
+    RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
+    RetrieveTokenCollectionsRequest, RetrieveTokenCollectionsResponse, RetrieveTokensRequest,
+    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
+    UpdateTokenSubscriptionRequest, WorldMetadataRequest, WorldMetadataResponse,
 };
 use torii_proto::proto::{self};
 use torii_proto::Message;
