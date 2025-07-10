@@ -11595,7 +11595,6 @@ dependencies = [
  "dojo-world",
  "futures",
  "futures-util",
- "hyper 0.14.30",
  "num-traits 0.2.19",
  "parking_lot",
  "serde",
