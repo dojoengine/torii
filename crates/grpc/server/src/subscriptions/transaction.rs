@@ -55,6 +55,7 @@ impl TransactionManager {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_subscriber(
         &self,
         transaction_hashes: Vec<Felt>,
