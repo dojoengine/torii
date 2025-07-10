@@ -208,6 +208,11 @@ message TokenBalanceQuery {
     Pagination pagination = 4;
 }
 
+enum CallType {
+    EXECUTE = 0;
+    EXECUTE_FROM_OUTSIDE = 1;
+}
+
 message TransactionCall {
     // The contract address being called
     bytes contract_address = 1;
@@ -216,7 +221,7 @@ message TransactionCall {
     // The calldata for the function call
     repeated bytes calldata = 3;
     // The type of call (EXECUTE, EXECUTE_FROM_OUTSIDE)
-    string call_type = 4;
+    CallType call_type = 4;
     // The address making the call
     bytes caller_address = 5;
 }

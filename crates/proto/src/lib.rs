@@ -955,11 +955,55 @@ impl From<proto::types::EventQuery> for EventQuery {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub enum CallType {
+    Execute,
+    ExecuteFromOutside,
+}
+
+impl std::fmt::Display for CallType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CallType::Execute => write!(f, "EXECUTE"),
+            CallType::ExecuteFromOutside => write!(f, "EXECUTE_FROM_OUTSIDE"),
+        }
+    }
+}
+
+impl FromStr for CallType {
+    type Err = ProtoError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "EXECUTE" => Ok(CallType::Execute),
+            "EXECUTE_FROM_OUTSIDE" => Ok(CallType::ExecuteFromOutside),
+            _ => Err(ProtoError::InvalidCallType(s.to_string())),
+        }
+    }
+}
+
+impl From<proto::types::CallType> for CallType {
+    fn from(value: proto::types::CallType) -> Self {
+        match value {
+            proto::types::CallType::Execute => CallType::Execute,
+            proto::types::CallType::ExecuteFromOutside => CallType::ExecuteFromOutside,
+        }
+    }
+}
+
+impl From<CallType> for proto::types::CallType {
+    fn from(value: CallType) -> Self {
+        match value {
+            CallType::Execute => proto::types::CallType::Execute,
+            CallType::ExecuteFromOutside => proto::types::CallType::ExecuteFromOutside,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct TransactionCall {
     pub contract_address: Felt,
     pub entrypoint: String,
     pub calldata: Vec<Felt>,
-    pub call_type: String,
+    pub call_type: CallType,
     pub caller_address: Felt,
 }
 
@@ -969,7 +1013,7 @@ impl From<TransactionCall> for proto::types::TransactionCall {
             contract_address: value.contract_address.to_bytes_be().into(),
             entrypoint: value.entrypoint,
             calldata: value.calldata.into_iter().map(|d| d.to_bytes_be().into()).collect(),
-            call_type: value.call_type,
+            call_type: value.call_type as i32,
             caller_address: value.caller_address.to_bytes_be().into(),
         }
     }
@@ -978,11 +1022,12 @@ impl From<TransactionCall> for proto::types::TransactionCall {
 impl TryFrom<proto::types::TransactionCall> for TransactionCall {
     type Error = ProtoError;
     fn try_from(value: proto::types::TransactionCall) -> Result<Self, Self::Error> {
+        let call_type = value.call_type().into();
         Ok(Self {
             contract_address: Felt::from_bytes_be_slice(&value.contract_address),
             entrypoint: value.entrypoint,
             calldata: value.calldata.into_iter().map(|d| Felt::from_bytes_be_slice(&d)).collect(),
-            call_type: value.call_type,
+            call_type,
             caller_address: Felt::from_bytes_be_slice(&value.caller_address),
         })
     }

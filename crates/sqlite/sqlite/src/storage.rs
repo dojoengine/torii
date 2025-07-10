@@ -12,13 +12,11 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    schema::Entity, Clause, CompositeClause, Controller, ControllerQuery, Event, EventQuery,
-    LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection,
-    TokenQuery, Transaction, TransactionQuery,
+    schema::Entity, CallType, Clause, CompositeClause, Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery
 };
 use torii_sqlite_types::{ContractCursor, HookEvent, Model as SQLModel};
 use torii_storage::{
-    types::{Cursor, ParsedCall},
+    types::Cursor,
     ReadOnlyStorage, Storage, StorageError,
 };
 use tracing::warn;
@@ -1030,7 +1028,7 @@ impl Storage for Sql {
         contract_addresses: &HashSet<Felt>,
         transaction_type: &str,
         block_timestamp: u64,
-        calls: &[ParsedCall],
+        calls: &[TransactionCall],
         unique_models: &HashSet<Felt>,
     ) -> Result<(), StorageError> {
         // Store the transaction in the transactions table
@@ -1310,7 +1308,8 @@ impl Sql {
                     .map_err(|e| Error::Parse(ParseError::FromStr(e)))?,
                 entrypoint,
                 calldata: sql_string_to_felts(&calldata),
-                call_type,
+                call_type: CallType::from_str(&call_type)
+                    .map_err(|e| Error::Proto(e))?,
                 caller_address: Felt::from_str(&caller_address)
                     .map_err(|e| Error::Parse(ParseError::FromStr(e)))?,
             };
