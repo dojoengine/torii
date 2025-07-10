@@ -17,8 +17,8 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 use torii_math::I256;
+use torii_proto::TransactionCall;
 use torii_sqlite_types::OptimisticToken;
-use torii_storage::types::ParsedCall;
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
@@ -94,7 +94,7 @@ pub struct EventMessageQuery {
 #[derive(Debug, Clone)]
 pub struct StoreTransactionQuery {
     pub contract_addresses: HashSet<Felt>,
-    pub calls: Vec<ParsedCall>,
+    pub calls: Vec<TransactionCall>,
     pub unique_models: HashSet<Felt>,
 }
 
@@ -418,6 +418,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
 
                 transaction.contract_addresses = store_transaction.contract_addresses;
                 transaction.calls = store_transaction.calls;
+                transaction.unique_models = store_transaction.unique_models;
 
                 self.publish_queue
                     .push(BrokerMessage::Transaction(transaction));

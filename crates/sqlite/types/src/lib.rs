@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use starknet::core::types::Felt;
 use std::str::FromStr;
-use torii_storage::types::ParsedCall;
+use torii_proto::TransactionCall;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SQLFelt(pub Felt);
@@ -274,9 +274,11 @@ pub struct Transaction {
     pub block_number: u64,
 
     #[sqlx(skip)]
-    pub calls: Vec<ParsedCall>,
+    pub calls: Vec<TransactionCall>,
     #[sqlx(skip)]
     pub contract_addresses: HashSet<Felt>,
+    #[sqlx(skip)]
+    pub unique_models: HashSet<Felt>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

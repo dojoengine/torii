@@ -953,3 +953,245 @@ impl From<proto::types::EventQuery> for EventQuery {
         }
     }
 }
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub enum CallType {
+    Execute,
+    ExecuteFromOutside,
+}
+
+impl std::fmt::Display for CallType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CallType::Execute => write!(f, "EXECUTE"),
+            CallType::ExecuteFromOutside => write!(f, "EXECUTE_FROM_OUTSIDE"),
+        }
+    }
+}
+
+impl FromStr for CallType {
+    type Err = ProtoError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "EXECUTE" => Ok(CallType::Execute),
+            "EXECUTE_FROM_OUTSIDE" => Ok(CallType::ExecuteFromOutside),
+            _ => Err(ProtoError::InvalidCallType(s.to_string())),
+        }
+    }
+}
+
+impl From<proto::types::CallType> for CallType {
+    fn from(value: proto::types::CallType) -> Self {
+        match value {
+            proto::types::CallType::Execute => CallType::Execute,
+            proto::types::CallType::ExecuteFromOutside => CallType::ExecuteFromOutside,
+        }
+    }
+}
+
+impl From<CallType> for proto::types::CallType {
+    fn from(value: CallType) -> Self {
+        match value {
+            CallType::Execute => proto::types::CallType::Execute,
+            CallType::ExecuteFromOutside => proto::types::CallType::ExecuteFromOutside,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct TransactionCall {
+    pub contract_address: Felt,
+    pub entrypoint: String,
+    pub calldata: Vec<Felt>,
+    pub call_type: CallType,
+    pub caller_address: Felt,
+}
+
+impl From<TransactionCall> for proto::types::TransactionCall {
+    fn from(value: TransactionCall) -> Self {
+        Self {
+            contract_address: value.contract_address.to_bytes_be().into(),
+            entrypoint: value.entrypoint,
+            calldata: value
+                .calldata
+                .into_iter()
+                .map(|d| d.to_bytes_be().into())
+                .collect(),
+            call_type: value.call_type as i32,
+            caller_address: value.caller_address.to_bytes_be().into(),
+        }
+    }
+}
+
+impl TryFrom<proto::types::TransactionCall> for TransactionCall {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::TransactionCall) -> Result<Self, Self::Error> {
+        let call_type = value.call_type().into();
+        Ok(Self {
+            contract_address: Felt::from_bytes_be_slice(&value.contract_address),
+            entrypoint: value.entrypoint,
+            calldata: value
+                .calldata
+                .into_iter()
+                .map(|d| Felt::from_bytes_be_slice(&d))
+                .collect(),
+            call_type,
+            caller_address: Felt::from_bytes_be_slice(&value.caller_address),
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct Transaction {
+    pub transaction_hash: Felt,
+    pub sender_address: Felt,
+    pub calldata: Vec<Felt>,
+    pub max_fee: Felt,
+    pub signature: Vec<Felt>,
+    pub nonce: Felt,
+    pub block_number: u64,
+    pub transaction_type: String,
+    pub block_timestamp: DateTime<Utc>,
+    pub calls: Vec<TransactionCall>,
+    pub unique_models: Vec<Felt>,
+}
+
+impl From<Transaction> for proto::types::Transaction {
+    fn from(value: Transaction) -> Self {
+        Self {
+            transaction_hash: value.transaction_hash.to_bytes_be().into(),
+            sender_address: value.sender_address.to_bytes_be().into(),
+            calldata: value
+                .calldata
+                .into_iter()
+                .map(|d| d.to_bytes_be().into())
+                .collect(),
+            max_fee: value.max_fee.to_bytes_be().into(),
+            signature: value
+                .signature
+                .into_iter()
+                .map(|s| s.to_bytes_be().into())
+                .collect(),
+            nonce: value.nonce.to_bytes_be().into(),
+            block_number: value.block_number,
+            transaction_type: value.transaction_type,
+            block_timestamp: value.block_timestamp.timestamp() as u64,
+            calls: value.calls.into_iter().map(|c| c.into()).collect(),
+            unique_models: value
+                .unique_models
+                .into_iter()
+                .map(|m| m.to_bytes_be().into())
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::types::Transaction> for Transaction {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::Transaction) -> Result<Self, Self::Error> {
+        Ok(Self {
+            transaction_hash: Felt::from_bytes_be_slice(&value.transaction_hash),
+            sender_address: Felt::from_bytes_be_slice(&value.sender_address),
+            calldata: value
+                .calldata
+                .into_iter()
+                .map(|d| Felt::from_bytes_be_slice(&d))
+                .collect(),
+            max_fee: Felt::from_bytes_be_slice(&value.max_fee),
+            signature: value
+                .signature
+                .into_iter()
+                .map(|s| Felt::from_bytes_be_slice(&s))
+                .collect(),
+            nonce: Felt::from_bytes_be_slice(&value.nonce),
+            block_number: value.block_number,
+            transaction_type: value.transaction_type,
+            block_timestamp: DateTime::from_timestamp(value.block_timestamp as i64, 0).unwrap(),
+            calls: value
+                .calls
+                .into_iter()
+                .map(|c| c.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+            unique_models: value
+                .unique_models
+                .into_iter()
+                .map(|m| Felt::from_bytes_be_slice(&m))
+                .collect(),
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct TransactionQuery {
+    pub transaction_hashes: Vec<Felt>,
+    pub caller_addresses: Vec<Felt>,
+    pub contract_addresses: Vec<Felt>,
+    pub entrypoints: Vec<String>,
+    pub model_selectors: Vec<Felt>,
+    pub from_block: Option<u64>,
+    pub to_block: Option<u64>,
+    pub pagination: Pagination,
+}
+
+impl From<TransactionQuery> for proto::types::TransactionQuery {
+    fn from(value: TransactionQuery) -> Self {
+        Self {
+            transaction_hashes: value
+                .transaction_hashes
+                .into_iter()
+                .map(|h| h.to_bytes_be().into())
+                .collect(),
+            caller_addresses: value
+                .caller_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().into())
+                .collect(),
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().into())
+                .collect(),
+            entrypoints: value.entrypoints,
+            model_selectors: value
+                .model_selectors
+                .into_iter()
+                .map(|m| m.to_bytes_be().into())
+                .collect(),
+            from_block: value.from_block,
+            to_block: value.to_block,
+            pagination: Some(value.pagination.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::TransactionQuery> for TransactionQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::TransactionQuery) -> Result<Self, Self::Error> {
+        Ok(Self {
+            transaction_hashes: value
+                .transaction_hashes
+                .into_iter()
+                .map(|h| Felt::from_bytes_be_slice(&h))
+                .collect(),
+            caller_addresses: value
+                .caller_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
+            entrypoints: value.entrypoints,
+            model_selectors: value
+                .model_selectors
+                .into_iter()
+                .map(|m| Felt::from_bytes_be_slice(&m))
+                .collect(),
+            from_block: value.from_block,
+            to_block: value.to_block,
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
+        })
+    }
+}

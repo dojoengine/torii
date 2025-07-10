@@ -55,6 +55,9 @@ service World {
     // Retrieve token balances
     rpc RetrieveTokenBalances (RetrieveTokenBalancesRequest) returns (RetrieveTokenBalancesResponse);
 
+    // Retrieve transactions
+    rpc RetrieveTransactions (RetrieveTransactionsRequest) returns (RetrieveTransactionsResponse);
+
     // Retrieve controllers
     rpc RetrieveControllers (RetrieveControllersRequest) returns (RetrieveControllersResponse);
 
@@ -153,6 +156,17 @@ message SubscribeTokenBalancesRequest {
 message RetrieveTokenBalancesResponse {
     string next_cursor = 1;
     repeated types.TokenBalance balances = 2;
+}
+
+// A request to retrieve transactions
+message RetrieveTransactionsRequest {
+    types.TransactionQuery query = 1;
+}
+
+// A response containing transactions
+message RetrieveTransactionsResponse {
+    string next_cursor = 1;
+    repeated types.Transaction transactions = 2;
 }
 
 // A request to retrieve token collections 

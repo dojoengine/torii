@@ -12,10 +12,10 @@ use std::{
 use torii_math::I256;
 use torii_proto::schema::Entity;
 
-use crate::types::{Cursor, ParsedCall};
+use crate::types::Cursor;
 use torii_proto::{
     Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance,
-    TokenBalanceQuery, TokenCollection, TokenQuery,
+    TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery,
 };
 
 pub mod types;
@@ -59,6 +59,12 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
         &self,
         query: &TokenBalanceQuery,
     ) -> Result<Page<TokenCollection>, StorageError>;
+
+    /// Returns transactions for the storage.
+    async fn transactions(
+        &self,
+        query: &TransactionQuery,
+    ) -> Result<Page<Transaction>, StorageError>;
 
     /// Returns events for the storage.
     async fn events(&self, query: EventQuery) -> Result<Page<Event>, StorageError>;
@@ -178,7 +184,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         contract_addresses: &HashSet<Felt>,
         transaction_type: &str,
         block_timestamp: u64,
-        calls: &[ParsedCall],
+        calls: &[TransactionCall],
         unique_models: &HashSet<Felt>,
     ) -> Result<(), StorageError>;
 

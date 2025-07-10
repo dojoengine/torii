@@ -44,10 +44,11 @@ use torii_proto::proto::world::{
     PublishMessageResponse, RetrieveControllersRequest, RetrieveControllersResponse,
     RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
     RetrieveTokenCollectionsRequest, RetrieveTokenCollectionsResponse, RetrieveTokensRequest,
-    RetrieveTokensResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
-    SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeIndexerRequest,
-    SubscribeIndexerResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokensRequest, SubscribeTokensResponse, UpdateEventMessagesSubscriptionRequest,
+    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, UpdateEventMessagesSubscriptionRequest,
     UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
     WorldMetadataResponse,
 };
@@ -217,6 +218,28 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
 
         Ok(Response::new(WorldMetadataResponse {
             world: Some(metadata),
+        }))
+    }
+
+    async fn retrieve_transactions(
+        &self,
+        request: Request<RetrieveTransactionsRequest>,
+    ) -> Result<Response<RetrieveTransactionsResponse>, Status> {
+        let RetrieveTransactionsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+
+        let transactions = self
+            .storage
+            .transactions(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(RetrieveTransactionsResponse {
+            transactions: transactions.items.into_iter().map(Into::into).collect(),
+            next_cursor: transactions.next_cursor.unwrap_or_default(),
         }))
     }
 

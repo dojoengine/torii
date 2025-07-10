@@ -10,6 +10,7 @@ use crate::{
 #[derive(Debug)]
 pub struct QueryBuilder {
     table_name: String,
+    table_alias: String,
     selections: Vec<String>,
     joins: Vec<String>,
     where_conditions: Vec<String>,
@@ -24,6 +25,7 @@ impl QueryBuilder {
     pub fn new(table_name: &str) -> Self {
         Self {
             table_name: table_name.to_string(),
+            table_alias: "".to_string(),
             selections: Vec::new(),
             joins: Vec::new(),
             where_conditions: Vec::new(),
@@ -33,6 +35,11 @@ impl QueryBuilder {
             having_clause: None,
             limit: None,
         }
+    }
+
+    pub fn alias(mut self, alias: &str) -> Self {
+        self.table_alias = alias.to_string();
+        self
     }
 
     pub fn select(mut self, columns: &[String]) -> Self {
@@ -82,9 +89,10 @@ impl QueryBuilder {
 
     pub fn build(self) -> String {
         let mut query = format!(
-            "SELECT {} FROM [{}]",
+            "SELECT {} FROM [{}] {}",
             self.selections.join(", "),
-            self.table_name
+            self.table_name,
+            self.table_alias
         );
 
         if !self.joins.is_empty() {

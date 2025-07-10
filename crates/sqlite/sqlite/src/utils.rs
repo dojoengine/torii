@@ -76,6 +76,7 @@ pub fn build_keys_pattern(clause: &torii_proto::KeysClause) -> String {
 pub fn sql_string_to_felts(sql_string: &str) -> Vec<Felt> {
     sql_string
         .split(SQL_FELT_DELIMITER)
+        .filter(|felt| !felt.is_empty())
         .map(|felt| Felt::from_str(felt).unwrap())
         .collect()
 }

@@ -18,4 +18,6 @@ pub enum ProtoError {
     FromUtf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)]
     FromJson(#[from] serde_json::Error),
+    #[error("Invalid call type: {0}")]
+    InvalidCallType(String),
 }
