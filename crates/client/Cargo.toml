@@ -12,7 +12,7 @@ dojo-types.workspace = true
 dojo-world.workspace = true
 futures.workspace = true
 futures-util.workspace = true
-hyper.workspace = true
+hyper = { workspace = true, features = ["client"] }
 num-traits.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
