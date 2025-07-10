@@ -50,7 +50,23 @@ pub struct Entity {
     pub deleted: bool,
 }
 
-impl From<Entity> for torii_proto::Entity {
+impl From<Entity> for torii_proto::schema::Entity {
+    fn from(value: Entity) -> Self {
+        let models = if value.deleted {
+            vec![]
+        } else {
+            vec![value.updated_model.unwrap().as_struct().unwrap().clone()]
+        };
+
+        Self {
+            hashed_keys: Felt::from_str(&value.id).unwrap(),
+            created_at: value.created_at,
+            executed_at: value.executed_at,
+            updated_at: value.updated_at,
+            models,
+        }
+    }
+}
 
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]

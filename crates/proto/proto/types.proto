@@ -41,7 +41,7 @@ message Entity {
     // The entity's updated at timestamp
     uint64 updated_at_timestamp = 4;
     // Models of the entity
-    repeated Struct models = 2;
+    repeated Struct models = 5;
 }
 
 message Event {
