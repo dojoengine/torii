@@ -12187,6 +12187,7 @@ dependencies = [
  "crypto-bigint",
  "dojo-types 1.6.0-alpha.1",
  "serde",
+ "serde_json",
  "sqlx",
  "starknet 0.14.0",
  "torii-proto",
