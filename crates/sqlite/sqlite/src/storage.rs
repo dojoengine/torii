@@ -417,9 +417,9 @@ impl ReadOnlyStorage for Sql {
         {
             query_builder = query_builder
                 .join("JOIN transaction_calls tc ON tc.transaction_hash = t.transaction_hash");
-            
+
             let mut call_conditions = Vec::new();
-            
+
             if !query.contract_addresses.is_empty() {
                 let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
                 call_conditions.push(format!("tc.contract_address IN ({})", placeholders));
@@ -427,7 +427,7 @@ impl ReadOnlyStorage for Sql {
                     query_builder = query_builder.bind_value(format!("{:#x}", addr));
                 }
             }
-            
+
             if !query.entrypoints.is_empty() {
                 let placeholders = vec!["?"; query.entrypoints.len()].join(", ");
                 call_conditions.push(format!("tc.entrypoint IN ({})", placeholders));
@@ -435,7 +435,7 @@ impl ReadOnlyStorage for Sql {
                     query_builder = query_builder.bind_value(entrypoint.clone());
                 }
             }
-            
+
             if !query.caller_addresses.is_empty() {
                 let placeholders = vec!["?"; query.caller_addresses.len()].join(", ");
                 call_conditions.push(format!("tc.caller_address IN ({})", placeholders));
@@ -443,9 +443,10 @@ impl ReadOnlyStorage for Sql {
                     query_builder = query_builder.bind_value(format!("{:#x}", caller));
                 }
             }
-            
+
             if !call_conditions.is_empty() {
-                query_builder = query_builder.where_clause(&format!("({})", call_conditions.join(" AND ")));
+                query_builder =
+                    query_builder.where_clause(&format!("({})", call_conditions.join(" AND ")));
             }
         }
 
