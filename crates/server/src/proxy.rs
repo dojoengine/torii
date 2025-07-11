@@ -236,6 +236,7 @@ impl Proxy {
                                                 });
 
                                             if let Err(e) = hyper::server::conn::Http::new()
+                                                .http2_only(true)
                                                 .serve_connection(tls_stream, service)
                                                 .await
                                             {
