@@ -31,9 +31,7 @@ impl Client {
     pub async fn new(torii_url: String, world: Felt) -> Result<Self, Error> {
         let grpc_client = WorldClient::new(torii_url, world).await?;
 
-        Ok(Self {
-            inner: grpc_client,
-        })
+        Ok(Self { inner: grpc_client })
     }
 
     /// Publishes an offchain message to the world.
