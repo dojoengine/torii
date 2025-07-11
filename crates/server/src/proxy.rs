@@ -148,10 +148,12 @@ impl Proxy {
         let key = PrivateKey(keys[0].clone());
 
         // Create server config
-        let server_config = ServerConfig::builder()
+        let mut server_config = ServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(certs, key)?;
+        server_config.alpn_protocols =
+            vec![b"h2".to_vec(), b"http/1.1".to_vec(), b"http/1.0".to_vec()];
 
         Ok(server_config)
     }
