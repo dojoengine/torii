@@ -344,7 +344,7 @@ mod tests {
     ></script>
     <link rel="icon" href="https://graphql.org/favicon.ico">
     <link rel="stylesheet" href="https://unpkg.com/graphiql@3.9.0/graphiql.min.css" />
-    <link rel="stylesheet" href="https://unpkg.com/@graphiql/plugin-explorer/dist/style.css" />
+    <link rel="stylesheet" href="https://unpkg.com/@graphiql/plugin-explorer@3.9.0/dist/style.css" />
   </head>
 
   <body>
@@ -354,7 +354,7 @@ mod tests {
       type="application/javascript"
     ></script>
     <script
-      src="https://unpkg.com/@graphiql/plugin-explorer/dist/index.umd.js"
+      src="https://unpkg.com/@graphiql/plugin-explorer@3.9.0/dist/index.umd.js"
       crossorigin
     ></script>
     <script>
