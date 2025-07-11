@@ -59,6 +59,7 @@ lazy_static::lazy_static! {
     pub(crate) static ref GRAPHQL_PROXY_CLIENT: ReverseProxy<HttpConnector<GaiResolver>> = {
         ReverseProxy::new(
             Client::builder()
+             .http2_only(true)
              .build_http(),
         )
     };
@@ -238,7 +239,6 @@ impl Proxy {
                                                 });
 
                                             if let Err(e) = hyper::server::conn::Http::new()
-                                                .http2_only(true)
                                                 .serve_connection(tls_stream, service)
                                                 .await
                                             {
