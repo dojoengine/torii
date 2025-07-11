@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use crypto_bigint::{Encoding, U256};
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Enum, EnumOption, Member, Struct, Ty};
@@ -10,6 +11,9 @@ use crate::proto;
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Entity {
     pub hashed_keys: Felt,
+    pub created_at: DateTime<Utc>,
+    pub executed_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub models: Vec<Struct>,
 }
 
@@ -17,6 +21,9 @@ impl From<Entity> for proto::types::Entity {
     fn from(entity: Entity) -> Self {
         proto::types::Entity {
             hashed_keys: entity.hashed_keys.to_bytes_be().to_vec(),
+            created_at_timestamp: entity.created_at.timestamp() as u64,
+            executed_at_timestamp: entity.executed_at.timestamp() as u64,
+            updated_at_timestamp: entity.updated_at.timestamp() as u64,
             models: entity
                 .models
                 .into_iter()
@@ -31,6 +38,9 @@ impl TryFrom<proto::types::Entity> for Entity {
     fn try_from(entity: proto::types::Entity) -> Result<Self, Self::Error> {
         Ok(Self {
             hashed_keys: Felt::from_bytes_be_slice(&entity.hashed_keys),
+            created_at: DateTime::from_timestamp(entity.created_at_timestamp as i64, 0).unwrap(),
+            executed_at: DateTime::from_timestamp(entity.executed_at_timestamp as i64, 0).unwrap(),
+            updated_at: DateTime::from_timestamp(entity.updated_at_timestamp as i64, 0).unwrap(),
             models: entity
                 .models
                 .into_iter()
