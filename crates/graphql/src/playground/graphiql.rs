@@ -115,8 +115,8 @@ impl<'a> GraphiQLSource<'a> {
 
     /// Sets plugins
     pub fn plugins(self, plugins: &'a [GraphiQLPlugin]) -> GraphiQLSource<'a> {
-      GraphiQLSource { plugins, ..self }
-  }
+        GraphiQLSource { plugins, ..self }
+    }
 
     /// Sets credentials option for the fetch requests.
     pub fn credentials(self, credentials: Credentials) -> GraphiQLSource<'a> {
@@ -130,10 +130,7 @@ impl<'a> GraphiQLSource<'a> {
     pub fn finish(self) -> String {
         let mut handlebars = Handlebars::new();
         handlebars
-            .register_template_string(
-                "graphiql_source",
-                include_str!("./graphiql_source.hbs"),
-            )
+            .register_template_string("graphiql_source", include_str!("./graphiql_source.hbs"))
             .expect("Failed to register template");
 
         handlebars

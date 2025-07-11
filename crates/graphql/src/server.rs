@@ -8,7 +8,6 @@ use sqlx::{Pool, Sqlite};
 use tokio::sync::broadcast::Receiver;
 use warp::{Filter, Rejection, Reply};
 
-
 use crate::playground::{graphiql::GraphiQLSource, graphiql_plugin::GraphiQLPlugin};
 
 use super::schema::build_schema;
@@ -43,7 +42,7 @@ fn graphql_filter(schema: Schema) -> impl Filter<Extract = impl Reply, Error = R
                 .title("Torii GraphQL Playground")
                 // we patch the generated source to use the current URL instead of the origin
                 // for hosted services like SLOT
-                .finish()
+                .finish(),
         )
     });
 

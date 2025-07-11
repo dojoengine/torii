@@ -45,7 +45,7 @@ impl SqlHandler {
                 .unwrap(),
         }
     }
-    
+
     async fn serve_playground(&self) -> Response<Body> {
         let html = include_str!("../../static/sql-playground.html");
 
