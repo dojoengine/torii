@@ -187,8 +187,51 @@ mod tests {
 
   <body>
     <div id="graphiql">Loading...</div>
+    <script>
+      // Configure Monaco Editor environment before GraphiQL loads
+      window.MonacoEnvironment = {
+        getWorker: async function (workerId, label) {
+          console.info('setup-workers/graphiql', { label });
+          
+          let workerUrl;
+          switch (label) {
+            case 'json':
+              workerUrl = 'https://unpkg.com/graphiql@4/dist/workers/json.worker.js';
+              break;
+            case 'graphql':
+              workerUrl = 'https://unpkg.com/graphiql@4/dist/workers/graphql.worker.js';
+              break;
+            default:
+              workerUrl = 'https://unpkg.com/graphiql@4/dist/workers/editor.worker.js';
+          }
+          
+          try {
+            // Fetch worker code and create blob URL to avoid CORS issues
+            const response = await fetch(workerUrl);
+            let workerCode = await response.text();
+            
+            // Remove source map references to avoid blob URL issues
+            workerCode = workerCode.replace(/\\/\\/# sourceMappingURL=.*$/gm, '');
+            
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const blobUrl = URL.createObjectURL(blob);
+            
+            // Create module worker since GraphiQL workers are ES modules
+            return new Worker(blobUrl, { type: 'module' });
+          } catch (error) {
+            console.warn('Failed to load worker from CDN, falling back to URL:', error);
+            // Try as module worker first, then regular worker
+            try {
+              return new Worker(workerUrl, { type: 'module' });
+            } catch (moduleError) {
+              return new Worker(workerUrl);
+            }
+          }
+        }
+      };
+    </script>
     <script
-      src="https://unpkg.com/graphiql@4/graphiql.min.js"
+      src="https://unpkg.com/graphiql@4/dist/index.umd.js"
       type="application/javascript"
     ></script>
     <script>
@@ -264,8 +307,51 @@ mod tests {
 
   <body>
     <div id="graphiql">Loading...</div>
+    <script>
+      // Configure Monaco Editor environment before GraphiQL loads
+      window.MonacoEnvironment = {
+        getWorker: async function (workerId, label) {
+          console.info('setup-workers/graphiql', { label });
+          
+          let workerUrl;
+          switch (label) {
+            case 'json':
+              workerUrl = 'https://unpkg.com/graphiql@4/dist/workers/json.worker.js';
+              break;
+            case 'graphql':
+              workerUrl = 'https://unpkg.com/graphiql@4/dist/workers/graphql.worker.js';
+              break;
+            default:
+              workerUrl = 'https://unpkg.com/graphiql@4/dist/workers/editor.worker.js';
+          }
+          
+          try {
+            // Fetch worker code and create blob URL to avoid CORS issues
+            const response = await fetch(workerUrl);
+            let workerCode = await response.text();
+            
+            // Remove source map references to avoid blob URL issues
+            workerCode = workerCode.replace(/\\/\\/# sourceMappingURL=.*$/gm, '');
+            
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const blobUrl = URL.createObjectURL(blob);
+            
+            // Create module worker since GraphiQL workers are ES modules
+            return new Worker(blobUrl, { type: 'module' });
+          } catch (error) {
+            console.warn('Failed to load worker from CDN, falling back to URL:', error);
+            // Try as module worker first, then regular worker
+            try {
+              return new Worker(workerUrl, { type: 'module' });
+            } catch (moduleError) {
+              return new Worker(workerUrl);
+            }
+          }
+        }
+      };
+    </script>
     <script
-      src="https://unpkg.com/graphiql@4/graphiql.min.js"
+      src="https://unpkg.com/graphiql@4/dist/index.umd.js"
       type="application/javascript"
     ></script>
     <script>
@@ -349,14 +435,54 @@ mod tests {
 
   <body>
     <div id="graphiql">Loading...</div>
+    <script>
+      // Configure Monaco Editor environment before GraphiQL loads
+      window.MonacoEnvironment = {
+        getWorker: async function (workerId, label) {
+          console.info('setup-workers/graphiql', { label });
+          
+          let workerUrl;
+          switch (label) {
+            case 'json':
+              workerUrl = 'https://unpkg.com/graphiql@3.9.0/dist/workers/json.worker.js';
+              break;
+            case 'graphql':
+              workerUrl = 'https://unpkg.com/graphiql@3.9.0/dist/workers/graphql.worker.js';
+              break;
+            default:
+              workerUrl = 'https://unpkg.com/graphiql@3.9.0/dist/workers/editor.worker.js';
+          }
+          
+          try {
+            // Fetch worker code and create blob URL to avoid CORS issues
+            const response = await fetch(workerUrl);
+            let workerCode = await response.text();
+            
+            // Remove source map references to avoid blob URL issues
+            workerCode = workerCode.replace(/\\/\\/# sourceMappingURL=.*$/gm, '');
+            
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            const blobUrl = URL.createObjectURL(blob);
+            
+            // Create module worker since GraphiQL workers are ES modules
+            return new Worker(blobUrl, { type: 'module' });
+          } catch (error) {
+            console.warn('Failed to load worker from CDN, falling back to URL:', error);
+            // Try as module worker first, then regular worker
+            try {
+              return new Worker(workerUrl, { type: 'module' });
+            } catch (moduleError) {
+              return new Worker(workerUrl);
+            }
+          }
+        }
+      };
+    </script>
     <script
-      src="https://unpkg.com/graphiql@3.9.0/graphiql.min.js"
+      src="https://unpkg.com/graphiql@3.9.0/dist/index.umd.js"
       type="application/javascript"
     ></script>
-    <script
-      src="https://unpkg.com/@graphiql/plugin-explorer@3.9.0/dist/index.umd.js"
-      crossorigin
-    ></script>
+    <script src="https://unpkg.com/@graphiql/plugin-explorer@3.9.0/dist/index.umd.js" crossorigin></script>
     <script>
       customFetch = (url, opts = {}) => {
         return fetch(url, {...opts, credentials: 'include'})
@@ -380,7 +506,7 @@ mod tests {
             fetch: customFetch,
             subscriptionUrl: createUrl('/ws', true),
             headers: {
-              'Authorization': 'Bearer [token]',
+              'Authorization': '***',
             },
             wsConnectionParams: {
               'token': '[token]',
