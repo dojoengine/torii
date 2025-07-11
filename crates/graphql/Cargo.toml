@@ -33,6 +33,7 @@ torii-storage.workspace = true
 tracing.workspace = true
 url.workspace = true
 warp.workspace = true
+handlebars = "6.3.2"
 
 [dev-dependencies]
 camino.workspace = true

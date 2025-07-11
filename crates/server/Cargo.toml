@@ -45,4 +45,3 @@ torii-processors.workspace = true
 tokio-rustls = "0.24.1"
 rustls = "0.21.12"
 rustls-pemfile = "1.0.4"
-handlebars = "6.3.2"

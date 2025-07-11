@@ -8,6 +8,9 @@ use sqlx::{Pool, Sqlite};
 use tokio::sync::broadcast::Receiver;
 use warp::{Filter, Rejection, Reply};
 
+
+use crate::playground::{graphiql::GraphiQLSource, graphiql_plugin::GraphiQLPlugin};
+
 use super::schema::build_schema;
 
 pub async fn new(
@@ -31,7 +34,20 @@ fn graphql_filter(schema: Schema) -> impl Filter<Extract = impl Reply, Error = R
         },
     );
 
+    let playground_filter = warp::path("graphql").map(move || {
+        warp::reply::html(
+            GraphiQLSource::build()
+                .version("6.0.0-canary-d779fd3f.0")
+                .plugins(&[GraphiQLPlugin::explorer("6.0.0-canary-d779fd3f.0")])
+                .subscription_endpoint("/ws")
+                .title("Torii GraphQL Playground")
+                // we patch the generated source to use the current URL instead of the origin
+                // for hosted services like SLOT
+                .finish()
+        )
+    });
 
     graphql_subscription(schema)
         .or(graphql_post)
+        .or(playground_filter)
 }

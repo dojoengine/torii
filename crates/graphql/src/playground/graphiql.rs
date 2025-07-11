@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use handlebars::Handlebars;
 use serde::Serialize;
 
+use crate::playground::graphiql_plugin::GraphiQLPlugin;
+
 /// Indicates whether the user agent should send or receive user credentials
 /// (cookies, basic http auth, etc.) from the other domain in the case of
 /// cross-origin requests.
@@ -51,6 +53,7 @@ pub struct GraphiQLSource<'a> {
     headers: Option<HashMap<&'a str, &'a str>>,
     ws_connection_params: Option<HashMap<&'a str, &'a str>>,
     title: Option<&'a str>,
+    plugins: &'a [GraphiQLPlugin],
     credentials: Credentials,
 }
 
@@ -110,6 +113,11 @@ impl<'a> GraphiQLSource<'a> {
         }
     }
 
+    /// Sets plugins
+    pub fn plugins(self, plugins: &'a [GraphiQLPlugin]) -> GraphiQLSource<'a> {
+      GraphiQLSource { plugins, ..self }
+  }
+
     /// Sets credentials option for the fetch requests.
     pub fn credentials(self, credentials: Credentials) -> GraphiQLSource<'a> {
         GraphiQLSource {
@@ -124,7 +132,7 @@ impl<'a> GraphiQLSource<'a> {
         handlebars
             .register_template_string(
                 "graphiql_source",
-                include_str!("../static/graphiql_source.hbs"),
+                include_str!("./graphiql_source.hbs"),
             )
             .expect("Failed to register template");
 
@@ -136,6 +144,8 @@ impl<'a> GraphiQLSource<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::playground::graphiql_plugin::GraphiQLPlugin;
+
     use super::*;
 
     #[test]
@@ -300,6 +310,7 @@ mod tests {
             .ws_connection_param("token", "[token]")
             .title("Awesome GraphiQL IDE Test")
             .credentials(Credentials::Include)
+            .plugins(&[GraphiQLPlugin::explorer("3.9.0")])
             .finish();
 
         assert_eq!(

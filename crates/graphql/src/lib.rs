@@ -10,6 +10,7 @@ pub mod schema;
 pub mod server;
 pub mod types;
 mod utils;
+pub(crate) mod playground;
 
 #[cfg(test)]
 mod tests;
