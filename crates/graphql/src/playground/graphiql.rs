@@ -197,7 +197,7 @@ mod tests {
       }
 
       createUrl = (endpoint, subscription = false) => {
-        const url = new URL(endpoint, window.location.origin);
+        const url = new URL(window.location.href.trimEnd('/') + endpoint);
         if (subscription) {
           url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
         }
@@ -274,7 +274,7 @@ mod tests {
       }
 
       createUrl = (endpoint, subscription = false) => {
-        const url = new URL(endpoint, window.location.origin);
+        const url = new URL(window.location.href.trimEnd('/') + endpoint);
         if (subscription) {
           url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
         }
@@ -363,7 +363,7 @@ mod tests {
       }
 
       createUrl = (endpoint, subscription = false) => {
-        const url = new URL(endpoint, window.location.origin);
+        const url = new URL(window.location.href.trimEnd('/') + endpoint);
         if (subscription) {
           url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
         }
