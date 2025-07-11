@@ -211,7 +211,7 @@ mod tests {
             let workerCode = await response.text();
             
             // Remove source map references to avoid blob URL issues
-            workerCode = workerCode.replace(/\\/\\/# sourceMappingURL=.*$/gm, '');
+            workerCode = workerCode.replace(/\/\/# sourceMappingURL=.*$/gm, '');
             
             const blob = new Blob([workerCode], { type: 'application/javascript' });
             const blobUrl = URL.createObjectURL(blob);
@@ -331,7 +331,7 @@ mod tests {
             let workerCode = await response.text();
             
             // Remove source map references to avoid blob URL issues
-            workerCode = workerCode.replace(/\\/\\/# sourceMappingURL=.*$/gm, '');
+            workerCode = workerCode.replace(/\/\/# sourceMappingURL=.*$/gm, '');
             
             const blob = new Blob([workerCode], { type: 'application/javascript' });
             const blobUrl = URL.createObjectURL(blob);
@@ -459,7 +459,7 @@ mod tests {
             let workerCode = await response.text();
             
             // Remove source map references to avoid blob URL issues
-            workerCode = workerCode.replace(/\\/\\/# sourceMappingURL=.*$/gm, '');
+            workerCode = workerCode.replace(/\/\/# sourceMappingURL=.*$/gm, '');
             
             const blob = new Blob([workerCode], { type: 'application/javascript' });
             const blobUrl = URL.createObjectURL(blob);
@@ -506,7 +506,7 @@ mod tests {
             fetch: customFetch,
             subscriptionUrl: createUrl('/ws', true),
             headers: {
-              'Authorization': '***',
+              'Authorization': 'Bearer [token]',
             },
             wsConnectionParams: {
               'token': '[token]',
