@@ -1,8 +1,10 @@
 use std::net::{IpAddr, SocketAddr};
 
-use http::StatusCode;
+use http::{Method, StatusCode};
 use hyper::{Body, Request, Response};
 use tracing::error;
+
+use crate::graphiql::{Credentials, GraphiQLSource};
 
 use super::Handler;
 
@@ -27,18 +29,33 @@ impl Handler for GraphQLHandler {
 
     async fn handle(&self, req: Request<Body>, client_addr: IpAddr) -> Response<Body> {
         if let Some(addr) = self.graphql_addr {
-            let graphql_addr = format!("http://{}", addr);
-            match crate::proxy::GRAPHQL_PROXY_CLIENT
-                .call(client_addr, &graphql_addr, req)
-                .await
-            {
-                Ok(response) => response,
-                Err(_error) => {
-                    error!(target: LOG_TARGET, "GraphQL proxy error: {:?}", _error);
-                    Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(Body::empty())
-                        .unwrap()
+            if req.method() == Method::GET && req.uri().query().unwrap_or_default().is_empty() {
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::from(
+                        GraphiQLSource::build()
+                            .version("6.0.0-canary-d779fd3f.0")
+                            .endpoint("/graphql")
+                            .subscription_endpoint("/ws")
+                            .credentials(Credentials::Include)
+                            .title("Torii GraphQL Playground")
+                            .finish(),
+                    ))
+                    .unwrap();
+            } else {
+                let graphql_addr = format!("http://{}", addr);
+                match crate::proxy::GRAPHQL_PROXY_CLIENT
+                    .call(client_addr, &graphql_addr, req)
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(_error) => {
+                        error!(target: LOG_TARGET, "GraphQL proxy error: {:?}", _error);
+                        Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .body(Body::empty())
+                            .unwrap()
+                    }
                 }
             }
         } else {
