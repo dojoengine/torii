@@ -2940,7 +2940,7 @@ dependencies = [
 [[package]]
 name = "dojo-metrics"
 version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
 dependencies = [
  "bytes",
  "http-body-util",
@@ -2961,7 +2961,7 @@ dependencies = [
 [[package]]
 name = "dojo-test-utils"
 version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
 dependencies = [
  "anyhow",
  "assert_fs",
@@ -2996,7 +2996,7 @@ dependencies = [
 [[package]]
 name = "dojo-types"
 version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
 dependencies = [
  "anyhow",
  "cainome 0.6.1",
@@ -3018,7 +3018,7 @@ dependencies = [
 [[package]]
 name = "dojo-utils"
 version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
 dependencies = [
  "anyhow",
  "colored_json",
@@ -3035,7 +3035,7 @@ dependencies = [
 [[package]]
 name = "dojo-world"
 version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6892,8 +6892,8 @@ dependencies = [
 
 [[package]]
 name = "merge-options"
-version = "1.5.0"
-source = "git+https://github.com/dojoengine/dojo?rev=82fe9bd#82fe9bde8bb840db507dc11e26b3085a54dbd0d9"
+version = "1.6.0-alpha.1"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10062,7 +10062,7 @@ dependencies = [
 [[package]]
 name = "sozo-ops"
 version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10088,7 +10088,7 @@ dependencies = [
 [[package]]
 name = "sozo-scarbext"
 version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=054623b#054623bbf939a3bf90786355bd9b081a2b1b3c3a"
+source = "git+https://github.com/bengineer42/dojo?branch=add-write-schema-1.5#5b52d44512b6524da2156875432f76c5944f415e"
 dependencies = [
  "anyhow",
  "camino",
