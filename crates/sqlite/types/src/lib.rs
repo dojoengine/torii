@@ -260,6 +260,29 @@ pub struct ContractCursor {
 
 #[derive(FromRow, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
+pub struct OptimisticTransaction {
+    pub id: String,
+    pub transaction_hash: String,
+    pub sender_address: String,
+    pub calldata: String,
+    pub max_fee: String,
+    pub signature: String,
+    pub nonce: String,
+    pub executed_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub transaction_type: String,
+    pub block_number: u64,
+
+    #[sqlx(skip)]
+    pub calls: Vec<TransactionCall>,
+    #[sqlx(skip)]
+    pub contract_addresses: HashSet<Felt>,
+    #[sqlx(skip)]
+    pub unique_models: HashSet<Felt>,
+}
+
+#[derive(FromRow, Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub id: String,
     pub transaction_hash: String,

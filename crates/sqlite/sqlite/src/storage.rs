@@ -402,74 +402,76 @@ impl ReadOnlyStorage for Sql {
         ]);
 
         // Apply filters
-        if !query.transaction_hashes.is_empty() {
-            let placeholders = vec!["?"; query.transaction_hashes.len()].join(", ");
-            query_builder =
-                query_builder.where_clause(&format!("t.transaction_hash IN ({})", placeholders));
-            for hash in &query.transaction_hashes {
-                query_builder = query_builder.bind_value(format!("{:#x}", hash));
-            }
-        }
-
-        // Handle transaction calls filters
-        if !query.contract_addresses.is_empty()
-            || !query.entrypoints.is_empty()
-            || !query.caller_addresses.is_empty()
-        {
-            query_builder = query_builder
-                .join("JOIN transaction_calls tc ON tc.transaction_hash = t.transaction_hash");
-
-            let mut call_conditions = Vec::new();
-
-            if !query.contract_addresses.is_empty() {
-                let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
-                call_conditions.push(format!("tc.contract_address IN ({})", placeholders));
-                for addr in &query.contract_addresses {
-                    query_builder = query_builder.bind_value(format!("{:#x}", addr));
+        if let Some(filter) = &query.filter {
+            if !filter.transaction_hashes.is_empty() {
+                let placeholders = vec!["?"; filter.transaction_hashes.len()].join(", ");
+                query_builder = query_builder
+                    .where_clause(&format!("t.transaction_hash IN ({})", placeholders));
+                for hash in &filter.transaction_hashes {
+                    query_builder = query_builder.bind_value(format!("{:#x}", hash));
                 }
             }
 
-            if !query.entrypoints.is_empty() {
-                let placeholders = vec!["?"; query.entrypoints.len()].join(", ");
-                call_conditions.push(format!("tc.entrypoint IN ({})", placeholders));
-                for entrypoint in &query.entrypoints {
-                    query_builder = query_builder.bind_value(entrypoint.clone());
+            // Handle transaction calls filters
+            if !filter.contract_addresses.is_empty()
+                || !filter.entrypoints.is_empty()
+                || !filter.caller_addresses.is_empty()
+            {
+                query_builder = query_builder
+                    .join("JOIN transaction_calls tc ON tc.transaction_hash = t.transaction_hash");
+
+                let mut call_conditions = Vec::new();
+
+                if !filter.contract_addresses.is_empty() {
+                    let placeholders = vec!["?"; filter.contract_addresses.len()].join(", ");
+                    call_conditions.push(format!("tc.contract_address IN ({})", placeholders));
+                    for addr in &filter.contract_addresses {
+                        query_builder = query_builder.bind_value(format!("{:#x}", addr));
+                    }
+                }
+
+                if !filter.entrypoints.is_empty() {
+                    let placeholders = vec!["?"; filter.entrypoints.len()].join(", ");
+                    call_conditions.push(format!("tc.entrypoint IN ({})", placeholders));
+                    for entrypoint in &filter.entrypoints {
+                        query_builder = query_builder.bind_value(entrypoint.clone());
+                    }
+                }
+
+                if !filter.caller_addresses.is_empty() {
+                    let placeholders = vec!["?"; filter.caller_addresses.len()].join(", ");
+                    call_conditions.push(format!("tc.caller_address IN ({})", placeholders));
+                    for caller in &filter.caller_addresses {
+                        query_builder = query_builder.bind_value(format!("{:#x}", caller));
+                    }
+                }
+
+                if !call_conditions.is_empty() {
+                    query_builder =
+                        query_builder.where_clause(&format!("({})", call_conditions.join(" AND ")));
                 }
             }
 
-            if !query.caller_addresses.is_empty() {
-                let placeholders = vec!["?"; query.caller_addresses.len()].join(", ");
-                call_conditions.push(format!("tc.caller_address IN ({})", placeholders));
-                for caller in &query.caller_addresses {
-                    query_builder = query_builder.bind_value(format!("{:#x}", caller));
-                }
-            }
-
-            if !call_conditions.is_empty() {
+            if !filter.model_selectors.is_empty() {
+                let placeholders = vec!["?"; filter.model_selectors.len()].join(", ");
+                query_builder = query_builder
+                    .join("JOIN transaction_models tm ON tm.transaction_hash = t.transaction_hash");
                 query_builder =
-                    query_builder.where_clause(&format!("({})", call_conditions.join(" AND ")));
+                    query_builder.where_clause(&format!("tm.model_id IN ({})", placeholders));
+                for model in &filter.model_selectors {
+                    query_builder = query_builder.bind_value(format!("{:#x}", model));
+                }
             }
-        }
 
-        if !query.model_selectors.is_empty() {
-            let placeholders = vec!["?"; query.model_selectors.len()].join(", ");
-            query_builder = query_builder
-                .join("JOIN transaction_models tm ON tm.transaction_hash = t.transaction_hash");
-            query_builder =
-                query_builder.where_clause(&format!("tm.model_id IN ({})", placeholders));
-            for model in &query.model_selectors {
-                query_builder = query_builder.bind_value(format!("{:#x}", model));
+            if let Some(from_block) = filter.from_block {
+                query_builder = query_builder.where_clause("t.block_number >= ?");
+                query_builder = query_builder.bind_value(from_block.to_string());
             }
-        }
 
-        if let Some(from_block) = query.from_block {
-            query_builder = query_builder.where_clause("t.block_number >= ?");
-            query_builder = query_builder.bind_value(from_block.to_string());
-        }
-
-        if let Some(to_block) = query.to_block {
-            query_builder = query_builder.where_clause("t.block_number <= ?");
-            query_builder = query_builder.bind_value(to_block.to_string());
+            if let Some(to_block) = filter.to_block {
+                query_builder = query_builder.where_clause("t.block_number <= ?");
+                query_builder = query_builder.bind_value(to_block.to_string());
+            }
         }
 
         let page = executor

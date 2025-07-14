@@ -15,28 +15,18 @@ use tokio::sync::mpsc::{
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
-use torii_sqlite::types::Transaction;
+use torii_sqlite::types::OptimisticTransaction;
 use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeTransactionsResponse;
+use torii_proto::TransactionFilter;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::transaction";
 
 #[derive(Debug)]
 pub struct TransactionSubscriber {
-    // The list of transaction hashes to retrieve
-    pub transaction_hashes: Vec<Felt>,
-    // The list of caller addresses to filter by
-    pub caller_addresses: Vec<Felt>,
-    // The list of contract addresses to filter by (calls made to these contracts)
-    pub contract_addresses: Vec<Felt>,
-    // The list of entrypoints to filter by
-    pub entrypoints: Vec<String>,
-    // The list of model selectors to filter by
-    pub model_selectors: Vec<Felt>,
-    // The block number range to filter by
-    pub from_block: Option<u64>,
-    pub to_block: Option<u64>,
+    /// The filter to apply to the subscription.
+    filter: Option<TransactionFilter>,
     /// The channel to send the response back to the subscriber.
     sender: Sender<Result<SubscribeTransactionsResponse, tonic::Status>>,
 }
@@ -58,13 +48,7 @@ impl TransactionManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn add_subscriber(
         &self,
-        transaction_hashes: Vec<Felt>,
-        caller_addresses: Vec<Felt>,
-        contract_addresses: Vec<Felt>,
-        entrypoints: Vec<String>,
-        model_selectors: Vec<Felt>,
-        from_block: Option<u64>,
-        to_block: Option<u64>,
+        filter: Option<TransactionFilter>,
     ) -> Result<Receiver<Result<SubscribeTransactionsResponse, tonic::Status>>, Error> {
         let id = rand::thread_rng().gen::<usize>();
         let (sender, receiver) = channel(self.subscription_buffer_size);
@@ -76,19 +60,8 @@ impl TransactionManager {
             .send(Ok(SubscribeTransactionsResponse { transaction: None }))
             .await;
 
-        self.subscribers.insert(
-            id,
-            TransactionSubscriber {
-                transaction_hashes,
-                caller_addresses,
-                contract_addresses,
-                entrypoints,
-                model_selectors,
-                from_block,
-                to_block,
-                sender,
-            },
-        );
+        self.subscribers
+            .insert(id, TransactionSubscriber { filter, sender });
 
         Ok(receiver)
     }
@@ -101,15 +74,15 @@ impl TransactionManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = Transaction> + Send>>,
-    transaction_sender: UnboundedSender<Transaction>,
+    simple_broker: Pin<Box<dyn Stream<Item = OptimisticTransaction> + Send>>,
+    transaction_sender: UnboundedSender<OptimisticTransaction>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<TransactionManager>) -> Self {
         let (transaction_sender, transaction_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(SimpleBroker::<Transaction>::subscribe()),
+            simple_broker: Box::pin(SimpleBroker::<OptimisticTransaction>::subscribe()),
             transaction_sender,
         };
 
@@ -120,7 +93,7 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<TransactionManager>,
-        mut transaction_receiver: UnboundedReceiver<Transaction>,
+        mut transaction_receiver: UnboundedReceiver<OptimisticTransaction>,
     ) {
         while let Some(transaction) = transaction_receiver.recv().await {
             if let Err(e) = Self::process_transaction(&subs, &transaction).await {
@@ -131,7 +104,7 @@ impl Service {
 
     async fn process_transaction(
         subs: &Arc<TransactionManager>,
-        transaction: &Transaction,
+        transaction: &OptimisticTransaction,
     ) -> Result<(), Error> {
         let mut closed_stream = Vec::new();
 
@@ -160,56 +133,61 @@ impl Service {
             let idx = sub.key();
             let sub = sub.value();
 
-            if !sub.transaction_hashes.is_empty()
-                && !sub.transaction_hashes.contains(&transaction_hash)
-            {
-                continue;
-            }
+            if let Some(filter) = &sub.filter {
+                if !filter.transaction_hashes.is_empty()
+                    && !filter.transaction_hashes.contains(&transaction_hash)
+                {
+                    continue;
+                }
 
-            if !sub.caller_addresses.is_empty() {
-                for caller_address in &transaction.calls {
-                    if !sub
-                        .caller_addresses
-                        .contains(&caller_address.caller_address)
-                    {
-                        continue;
+                if !filter.caller_addresses.is_empty() {
+                    for caller_address in &transaction.calls {
+                        if !filter
+                            .caller_addresses
+                            .contains(&caller_address.caller_address)
+                        {
+                            continue;
+                        }
                     }
                 }
-            }
 
-            if !sub.contract_addresses.is_empty() {
-                for contract_address in &transaction.calls {
-                    if !sub
-                        .contract_addresses
-                        .contains(&contract_address.contract_address)
-                    {
-                        continue;
+                if !filter.contract_addresses.is_empty() {
+                    for contract_address in &transaction.calls {
+                        if !filter
+                            .contract_addresses
+                            .contains(&contract_address.contract_address)
+                        {
+                            continue;
+                        }
                     }
                 }
-            }
 
-            if !sub.entrypoints.is_empty() {
-                for entrypoint in &transaction.calls {
-                    if !sub.entrypoints.contains(&entrypoint.entrypoint) {
-                        continue;
+                if !filter.entrypoints.is_empty() {
+                    for entrypoint in &transaction.calls {
+                        if !filter.entrypoints.contains(&entrypoint.entrypoint) {
+                            continue;
+                        }
                     }
                 }
-            }
 
-            if !sub.model_selectors.is_empty() {
-                for model_selector in &transaction.unique_models {
-                    if !sub.model_selectors.contains(model_selector) {
-                        continue;
+                if !filter.model_selectors.is_empty() {
+                    for model_selector in &transaction.unique_models {
+                        if !filter.model_selectors.contains(model_selector) {
+                            continue;
+                        }
                     }
                 }
-            }
 
-            if sub.from_block.is_some() && transaction.block_number < sub.from_block.unwrap() {
-                continue;
-            }
+                if filter.from_block.is_some()
+                    && transaction.block_number < filter.from_block.unwrap()
+                {
+                    continue;
+                }
 
-            if sub.to_block.is_some() && transaction.block_number > sub.to_block.unwrap() {
-                continue;
+                if filter.to_block.is_some() && transaction.block_number > filter.to_block.unwrap()
+                {
+                    continue;
+                }
             }
 
             let resp: SubscribeTransactionsResponse = SubscribeTransactionsResponse {

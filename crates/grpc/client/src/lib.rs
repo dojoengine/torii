@@ -27,14 +27,14 @@ use torii_proto::proto::world::{
     SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsRequest,
     SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
     SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, UpdateEntitiesSubscriptionRequest,
-    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
-    UpdateTokenSubscriptionRequest, WorldMetadataRequest,
+    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
+    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, ControllerQuery, Event, EventQuery, IndexerUpdate, KeysClause, Message, Query, Token,
-    TokenBalance, TokenBalanceQuery, TokenQuery, TransactionQuery,
+    TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionFilter, TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -137,6 +137,26 @@ impl WorldClient {
             .map(|res| res.into_inner())
     }
 
+    pub async fn subscribe_transactions(
+        &mut self,
+        filter: Option<TransactionFilter>,
+    ) -> Result<TransactionUpdateStreaming, Error> {
+        let request = SubscribeTransactionsRequest {
+            filter: filter.map(|f| f.into()),
+        };
+        let stream = self
+            .inner
+            .subscribe_transactions(request)
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())?;
+        Ok(TransactionUpdateStreaming(stream.map_ok(Box::new(|res| {
+            res.transaction.map_or(Transaction::default(), |t| {
+                t.try_into().expect("must able to serialize")
+            })
+        }))))
+    }
+
     pub async fn retrieve_tokens(
         &mut self,
         query: TokenQuery,
@@ -174,17 +194,9 @@ impl WorldClient {
         Ok(TokenUpdateStreaming(stream.map_ok(Box::new(|res| {
             (
                 res.subscription_id,
-                match res.token {
-                    Some(token) => token.try_into().expect("must able to serialize"),
-                    None => Token {
-                        token_id: U256::ZERO,
-                        contract_address: Felt::ZERO,
-                        name: "".to_string(),
-                        symbol: "".to_string(),
-                        decimals: 0,
-                        metadata: "".to_string(),
-                    },
-                },
+                res.token.map_or(Token::default(), |t| {
+                    t.try_into().expect("must able to serialize")
+                }),
             )
         }))))
     }
@@ -396,16 +408,9 @@ impl WorldClient {
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
 
-        Ok(EventUpdateStreaming(stream.map_ok(Box::new(
-            |res| match res.event {
-                Some(event) => event.into(),
-                None => Event {
-                    keys: vec![],
-                    data: vec![],
-                    transaction_hash: Felt::ZERO,
-                },
-            },
-        ))))
+        Ok(EventUpdateStreaming(stream.map_ok(Box::new(|res| {
+            res.event.map_or(Event::default(), |e| e.into())
+        }))))
     }
 
     /// Subscribe to token balances.
@@ -438,15 +443,9 @@ impl WorldClient {
         Ok(TokenBalanceStreaming(stream.map_ok(Box::new(|res| {
             (
                 res.subscription_id,
-                match res.balance {
-                    Some(balance) => balance.try_into().expect("must able to serialize"),
-                    None => TokenBalance {
-                        balance: U256::ZERO,
-                        account_address: Felt::ZERO,
-                        contract_address: Felt::ZERO,
-                        token_id: U256::ZERO,
-                    },
-                },
+                res.balance.map_or(TokenBalance::default(), |b| {
+                    b.try_into().expect("must able to serialize")
+                }),
             )
         }))))
     }
@@ -610,6 +609,24 @@ pub struct IndexerUpdateStreaming(IndexerMappedStream);
 
 impl Stream for IndexerUpdateStreaming {
     type Item = <IndexerMappedStream as Stream>::Item;
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.poll_next_unpin(cx)
+    }
+}
+
+type TransactionMappedStream = MapOk<
+    tonic::Streaming<SubscribeTransactionsResponse>,
+    Box<dyn Fn(SubscribeTransactionsResponse) -> Transaction + Send>,
+>;
+
+#[derive(Debug)]
+pub struct TransactionUpdateStreaming(TransactionMappedStream);
+
+impl Stream for TransactionUpdateStreaming {
+    type Item = <TransactionMappedStream as Stream>::Item;
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,

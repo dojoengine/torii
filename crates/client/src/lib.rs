@@ -4,7 +4,7 @@ use crypto_bigint::U256;
 use starknet::core::types::Felt;
 use torii_grpc_client::{
     EntityUpdateStreaming, EventUpdateStreaming, IndexerUpdateStreaming, TokenBalanceStreaming,
-    TokenUpdateStreaming, WorldClient,
+    TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
 };
 use torii_proto::proto::world::{
     RetrieveControllersResponse, RetrieveEntitiesResponse, RetrieveEventsResponse,
@@ -14,7 +14,8 @@ use torii_proto::proto::world::{
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Controller, ControllerQuery, Event, EventQuery, KeysClause, Message, Page, Query,
-    Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionQuery, World,
+    Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionFilter,
+    TransactionQuery, World,
 };
 
 use crate::error::Error;
@@ -158,6 +159,16 @@ impl Client {
                 Some(next_cursor)
             },
         })
+    }
+
+    /// A direct stream to grpc subscribe transactions
+    pub async fn on_transaction(
+        &self,
+        filter: Option<TransactionFilter>,
+    ) -> Result<TransactionUpdateStreaming, Error> {
+        let mut grpc_client = self.inner.clone();
+        let stream = grpc_client.subscribe_transactions(filter).await?;
+        Ok(stream)
     }
 
     /// Retrieves entities matching query parameter.

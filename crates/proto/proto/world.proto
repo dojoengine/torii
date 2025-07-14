@@ -75,19 +75,7 @@ service World {
 }
 
 message SubscribeTransactionsRequest {
-    // The list of transaction hashes to subscribe to
-    repeated bytes transaction_hashes = 1;
-    // The list of caller addresses to filter by
-    repeated bytes caller_addresses = 2;
-    // The list of contract addresses to filter by (calls made to these contracts)
-    repeated bytes contract_addresses = 3;
-    // The list of entrypoints to filter by
-    repeated string entrypoints = 4;
-    // The list of model selectors to filter by
-    repeated bytes model_selectors = 5;
-    // The block number range to filter by
-    optional uint64 from_block = 6;
-    optional uint64 to_block = 7;
+    types.TransactionFilter filter = 1;
 }
 
 message SubscribeTransactionsResponse {

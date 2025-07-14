@@ -260,44 +260,16 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<SubscribeTransactionsRequest>,
     ) -> ServiceResult<Self::SubscribeTransactionsStream> {
-        let SubscribeTransactionsRequest {
-            transaction_hashes,
-            caller_addresses,
-            contract_addresses,
-            entrypoints,
-            model_selectors,
-            from_block,
-            to_block,
-        } = request.into_inner();
+        let SubscribeTransactionsRequest { filter } = request.into_inner();
 
-        let transaction_hashes = transaction_hashes
-            .iter()
-            .map(|hash| Felt::from_bytes_be_slice(hash))
-            .collect::<Vec<_>>();
-        let caller_addresses = caller_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let contract_addresses = contract_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let model_selectors = model_selectors
-            .iter()
-            .map(|selector| Felt::from_bytes_be_slice(selector))
-            .collect::<Vec<_>>();
+        let filter = filter
+            .map(|f| f.try_into())
+            .transpose()
+            .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
 
         let rx = self
             .transaction_manager
-            .add_subscriber(
-                transaction_hashes,
-                caller_addresses,
-                contract_addresses,
-                entrypoints,
-                model_selectors,
-                from_block,
-                to_block,
-            )
+            .add_subscriber(filter)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(
