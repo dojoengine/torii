@@ -134,7 +134,7 @@ impl TryFrom<proto::types::Controller> for Controller {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct Token {
     pub token_id: U256,
     pub contract_address: Felt,
@@ -184,7 +184,7 @@ impl TryFrom<proto::types::TokenCollection> for Token {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct TokenCollection {
     pub contract_address: Felt,
     pub name: String,
@@ -221,7 +221,7 @@ impl TryFrom<proto::types::TokenCollection> for TokenCollection {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct TokenBalance {
     pub balance: U256,
     pub account_address: Felt,
@@ -884,7 +884,7 @@ impl From<MemberValue> for proto::types::member_value::ValueType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct Event {
     pub keys: Vec<Felt>,
     pub data: Vec<Felt>,
@@ -1041,7 +1041,7 @@ impl TryFrom<proto::types::TransactionCall> for TransactionCall {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct Transaction {
     pub transaction_hash: Felt,
     pub sender_address: Felt,
@@ -1122,7 +1122,7 @@ impl TryFrom<proto::types::Transaction> for Transaction {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
-pub struct TransactionQuery {
+pub struct TransactionFilter {
     pub transaction_hashes: Vec<Felt>,
     pub caller_addresses: Vec<Felt>,
     pub contract_addresses: Vec<Felt>,
@@ -1130,11 +1130,10 @@ pub struct TransactionQuery {
     pub model_selectors: Vec<Felt>,
     pub from_block: Option<u64>,
     pub to_block: Option<u64>,
-    pub pagination: Pagination,
 }
 
-impl From<TransactionQuery> for proto::types::TransactionQuery {
-    fn from(value: TransactionQuery) -> Self {
+impl From<TransactionFilter> for proto::types::TransactionFilter {
+    fn from(value: TransactionFilter) -> Self {
         Self {
             transaction_hashes: value
                 .transaction_hashes
@@ -1159,14 +1158,13 @@ impl From<TransactionQuery> for proto::types::TransactionQuery {
                 .collect(),
             from_block: value.from_block,
             to_block: value.to_block,
-            pagination: Some(value.pagination.into()),
         }
     }
 }
 
-impl TryFrom<proto::types::TransactionQuery> for TransactionQuery {
+impl TryFrom<proto::types::TransactionFilter> for TransactionFilter {
     type Error = ProtoError;
-    fn try_from(value: proto::types::TransactionQuery) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::types::TransactionFilter) -> Result<Self, Self::Error> {
         Ok(Self {
             transaction_hashes: value
                 .transaction_hashes
@@ -1191,6 +1189,30 @@ impl TryFrom<proto::types::TransactionQuery> for TransactionQuery {
                 .collect(),
             from_block: value.from_block,
             to_block: value.to_block,
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct TransactionQuery {
+    pub filter: Option<TransactionFilter>,
+    pub pagination: Pagination,
+}
+
+impl From<TransactionQuery> for proto::types::TransactionQuery {
+    fn from(value: TransactionQuery) -> Self {
+        Self {
+            filter: value.filter.map(|f| f.into()),
+            pagination: Some(value.pagination.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::TransactionQuery> for TransactionQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::TransactionQuery) -> Result<Self, Self::Error> {
+        Ok(Self {
+            filter: value.filter.map(|f| f.try_into()).transpose()?,
             pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
         })
     }

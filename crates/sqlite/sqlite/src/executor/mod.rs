@@ -18,7 +18,7 @@ use tokio::sync::oneshot;
 use tokio::time::Instant;
 use torii_math::I256;
 use torii_proto::TransactionCall;
-use torii_sqlite_types::OptimisticToken;
+use torii_sqlite_types::{OptimisticToken, OptimisticTransaction};
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
@@ -420,6 +420,10 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 transaction.calls = store_transaction.calls;
                 transaction.unique_models = store_transaction.unique_models;
 
+                let optimistic_transaction = unsafe {
+                    std::mem::transmute::<Transaction, OptimisticTransaction>(transaction.clone())
+                };
+                SimpleBroker::publish(optimistic_transaction);
                 self.publish_queue
                     .push(BrokerMessage::Transaction(transaction));
             }

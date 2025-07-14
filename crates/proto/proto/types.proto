@@ -251,7 +251,7 @@ message Transaction {
     repeated bytes unique_models = 11;
 }
 
-message TransactionQuery {
+message TransactionFilter {
     // The list of transaction hashes to retrieve
     repeated bytes transaction_hashes = 1;
     // The list of caller addresses to filter by
@@ -265,6 +265,11 @@ message TransactionQuery {
     // The block number range to filter by
     optional uint64 from_block = 6;
     optional uint64 to_block = 7;
+}
+
+message TransactionQuery {
+    // The filter to apply to the query
+    TransactionFilter filter = 1;
     // Pagination
-    Pagination pagination = 8;
+    Pagination pagination = 2;
 }
