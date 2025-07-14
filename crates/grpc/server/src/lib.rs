@@ -260,9 +260,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<SubscribeTransactionsRequest>,
     ) -> ServiceResult<Self::SubscribeTransactionsStream> {
-        let SubscribeTransactionsRequest {
-            filter,
-        } = request.into_inner();
+        let SubscribeTransactionsRequest { filter } = request.into_inner();
 
         let filter = filter
             .map(|f| f.try_into())
@@ -271,9 +269,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
 
         let rx = self
             .transaction_manager
-            .add_subscriber(
-                filter,
-            )
+            .add_subscriber(filter)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(

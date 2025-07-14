@@ -151,7 +151,9 @@ impl WorldClient {
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
         Ok(TransactionUpdateStreaming(stream.map_ok(Box::new(|res| {
-            res.transaction.map_or(Transaction::default(), |t| t.try_into().expect("must able to serialize"))
+            res.transaction.map_or(Transaction::default(), |t| {
+                t.try_into().expect("must able to serialize")
+            })
         }))))
     }
 
@@ -192,7 +194,9 @@ impl WorldClient {
         Ok(TokenUpdateStreaming(stream.map_ok(Box::new(|res| {
             (
                 res.subscription_id,
-                res.token.map_or(Token::default(), |t| t.try_into().expect("must able to serialize")),
+                res.token.map_or(Token::default(), |t| {
+                    t.try_into().expect("must able to serialize")
+                }),
             )
         }))))
     }
@@ -404,9 +408,9 @@ impl WorldClient {
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
 
-        Ok(EventUpdateStreaming(stream.map_ok(Box::new(
-            |res| res.event.map_or(Event::default(), |e| e.into()),
-        ))))
+        Ok(EventUpdateStreaming(stream.map_ok(Box::new(|res| {
+            res.event.map_or(Event::default(), |e| e.into())
+        }))))
     }
 
     /// Subscribe to token balances.
@@ -439,7 +443,9 @@ impl WorldClient {
         Ok(TokenBalanceStreaming(stream.map_ok(Box::new(|res| {
             (
                 res.subscription_id,
-                res.balance.map_or(TokenBalance::default(), |b| b.try_into().expect("must able to serialize")),
+                res.balance.map_or(TokenBalance::default(), |b| {
+                    b.try_into().expect("must able to serialize")
+                }),
             )
         }))))
     }
