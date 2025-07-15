@@ -395,7 +395,7 @@ impl TryFrom<EventMessage> for torii_proto::schema::Entity {
 
         let hashed_keys = Felt::from_str(&event.id)?.to_bytes_be().to_vec();
         let models = if let Some(model) = event.updated_model {
-            vec![model.as_struct()?.clone().into()]
+            vec![model.as_struct().ok_or(anyhow::anyhow!("Failed to convert model to struct"))?.clone().into()]
         } else {
             vec![]
         };
@@ -417,7 +417,7 @@ impl TryFrom<OptimisticEventMessage> for torii_proto::schema::Entity {
 
         let hashed_keys = Felt::from_str(&event.id)?.to_bytes_be().to_vec();
         let models = if let Some(model) = event.updated_model {
-            vec![model.as_struct()?.clone().into()]
+            vec![model.as_struct().ok_or(anyhow::anyhow!("Failed to convert model to struct"))?.clone().into()]
         } else {
             vec![]
         };
@@ -452,9 +452,9 @@ impl From<Transaction> for torii_proto::Transaction {
             nonce: Felt::from_str(&value.nonce).unwrap(),
             block_number: value.block_number,
             transaction_type: value.transaction_type,
-            block_timestamp: value.executed_at.timestamp() as u64,
+            block_timestamp: value.executed_at,
             calls: value.calls,
-            unique_models: value.unique_models,
+            unique_models: value.unique_models.into_iter().collect(),
         }
     }
 }
@@ -482,9 +482,9 @@ impl From<OptimisticTransaction> for torii_proto::Transaction {
             nonce: Felt::from_str(&value.nonce).unwrap(),
             block_number: value.block_number,
             transaction_type: value.transaction_type,
-            block_timestamp: value.executed_at.timestamp() as u64,
+            block_timestamp: value.executed_at,
             calls: value.calls,
-            unique_models: value.unique_models,
+            unique_models: value.unique_models.into_iter().collect(),
         }
     }
 }
