@@ -7,7 +7,7 @@ use dojo_types::naming::get_tag;
 use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
 use tokio_stream::StreamExt;
-use torii_sqlite::simple_broker::SimpleBroker;
+use torii_broker::MemoryBroker;
 use torii_sqlite::types::EventMessage;
 
 use super::inputs::keys_input::keys_argument;
@@ -74,7 +74,7 @@ impl ResolvableObject for EventMessageObject {
                         Some(id) => Some(id.string()?.to_string()),
                         None => None,
                     };
-                    Ok(SimpleBroker::<EventMessage>::subscribe().filter_map(
+                    Ok(MemoryBroker::<EventMessage>::subscribe().filter_map(
                         move |entity: EventMessage| {
                             if id.is_none() || id == Some(entity.id.clone()) {
                                 Some(Ok(Value::Object(EventMessageObject::value_mapping(entity))))

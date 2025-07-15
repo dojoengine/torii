@@ -8,8 +8,8 @@ use sqlx::sqlite::SqliteRow;
 use sqlx::{FromRow, Pool, Row, Sqlite, SqliteConnection};
 use starknet_crypto::Felt;
 use tokio_stream::StreamExt;
+use torii_broker::MemoryBroker;
 use torii_sqlite::constants::TOKEN_BALANCE_TABLE;
-use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::TokenBalance;
 use torii_sqlite::utils::felt_to_sql_string;
 use tracing::warn;
@@ -103,7 +103,7 @@ impl ResolvableObject for ErcBalanceObject {
                     };
 
                     let pool = ctx.data::<Pool<Sqlite>>()?;
-                    Ok(SimpleBroker::<TokenBalance>::subscribe()
+                    Ok(MemoryBroker::<TokenBalance>::subscribe()
                         .then(move |token_balance| {
                             let address = address.clone();
                             let pool = pool.clone();

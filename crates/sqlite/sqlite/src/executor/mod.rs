@@ -24,7 +24,6 @@ use tracing::{debug, error, info, warn};
 use crate::constants::TOKENS_TABLE;
 use crate::error::ParseError;
 use crate::executor::error::{ExecutorError, ExecutorQueryError};
-use crate::simple_broker::SimpleBroker;
 use crate::types::{
     ContractCursor, Entity as EntityUpdated, Event as EventEmitted,
     EventMessage as EventMessageUpdated, Model as ModelRegistered, OptimisticEntity,
@@ -34,6 +33,7 @@ use crate::utils::{
     felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, u256_to_sql_string,
 };
 use crate::Cursor;
+use torii_broker::MemoryBroker;
 
 pub mod erc;
 pub mod error;
@@ -423,7 +423,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 let optimistic_transaction = unsafe {
                     std::mem::transmute::<Transaction, OptimisticTransaction>(transaction.clone())
                 };
-                SimpleBroker::publish(optimistic_transaction);
+                MemoryBroker::publish(optimistic_transaction);
                 self.publish_queue
                     .push(BrokerMessage::Transaction(transaction));
             }
@@ -495,7 +495,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 let optimistic_entity = unsafe {
                     std::mem::transmute::<EntityUpdated, OptimisticEntity>(entity_updated.clone())
                 };
-                SimpleBroker::publish(optimistic_entity);
+                MemoryBroker::publish(optimistic_entity);
 
                 let broker_message = BrokerMessage::EntityUpdated(entity_updated);
                 self.publish_queue.push(broker_message);
@@ -543,7 +543,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     entity_updated.deleted = true;
                 }
 
-                SimpleBroker::publish(unsafe {
+                MemoryBroker::publish(unsafe {
                     std::mem::transmute::<EntityUpdated, OptimisticEntity>(entity_updated.clone())
                 });
                 self.publish_queue
@@ -601,7 +601,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 let mut event_message = EventMessageUpdated::from_row(&event_messages_row)?;
                 event_message.updated_model = Some(em_query.ty);
 
-                SimpleBroker::publish(unsafe {
+                MemoryBroker::publish(unsafe {
                     std::mem::transmute::<EventMessageUpdated, OptimisticEventMessage>(
                         event_message.clone(),
                     )
@@ -739,7 +739,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 let token = query.fetch_one(&mut **tx).await?;
 
                 info!(target: LOG_TARGET, name = %name, symbol = %symbol, contract_address = %token.contract_address, token_id = %register_nft_token.token_id, "NFT token registered.");
-                SimpleBroker::publish(unsafe {
+                MemoryBroker::publish(unsafe {
                     std::mem::transmute::<Token, OptimisticToken>(token.clone())
                 });
                 self.publish_queue
@@ -785,7 +785,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 .await?;
 
                 info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = %update_metadata.token_id, "NFT token metadata updated.");
-                SimpleBroker::publish(unsafe {
+                MemoryBroker::publish(unsafe {
                     std::mem::transmute::<Token, OptimisticToken>(token.clone())
                 });
                 self.publish_queue
@@ -833,13 +833,13 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
 
 fn send_broker_message(message: BrokerMessage) {
     match message {
-        BrokerMessage::SetHead(update) => SimpleBroker::publish(update),
-        BrokerMessage::ModelRegistered(model) => SimpleBroker::publish(model),
-        BrokerMessage::EntityUpdated(entity) => SimpleBroker::publish(entity),
-        BrokerMessage::EventMessageUpdated(event) => SimpleBroker::publish(event),
-        BrokerMessage::EventEmitted(event) => SimpleBroker::publish(event),
-        BrokerMessage::TokenRegistered(token) => SimpleBroker::publish(token),
-        BrokerMessage::TokenBalanceUpdated(token_balance) => SimpleBroker::publish(token_balance),
-        BrokerMessage::Transaction(transaction) => SimpleBroker::publish(transaction),
+        BrokerMessage::SetHead(update) => MemoryBroker::publish(update),
+        BrokerMessage::ModelRegistered(model) => MemoryBroker::publish(model),
+        BrokerMessage::EntityUpdated(entity) => MemoryBroker::publish(entity),
+        BrokerMessage::EventMessageUpdated(event) => MemoryBroker::publish(event),
+        BrokerMessage::EventEmitted(event) => MemoryBroker::publish(event),
+        BrokerMessage::TokenRegistered(token) => MemoryBroker::publish(token),
+        BrokerMessage::TokenBalanceUpdated(token_balance) => MemoryBroker::publish(token_balance),
+        BrokerMessage::Transaction(transaction) => MemoryBroker::publish(transaction),
     }
 }

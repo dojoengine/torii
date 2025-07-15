@@ -7,7 +7,7 @@ use async_graphql::{Name, Value};
 use sqlx::{FromRow, Pool, Sqlite};
 use starknet_crypto::Felt;
 use tokio_stream::StreamExt;
-use torii_sqlite::simple_broker::SimpleBroker;
+use torii_broker::MemoryBroker;
 use torii_sqlite::types::Transaction;
 
 use super::{BasicObject, ResolvableObject, TypeMapping, ValueMapping};
@@ -102,7 +102,7 @@ impl ResolvableObject for TransactionObject {
 
                     // if hash is None, then subscribe to all transactions
                     // if hash is Some, then subscribe to only the transaction with that hash
-                    Ok(SimpleBroker::<Transaction>::subscribe().filter_map(
+                    Ok(MemoryBroker::<Transaction>::subscribe().filter_map(
                         move |transaction: Transaction| {
                             if (hash.is_none()
                                 || hash == Some(transaction.transaction_hash.clone()))
