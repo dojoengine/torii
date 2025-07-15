@@ -13,11 +13,11 @@ use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
 use torii_proto::proto::types::Entity;
+use torii_proto::schema::Entity;
 use torii_proto::Clause;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
-use torii_sqlite::types::OptimisticEventMessage;
 use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeEntityResponse;
@@ -85,15 +85,15 @@ impl EventMessageManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = OptimisticEventMessage> + Send>>,
-    event_sender: UnboundedSender<OptimisticEventMessage>,
+    simple_broker: Pin<Box<dyn Stream<Item = Entity> + Send>>,
+    event_sender: UnboundedSender<Entity>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<EventMessageManager>) -> Self {
         let (event_sender, event_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(SimpleBroker::<OptimisticEventMessage>::subscribe()),
+            simple_broker: Box::pin(SimpleBroker::<Entity>::subscribe()),
             event_sender,
         };
 
@@ -104,7 +104,7 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<EventMessageManager>,
-        mut event_receiver: UnboundedReceiver<OptimisticEventMessage>,
+        mut event_receiver: UnboundedReceiver<Entity>,
     ) {
         while let Some(event) = event_receiver.recv().await {
             if let Err(e) = Self::process_event_update(&subs, &event).await {
@@ -115,23 +115,16 @@ impl Service {
 
     async fn process_event_update(
         subs: &Arc<EventMessageManager>,
-        entity: &OptimisticEventMessage,
+        entity: &Entity,
     ) -> Result<(), Error> {
         let mut closed_stream = Vec::new();
-        let hashed = Felt::from_str(&entity.id).map_err(ParseError::FromStr)?;
-        let keys = entity
-            .keys
-            .trim_end_matches(SQL_FELT_DELIMITER)
-            .split(SQL_FELT_DELIMITER)
-            .filter_map(|key| {
-                if key.is_empty() {
-                    None
-                } else {
-                    Some(Felt::from_str(key))
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::FromStr)?;
+        let hashed = Felt::from_bytes_be_slice(&entity.hashed_keys);
+
+        let keys = if entity.models.is_empty() {
+            vec![]
+        } else {
+            vec![]
+        };
 
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
@@ -144,23 +137,15 @@ impl Service {
             // If we have a clause of keys, then check that the key pattern of the entity
             // matches the key pattern of the subscriber.
             if let Some(clause) = &sub.clause {
-                if !match_entity(hashed, &keys, &entity.updated_model, clause) {
+                if !match_entity(hashed, &keys, &None, clause) {
                     continue;
                 }
             }
 
-            // This should NEVER be None
-            let model = entity
-                .updated_model
-                .as_ref()
-                .unwrap()
-                .as_struct()
-                .unwrap()
-                .clone();
             let resp = SubscribeEntityResponse {
                 entity: Some(Entity {
-                    hashed_keys: hashed.to_bytes_be().to_vec(),
-                    models: vec![model.into()],
+                    hashed_keys: entity.hashed_keys.clone(),
+                    models: entity.models.clone(),
                 }),
                 subscription_id: *idx,
             };

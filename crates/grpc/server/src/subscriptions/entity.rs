@@ -12,10 +12,10 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
+use torii_proto::schema::Entity;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
-use torii_sqlite::types::OptimisticEntity;
 use tracing::{error, trace};
 
 use super::match_entity;
@@ -82,15 +82,15 @@ impl EntityManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = OptimisticEntity> + Send>>,
-    entity_sender: UnboundedSender<OptimisticEntity>,
+    simple_broker: Pin<Box<dyn Stream<Item = Entity> + Send>>,
+    entity_sender: UnboundedSender<Entity>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<EntityManager>) -> Self {
         let (entity_sender, entity_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(SimpleBroker::<OptimisticEntity>::subscribe()),
+            simple_broker: Box::pin(SimpleBroker::<Entity>::subscribe()),
             entity_sender,
         };
 
@@ -101,7 +101,7 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<EntityManager>,
-        mut entity_receiver: UnboundedReceiver<OptimisticEntity>,
+        mut entity_receiver: UnboundedReceiver<Entity>,
     ) {
         while let Some(entity) = entity_receiver.recv().await {
             if let Err(e) = Self::process_entity_update(&subs, &entity).await {
@@ -112,80 +112,42 @@ impl Service {
 
     async fn process_entity_update(
         subs: &Arc<EntityManager>,
-        entity: &OptimisticEntity,
+        entity: &Entity,
     ) -> Result<(), Error> {
         let mut closed_stream = Vec::new();
-        let hashed = Felt::from_str(&entity.id).map_err(ParseError::FromStr)?;
-        // keys is empty when an entity is updated with StoreUpdateRecord or Member but the entity
-        // has never been set before. In that case, we dont know the keys
-        let keys = entity
-            .keys
-            .trim_end_matches(SQL_FELT_DELIMITER)
-            .split(SQL_FELT_DELIMITER)
-            .filter_map(|key| {
-                if key.is_empty() {
-                    None
-                } else {
-                    Some(Felt::from_str(key))
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::FromStr)?;
+        let hashed = Felt::from_bytes_be_slice(&entity.hashed_keys);
+
+        let keys = if entity.models.is_empty() {
+            vec![]
+        } else {
+            vec![]
+        };
 
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
             let sub = sub.value();
 
-            // Check if the subscriber is interested in this entity
-            // If we have a clause of hashed keys, then check that the id of the entity
-            // is in the list of hashed keys.
-
-            // If we have a clause of keys, then check that the key pattern of the entity
-            // matches the key pattern of the subscriber.
             if let Some(clause) = &sub.clause {
-                if !match_entity(hashed, &keys, &entity.updated_model, clause) {
+                if !match_entity(hashed, &keys, &None, clause) {
                     continue;
                 }
             }
 
-            let resp = if entity.deleted {
-                SubscribeEntityResponse {
-                    entity: Some(torii_proto::proto::types::Entity {
-                        hashed_keys: hashed.to_bytes_be().to_vec(),
-                        models: vec![],
-                    }),
-                    subscription_id: *idx,
-                }
-            } else {
-                // This should NEVER be None
-                let model = entity
-                    .updated_model
-                    .as_ref()
-                    .unwrap()
-                    .as_struct()
-                    .unwrap()
-                    .clone();
-                SubscribeEntityResponse {
-                    entity: Some(torii_proto::proto::types::Entity {
-                        hashed_keys: hashed.to_bytes_be().to_vec(),
-                        models: vec![model.into()],
-                    }),
-                    subscription_id: *idx,
-                }
+            let resp = SubscribeEntityResponse {
+                entity: Some(torii_proto::proto::types::Entity {
+                    hashed_keys: entity.hashed_keys.clone(),
+                    models: entity.models.clone(),
+                }),
+                subscription_id: *idx,
             };
 
-            // Use try_send to avoid blocking on slow subscribers
             match sub.sender.try_send(Ok(resp)) {
-                Ok(_) => {
-                    // Message sent successfully
-                }
+                Ok(_) => {}
                 Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    // Channel is full, subscriber is too slow - disconnect them
                     trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
                     closed_stream.push(*idx);
                 }
                 Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    // Channel is closed, subscriber has disconnected
                     closed_stream.push(*idx);
                 }
             }

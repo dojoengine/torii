@@ -12,10 +12,10 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
+use torii_proto::Transaction;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::simple_broker::SimpleBroker;
-use torii_sqlite::types::OptimisticTransaction;
 use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeTransactionsResponse;
@@ -74,15 +74,15 @@ impl TransactionManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = OptimisticTransaction> + Send>>,
-    transaction_sender: UnboundedSender<OptimisticTransaction>,
+    simple_broker: Pin<Box<dyn Stream<Item = Transaction> + Send>>,
+    transaction_sender: UnboundedSender<Transaction>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<TransactionManager>) -> Self {
         let (transaction_sender, transaction_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(SimpleBroker::<OptimisticTransaction>::subscribe()),
+            simple_broker: Box::pin(SimpleBroker::<Transaction>::subscribe()),
             transaction_sender,
         };
 
@@ -93,7 +93,7 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<TransactionManager>,
-        mut transaction_receiver: UnboundedReceiver<OptimisticTransaction>,
+        mut transaction_receiver: UnboundedReceiver<Transaction>,
     ) {
         while let Some(transaction) = transaction_receiver.recv().await {
             if let Err(e) = Self::process_transaction(&subs, &transaction).await {
@@ -104,30 +104,9 @@ impl Service {
 
     async fn process_transaction(
         subs: &Arc<TransactionManager>,
-        transaction: &OptimisticTransaction,
+        transaction: &Transaction,
     ) -> Result<(), Error> {
         let mut closed_stream = Vec::new();
-
-        let transaction_hash =
-            Felt::from_str(&transaction.transaction_hash).map_err(ParseError::from)?;
-        let sender_address =
-            Felt::from_str(&transaction.sender_address).map_err(ParseError::from)?;
-        let max_fee = Felt::from_str(&transaction.max_fee).map_err(ParseError::from)?;
-        let nonce = Felt::from_str(&transaction.nonce).map_err(ParseError::from)?;
-        let calldata = transaction
-            .calldata
-            .split(SQL_FELT_DELIMITER)
-            .filter(|s| !s.is_empty())
-            .map(Felt::from_str)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::from)?;
-        let signature = transaction
-            .signature
-            .split(SQL_FELT_DELIMITER)
-            .filter(|s| !s.is_empty())
-            .map(Felt::from_str)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::from)?;
 
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
@@ -135,78 +114,95 @@ impl Service {
 
             if let Some(filter) = &sub.filter {
                 if !filter.transaction_hashes.is_empty()
-                    && !filter.transaction_hashes.contains(&transaction_hash)
+                    && !filter
+                        .transaction_hashes
+                        .contains(&transaction.transaction_hash)
                 {
                     continue;
                 }
 
-                if !filter.caller_addresses.is_empty() {
-                    for caller_address in &transaction.calls {
-                        if !filter
-                            .caller_addresses
-                            .contains(&caller_address.caller_address)
-                        {
-                            continue;
-                        }
-                    }
+                if !filter.caller_addresses.is_empty()
+                    && !filter
+                        .caller_addresses
+                        .contains(&transaction.sender_address)
+                {
+                    continue;
                 }
 
                 if !filter.contract_addresses.is_empty() {
-                    for contract_address in &transaction.calls {
-                        if !filter
-                            .contract_addresses
-                            .contains(&contract_address.contract_address)
-                        {
-                            continue;
-                        }
+                    let has_matching_contract = transaction
+                        .calls
+                        .iter()
+                        .any(|call| filter.contract_addresses.contains(&call.contract_address));
+                    if !has_matching_contract {
+                        continue;
                     }
                 }
 
                 if !filter.entrypoints.is_empty() {
-                    for entrypoint in &transaction.calls {
-                        if !filter.entrypoints.contains(&entrypoint.entrypoint) {
-                            continue;
-                        }
+                    let has_matching_entrypoint = transaction
+                        .calls
+                        .iter()
+                        .any(|call| filter.entrypoints.contains(&call.entrypoint));
+                    if !has_matching_entrypoint {
+                        continue;
                     }
                 }
 
                 if !filter.model_selectors.is_empty() {
-                    for model_selector in &transaction.unique_models {
-                        if !filter.model_selectors.contains(model_selector) {
-                            continue;
-                        }
+                    let has_matching_model = transaction
+                        .unique_models
+                        .iter()
+                        .any(|model| filter.model_selectors.contains(model));
+                    if !has_matching_model {
+                        continue;
                     }
                 }
 
-                if filter.from_block.is_some()
-                    && transaction.block_number < filter.from_block.unwrap()
-                {
-                    continue;
+                if let Some(from_block) = filter.from_block {
+                    if transaction.block_number < from_block {
+                        continue;
+                    }
                 }
 
-                if filter.to_block.is_some() && transaction.block_number > filter.to_block.unwrap()
-                {
-                    continue;
+                if let Some(to_block) = filter.to_block {
+                    if transaction.block_number > to_block {
+                        continue;
+                    }
                 }
             }
 
-            let resp: SubscribeTransactionsResponse = SubscribeTransactionsResponse {
-                transaction: Some(
-                    torii_proto::Transaction {
-                        transaction_hash,
-                        sender_address,
-                        calldata: calldata.clone(),
-                        max_fee,
-                        signature: signature.clone(),
-                        nonce,
-                        block_number: transaction.block_number,
-                        block_timestamp: transaction.executed_at,
-                        transaction_type: transaction.transaction_type.clone(),
-                        calls: transaction.calls.clone(),
-                        unique_models: transaction.unique_models.clone().into_iter().collect(),
-                    }
-                    .into(),
-                ),
+            let resp = SubscribeTransactionsResponse {
+                transaction: Some(torii_proto::proto::types::Transaction {
+                    transaction_hash: transaction.transaction_hash.to_bytes_be().to_vec(),
+                    sender_address: transaction.sender_address.to_bytes_be().to_vec(),
+                    calldata: transaction
+                        .calldata
+                        .iter()
+                        .map(|d| d.to_bytes_be().to_vec())
+                        .collect(),
+                    max_fee: transaction.max_fee.to_bytes_be().to_vec(),
+                    signature: transaction
+                        .signature
+                        .iter()
+                        .map(|s| s.to_bytes_be().to_vec())
+                        .collect(),
+                    nonce: transaction.nonce.to_bytes_be().to_vec(),
+                    block_number: transaction.block_number,
+                    transaction_type: transaction.transaction_type.clone(),
+                    block_timestamp: transaction.block_timestamp,
+                    calls: transaction
+                        .calls
+                        .clone()
+                        .into_iter()
+                        .map(|c| c.into())
+                        .collect(),
+                    unique_models: transaction
+                        .unique_models
+                        .iter()
+                        .map(|m| m.to_bytes_be().to_vec())
+                        .collect(),
+                }),
             };
 
             // Use try_send to avoid blocking on slow subscribers

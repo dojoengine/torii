@@ -420,10 +420,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 transaction.calls = store_transaction.calls;
                 transaction.unique_models = store_transaction.unique_models;
 
-                let optimistic_transaction = unsafe {
-                    std::mem::transmute::<Transaction, OptimisticTransaction>(transaction.clone())
-                };
-                SimpleBroker::publish(optimistic_transaction);
                 self.publish_queue
                     .push(BrokerMessage::Transaction(transaction));
             }
@@ -492,11 +488,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 .execute(&mut **tx)
                 .await?;
 
-                let optimistic_entity = unsafe {
-                    std::mem::transmute::<EntityUpdated, OptimisticEntity>(entity_updated.clone())
-                };
-                SimpleBroker::publish(optimistic_entity);
-
                 let broker_message = BrokerMessage::EntityUpdated(entity_updated);
                 self.publish_queue.push(broker_message);
             }
@@ -543,9 +534,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     entity_updated.deleted = true;
                 }
 
-                SimpleBroker::publish(unsafe {
-                    std::mem::transmute::<EntityUpdated, OptimisticEntity>(entity_updated.clone())
-                });
                 self.publish_queue
                     .push(BrokerMessage::EntityUpdated(entity_updated));
             }
@@ -601,11 +589,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 let mut event_message = EventMessageUpdated::from_row(&event_messages_row)?;
                 event_message.updated_model = Some(em_query.ty);
 
-                SimpleBroker::publish(unsafe {
-                    std::mem::transmute::<EventMessageUpdated, OptimisticEventMessage>(
-                        event_message.clone(),
-                    )
-                });
                 self.publish_queue
                     .push(BrokerMessage::EventMessageUpdated(event_message));
             }
@@ -739,9 +722,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 let token = query.fetch_one(&mut **tx).await?;
 
                 info!(target: LOG_TARGET, name = %name, symbol = %symbol, contract_address = %token.contract_address, token_id = %register_nft_token.token_id, "NFT token registered.");
-                SimpleBroker::publish(unsafe {
-                    std::mem::transmute::<Token, OptimisticToken>(token.clone())
-                });
                 self.publish_queue
                     .push(BrokerMessage::TokenRegistered(token));
             }
@@ -785,9 +765,6 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 .await?;
 
                 info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = %update_metadata.token_id, "NFT token metadata updated.");
-                SimpleBroker::publish(unsafe {
-                    std::mem::transmute::<Token, OptimisticToken>(token.clone())
-                });
                 self.publish_queue
                     .push(BrokerMessage::TokenRegistered(token));
             }
@@ -835,11 +812,21 @@ fn send_broker_message(message: BrokerMessage) {
     match message {
         BrokerMessage::SetHead(update) => SimpleBroker::publish(update),
         BrokerMessage::ModelRegistered(model) => SimpleBroker::publish(model),
-        BrokerMessage::EntityUpdated(entity) => SimpleBroker::publish(entity),
-        BrokerMessage::EventMessageUpdated(event) => SimpleBroker::publish(event),
-        BrokerMessage::EventEmitted(event) => SimpleBroker::publish(event),
-        BrokerMessage::TokenRegistered(token) => SimpleBroker::publish(token),
-        BrokerMessage::TokenBalanceUpdated(token_balance) => SimpleBroker::publish(token_balance),
-        BrokerMessage::Transaction(transaction) => SimpleBroker::publish(transaction),
+        BrokerMessage::EntityUpdated(entity) => {
+            if let Ok(proto_entity) = entity.try_into() {
+                SimpleBroker::<torii_proto::schema::Entity>::publish(proto_entity);
+            }
+        }
+        BrokerMessage::EventMessageUpdated(event) => {
+            if let Ok(proto_entity) = event.try_into() {
+                SimpleBroker::<torii_proto::schema::Entity>::publish(proto_entity);
+            }
+        }
+        BrokerMessage::EventEmitted(event) => SimpleBroker::publish(event.into()),
+        BrokerMessage::TokenRegistered(token) => SimpleBroker::publish(token.into()),
+        BrokerMessage::TokenBalanceUpdated(token_balance) => {
+            SimpleBroker::publish(token_balance.into())
+        }
+        BrokerMessage::Transaction(transaction) => SimpleBroker::publish(transaction.into()),
     }
 }

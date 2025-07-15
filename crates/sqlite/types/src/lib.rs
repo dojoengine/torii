@@ -340,3 +340,151 @@ impl From<Controller> for torii_proto::Controller {
         }
     }
 }
+
+impl TryFrom<Entity> for torii_proto::schema::Entity {
+    type Error = anyhow::Error;
+
+    fn try_from(entity: Entity) -> Result<Self, Self::Error> {
+        use starknet::core::types::Felt;
+        use std::str::FromStr;
+        use torii_proto::schema::Entity as ProtoEntity;
+
+        let hashed_keys = Felt::from_str(&entity.id)?.to_bytes_be().to_vec();
+        let models = if let Some(model) = entity.updated_model {
+            vec![model.as_struct()?.clone().into()]
+        } else {
+            vec![]
+        };
+
+        Ok(ProtoEntity {
+            hashed_keys,
+            models,
+        })
+    }
+}
+
+impl TryFrom<OptimisticEntity> for torii_proto::schema::Entity {
+    type Error = anyhow::Error;
+
+    fn try_from(entity: OptimisticEntity) -> Result<Self, Self::Error> {
+        use starknet::core::types::Felt;
+        use std::str::FromStr;
+        use torii_proto::schema::Entity as ProtoEntity;
+
+        let hashed_keys = Felt::from_str(&entity.id)?.to_bytes_be().to_vec();
+        let models = if let Some(model) = entity.updated_model {
+            vec![model.as_struct()?.clone().into()]
+        } else {
+            vec![]
+        };
+
+        Ok(ProtoEntity {
+            hashed_keys,
+            models,
+        })
+    }
+}
+
+impl TryFrom<EventMessage> for torii_proto::schema::Entity {
+    type Error = anyhow::Error;
+
+    fn try_from(event: EventMessage) -> Result<Self, Self::Error> {
+        use starknet::core::types::Felt;
+        use std::str::FromStr;
+        use torii_proto::schema::Entity as ProtoEntity;
+
+        let hashed_keys = Felt::from_str(&event.id)?.to_bytes_be().to_vec();
+        let models = if let Some(model) = event.updated_model {
+            vec![model.as_struct()?.clone().into()]
+        } else {
+            vec![]
+        };
+
+        Ok(ProtoEntity {
+            hashed_keys,
+            models,
+        })
+    }
+}
+
+impl TryFrom<OptimisticEventMessage> for torii_proto::schema::Entity {
+    type Error = anyhow::Error;
+
+    fn try_from(event: OptimisticEventMessage) -> Result<Self, Self::Error> {
+        use starknet::core::types::Felt;
+        use std::str::FromStr;
+        use torii_proto::schema::Entity as ProtoEntity;
+
+        let hashed_keys = Felt::from_str(&event.id)?.to_bytes_be().to_vec();
+        let models = if let Some(model) = event.updated_model {
+            vec![model.as_struct()?.clone().into()]
+        } else {
+            vec![]
+        };
+
+        Ok(ProtoEntity {
+            hashed_keys,
+            models,
+        })
+    }
+}
+
+impl From<Transaction> for torii_proto::Transaction {
+    fn from(value: Transaction) -> Self {
+        Self {
+            transaction_hash: Felt::from_str(&value.transaction_hash).unwrap(),
+            sender_address: Felt::from_str(&value.sender_address).unwrap(),
+            calldata: value
+                .calldata
+                .trim_end_matches('/')
+                .split('/')
+                .filter(|d| !d.is_empty())
+                .map(|d| Felt::from_str(d).unwrap())
+                .collect(),
+            max_fee: Felt::from_str(&value.max_fee).unwrap(),
+            signature: value
+                .signature
+                .trim_end_matches('/')
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .map(|s| Felt::from_str(s).unwrap())
+                .collect(),
+            nonce: Felt::from_str(&value.nonce).unwrap(),
+            block_number: value.block_number,
+            transaction_type: value.transaction_type,
+            block_timestamp: value.executed_at.timestamp() as u64,
+            calls: value.calls,
+            unique_models: value.unique_models,
+        }
+    }
+}
+
+impl From<OptimisticTransaction> for torii_proto::Transaction {
+    fn from(value: OptimisticTransaction) -> Self {
+        Self {
+            transaction_hash: Felt::from_str(&value.transaction_hash).unwrap(),
+            sender_address: Felt::from_str(&value.sender_address).unwrap(),
+            calldata: value
+                .calldata
+                .trim_end_matches('/')
+                .split('/')
+                .filter(|d| !d.is_empty())
+                .map(|d| Felt::from_str(d).unwrap())
+                .collect(),
+            max_fee: Felt::from_str(&value.max_fee).unwrap(),
+            signature: value
+                .signature
+                .trim_end_matches('/')
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .map(|s| Felt::from_str(s).unwrap())
+                .collect(),
+            nonce: Felt::from_str(&value.nonce).unwrap(),
+            block_number: value.block_number,
+            transaction_type: value.transaction_type,
+            block_timestamp: value.executed_at.timestamp() as u64,
+            calls: value.calls,
+            unique_models: value.unique_models,
+        }
+    }
+}
