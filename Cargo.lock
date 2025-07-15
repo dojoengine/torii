@@ -11554,7 +11554,7 @@ dependencies = [
 
 [[package]]
 name = "torii"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -11570,7 +11570,7 @@ dependencies = [
 
 [[package]]
 name = "torii-adigraphmap"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "futures-util",
  "petgraph 0.6.5",
@@ -11581,7 +11581,7 @@ dependencies = [
 
 [[package]]
 name = "torii-broker"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "dashmap 6.1.0",
  "futures-channel",
@@ -11594,7 +11594,7 @@ dependencies = [
 
 [[package]]
 name = "torii-cache"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "async-trait",
  "dashmap 6.1.0",
@@ -11613,7 +11613,7 @@ dependencies = [
 
 [[package]]
 name = "torii-cli"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -11631,7 +11631,7 @@ dependencies = [
 
 [[package]]
 name = "torii-client"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "async-trait",
  "crypto-bigint",
@@ -11654,7 +11654,7 @@ dependencies = [
 
 [[package]]
 name = "torii-controllers"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "chrono",
  "mockito",
@@ -11675,7 +11675,7 @@ dependencies = [
 
 [[package]]
 name = "torii-graphql"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -11722,7 +11722,7 @@ dependencies = [
 
 [[package]]
 name = "torii-grpc-client"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "crypto-bigint",
  "dojo-types 1.6.0-alpha.1",
@@ -11747,7 +11747,7 @@ dependencies = [
 
 [[package]]
 name = "torii-grpc-server"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
@@ -11806,7 +11806,7 @@ dependencies = [
 
 [[package]]
 name = "torii-indexer"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -11857,7 +11857,7 @@ dependencies = [
 
 [[package]]
 name = "torii-indexer-fetcher"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -11905,7 +11905,7 @@ dependencies = [
 
 [[package]]
 name = "torii-libp2p-relay"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -11935,14 +11935,14 @@ dependencies = [
 
 [[package]]
 name = "torii-math"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "starknet 0.14.0",
 ]
 
 [[package]]
 name = "torii-mcp"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -11953,7 +11953,7 @@ dependencies = [
 
 [[package]]
 name = "torii-messaging"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "crypto-bigint",
@@ -11974,7 +11974,7 @@ dependencies = [
 
 [[package]]
 name = "torii-processors"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12009,7 +12009,7 @@ dependencies = [
 
 [[package]]
 name = "torii-proto"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "chrono",
  "crypto-bigint",
@@ -12031,7 +12031,7 @@ dependencies = [
 
 [[package]]
 name = "torii-runner"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -12089,7 +12089,7 @@ dependencies = [
 
 [[package]]
 name = "torii-server"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12131,7 +12131,7 @@ dependencies = [
 
 [[package]]
 name = "torii-sqlite"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12180,7 +12180,7 @@ dependencies = [
 
 [[package]]
 name = "torii-sqlite-types"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -12195,7 +12195,7 @@ dependencies = [
 
 [[package]]
 name = "torii-storage"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12210,7 +12210,7 @@ dependencies = [
 
 [[package]]
 name = "torii-task-network"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -12222,7 +12222,7 @@ dependencies = [
 
 [[package]]
 name = "torii-typed-data"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "cainome 0.8.0",
  "crypto-bigint",
@@ -13851,7 +13851,7 @@ checksum = "9d422e8e38ec76e2f06ee439ccc765e9c6a9638b9e7c9f2e8255e4d41e8bd852"
 
 [[package]]
 name = "xtask-generate-test-db"
-version = "1.6.0-alpha.2"
+version = "1.6.0-alpha.3"
 dependencies = [
  "anyhow",
  "dojo-test-utils",
