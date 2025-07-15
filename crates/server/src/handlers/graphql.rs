@@ -28,10 +28,19 @@ impl Handler for GraphQLHandler {
     async fn handle(&self, req: Request<Body>, client_addr: IpAddr) -> Response<Body> {
         if let Some(addr) = self.graphql_addr {
             let graphql_addr = format!("http://{}", addr);
-            match crate::proxy::GRAPHQL_PROXY_CLIENT
-                .call(client_addr, &graphql_addr, req)
-                .await
-            {
+
+            // Use WebSocket-compatible client for WebSocket upgrade requests
+            let result = if crate::proxy::is_websocket_upgrade(&req) {
+                crate::proxy::WEBSOCKET_PROXY_CLIENT
+                    .call(client_addr, &graphql_addr, req)
+                    .await
+            } else {
+                crate::proxy::PROXY_CLIENT
+                    .call(client_addr, &graphql_addr, req)
+                    .await
+            };
+
+            match result {
                 Ok(response) => response,
                 Err(_error) => {
                     error!(target: LOG_TARGET, "GraphQL proxy error: {:?}", _error);
