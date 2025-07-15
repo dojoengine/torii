@@ -7,7 +7,7 @@ use dojo_types::naming::get_tag;
 use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
 use tokio_stream::StreamExt;
-use torii_sqlite::simple_broker::SimpleBroker;
+use torii_broker::MemoryBroker;
 use torii_sqlite::types::Entity;
 
 use super::inputs::keys_input::keys_argument;
@@ -75,7 +75,7 @@ impl ResolvableObject for EntityObject {
                     // if id is None, then subscribe to all entities
                     // if id is Some, then subscribe to only the entity with that id
                     Ok(
-                        SimpleBroker::<Entity>::subscribe().filter_map(move |entity: Entity| {
+                        MemoryBroker::<Entity>::subscribe().filter_map(move |entity: Entity| {
                             if id.is_none() || id == Some(entity.id.clone()) {
                                 Some(Ok(Value::Object(EntityObject::value_mapping(entity))))
                             } else {

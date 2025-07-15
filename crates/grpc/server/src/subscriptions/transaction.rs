@@ -14,7 +14,7 @@ use tokio::sync::mpsc::{
 };
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
-use torii_sqlite::simple_broker::SimpleBroker;
+use torii_broker::MemoryBroker;
 use torii_sqlite::types::OptimisticTransaction;
 use tracing::{error, trace};
 
@@ -82,7 +82,7 @@ impl Service {
     pub fn new(subs_manager: Arc<TransactionManager>) -> Self {
         let (transaction_sender, transaction_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(SimpleBroker::<OptimisticTransaction>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<OptimisticTransaction>::subscribe()),
             transaction_sender,
         };
 

@@ -47,9 +47,9 @@ use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::Model;
 use torii_sqlite::{Sql, SqlConfig};
+use torii_broker::MemoryBroker;
 use torii_storage::types::{Contract, ContractType};
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
@@ -546,7 +546,7 @@ async fn spawn_rebuilding_graphql_server(
     pool: Arc<SqlitePool>,
     proxy_server: Arc<Proxy>,
 ) {
-    let mut broker = SimpleBroker::<Model>::subscribe();
+    let mut broker = MemoryBroker::<Model>::subscribe();
 
     loop {
         let shutdown_rx = shutdown_tx.subscribe();

@@ -15,6 +15,7 @@ starknet.workspace = true
 starknet-crypto.workspace = true
 thiserror.workspace = true
 torii-sqlite = { workspace = true }
+torii-broker = { workspace = true }
 torii-proto = { workspace = true, features = ["server"] }
 torii-messaging = { workspace = true }
 

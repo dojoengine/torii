@@ -3,6 +3,7 @@ resolver = "2"
 
 members = [
 	"bin/torii",
+	"crates/broker",
 	"crates/cli",
 	"crates/client",
 	"crates/messaging",
@@ -41,6 +42,7 @@ dojo-test-utils = { git = "https://github.com/dojoengine/dojo", rev = "054623b" 
 dojo-metrics = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
 
 # torii
+torii-broker = { path = "crates/broker" }
 torii-cli = { path = "crates/cli" }
 torii-graphql = { path = "crates/graphql" }
 torii-proto = { path = "crates/proto" }

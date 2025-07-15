@@ -16,7 +16,7 @@ use torii_proto::proto::types::Entity;
 use torii_proto::Clause;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::error::{Error, ParseError};
-use torii_sqlite::simple_broker::SimpleBroker;
+use torii_broker::MemoryBroker;
 use torii_sqlite::types::OptimisticEventMessage;
 use tracing::{error, trace};
 
@@ -93,7 +93,7 @@ impl Service {
     pub fn new(subs_manager: Arc<EventMessageManager>) -> Self {
         let (event_sender, event_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(SimpleBroker::<OptimisticEventMessage>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<OptimisticEventMessage>::subscribe()),
             event_sender,
         };
 

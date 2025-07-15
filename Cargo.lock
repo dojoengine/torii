@@ -11580,6 +11580,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "torii-broker"
+version = "1.6.0-alpha.2"
+dependencies = [
+ "dashmap 6.1.0",
+ "futures-channel",
+ "futures-util",
+ "once_cell",
+ "slab",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "torii-cache"
 version = "1.6.0-alpha.2"
 dependencies = [
@@ -11695,6 +11708,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml 0.8.19",
+ "torii-broker",
  "torii-cache",
  "torii-indexer",
  "torii-indexer-fetcher",
@@ -11774,6 +11788,7 @@ dependencies = [
  "tonic-build 0.12.3",
  "tonic-reflection",
  "tonic-web",
+ "torii-broker",
  "torii-cache",
  "torii-indexer",
  "torii-indexer-fetcher",
@@ -12051,6 +12066,7 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "toml 0.8.19",
+ "torii-broker",
  "torii-cache",
  "torii-cli",
  "torii-controllers",
@@ -12152,6 +12168,7 @@ dependencies = [
  "thiserror 1.0.63",
  "tokio",
  "tokio-util",
+ "torii-broker",
  "torii-cache",
  "torii-indexer",
  "torii-math",

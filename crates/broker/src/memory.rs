@@ -12,13 +12,13 @@ use slab::Slab;
 static SUBSCRIBERS: Lazy<DashMap<TypeId, Box<dyn Any + Send + Sync>>> = Lazy::new(Default::default);
 
 #[derive(Debug)]
-pub struct Senders<T>(pub Slab<UnboundedSender<T>>);
+pub struct Senders<T: std::fmt::Debug>(pub Slab<UnboundedSender<T>>);
 
-struct BrokerStream<T: Sync + Send + Clone + 'static>(usize, UnboundedReceiver<T>);
+struct BrokerStream<T: Sync + Send + Clone + std::fmt::Debug + 'static>(usize, UnboundedReceiver<T>);
 
 fn with_senders<T, F, R>(f: F) -> R
 where
-    T: Sync + Send + Clone + 'static,
+    T: Sync + Send + Clone + std::fmt::Debug + 'static,
     F: FnOnce(&mut Senders<T>) -> R,
 {
     let mut senders = SUBSCRIBERS
@@ -27,13 +27,13 @@ where
     f(senders.downcast_mut::<Senders<T>>().unwrap())
 }
 
-impl<T: Sync + Send + Clone + 'static> Drop for BrokerStream<T> {
+impl<T: Sync + Send + Clone + std::fmt::Debug + 'static> Drop for BrokerStream<T> {
     fn drop(&mut self) {
         with_senders::<T, _, _>(|senders| senders.0.remove(self.0));
     }
 }
 
-impl<T: Sync + Send + Clone + 'static> Stream for BrokerStream<T> {
+impl<T: Sync + Send + Clone + std::fmt::Debug + 'static> Stream for BrokerStream<T> {
     type Item = T;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -43,9 +43,9 @@ impl<T: Sync + Send + Clone + 'static> Stream for BrokerStream<T> {
 
 #[derive(Debug)]
 /// A simple broker based on memory
-pub struct SimpleBroker<T>(PhantomData<T>);
+pub struct MemoryBroker<T>(PhantomData<T>);
 
-impl<T: Sync + Send + Clone + 'static> SimpleBroker<T> {
+impl<T: Sync + Send + Clone + std::fmt::Debug + 'static> MemoryBroker<T> {
     /// Publish a message that all subscription streams can receive.
     pub fn publish(msg: T) {
         with_senders::<T, _, _>(|senders| {
@@ -67,9 +67,9 @@ impl<T: Sync + Send + Clone + 'static> SimpleBroker<T> {
     /// Execute the given function with the _subscribers_ of the specified subscription type.
     pub fn with_subscribers<F, R>(f: F) -> R
     where
-        T: Sync + Send + Clone + 'static,
+        T: Sync + Send + Clone + std::fmt::Debug + 'static,
         F: FnOnce(&mut Senders<T>) -> R,
     {
         with_senders(f)
     }
-}
+} 
