@@ -395,7 +395,11 @@ impl TryFrom<EventMessage> for torii_proto::schema::Entity {
 
         let hashed_keys = Felt::from_str(&event.id)?.to_bytes_be().to_vec();
         let models = if let Some(model) = event.updated_model {
-            vec![model.as_struct().ok_or(anyhow::anyhow!("Failed to convert model to struct"))?.clone().into()]
+            vec![model
+                .as_struct()
+                .ok_or(anyhow::anyhow!("Failed to convert model to struct"))?
+                .clone()
+                .into()]
         } else {
             vec![]
         };
@@ -417,7 +421,11 @@ impl TryFrom<OptimisticEventMessage> for torii_proto::schema::Entity {
 
         let hashed_keys = Felt::from_str(&event.id)?.to_bytes_be().to_vec();
         let models = if let Some(model) = event.updated_model {
-            vec![model.as_struct().ok_or(anyhow::anyhow!("Failed to convert model to struct"))?.clone().into()]
+            vec![model
+                .as_struct()
+                .ok_or(anyhow::anyhow!("Failed to convert model to struct"))?
+                .clone()
+                .into()]
         } else {
             vec![]
         };
