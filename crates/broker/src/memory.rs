@@ -14,7 +14,10 @@ static SUBSCRIBERS: Lazy<DashMap<TypeId, Box<dyn Any + Send + Sync>>> = Lazy::ne
 #[derive(Debug)]
 pub struct Senders<T: std::fmt::Debug>(pub Slab<UnboundedSender<T>>);
 
-struct BrokerStream<T: Sync + Send + Clone + std::fmt::Debug + 'static>(usize, UnboundedReceiver<T>);
+struct BrokerStream<T: Sync + Send + Clone + std::fmt::Debug + 'static>(
+    usize,
+    UnboundedReceiver<T>,
+);
 
 fn with_senders<T, F, R>(f: F) -> R
 where
@@ -72,4 +75,4 @@ impl<T: Sync + Send + Clone + std::fmt::Debug + 'static> MemoryBroker<T> {
     {
         with_senders(f)
     }
-} 
+}

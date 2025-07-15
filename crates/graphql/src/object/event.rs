@@ -3,8 +3,8 @@ use async_graphql::dynamic::{
 };
 use async_graphql::{Name, Result, Value};
 use tokio_stream::{Stream, StreamExt};
-use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_broker::MemoryBroker;
+use torii_sqlite::constants::SQL_FELT_DELIMITER;
 use torii_sqlite::types::Event;
 
 use super::inputs::keys_input::{keys_argument, parse_keys_argument};

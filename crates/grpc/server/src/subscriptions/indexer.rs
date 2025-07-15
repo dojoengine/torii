@@ -11,8 +11,8 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use torii_sqlite::error::{Error, ParseError};
 use torii_broker::MemoryBroker;
+use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::types::ContractCursor as ContractUpdated;
 use torii_storage::Storage;
 use tracing::{error, trace};

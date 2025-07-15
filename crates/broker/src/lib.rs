@@ -6,4 +6,4 @@
 pub mod memory;
 
 // Re-export commonly used types from memory module
-pub use memory::{Senders, MemoryBroker}; 
+pub use memory::{MemoryBroker, Senders};

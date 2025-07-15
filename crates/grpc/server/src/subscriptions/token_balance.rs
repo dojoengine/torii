@@ -13,8 +13,8 @@ use starknet_crypto::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use torii_sqlite::error::{Error, ParseError};
 use torii_broker::MemoryBroker;
+use torii_sqlite::error::{Error, ParseError};
 use torii_sqlite::types::OptimisticTokenBalance;
 use tracing::{error, trace};
 
