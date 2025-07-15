@@ -253,8 +253,10 @@ impl Proxy {
                                                     }
                                                 });
 
+
                                             if let Err(e) = hyper::server::conn::Http::new()
                                                 .serve_connection(tls_stream, service)
+                                                .with_upgrades() // Enable connection upgrades for WebSocket over TLS
                                                 .await
                                             {
                                                 error!(target: LOG_TARGET, error = ?e, "Serving connection.");
