@@ -80,7 +80,8 @@ pub fn is_websocket_upgrade(req: &Request<Body>) -> bool {
         .and_then(|v| v.to_str().ok())
         .map(|v| v.to_lowercase() == "websocket")
         .unwrap_or(false)
-        && req.headers()
+        && req
+            .headers()
             .get("connection")
             .and_then(|v| v.to_str().ok())
             .map(|v| v.to_lowercase().contains("upgrade"))

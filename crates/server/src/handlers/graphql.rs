@@ -39,9 +39,8 @@ impl Handler for GraphQLHandler {
                     .call(client_addr, &graphql_addr, req)
                     .await
             };
-            
-            match result
-            {
+
+            match result {
                 Ok(response) => response,
                 Err(_error) => {
                     error!(target: LOG_TARGET, "GraphQL proxy error: {:?}", _error);
