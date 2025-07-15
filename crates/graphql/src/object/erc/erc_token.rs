@@ -6,7 +6,7 @@ use async_graphql::{Name, Value};
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Pool, Row, Sqlite, SqliteConnection};
 use tokio_stream::StreamExt;
-use torii_sqlite::simple_broker::SimpleBroker;
+use torii_broker::MemoryBroker;
 use torii_sqlite::types::Token;
 use tracing::warn;
 
@@ -468,7 +468,7 @@ impl ResolvableObject for TokenObject {
             |ctx| {
                 SubscriptionFieldFuture::new(async move {
                     let pool = ctx.data::<Pool<Sqlite>>()?;
-                    Ok(SimpleBroker::<Token>::subscribe()
+                    Ok(MemoryBroker::<Token>::subscribe()
                         .then(move |token| {
                             let pool = pool.clone();
                             async move {

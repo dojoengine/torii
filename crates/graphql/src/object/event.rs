@@ -3,8 +3,8 @@ use async_graphql::dynamic::{
 };
 use async_graphql::{Name, Result, Value};
 use tokio_stream::{Stream, StreamExt};
+use torii_broker::MemoryBroker;
 use torii_sqlite::constants::SQL_FELT_DELIMITER;
-use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::Event;
 
 use super::inputs::keys_input::{keys_argument, parse_keys_argument};
@@ -86,7 +86,7 @@ impl EventObject {
     }
 
     fn subscription_stream(input_keys: Option<Vec<String>>) -> impl Stream<Item = Result<Value>> {
-        SimpleBroker::<Event>::subscribe().filter_map(move |event| {
+        MemoryBroker::<Event>::subscribe().filter_map(move |event| {
             EventObject::match_and_map_event(&input_keys, event)
                 .map(|value_mapping| Ok(Value::Object(value_mapping)))
         })

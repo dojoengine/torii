@@ -6,7 +6,7 @@ use starknet::core::types::{
 };
 use starknet::providers::Provider;
 use torii_cache::{get_entrypoint_name_from_class, ContractClassCache};
-use torii_storage::types::{CallType, ParsedCall};
+use torii_proto::{CallType, TransactionCall};
 
 use crate::error::Error;
 use crate::TransactionProcessorContext;
@@ -93,7 +93,7 @@ impl StoreTransactionProcessor {
         call: &ExecuteCall,
         caller_address: Felt,
         call_type: CallType,
-    ) -> Result<ParsedCall, Error> {
+    ) -> Result<TransactionCall, Error> {
         let contract_class = contract_class_cache
             .get(call.contract_address, BlockId::Tag(BlockTag::Pending))
             .await?;
@@ -101,7 +101,7 @@ impl StoreTransactionProcessor {
         let entrypoint = get_entrypoint_name_from_class(&contract_class, call.selector)
             .unwrap_or(format!("{:#x}", call.selector));
 
-        Ok(ParsedCall {
+        Ok(TransactionCall {
             contract_address: call.contract_address,
             entrypoint,
             calldata: call.calldata.clone(),
@@ -116,7 +116,7 @@ impl StoreTransactionProcessor {
         full_calldata: &[Felt],
         caller_address: Felt,
         call_type: CallType,
-    ) -> Result<ParsedCall, Error> {
+    ) -> Result<TransactionCall, Error> {
         let contract_class = contract_class_cache
             .get(call.contract_address, BlockId::Tag(BlockTag::Pending))
             .await?;
@@ -124,7 +124,7 @@ impl StoreTransactionProcessor {
         let entrypoint = get_entrypoint_name_from_class(&contract_class, call.selector)
             .unwrap_or(format!("{:#x}", call.selector));
 
-        Ok(ParsedCall {
+        Ok(TransactionCall {
             contract_address: call.contract_address,
             entrypoint,
             calldata: full_calldata[call.data_offset..call.data_offset + call.data_length].to_vec(),
@@ -138,7 +138,7 @@ impl StoreTransactionProcessor {
         calldata: &[Felt],
         base_offset: usize,
         caller_address: Felt,
-    ) -> Result<(ParsedCall, usize), Error> {
+    ) -> Result<(TransactionCall, usize), Error> {
         let to_offset = base_offset;
         let selector_offset = to_offset + 1;
         let calldata_offset = selector_offset + 2;
@@ -157,7 +157,7 @@ impl StoreTransactionProcessor {
         let next_offset = calldata_offset + calldata_len;
 
         Ok((
-            ParsedCall {
+            TransactionCall {
                 contract_address,
                 entrypoint,
                 calldata: calldata[calldata_offset..calldata_offset + calldata_len].to_vec(),
@@ -170,8 +170,8 @@ impl StoreTransactionProcessor {
 
     async fn process_outside_calls<P: Provider + Send + Sync + std::fmt::Debug>(
         contract_class_cache: &ContractClassCache<P>,
-        call: &ParsedCall,
-    ) -> Result<Vec<ParsedCall>, Error> {
+        call: &TransactionCall,
+    ) -> Result<Vec<TransactionCall>, Error> {
         let mut outside_calls = Vec::new();
 
         match call.entrypoint.as_str() {
@@ -217,7 +217,7 @@ impl StoreTransactionProcessor {
         execute: Execute,
         sender_address: Felt,
         contract_class_cache: &ContractClassCache<P>,
-    ) -> Result<Vec<ParsedCall>, Error> {
+    ) -> Result<Vec<TransactionCall>, Error> {
         let mut calls = Vec::new();
 
         match execute {

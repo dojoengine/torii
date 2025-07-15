@@ -12,9 +12,9 @@ use super::{ApplyBalanceDiffQuery, BrokerMessage, Executor};
 use crate::constants::{SQL_FELT_DELIMITER, TOKEN_BALANCE_TABLE};
 use crate::error::Error;
 use crate::executor::LOG_TARGET;
-use crate::simple_broker::SimpleBroker;
 use crate::types::{OptimisticTokenBalance, TokenBalance};
 use crate::utils::{sql_string_to_u256, u256_to_sql_string};
+use torii_broker::MemoryBroker;
 use torii_math::I256;
 
 #[derive(Debug, Clone)]
@@ -199,7 +199,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         .await?;
 
         debug!(target: LOG_TARGET, token_balance = ?token_balance, "Applied balance diff");
-        SimpleBroker::publish(unsafe {
+        MemoryBroker::publish(unsafe {
             std::mem::transmute::<TokenBalance, OptimisticTokenBalance>(token_balance.clone())
         });
         self.publish_queue

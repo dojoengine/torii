@@ -22,11 +22,13 @@ pub mod error;
 pub mod executor;
 pub mod model;
 pub mod query;
-pub mod simple_broker;
 pub mod storage;
 pub mod utils;
 
 pub use torii_sqlite_types as types;
+
+// Re-export MemoryBroker from torii-broker for convenience
+pub use torii_broker::MemoryBroker;
 
 #[derive(Debug, Clone, Default)]
 pub struct SqlConfig {

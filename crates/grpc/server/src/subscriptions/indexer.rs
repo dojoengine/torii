@@ -11,8 +11,8 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
+use torii_broker::MemoryBroker;
 use torii_sqlite::error::{Error, ParseError};
-use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::ContractCursor as ContractUpdated;
 use torii_storage::Storage;
 use tracing::{error, trace};
@@ -90,7 +90,7 @@ impl Service {
     pub fn new(subs_manager: Arc<IndexerManager>) -> Self {
         let (update_sender, update_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(SimpleBroker::<ContractUpdated>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<ContractUpdated>::subscribe()),
             update_sender,
         };
 

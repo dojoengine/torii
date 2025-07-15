@@ -31,11 +31,13 @@ use starknet::core::types::{BlockId, BlockTag};
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
 use tempfile::{NamedTempFile, TempDir};
+use terminal_size::{terminal_size, Height, Width};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
+use torii_broker::MemoryBroker;
 use torii_cache::InMemoryCache;
 use torii_cli::ToriiArgs;
 use torii_controllers::sync::ControllersSync;
@@ -46,7 +48,6 @@ use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::Model;
 use torii_sqlite::{Sql, SqlConfig};
 use torii_storage::types::{Contract, ContractType};
@@ -57,6 +58,41 @@ use url::form_urlencoded;
 mod constants;
 
 use crate::constants::LOG_TARGET;
+
+/// Creates a responsive progress bar template based on terminal size
+fn create_progress_bar_template() -> String {
+    let (terminal_width, msg_width) = if let Some((Width(w), Height(_))) = terminal_size() {
+        // Calculate appropriate widths based on terminal size
+        let width = w as usize;
+        let min_width = 80;
+        let max_width = 120;
+        let effective_width = cmp::max(min_width, cmp::min(width, max_width));
+
+        // Calculate message width first (needs space for " XX.Xs" format)
+        let msg_width = (effective_width / 8).clamp(8, 20); // Ensure at least 8 chars for seconds
+
+        // Calculate progress bar width (reserve space for other elements)
+        // " {spinner:.yellow} snapshot [BAR] {bytes}/{total_bytes} Downloading{msg}"
+        let reserved_space = 45 + msg_width; // Space for spinner, labels, bytes, and message
+        let bar_width = if effective_width > reserved_space {
+            // Use most of the available space for the bar
+            let available_space = effective_width - reserved_space;
+            cmp::min(60, (available_space * 8) / 10) // Max 60 chars, 80% of available
+        } else {
+            30 // Minimum bar width
+        };
+
+        (bar_width, msg_width)
+    } else {
+        // Default values if terminal size cannot be determined
+        (40, 20)
+    };
+
+    format!(
+        " {{spinner:.yellow}} snapshot [{{bar:{}.cyan/blue}}] {{bytes}}/{{total_bytes}} Downloading{{wide_msg:>{}.blue}}",
+        terminal_width, msg_width
+    )
+}
 
 #[derive(Debug)]
 pub struct Runner {
@@ -510,7 +546,7 @@ async fn spawn_rebuilding_graphql_server(
     pool: Arc<SqlitePool>,
     proxy_server: Arc<Proxy>,
 ) {
-    let mut broker = SimpleBroker::<Model>::subscribe();
+    let mut broker = MemoryBroker::<Model>::subscribe();
 
     loop {
         let shutdown_rx = shutdown_tx.subscribe();
@@ -580,28 +616,31 @@ async fn stream_snapshot_into_file(
     let span = info_span!("download_snapshot", url);
     span.pb_set_style(
         &indicatif::ProgressStyle::default_bar()
-            .template(
-                "{msg} [{elapsed_precise}] \n[{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {percent}%",
-            )?
-            .progress_chars("█▓░"),
+            .template(&create_progress_bar_template())?
+            .progress_chars("⣿⣤⠀")
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
     );
     span.pb_set_length(total_size);
-    span.pb_set_message(&format!("Downloading {}", url));
+    span.pb_set_message(&format!(" {:.1}s", 0.0));
 
     let instrumented_future = async {
         let mut file = File::create(destination_path).await?;
         let mut downloaded: u64 = 0;
         let mut stream = response.bytes_stream();
+        let start_time = std::time::Instant::now();
 
         while let Some(item) = stream.next().await {
             let chunk = item?;
             file.write_all(&chunk).await?;
             let new = cmp::min(downloaded.saturating_add(chunk.len() as u64), total_size);
             downloaded = new;
+            let elapsed = start_time.elapsed().as_secs_f64();
             Span::current().pb_set_position(new);
+            Span::current().pb_set_message(&format!(" {:.1}s", elapsed));
         }
 
-        Span::current().pb_set_message("Downloaded snapshot successfully");
+        let elapsed = start_time.elapsed().as_secs_f64();
+        Span::current().pb_set_message(&format!(" {:.1}s", elapsed));
         Ok(())
     }
     .instrument(span);

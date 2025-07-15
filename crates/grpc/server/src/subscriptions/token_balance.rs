@@ -13,8 +13,8 @@ use starknet_crypto::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
+use torii_broker::MemoryBroker;
 use torii_sqlite::error::{Error, ParseError};
-use torii_sqlite::simple_broker::SimpleBroker;
 use torii_sqlite::types::OptimisticTokenBalance;
 use tracing::{error, trace};
 
@@ -112,7 +112,7 @@ impl Service {
     pub fn new(subs_manager: Arc<TokenBalanceManager>) -> Self {
         let (balance_sender, balance_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(SimpleBroker::<OptimisticTokenBalance>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<OptimisticTokenBalance>::subscribe()),
             balance_sender,
         };
 

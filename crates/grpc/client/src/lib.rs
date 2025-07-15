@@ -23,16 +23,18 @@ use torii_proto::proto::world::{
     RetrieveEventMessagesRequest, RetrieveEventsRequest, RetrieveEventsResponse,
     RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
     RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
-    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
-    SubscribeEventsRequest, SubscribeEventsResponse, SubscribeIndexerRequest,
-    SubscribeIndexerResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokensRequest, SubscribeTokensResponse, UpdateEntitiesSubscriptionRequest,
-    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
-    UpdateTokenSubscriptionRequest, WorldMetadataRequest,
+    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeEntitiesRequest,
+    SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsRequest,
+    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
+    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Event, EventQuery, IndexerUpdate, KeysClause, Message, Query, Token, TokenBalance,
+    Clause, ControllerQuery, Event, EventQuery, IndexerUpdate, KeysClause, Message, Query, Token,
+    TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionFilter, TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -55,7 +57,7 @@ pub enum Error {
     Proto(#[from] ProtoError),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A lightweight wrapper around the grpc client.
 pub struct WorldClient {
     _world_address: Felt,
@@ -111,45 +113,57 @@ impl WorldClient {
 
     pub async fn retrieve_controllers(
         &mut self,
-        contract_addresses: Vec<Felt>,
-        usernames: Vec<String>,
-        limit: Option<u32>,
-        cursor: Option<String>,
+        query: ControllerQuery,
     ) -> Result<RetrieveControllersResponse, Error> {
         self.inner
             .retrieve_controllers(RetrieveControllersRequest {
-                contract_addresses: contract_addresses
-                    .into_iter()
-                    .map(|c| c.to_bytes_be().to_vec())
-                    .collect(),
-                usernames: usernames.into_iter().map(|u| u.to_string()).collect(),
-                limit: limit.unwrap_or_default(),
-                cursor: cursor.unwrap_or_default(),
+                query: Some(query.into()),
             })
             .await
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())
     }
 
+    pub async fn retrieve_transactions(
+        &mut self,
+        query: TransactionQuery,
+    ) -> Result<RetrieveTransactionsResponse, Error> {
+        self.inner
+            .retrieve_transactions(RetrieveTransactionsRequest {
+                query: Some(query.into()),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
+    }
+
+    pub async fn subscribe_transactions(
+        &mut self,
+        filter: Option<TransactionFilter>,
+    ) -> Result<TransactionUpdateStreaming, Error> {
+        let request = SubscribeTransactionsRequest {
+            filter: filter.map(|f| f.into()),
+        };
+        let stream = self
+            .inner
+            .subscribe_transactions(request)
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())?;
+        Ok(TransactionUpdateStreaming(stream.map_ok(Box::new(|res| {
+            res.transaction.map_or(Transaction::default(), |t| {
+                t.try_into().expect("must able to serialize")
+            })
+        }))))
+    }
+
     pub async fn retrieve_tokens(
         &mut self,
-        contract_addresses: Vec<Felt>,
-        token_ids: Vec<U256>,
-        limit: Option<u32>,
-        cursor: Option<String>,
+        query: TokenQuery,
     ) -> Result<RetrieveTokensResponse, Error> {
         self.inner
             .retrieve_tokens(RetrieveTokensRequest {
-                contract_addresses: contract_addresses
-                    .into_iter()
-                    .map(|c| c.to_bytes_be().to_vec())
-                    .collect(),
-                token_ids: token_ids
-                    .into_iter()
-                    .map(|id| id.to_be_bytes().to_vec())
-                    .collect(),
-                limit: limit.unwrap_or_default(),
-                cursor: cursor.unwrap_or_default(),
+                query: Some(query.into()),
             })
             .await
             .map_err(Error::Grpc)
@@ -180,17 +194,9 @@ impl WorldClient {
         Ok(TokenUpdateStreaming(stream.map_ok(Box::new(|res| {
             (
                 res.subscription_id,
-                match res.token {
-                    Some(token) => token.try_into().expect("must able to serialize"),
-                    None => Token {
-                        token_id: U256::ZERO,
-                        contract_address: Felt::ZERO,
-                        name: "".to_string(),
-                        symbol: "".to_string(),
-                        decimals: 0,
-                        metadata: "".to_string(),
-                    },
-                },
+                res.token.map_or(Token::default(), |t| {
+                    t.try_into().expect("must able to serialize")
+                }),
             )
         }))))
     }
@@ -222,28 +228,11 @@ impl WorldClient {
 
     pub async fn retrieve_token_balances(
         &mut self,
-        account_addresses: Vec<Felt>,
-        contract_addresses: Vec<Felt>,
-        token_ids: Vec<U256>,
-        limit: Option<u32>,
-        cursor: Option<String>,
+        query: TokenBalanceQuery,
     ) -> Result<RetrieveTokenBalancesResponse, Error> {
         self.inner
             .retrieve_token_balances(RetrieveTokenBalancesRequest {
-                account_addresses: account_addresses
-                    .into_iter()
-                    .map(|a| a.to_bytes_be().to_vec())
-                    .collect(),
-                contract_addresses: contract_addresses
-                    .into_iter()
-                    .map(|c| c.to_bytes_be().to_vec())
-                    .collect(),
-                token_ids: token_ids
-                    .into_iter()
-                    .map(|id| id.to_be_bytes().to_vec())
-                    .collect(),
-                limit: limit.unwrap_or_default(),
-                cursor: cursor.unwrap_or_default(),
+                query: Some(query.into()),
             })
             .await
             .map_err(Error::Grpc)
@@ -252,28 +241,11 @@ impl WorldClient {
 
     pub async fn retrieve_token_collections(
         &mut self,
-        account_addresses: Vec<Felt>,
-        contract_addresses: Vec<Felt>,
-        token_ids: Vec<U256>,
-        limit: Option<u32>,
-        cursor: Option<String>,
+        query: TokenBalanceQuery,
     ) -> Result<RetrieveTokenCollectionsResponse, Error> {
         self.inner
             .retrieve_token_collections(RetrieveTokenCollectionsRequest {
-                account_addresses: account_addresses
-                    .into_iter()
-                    .map(|a| a.to_bytes_be().to_vec())
-                    .collect(),
-                contract_addresses: contract_addresses
-                    .into_iter()
-                    .map(|c| c.to_bytes_be().to_vec())
-                    .collect(),
-                token_ids: token_ids
-                    .into_iter()
-                    .map(|id| id.to_be_bytes().to_vec())
-                    .collect(),
-                limit: limit.unwrap_or_default(),
-                cursor: cursor.unwrap_or_default(),
+                query: Some(query.into()),
             })
             .await
             .map_err(Error::Grpc)
@@ -436,16 +408,9 @@ impl WorldClient {
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
 
-        Ok(EventUpdateStreaming(stream.map_ok(Box::new(
-            |res| match res.event {
-                Some(event) => event.into(),
-                None => Event {
-                    keys: vec![],
-                    data: vec![],
-                    transaction_hash: Felt::ZERO,
-                },
-            },
-        ))))
+        Ok(EventUpdateStreaming(stream.map_ok(Box::new(|res| {
+            res.event.map_or(Event::default(), |e| e.into())
+        }))))
     }
 
     /// Subscribe to token balances.
@@ -478,15 +443,9 @@ impl WorldClient {
         Ok(TokenBalanceStreaming(stream.map_ok(Box::new(|res| {
             (
                 res.subscription_id,
-                match res.balance {
-                    Some(balance) => balance.try_into().expect("must able to serialize"),
-                    None => TokenBalance {
-                        balance: U256::ZERO,
-                        account_address: Felt::ZERO,
-                        contract_address: Felt::ZERO,
-                        token_id: U256::ZERO,
-                    },
-                },
+                res.balance.map_or(TokenBalance::default(), |b| {
+                    b.try_into().expect("must able to serialize")
+                }),
             )
         }))))
     }
@@ -650,6 +609,24 @@ pub struct IndexerUpdateStreaming(IndexerMappedStream);
 
 impl Stream for IndexerUpdateStreaming {
     type Item = <IndexerMappedStream as Stream>::Item;
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.poll_next_unpin(cx)
+    }
+}
+
+type TransactionMappedStream = MapOk<
+    tonic::Streaming<SubscribeTransactionsResponse>,
+    Box<dyn Fn(SubscribeTransactionsResponse) -> Transaction + Send>,
+>;
+
+#[derive(Debug)]
+pub struct TransactionUpdateStreaming(TransactionMappedStream);
+
+impl Stream for TransactionUpdateStreaming {
+    type Item = <TransactionMappedStream as Stream>::Item;
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,

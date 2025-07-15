@@ -585,7 +585,7 @@ impl Sql {
         // Execute paginated query
         let executor = PaginationExecutor::new(self.pool.clone());
         let page = executor
-            .execute_paginated_query(query_builder, pagination)
+            .execute_paginated_query(query_builder, &pagination)
             .await?;
 
         // Process the results to create Entity objects
@@ -745,7 +745,7 @@ impl Sql {
 
             // Execute paginated query
             let page = executor
-                .execute_paginated_query(query_builder, pagination.clone())
+                .execute_paginated_query(query_builder, &pagination)
                 .await?;
 
             let has_more = page.next_cursor.is_some();

@@ -56,20 +56,36 @@ const DEFAULT_EXPOSED_HEADERS: [&str; 4] = [
 const DEFAULT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 lazy_static::lazy_static! {
-    pub(crate) static ref GRAPHQL_PROXY_CLIENT: ReverseProxy<HttpConnector<GaiResolver>> = {
+    pub(crate) static ref WEBSOCKET_PROXY_CLIENT: ReverseProxy<HttpConnector<GaiResolver>> = {
         ReverseProxy::new(
             Client::builder()
              .build_http(),
         )
     };
 
-    pub(crate) static ref GRPC_PROXY_CLIENT: ReverseProxy<HttpConnector<GaiResolver>> = {
+
+    pub(crate) static ref PROXY_CLIENT: ReverseProxy<HttpConnector<GaiResolver>> = {
         ReverseProxy::new(
             Client::builder()
              .http2_only(true)
              .build_http(),
         )
     };
+}
+
+// Helper function to check if a request is a WebSocket upgrade request
+pub fn is_websocket_upgrade(req: &Request<Body>) -> bool {
+    req.headers()
+        .get("upgrade")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_lowercase() == "websocket")
+        .unwrap_or(false)
+        && req
+            .headers()
+            .get("connection")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.to_lowercase().contains("upgrade"))
+            .unwrap_or(false)
 }
 
 #[derive(Debug)]
@@ -148,10 +164,12 @@ impl Proxy {
         let key = PrivateKey(keys[0].clone());
 
         // Create server config
-        let server_config = ServerConfig::builder()
+        let mut server_config = ServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(certs, key)?;
+        server_config.alpn_protocols =
+            vec![b"h2".to_vec(), b"http/1.1".to_vec(), b"http/1.0".to_vec()];
 
         Ok(server_config)
     }
@@ -235,8 +253,10 @@ impl Proxy {
                                                     }
                                                 });
 
+
                                             if let Err(e) = hyper::server::conn::Http::new()
                                                 .serve_connection(tls_stream, service)
+                                                .with_upgrades() // Enable connection upgrades for WebSocket over TLS
                                                 .await
                                             {
                                                 error!(target: LOG_TARGET, error = ?e, "Serving connection.");

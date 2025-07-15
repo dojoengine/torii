@@ -36,6 +36,8 @@ use torii_proto::error::ProtoError;
 use torii_storage::Storage;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
+use crate::subscriptions::transaction::TransactionManager;
+
 use self::subscriptions::entity::EntityManager;
 use self::subscriptions::event_message::EventMessageManager;
 use torii_proto::proto::world::world_server::WorldServer;
@@ -44,12 +46,13 @@ use torii_proto::proto::world::{
     PublishMessageResponse, RetrieveControllersRequest, RetrieveControllersResponse,
     RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
     RetrieveTokenCollectionsRequest, RetrieveTokenCollectionsResponse, RetrieveTokensRequest,
-    RetrieveTokensResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
-    SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeIndexerRequest,
-    SubscribeIndexerResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokensRequest, SubscribeTokensResponse, UpdateEventMessagesSubscriptionRequest,
-    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
-    WorldMetadataResponse,
+    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
+    UpdateTokenSubscriptionRequest, WorldMetadataRequest, WorldMetadataResponse,
 };
 use torii_proto::proto::{self};
 use torii_proto::Message;
@@ -68,6 +71,7 @@ pub struct DojoWorld<P: Provider + Sync> {
     indexer_manager: Arc<IndexerManager>,
     token_balance_manager: Arc<TokenBalanceManager>,
     token_manager: Arc<TokenManager>,
+    transaction_manager: Arc<TransactionManager>,
     _config: GrpcConfig,
 }
 
@@ -87,6 +91,8 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let token_balance_manager =
             Arc::new(TokenBalanceManager::new(config.subscription_buffer_size));
         let token_manager = Arc::new(TokenManager::new(config.subscription_buffer_size));
+        let transaction_manager =
+            Arc::new(TransactionManager::new(config.subscription_buffer_size));
 
         tokio::task::spawn(subscriptions::entity::Service::new(Arc::clone(
             &entity_manager,
@@ -112,6 +118,10 @@ impl<P: Provider + Sync> DojoWorld<P> {
             &token_manager,
         )));
 
+        tokio::task::spawn(subscriptions::transaction::Service::new(Arc::clone(
+            &transaction_manager,
+        )));
+
         Self {
             storage,
             provider,
@@ -123,6 +133,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             indexer_manager,
             token_balance_manager,
             token_manager,
+            transaction_manager,
             _config: config,
         }
     }
@@ -196,6 +207,8 @@ type SubscribeTokenBalancesResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokenBalancesResponse, Status>> + Send>>;
 type SubscribeTokensResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokensResponse, Status>> + Send>>;
+type SubscribeTransactionsResponseStream =
+    Pin<Box<dyn Stream<Item = Result<SubscribeTransactionsResponse, Status>> + Send>>;
 
 #[tonic::async_trait]
 impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for DojoWorld<P> {
@@ -205,6 +218,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
     type SubscribeIndexerStream = SubscribeIndexerResponseStream;
     type SubscribeTokenBalancesStream = SubscribeTokenBalancesResponseStream;
     type SubscribeTokensStream = SubscribeTokensResponseStream;
+    type SubscribeTransactionsStream = SubscribeTransactionsResponseStream;
 
     async fn world_metadata(
         &self,
@@ -218,6 +232,49 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         Ok(Response::new(WorldMetadataResponse {
             world: Some(metadata),
         }))
+    }
+
+    async fn retrieve_transactions(
+        &self,
+        request: Request<RetrieveTransactionsRequest>,
+    ) -> Result<Response<RetrieveTransactionsResponse>, Status> {
+        let RetrieveTransactionsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+
+        let transactions = self
+            .storage
+            .transactions(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(RetrieveTransactionsResponse {
+            transactions: transactions.items.into_iter().map(Into::into).collect(),
+            next_cursor: transactions.next_cursor.unwrap_or_default(),
+        }))
+    }
+
+    async fn subscribe_transactions(
+        &self,
+        request: Request<SubscribeTransactionsRequest>,
+    ) -> ServiceResult<Self::SubscribeTransactionsStream> {
+        let SubscribeTransactionsRequest { filter } = request.into_inner();
+
+        let filter = filter
+            .map(|f| f.try_into())
+            .transpose()
+            .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
+
+        let rx = self
+            .transaction_manager
+            .add_subscriber(filter)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(Response::new(
+            Box::pin(ReceiverStream::new(rx)) as Self::SubscribeTransactionsStream
+        ))
     }
 
     async fn retrieve_entities(
@@ -289,33 +346,15 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<RetrieveControllersRequest>,
     ) -> Result<Response<RetrieveControllersResponse>, Status> {
-        let RetrieveControllersRequest {
-            contract_addresses,
-            usernames,
-            limit,
-            cursor,
-        } = request.into_inner();
-        let contract_addresses = contract_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
+        let RetrieveControllersRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
         let controllers = self
             .storage
-            .controllers(
-                &contract_addresses,
-                &usernames,
-                if !cursor.is_empty() {
-                    Some(cursor)
-                } else {
-                    None
-                },
-                if limit > 0 {
-                    Some(limit as usize)
-                } else {
-                    None
-                },
-            )
+            .controllers(&query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -329,36 +368,18 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<RetrieveTokensRequest>,
     ) -> Result<Response<RetrieveTokensResponse>, Status> {
-        let RetrieveTokensRequest {
-            contract_addresses,
-            token_ids,
-            limit,
-            cursor,
-        } = request.into_inner();
-        let contract_addresses = contract_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let token_ids = token_ids
-            .iter()
-            .map(|id| crypto_bigint::U256::from_be_slice(id).into())
-            .collect::<Vec<_>>();
-        let limit = if limit > 0 {
-            Some(limit as usize)
-        } else {
-            None
-        };
-        let cursor = if !cursor.is_empty() {
-            Some(cursor)
-        } else {
-            None
-        };
+        let RetrieveTokensRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
         let tokens = self
             .storage
-            .tokens(&contract_addresses, &token_ids, cursor, limit)
+            .tokens(&query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
+
         Ok(Response::new(RetrieveTokensResponse {
             tokens: tokens.items.into_iter().map(Into::into).collect(),
             next_cursor: tokens.next_cursor.unwrap_or_default(),
@@ -369,48 +390,18 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<RetrieveTokenCollectionsRequest>,
     ) -> Result<Response<RetrieveTokenCollectionsResponse>, Status> {
-        let RetrieveTokenCollectionsRequest {
-            account_addresses,
-            contract_addresses,
-            token_ids,
-            limit,
-            cursor,
-        } = request.into_inner();
-
-        let account_addresses = account_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let contract_addresses = contract_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let token_ids = token_ids
-            .iter()
-            .map(|id| crypto_bigint::U256::from_be_slice(id).into())
-            .collect::<Vec<_>>();
-        let limit = if limit > 0 {
-            Some(limit as usize)
-        } else {
-            None
-        };
-        let cursor = if !cursor.is_empty() {
-            Some(cursor)
-        } else {
-            None
-        };
+        let RetrieveTokenCollectionsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
         let token_collections = self
             .storage
-            .token_collections(
-                &account_addresses,
-                &contract_addresses,
-                &token_ids,
-                cursor,
-                limit,
-            )
+            .token_collections(&query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
+
         Ok(Response::new(RetrieveTokenCollectionsResponse {
             tokens: token_collections
                 .items
@@ -476,45 +467,15 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<RetrieveTokenBalancesRequest>,
     ) -> Result<Response<RetrieveTokenBalancesResponse>, Status> {
-        let RetrieveTokenBalancesRequest {
-            account_addresses,
-            contract_addresses,
-            token_ids,
-            limit,
-            cursor,
-        } = request.into_inner();
-        let account_addresses = account_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let contract_addresses = contract_addresses
-            .iter()
-            .map(|address| Felt::from_bytes_be_slice(address))
-            .collect::<Vec<_>>();
-        let token_ids = token_ids
-            .iter()
-            .map(|id| U256::from_be_slice(id).into())
-            .collect::<Vec<_>>();
-        let limit = if limit > 0 {
-            Some(limit as usize)
-        } else {
-            None
-        };
-        let cursor = if !cursor.is_empty() {
-            Some(cursor)
-        } else {
-            None
-        };
+        let RetrieveTokenBalancesRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
 
         let balances = self
             .storage
-            .token_balances(
-                &account_addresses,
-                &contract_addresses,
-                &token_ids,
-                cursor,
-                limit,
-            )
+            .token_balances(&query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(RetrieveTokenBalancesResponse {

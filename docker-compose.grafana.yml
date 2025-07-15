@@ -3,7 +3,7 @@ services:
     image: prom/prometheus:latest
     container_name: torii-prometheus
     ports:
-      - "9090:9090"
+      - "9300:9300"
     volumes:
       - ./grafana/prometheus.yml:/etc/prometheus/prometheus.yml
     command:

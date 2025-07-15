@@ -10,7 +10,9 @@ use starknet::providers::ProviderError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Parsing error: {0}")]
+    #[error(transparent)]
+    Proto(#[from] torii_proto::error::ProtoError),
+    #[error(transparent)]
     Parse(#[from] ParseError),
     #[error(transparent)]
     Sql(#[from] sqlx::Error),

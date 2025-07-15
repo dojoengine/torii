@@ -3,6 +3,7 @@ resolver = "2"
 
 members = [
 	"bin/torii",
+	"crates/broker",
 	"crates/cli",
 	"crates/client",
 	"crates/messaging",
@@ -21,7 +22,7 @@ edition = "2021"
 license = "Apache-2.0"
 license-file = "LICENSE"
 repository = "https://github.com/dojoengine/torii"
-version = "1.6.0-alpha.1"
+version = "1.6.0-alpha.3"
 
 [profile.performance]
 codegen-units = 1
@@ -45,6 +46,7 @@ dojo-test-utils = { git = "https://github.com/bengineer42/dojo", branch = "add-w
 dojo-metrics = { git = "https://github.com/bengineer42/dojo", branch = "add-write-schema-1.5" }
 
 # torii
+torii-broker = { path = "crates/broker" }
 torii-cli = { path = "crates/cli" }
 torii-graphql = { path = "crates/graphql" }
 torii-proto = { path = "crates/proto" }
@@ -126,6 +128,7 @@ tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json"] }
 # indicatif
 tracing-indicatif = "0.3.9"
 indicatif = "0.17.9"
+terminal_size = "0.3.0"
 
 url = { version = "2.4.0", features = ["serde"] }
 # TODO: see if we still need the git version

@@ -5,7 +5,10 @@ use serde::Deserialize;
 use serde_json::json;
 use starknet_crypto::Felt;
 use tokio::sync::RwLock;
-use torii_storage::Storage;
+use torii_storage::{
+    proto::{ControllerQuery, OrderBy, OrderDirection, Pagination, PaginationDirection},
+    Storage,
+};
 use tracing::warn;
 
 use crate::error::Error;
@@ -56,7 +59,19 @@ impl ControllersSync {
     pub async fn new(storage: Arc<dyn Storage>) -> Result<Self, Error> {
         // Our controllers are sorted by deployed_at in descending order, so we can use the first one as the cursor.
         let cursor: Option<DateTime<Utc>> = storage
-            .controllers(&[], &[], None, Some(1))
+            .controllers(&ControllerQuery {
+                contract_addresses: vec![],
+                usernames: vec![],
+                pagination: Pagination {
+                    cursor: None,
+                    limit: Some(1),
+                    direction: PaginationDirection::Forward,
+                    order_by: vec![OrderBy {
+                        field: "deployed_at".to_string(),
+                        direction: OrderDirection::Desc,
+                    }],
+                },
+            })
             .await?
             .items
             .first()
@@ -329,7 +344,14 @@ mod tests {
 
         let stored_controllers = ctrls
             .storage
-            .controllers(&[], &[], None, Some(1000000))
+            .controllers(&ControllerQuery {
+                contract_addresses: vec![],
+                usernames: vec![],
+                pagination: Pagination {
+                    limit: Some(1000000),
+                    ..Default::default()
+                },
+            })
             .await
             .unwrap()
             .items;
@@ -472,7 +494,11 @@ mod tests {
         // Verify total controllers in database (should be 2 total)
         let stored_controllers = sync
             .storage
-            .controllers(&[], &[], None, None)
+            .controllers(&ControllerQuery {
+                contract_addresses: vec![],
+                usernames: vec![],
+                pagination: Pagination::default(),
+            })
             .await
             .unwrap()
             .items;

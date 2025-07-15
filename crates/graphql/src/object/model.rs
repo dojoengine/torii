@@ -4,7 +4,7 @@ use async_graphql::dynamic::{
 };
 use async_graphql::{Name, Value};
 use tokio_stream::StreamExt;
-use torii_sqlite::simple_broker::SimpleBroker;
+use torii_broker::MemoryBroker;
 use torii_sqlite::types::Model;
 
 use super::{resolve_many, BasicObject, ResolvableObject, TypeMapping, ValueMapping};
@@ -99,7 +99,7 @@ impl ResolvableObject for ModelObject {
                         // if id is None, then subscribe to all models
                         // if id is Some, then subscribe to only the model with that id
                         Ok(
-                            SimpleBroker::<Model>::subscribe().filter_map(move |model: Model| {
+                            MemoryBroker::<Model>::subscribe().filter_map(move |model: Model| {
                                 if id.is_none() || id == Some(model.id.clone()) {
                                     Some(Ok(Value::Object(ModelObject::value_mapping(model))))
                                 } else {

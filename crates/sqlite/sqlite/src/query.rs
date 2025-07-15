@@ -10,6 +10,7 @@ use crate::{
 #[derive(Debug)]
 pub struct QueryBuilder {
     table_name: String,
+    table_alias: String,
     selections: Vec<String>,
     joins: Vec<String>,
     where_conditions: Vec<String>,
@@ -24,6 +25,7 @@ impl QueryBuilder {
     pub fn new(table_name: &str) -> Self {
         Self {
             table_name: table_name.to_string(),
+            table_alias: "".to_string(),
             selections: Vec::new(),
             joins: Vec::new(),
             where_conditions: Vec::new(),
@@ -33,6 +35,11 @@ impl QueryBuilder {
             having_clause: None,
             limit: None,
         }
+    }
+
+    pub fn alias(mut self, alias: &str) -> Self {
+        self.table_alias = alias.to_string();
+        self
     }
 
     pub fn select(mut self, columns: &[String]) -> Self {
@@ -82,9 +89,10 @@ impl QueryBuilder {
 
     pub fn build(self) -> String {
         let mut query = format!(
-            "SELECT {} FROM [{}]",
+            "SELECT {} FROM [{}] {}",
             self.selections.join(", "),
-            self.table_name
+            self.table_name,
+            self.table_alias
         );
 
         if !self.joins.is_empty() {
@@ -136,7 +144,7 @@ impl PaginationExecutor {
     pub async fn execute_paginated_query(
         &self,
         mut query_builder: QueryBuilder,
-        pagination: Pagination,
+        pagination: &Pagination,
     ) -> Result<Page<SqliteRow>, Error> {
         let original_limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
         let fetch_limit = original_limit + 1;
@@ -152,7 +160,7 @@ impl PaginationExecutor {
             .map_err(|e: Error| Error::Query(QueryError::InvalidCursor(e.to_string())))?;
 
         let (cursor_conditions, cursor_binds) =
-            build_cursor_conditions(&pagination, cursor_values.as_deref())?;
+            build_cursor_conditions(pagination, cursor_values.as_deref())?;
 
         for condition in cursor_conditions {
             query_builder = query_builder.where_clause(&condition);
@@ -195,7 +203,7 @@ impl PaginationExecutor {
         if has_more {
             rows.truncate(original_limit as usize);
             if let Some(last_row) = rows.last() {
-                let cursor_values_str = build_cursor_values(&pagination, last_row)?.join("/");
+                let cursor_values_str = build_cursor_values(pagination, last_row)?.join("/");
                 next_cursor = Some(encode_cursor(&cursor_values_str)?);
             }
         }
