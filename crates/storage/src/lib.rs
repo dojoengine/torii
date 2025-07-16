@@ -12,13 +12,10 @@ use std::{
 use torii_math::I256;
 use torii_proto::schema::Entity;
 
-use crate::types::Cursor;
 use torii_proto::{
-    Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance,
-    TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery,
+    Controller, ControllerQuery, Cursor, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery
 };
 
-pub mod types;
 pub mod utils;
 
 pub use torii_proto as proto;

@@ -9,7 +9,7 @@ use crate::error::ProtoError;
 use crate::proto;
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
-pub struct Entity {
+pub struct Entity<const EVENT_MESSAGE: bool = false> {
     pub hashed_keys: Felt,
     pub created_at: DateTime<Utc>,
     pub executed_at: DateTime<Utc>,
@@ -17,8 +17,8 @@ pub struct Entity {
     pub models: Vec<Struct>,
 }
 
-impl From<Entity> for proto::types::Entity {
-    fn from(entity: Entity) -> Self {
+impl<const EVENT_MESSAGE: bool> From<Entity<EVENT_MESSAGE>> for proto::types::Entity {
+    fn from(entity: Entity<EVENT_MESSAGE>) -> Self {
         proto::types::Entity {
             hashed_keys: entity.hashed_keys.to_bytes_be().to_vec(),
             created_at_timestamp: entity.created_at.timestamp() as u64,
@@ -33,7 +33,7 @@ impl From<Entity> for proto::types::Entity {
     }
 }
 
-impl TryFrom<proto::types::Entity> for Entity {
+impl<const EVENT_MESSAGE: bool> TryFrom<proto::types::Entity> for Entity<EVENT_MESSAGE> {
     type Error = ProtoError;
     fn try_from(entity: proto::types::Entity) -> Result<Self, Self::Error> {
         Ok(Self {

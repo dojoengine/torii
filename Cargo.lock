@@ -11589,6 +11589,7 @@ dependencies = [
  "once_cell",
  "slab",
  "tokio",
+ "torii-proto",
  "tracing",
 ]
 

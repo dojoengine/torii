@@ -20,4 +20,6 @@ pub enum ProtoError {
     FromJson(#[from] serde_json::Error),
     #[error("Invalid call type: {0}")]
     InvalidCallType(String),
+    #[error("Invalid contract type: {0}")]
+    InvalidContractType(String),
 }

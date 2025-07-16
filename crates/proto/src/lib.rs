@@ -34,42 +34,100 @@ use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
 use strum_macros::{AsRefStr, EnumIter, FromRepr};
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+/// Represents a cursor for tracking blockchain state
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
+pub struct ContractCursor {
+    pub contract_address: Felt,
+    pub head: Option<u64>,
+    pub tps: Option<u64>,
+    pub last_block_timestamp: Option<u64>,
+    pub last_pending_block_tx: Option<Felt>,
+}
+
+/// Represents a cursor for tracking blockchain state
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
+pub struct Cursor {
+    pub head: Option<u64>,
+    pub tps: Option<u64>,
+    pub last_block_timestamp: Option<u64>,
+    pub last_pending_block_tx: Option<Felt>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Copy, Hash, PartialEq, Eq)]
+pub enum ContractType {
+    WORLD,
+    ERC20,
+    ERC721,
+    ERC1155,
+    UDC,
+}
+
+impl FromStr for ContractType {
+    type Err = ProtoError;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input.to_lowercase().as_str() {
+            "world" => Ok(ContractType::WORLD),
+            "erc20" => Ok(ContractType::ERC20),
+            "erc721" => Ok(ContractType::ERC721),
+            "erc1155" => Ok(ContractType::ERC1155),
+            "udc" => Ok(ContractType::UDC),
+            _ => Err(ProtoError::InvalidContractType(input.to_string())),
+        }
+    }
+}
+
+impl std::fmt::Display for ContractType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ContractType::WORLD => write!(f, "WORLD"),
+            ContractType::ERC20 => write!(f, "ERC20"),
+            ContractType::ERC721 => write!(f, "ERC721"),
+            ContractType::ERC1155 => write!(f, "ERC1155"),
+            ContractType::UDC => write!(f, "UDC"),
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub struct Contract {
+    pub address: Felt,
+    pub r#type: ContractType,
+}
+
+impl std::fmt::Display for Contract {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{:#x}", self.r#type, self.address)
+    }
+}
+
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct Page<T> {
     pub items: Vec<T>,
     pub next_cursor: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub enum PaginationDirection {
+    #[default]
     Forward,
     Backward,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct Message {
     pub signature: Vec<Felt>,
     // The raw TypedData. Should be deserializable to a TypedData struct.
     pub message: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct Pagination {
     pub cursor: Option<String>,
     pub limit: Option<u32>,
     pub direction: PaginationDirection,
     pub order_by: Vec<OrderBy>,
-}
-
-impl Default for Pagination {
-    fn default() -> Self {
-        Self {
-            cursor: None,
-            limit: None,
-            direction: PaginationDirection::Forward,
-            order_by: vec![],
-        }
-    }
 }
 
 impl From<Pagination> for proto::types::Pagination {
