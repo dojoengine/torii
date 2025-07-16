@@ -134,7 +134,7 @@ mod test {
     use std::str::FromStr;
 
     use torii_sqlite_types::ModelIndices;
-    use torii_storage::types::{Contract, ContractType};
+    use torii_proto::{Contract, ContractType};
 
     use super::*;
 

@@ -17,6 +17,7 @@ torii-sqlite-types.workspace = true
 url.workspace = true
 merge-options.workspace = true
 torii-storage.workspace = true
+torii-proto.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true

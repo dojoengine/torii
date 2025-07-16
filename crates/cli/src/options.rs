@@ -9,7 +9,7 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
 use torii_sqlite_types::{Hook, HookEvent, ModelIndices};
-use torii_storage::types::{Contract, ContractType};
+use torii_proto::{Contract, ContractType};
 
 pub const DEFAULT_HTTP_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 pub const DEFAULT_HTTP_PORT: u16 = 8080;

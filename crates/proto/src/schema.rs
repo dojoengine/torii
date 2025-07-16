@@ -11,8 +11,11 @@ use crate::proto;
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Entity<const EVENT_MESSAGE: bool = false> {
     pub hashed_keys: Felt,
+    // The server datetime when the entity was created
     pub created_at: DateTime<Utc>,
+    // The block timestamp when the entity was updated / created
     pub executed_at: DateTime<Utc>,
+    // The server datetime when the entity was updated
     pub updated_at: DateTime<Utc>,
     pub models: Vec<Struct>,
 }

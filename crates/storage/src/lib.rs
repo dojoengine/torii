@@ -13,7 +13,7 @@ use torii_math::I256;
 use torii_proto::schema::Entity;
 
 use torii_proto::{
-    Controller, ControllerQuery, Cursor, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery
+    Controller, ControllerQuery, ContractCursor, Cursor, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery
 };
 
 pub mod utils;
@@ -27,7 +27,7 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     fn as_read_only(&self) -> &dyn ReadOnlyStorage;
 
     /// Returns the cursors for all contracts.
-    async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, StorageError>;
+    async fn cursors(&self) -> Result<HashMap<Felt, ContractCursor>, StorageError>;
 
     /// Returns the model metadata for the storage.
     async fn model(&self, model: Felt) -> Result<Model, StorageError>;

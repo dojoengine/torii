@@ -70,49 +70,6 @@ impl From<Entity> for torii_proto::schema::Entity {
 
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct OptimisticEntity {
-    pub id: String,
-    pub keys: String,
-    pub event_id: String,
-    pub executed_at: DateTime<Utc>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-
-    // this should never be None
-    #[sqlx(skip)]
-    pub updated_model: Option<Ty>,
-    #[sqlx(skip)]
-    pub deleted: bool,
-}
-
-#[derive(FromRow, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct EventMessage {
-    pub id: String,
-    pub keys: String,
-    pub event_id: String,
-    pub executed_at: DateTime<Utc>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(FromRow, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct OptimisticEventMessage {
-    pub id: String,
-    pub keys: String,
-    pub event_id: String,
-    pub executed_at: DateTime<Utc>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-
-    // this should never be None
-    #[sqlx(skip)]
-    pub updated_model: Option<Ty>,
-}
-
-#[derive(FromRow, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct Model {
     pub id: String,
     pub namespace: String,
