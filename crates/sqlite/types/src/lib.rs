@@ -50,7 +50,7 @@ pub struct Entity {
     pub deleted: bool,
 }
 
-impl From<Entity> for torii_proto::schema::Entity {
+impl<const EVENT_MESSAGE: bool> From<Entity> for torii_proto::schema::Entity<EVENT_MESSAGE> {
     fn from(value: Entity) -> Self {
         let models = if value.deleted {
             vec![]
@@ -60,9 +60,6 @@ impl From<Entity> for torii_proto::schema::Entity {
 
         Self {
             hashed_keys: Felt::from_str(&value.id).unwrap(),
-            created_at: value.created_at,
-            executed_at: value.executed_at,
-            updated_at: value.updated_at,
             models,
         }
     }
@@ -133,18 +130,6 @@ impl From<Event> for torii_proto::Event {
 
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct OptimisticToken {
-    pub id: String,
-    pub contract_address: String,
-    pub token_id: String,
-    pub name: String,
-    pub symbol: String,
-    pub decimals: u8,
-    pub metadata: String,
-}
-
-#[derive(FromRow, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct Token {
     pub id: String,
     pub contract_address: String,
@@ -198,16 +183,6 @@ impl From<TokenCollection> for torii_proto::TokenCollection {
 
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct OptimisticTokenBalance {
-    pub id: String,
-    pub balance: String,
-    pub account_address: String,
-    pub contract_address: String,
-    pub token_id: String,
-}
-
-#[derive(FromRow, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct TokenBalance {
     pub id: String,
     pub balance: String,
@@ -243,27 +218,16 @@ pub struct ContractCursor {
     pub last_pending_block_tx: Option<String>,
 }
 
-#[derive(FromRow, Deserialize, Debug, Clone, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct OptimisticTransaction {
-    pub id: String,
-    pub transaction_hash: String,
-    pub sender_address: String,
-    pub calldata: String,
-    pub max_fee: String,
-    pub signature: String,
-    pub nonce: String,
-    pub executed_at: DateTime<Utc>,
-    pub created_at: DateTime<Utc>,
-    pub transaction_type: String,
-    pub block_number: u64,
-
-    #[sqlx(skip)]
-    pub calls: Vec<TransactionCall>,
-    #[sqlx(skip)]
-    pub contract_addresses: HashSet<Felt>,
-    #[sqlx(skip)]
-    pub unique_models: HashSet<Felt>,
+impl From<ContractCursor> for torii_proto::ContractCursor {
+    fn from(value: ContractCursor) -> Self {
+        Self {
+            contract_address: Felt::from_str(&value.contract_address).unwrap(),
+            head: value.head.map(|h| h as u64),
+            tps: value.tps.map(|t| t as u64),
+            last_block_timestamp: value.last_block_timestamp.map(|t| t as u64),
+            last_pending_block_tx: value.last_pending_block_tx.map(|tx| Felt::from_str(&tx).unwrap()),
+        }
+    }
 }
 
 #[derive(FromRow, Deserialize, Debug, Clone, Default)]

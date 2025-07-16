@@ -7,7 +7,7 @@ use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
 use torii_cache::Cache;
-use torii_storage::types::{Contract, Cursor};
+use torii_proto::Contract;
 use torii_storage::Storage;
 
 use crate::error::{Error, ParseError};
