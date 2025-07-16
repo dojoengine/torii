@@ -13,7 +13,7 @@ use torii_math::I256;
 use torii_proto::schema::Entity;
 
 use torii_proto::{
-    Controller, ControllerQuery, ContractCursor, Cursor, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery
+    Controller, ControllerQuery, ContractCursor, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery
 };
 
 pub mod utils;
@@ -85,7 +85,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     /// Updates the contract cursors with the storage.
     async fn update_cursors(
         &self,
-        cursors: HashMap<Felt, Cursor>,
+        cursors: HashMap<Felt, ContractCursor>,
         cursor_transactions: HashMap<Felt, HashSet<Felt>>,
     ) -> Result<(), StorageError>;
 
@@ -244,7 +244,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     async fn apply_balances_diff(
         &self,
         balances_diff: HashMap<String, I256>,
-        cursors: HashMap<Felt, Cursor>,
+        cursors: HashMap<Felt, ContractCursor>,
     ) -> Result<(), StorageError>;
 
     /// Executes pending operations and commits the current transaction.

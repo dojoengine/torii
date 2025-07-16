@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use crypto_bigint::{Encoding, U256};
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Enum, EnumOption, Member, Struct, Ty};
@@ -6,6 +7,16 @@ use starknet::core::types::Felt;
 
 use crate::error::ProtoError;
 use crate::proto;
+
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct EntityWithMetadata<const EVENT_MESSAGE: bool = false> {
+    pub entity: Entity<EVENT_MESSAGE>,
+    pub event_id: String,
+    pub keys: Vec<Felt>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub executed_at: DateTime<Utc>,
+}
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Entity<const EVENT_MESSAGE: bool = false> {

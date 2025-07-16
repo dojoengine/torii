@@ -1,6 +1,5 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -8,14 +7,11 @@ use dashmap::DashMap;
 use futures::Stream;
 use futures_util::StreamExt;
 use rand::Rng;
-use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
+use torii_broker::types::Transaction;
 use torii_broker::MemoryBroker;
-use torii_sqlite::constants::SQL_FELT_DELIMITER;
-use torii_sqlite::error::{Error, ParseError};
-use torii_sqlite::types::OptimisticTransaction;
 use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeTransactionsResponse;
@@ -49,7 +45,7 @@ impl TransactionManager {
     pub async fn add_subscriber(
         &self,
         filter: Option<TransactionFilter>,
-    ) -> Result<Receiver<Result<SubscribeTransactionsResponse, tonic::Status>>, Error> {
+    ) -> Receiver<Result<SubscribeTransactionsResponse, tonic::Status>> {
         let id = rand::thread_rng().gen::<usize>();
         let (sender, receiver) = channel(self.subscription_buffer_size);
 
@@ -63,7 +59,7 @@ impl TransactionManager {
         self.subscribers
             .insert(id, TransactionSubscriber { filter, sender });
 
-        Ok(receiver)
+        receiver
     }
 
     pub(super) async fn remove_subscriber(&self, id: usize) {
@@ -74,15 +70,15 @@ impl TransactionManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = OptimisticTransaction> + Send>>,
-    transaction_sender: UnboundedSender<OptimisticTransaction>,
+    simple_broker: Pin<Box<dyn Stream<Item = Transaction> + Send>>,
+    transaction_sender: UnboundedSender<Transaction>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<TransactionManager>) -> Self {
         let (transaction_sender, transaction_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<OptimisticTransaction>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<Transaction>::subscribe()),
             transaction_sender,
         };
 
@@ -93,49 +89,27 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<TransactionManager>,
-        mut transaction_receiver: UnboundedReceiver<OptimisticTransaction>,
+        mut transaction_receiver: UnboundedReceiver<Transaction>,
     ) {
         while let Some(transaction) = transaction_receiver.recv().await {
-            if let Err(e) = Self::process_transaction(&subs, &transaction).await {
-                error!(target = LOG_TARGET, error = ?e, "Processing transaction update.");
-            }
+            Self::process_transaction(&subs, &transaction).await;
         }
     }
 
     async fn process_transaction(
         subs: &Arc<TransactionManager>,
-        transaction: &OptimisticTransaction,
-    ) -> Result<(), Error> {
+        update: &Transaction,
+    ) {
         let mut closed_stream = Vec::new();
 
-        let transaction_hash =
-            Felt::from_str(&transaction.transaction_hash).map_err(ParseError::from)?;
-        let sender_address =
-            Felt::from_str(&transaction.sender_address).map_err(ParseError::from)?;
-        let max_fee = Felt::from_str(&transaction.max_fee).map_err(ParseError::from)?;
-        let nonce = Felt::from_str(&transaction.nonce).map_err(ParseError::from)?;
-        let calldata = transaction
-            .calldata
-            .split(SQL_FELT_DELIMITER)
-            .filter(|s| !s.is_empty())
-            .map(Felt::from_str)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::from)?;
-        let signature = transaction
-            .signature
-            .split(SQL_FELT_DELIMITER)
-            .filter(|s| !s.is_empty())
-            .map(Felt::from_str)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::from)?;
-
+        let transaction = update.clone().into_inner();
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
             let sub = sub.value();
 
             if let Some(filter) = &sub.filter {
                 if !filter.transaction_hashes.is_empty()
-                    && !filter.transaction_hashes.contains(&transaction_hash)
+                    && !filter.transaction_hashes.contains(&transaction.transaction_hash)
                 {
                     continue;
                 }
@@ -191,22 +165,7 @@ impl Service {
             }
 
             let resp: SubscribeTransactionsResponse = SubscribeTransactionsResponse {
-                transaction: Some(
-                    torii_proto::Transaction {
-                        transaction_hash,
-                        sender_address,
-                        calldata: calldata.clone(),
-                        max_fee,
-                        signature: signature.clone(),
-                        nonce,
-                        block_number: transaction.block_number,
-                        block_timestamp: transaction.executed_at,
-                        transaction_type: transaction.transaction_type.clone(),
-                        calls: transaction.calls.clone(),
-                        unique_models: transaction.unique_models.clone().into_iter().collect(),
-                    }
-                    .into(),
-                ),
+                transaction: Some(transaction.clone().into()),
             };
 
             // Use try_send to avoid blocking on slow subscribers
@@ -230,8 +189,6 @@ impl Service {
             trace!(target = LOG_TARGET, id = %id, "Closing events stream.");
             subs.remove_subscriber(id).await
         }
-
-        Ok(())
     }
 }
 

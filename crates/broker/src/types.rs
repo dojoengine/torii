@@ -23,8 +23,22 @@ impl<T> From<T> for Update<T> {
     }
 }
 
-pub type EntityUpdate = Update<torii_proto::schema::Entity<false>>;
-pub type EventMessageUpdate = Update<torii_proto::schema::Entity<true>>;
+pub trait InnerType {
+    type Inner;
+
+    fn into_inner(self) -> Self::Inner;
+}
+
+impl<T> InnerType for Update<T> {
+    type Inner = T;
+
+    fn into_inner(self) -> Self::Inner {
+        self.inner
+    }
+}
+
+pub type EntityUpdate = Update<torii_proto::schema::EntityWithMetadata<false>>;
+pub type EventMessageUpdate = Update<torii_proto::schema::EntityWithMetadata<true>>;
 pub type ContractUpdate = Update<torii_proto::ContractCursor>;
 pub type ModelRegistered = Update<torii_proto::Model>;
 pub type TokenRegistered = Update<torii_proto::Token>;

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use starknet::core::types::Felt;
 use std::str::FromStr;
-use torii_proto::TransactionCall;
+use torii_proto::{schema::EntityWithMetadata, TransactionCall};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SQLFelt(pub Felt);
@@ -61,6 +61,30 @@ impl<const EVENT_MESSAGE: bool> From<Entity> for torii_proto::schema::Entity<EVE
         Self {
             hashed_keys: Felt::from_str(&value.id).unwrap(),
             models,
+        }
+    }
+}
+
+impl<const EVENT_MESSAGE: bool> From<Entity> for EntityWithMetadata<EVENT_MESSAGE> {
+    fn from(value: Entity) -> Self {
+        let keys = value
+            .keys
+            .split('/')
+            .filter_map(|k| {
+                if k.is_empty() {
+                    None
+                } else {
+                    Some(Felt::from_str(k).unwrap())
+                }
+            })
+            .collect();
+        Self {
+            event_id: value.event_id.clone(),
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            executed_at: value.executed_at,
+            entity: value.into(),
+            keys,
         }
     }
 }
@@ -225,7 +249,9 @@ impl From<ContractCursor> for torii_proto::ContractCursor {
             head: value.head.map(|h| h as u64),
             tps: value.tps.map(|t| t as u64),
             last_block_timestamp: value.last_block_timestamp.map(|t| t as u64),
-            last_pending_block_tx: value.last_pending_block_tx.map(|tx| Felt::from_str(&tx).unwrap()),
+            last_pending_block_tx: value
+                .last_pending_block_tx
+                .map(|tx| Felt::from_str(&tx).unwrap()),
         }
     }
 }

@@ -44,15 +44,6 @@ pub struct ContractCursor {
     pub last_pending_block_tx: Option<Felt>,
 }
 
-/// Represents a cursor for tracking blockchain state
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
-pub struct Cursor {
-    pub head: Option<u64>,
-    pub tps: Option<u64>,
-    pub last_block_timestamp: Option<u64>,
-    pub last_pending_block_tx: Option<Felt>,
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize, Copy, Hash, PartialEq, Eq)]
 pub enum ContractType {
     WORLD,

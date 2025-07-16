@@ -16,9 +16,9 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
-use torii_broker::types::Update;
+use torii_broker::types::{ContractUpdate, EntityUpdate, EventMessageUpdate, EventEmitted, InnerType, ModelRegistered, TokenBalanceUpdated, TokenRegistered, Transaction, Update};
 use torii_math::I256;
-use torii_proto::{Cursor, TransactionCall};
+use torii_proto::{ContractCursor, TransactionCall};
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
@@ -49,14 +49,14 @@ pub enum Argument {
 
 #[derive(Debug, Clone)]
 pub enum BrokerMessage {
-    ContractUpdate(torii_proto::ContractCursor),
-    ModelRegistered(torii_proto::Model),
-    EntityUpdate(torii_proto::schema::Entity<false>),
-    EventMessageUpdate(torii_proto::schema::Entity<true>),
-    EventEmitted(torii_proto::Event),
-    TokenRegistered(torii_proto::Token),
-    TokenBalanceUpdated(torii_proto::TokenBalance),
-    Transaction(torii_proto::Transaction),
+    ContractUpdate(<ContractUpdate as InnerType>::Inner),
+    ModelRegistered(<ModelRegistered as InnerType>::Inner),
+    EntityUpdate(<EntityUpdate as InnerType>::Inner),
+    EventMessageUpdate(<EventMessageUpdate as InnerType>::Inner),
+    EventEmitted(<EventEmitted as InnerType>::Inner),
+    TokenRegistered(<TokenRegistered as InnerType>::Inner),
+    TokenBalanceUpdated(<TokenBalanceUpdated as InnerType>::Inner),
+    Transaction(<Transaction as InnerType>::Inner),
 }
 
 #[derive(Debug, Clone)]
@@ -71,7 +71,7 @@ pub struct DeleteEntityQuery {
 #[derive(Debug, Clone)]
 pub struct ApplyBalanceDiffQuery {
     pub balances_diff: HashMap<String, I256>,
-    pub cursors: HashMap<Felt, Cursor>,
+    pub cursors: HashMap<Felt, ContractCursor>,
 }
 
 #[derive(Debug, Clone)]
@@ -105,7 +105,7 @@ pub struct EntityQuery {
 
 #[derive(Debug, Clone)]
 pub struct UpdateCursorsQuery {
-    pub cursors: HashMap<Felt, Cursor>,
+    pub cursors: HashMap<Felt, ContractCursor>,
     pub cursor_transactions: HashMap<Felt, HashSet<Felt>>,
 }
 

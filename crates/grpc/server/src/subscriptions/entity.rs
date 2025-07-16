@@ -1,21 +1,17 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use dashmap::DashMap;
+use dojo_types::schema::Ty;
 use futures::Stream;
 use futures_util::StreamExt;
 use rand::Rng;
-use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use torii_broker::MemoryBroker;
-use torii_sqlite::constants::SQL_FELT_DELIMITER;
-use torii_sqlite::error::{Error, ParseError};
-use torii_sqlite::types::OptimisticEntity;
+use torii_broker::{types::EntityUpdate, MemoryBroker};
 use tracing::{error, trace};
 
 use super::match_entity;
@@ -48,7 +44,7 @@ impl EntityManager {
     pub async fn add_subscriber(
         &self,
         clause: Option<Clause>,
-    ) -> Result<Receiver<Result<SubscribeEntityResponse, tonic::Status>>, Error> {
+    ) -> Receiver<Result<SubscribeEntityResponse, tonic::Status>> {
         let subscription_id = rand::thread_rng().gen::<u64>();
         let (sender, receiver) = channel(self.subscription_buffer_size);
 
@@ -65,7 +61,7 @@ impl EntityManager {
         self.subscribers
             .insert(subscription_id, EntitiesSubscriber { clause, sender });
 
-        Ok(receiver)
+        receiver
     }
 
     pub async fn update_subscriber(&self, id: u64, clause: Option<Clause>) {
@@ -82,15 +78,15 @@ impl EntityManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = OptimisticEntity> + Send>>,
-    entity_sender: UnboundedSender<OptimisticEntity>,
+    simple_broker: Pin<Box<dyn Stream<Item = EntityUpdate> + Send>>,
+    entity_sender: UnboundedSender<EntityUpdate>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<EntityManager>) -> Self {
         let (entity_sender, entity_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<OptimisticEntity>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<EntityUpdate>::subscribe()),
             entity_sender,
         };
 
@@ -101,36 +97,16 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<EntityManager>,
-        mut entity_receiver: UnboundedReceiver<OptimisticEntity>,
+        mut entity_receiver: UnboundedReceiver<EntityUpdate>,
     ) {
         while let Some(entity) = entity_receiver.recv().await {
-            if let Err(e) = Self::process_entity_update(&subs, &entity).await {
-                error!(target = LOG_TARGET, error = %e, "Processing entity update.");
-            }
+            Self::process_entity_update(&subs, &entity).await;
         }
     }
 
-    async fn process_entity_update(
-        subs: &Arc<EntityManager>,
-        entity: &OptimisticEntity,
-    ) -> Result<(), Error> {
+    async fn process_entity_update(subs: &Arc<EntityManager>, entity: &EntityUpdate) {
         let mut closed_stream = Vec::new();
-        let hashed = Felt::from_str(&entity.id).map_err(ParseError::FromStr)?;
-        // keys is empty when an entity is updated with StoreUpdateRecord or Member but the entity
-        // has never been set before. In that case, we dont know the keys
-        let keys = entity
-            .keys
-            .trim_end_matches(SQL_FELT_DELIMITER)
-            .split(SQL_FELT_DELIMITER)
-            .filter_map(|key| {
-                if key.is_empty() {
-                    None
-                } else {
-                    Some(Felt::from_str(key))
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::FromStr)?;
+        let entity = entity.clone().into_inner();
 
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
@@ -143,35 +119,19 @@ impl Service {
             // If we have a clause of keys, then check that the key pattern of the entity
             // matches the key pattern of the subscriber.
             if let Some(clause) = &sub.clause {
-                if !match_entity(hashed, &keys, &entity.updated_model, clause) {
+                if !match_entity(
+                    entity.entity.hashed_keys,
+                    &entity.keys,
+                    &entity.entity.models.first().map(|m| Ty::Struct(m.clone())),
+                    clause,
+                ) {
                     continue;
                 }
             }
 
-            let resp = if entity.deleted {
-                SubscribeEntityResponse {
-                    entity: Some(torii_proto::proto::types::Entity {
-                        hashed_keys: hashed.to_bytes_be().to_vec(),
-                        models: vec![],
-                    }),
-                    subscription_id: *idx,
-                }
-            } else {
-                // This should NEVER be None
-                let model = entity
-                    .updated_model
-                    .as_ref()
-                    .unwrap()
-                    .as_struct()
-                    .unwrap()
-                    .clone();
-                SubscribeEntityResponse {
-                    entity: Some(torii_proto::proto::types::Entity {
-                        hashed_keys: hashed.to_bytes_be().to_vec(),
-                        models: vec![model.into()],
-                    }),
-                    subscription_id: *idx,
-                }
+            let resp = SubscribeEntityResponse {
+                entity: Some(entity.entity.clone().into()),
+                subscription_id: *idx,
             };
 
             // Use try_send to avoid blocking on slow subscribers
@@ -195,8 +155,6 @@ impl Service {
             trace!(target = LOG_TARGET, id = %id, "Closing entity stream.");
             subs.remove_subscriber(id).await
         }
-
-        Ok(())
     }
 }
 

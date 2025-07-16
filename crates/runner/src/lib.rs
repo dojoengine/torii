@@ -50,7 +50,7 @@ use torii_server::proxy::Proxy;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::types::Model;
 use torii_sqlite::{Sql, SqlConfig};
-use torii_storage::types::{Contract, ContractType};
+use torii_storage::proto::{Contract, ContractType};
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;

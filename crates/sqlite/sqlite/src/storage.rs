@@ -12,7 +12,7 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    schema::Entity, CallType, Clause, CompositeClause, ContractCursor, Controller, ControllerQuery, Cursor, Event, EventQuery, LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery
+    schema::Entity, CallType, Clause, CompositeClause, ContractCursor, Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{ReadOnlyStorage, Storage, StorageError};
@@ -664,7 +664,7 @@ impl Storage for Sql {
     /// Updates the contract cursors with the storage.
     async fn update_cursors(
         &self,
-        cursors: HashMap<Felt, Cursor>,
+        cursors: HashMap<Felt, ContractCursor>,
         cursor_transactions: HashMap<Felt, HashSet<Felt>>,
     ) -> Result<(), StorageError> {
         let (query, recv) = QueryMessage::new_recv(
@@ -1273,7 +1273,7 @@ impl Storage for Sql {
     async fn apply_balances_diff(
         &self,
         balances_diff: HashMap<String, I256>,
-        cursors: HashMap<Felt, Cursor>,
+        cursors: HashMap<Felt, ContractCursor>,
     ) -> Result<(), StorageError> {
         self.executor
             .send(QueryMessage::new(

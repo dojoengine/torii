@@ -6,7 +6,7 @@ use starknet::macros::felt;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
 use starknet_crypto::Felt;
-use torii_storage::types::Cursor;
+use torii_storage::proto::ContractCursor;
 use url::Url;
 
 use crate::{Fetcher, FetcherConfig};
@@ -52,7 +52,8 @@ async fn test_range_one_block() {
     // To index 1435856, the cursor must actually be one block behind.
     let cursors = HashMap::from([(
         ETERNUM_ADDRESS,
-        Cursor {
+        ContractCursor {
+            contract_address: ETERNUM_ADDRESS,
             last_pending_block_tx: None,
             head: Some(eternum_block - 1),
             last_block_timestamp: None,
