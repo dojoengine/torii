@@ -14,6 +14,7 @@ use tokio::sync::mpsc::{
 };
 use torii_broker::types::TokenBalanceUpdate;
 use torii_broker::MemoryBroker;
+use torii_proto::TokenBalance;
 use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeTokenBalancesResponse;
@@ -103,8 +104,8 @@ impl TokenBalanceManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = TokenBalanceUpdate> + Send>>,
-    balance_sender: UnboundedSender<TokenBalanceUpdate>,
+    simple_broker: Pin<Box<dyn Stream<Item = TokenBalance> + Send>>,
+    balance_sender: UnboundedSender<TokenBalance>,
 }
 
 impl Service {
@@ -126,16 +127,15 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<TokenBalanceManager>,
-        mut balance_receiver: UnboundedReceiver<TokenBalanceUpdate>,
+        mut balance_receiver: UnboundedReceiver<TokenBalance>,
     ) {
         while let Some(balance) = balance_receiver.recv().await {
             Self::process_balance_update(&subs, &balance).await;
         }
     }
 
-    async fn process_balance_update(subs: &Arc<TokenBalanceManager>, balance: &TokenBalanceUpdate) {
+    async fn process_balance_update(subs: &Arc<TokenBalanceManager>, balance: &TokenBalance) {
         let mut closed_stream = Vec::new();
-        let balance = balance.clone().into_inner();
 
         for sub in subs.subscribers.iter() {
             let idx = sub.key();

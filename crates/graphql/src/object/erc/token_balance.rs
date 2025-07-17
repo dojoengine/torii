@@ -106,8 +106,7 @@ impl ResolvableObject for ErcBalanceObject {
 
                     let pool = ctx.data::<Pool<Sqlite>>()?;
                     Ok(MemoryBroker::<TokenBalanceUpdate>::subscribe()
-                        .then(move |update| {
-                            let token_balance = update.clone().into_inner();
+                        .then(move |token_balance| {
                             let pool = pool.clone();
                             async move {
                                 // Filter by account address if provided

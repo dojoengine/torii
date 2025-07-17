@@ -12,11 +12,12 @@ use starknet_crypto::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
+use torii_broker::types::TokenUpdate;
 use torii_broker::MemoryBroker;
 use tracing::{error, trace};
 
-use torii_broker::types::TokenUpdate;
 use torii_proto::proto::world::SubscribeTokensResponse;
+use torii_proto::Token;
 
 use crate::GrpcConfig;
 
@@ -96,8 +97,8 @@ impl TokenManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = TokenUpdate> + Send>>,
-    token_sender: UnboundedSender<TokenUpdate>,
+    simple_broker: Pin<Box<dyn Stream<Item = Token> + Send>>,
+    token_sender: UnboundedSender<Token>,
 }
 
 impl Service {
@@ -119,17 +120,16 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<TokenManager>,
-        mut token_receiver: UnboundedReceiver<TokenUpdate>,
+        mut token_receiver: UnboundedReceiver<Token>,
     ) {
         while let Some(token) = token_receiver.recv().await {
             Self::process_token_update(&subs, &token).await;
         }
     }
 
-    async fn process_token_update(subs: &Arc<TokenManager>, update: &TokenUpdate) {
+    async fn process_token_update(subs: &Arc<TokenManager>, token: &Token) {
         let mut closed_stream = Vec::new();
 
-        let token = update.clone().into_inner();
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
             let sub = sub.value();

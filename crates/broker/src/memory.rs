@@ -77,13 +77,27 @@ where
     }
 
     /// Subscribe to non-optimistic update messages
-    pub fn subscribe() -> impl Stream<Item = Update<T>> {
-        Self::subscribe_all().filter(|u| futures_util::future::ready(!u.optimistic))
+    pub fn subscribe() -> impl Stream<Item = T> {
+        Self::subscribe_all()
+            .filter_map(|u| {
+                futures_util::future::ready(if u.is_optimistic() {
+                    None
+                } else {
+                    Some(u.into_inner())
+                })
+            })
     }
 
     /// Subscribe to only optimistic update messages and returns a `Stream`.
-    pub fn subscribe_optimistic() -> impl Stream<Item = Update<T>> {
-        Self::subscribe().filter(|update| futures_util::future::ready(update.is_optimistic()))
+    pub fn subscribe_optimistic() -> impl Stream<Item = T> {
+        Self::subscribe_all()
+            .filter_map(|u| {
+                futures_util::future::ready(if u.is_optimistic() {
+                    Some(u.into_inner())
+                } else {
+                    None
+                })
+            })
     }
 
     /// Execute the given function with the _subscribers_ of the specified subscription type.

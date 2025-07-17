@@ -12,6 +12,7 @@ use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
 use torii_broker::{types::EntityUpdate, MemoryBroker};
+use torii_proto::schema::EntityWithMetadata;
 use tracing::{error, trace};
 
 use crate::GrpcConfig;
@@ -80,8 +81,8 @@ impl EntityManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = EntityUpdate> + Send>>,
-    entity_sender: UnboundedSender<EntityUpdate>,
+    simple_broker: Pin<Box<dyn Stream<Item = EntityWithMetadata> + Send>>,
+    entity_sender: UnboundedSender<EntityWithMetadata>,
 }
 
 impl Service {
@@ -103,16 +104,15 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<EntityManager>,
-        mut entity_receiver: UnboundedReceiver<EntityUpdate>,
+        mut entity_receiver: UnboundedReceiver<EntityWithMetadata>,
     ) {
         while let Some(update) = entity_receiver.recv().await {
             Self::process_entity_update(&subs, &update).await;
         }
     }
 
-    async fn process_entity_update(subs: &Arc<EntityManager>, entity: &EntityUpdate) {
+    async fn process_entity_update(subs: &Arc<EntityManager>, entity: &EntityWithMetadata) {
         let mut closed_stream = Vec::new();
-        let entity = entity.clone().into_inner();
 
         for sub in subs.subscribers.iter() {
             let idx = sub.key();

@@ -102,15 +102,10 @@ impl ResolvableObject for ModelObject {
                         // if id is None, then subscribe to all models
                         // if id is Some, then subscribe to only the model with that id
                         Ok(MemoryBroker::<ModelUpdate>::subscribe()
-                            .then(move |model_update: ModelUpdate| {
+                            .then(move |model| {
                                 let pool = pool.clone();
                                 let id = id.clone();
                                 async move {
-                                    if model_update.optimistic {
-                                        return None;
-                                    }
-
-                                    let model = model_update.into_inner();
                                     let model_id = format!("{:#x}", model.selector);
                                     if id.is_none() || id == Some(model_id.clone()) {
                                         let mut conn = match pool.acquire().await {

@@ -470,8 +470,7 @@ impl ResolvableObject for TokenObject {
                 SubscriptionFieldFuture::new(async move {
                     let pool = ctx.data::<Pool<Sqlite>>()?;
                     Ok(MemoryBroker::<TokenUpdate>::subscribe()
-                        .then(move |update| {
-                            let token = update.clone().into_inner();
+                        .then(move |token| {
                             let pool = pool.clone();
                             async move {
                                 // Fetch complete token data including contract type

@@ -80,10 +80,9 @@ impl ResolvableObject for EventMessageObject {
                     };
                     let pool = ctx.data::<Pool<Sqlite>>()?.clone();
                     Ok(MemoryBroker::<EventMessageUpdate>::subscribe()
-                        .then(move |update: EventMessageUpdate| {
+                        .then(move |entity| {
                             let pool = pool.clone();
                             async move {
-                                let entity = update.into_inner();
                                 if id.is_none() || id == Some(entity.entity.hashed_keys) {
                                     let mut conn = match pool.acquire().await {
                                         Ok(conn) => conn,

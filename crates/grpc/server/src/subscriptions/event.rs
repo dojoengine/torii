@@ -13,6 +13,7 @@ use tokio::sync::mpsc::{
 use torii_broker::types::EventUpdate;
 use torii_broker::MemoryBroker;
 use torii_proto::KeysClause;
+use torii_proto::EventWithMetadata;
 use tracing::{error, trace};
 
 use crate::GrpcConfig;
@@ -73,8 +74,8 @@ impl EventManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = EventUpdate> + Send>>,
-    event_sender: UnboundedSender<EventUpdate>,
+    simple_broker: Pin<Box<dyn Stream<Item = EventWithMetadata> + Send>>,
+    event_sender: UnboundedSender<EventWithMetadata>,
 }
 
 impl Service {
@@ -96,17 +97,17 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<EventManager>,
-        mut event_receiver: UnboundedReceiver<EventUpdate>,
+        mut event_receiver: UnboundedReceiver<EventWithMetadata>,
     ) {
         while let Some(event) = event_receiver.recv().await {
             Self::process_event(&subs, &event).await;
         }
     }
 
-    async fn process_event(subs: &Arc<EventManager>, update: &EventUpdate) {
+    async fn process_event(subs: &Arc<EventManager>, event: &EventWithMetadata) {
         let mut closed_stream = Vec::new();
 
-        let event = update.clone().into_inner().event;
+        let event = event.event.clone();
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
             let sub = sub.value();
