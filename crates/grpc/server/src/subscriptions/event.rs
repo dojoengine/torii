@@ -100,7 +100,7 @@ impl Service {
     async fn process_event(subs: &Arc<EventManager>, update: &EventEmitted) {
         let mut closed_stream = Vec::new();
 
-        let event = update.clone().into_inner();
+        let event = update.clone().into_inner().event;
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
             let sub = sub.value();

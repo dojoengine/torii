@@ -7,6 +7,7 @@ use dojo_types::naming::get_tag;
 use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
 use tokio_stream::StreamExt;
+use torii_broker::types::EntityUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::types::Entity;
 
@@ -72,18 +73,38 @@ impl ResolvableObject for EntityObject {
                         Some(id) => Some(id.string()?.to_string()),
                         None => None,
                     };
+                    let pool = ctx.data::<Pool<Sqlite>>()?.clone();
                     // if id is None, then subscribe to all entities
                     // if id is Some, then subscribe to only the entity with that id
-                    Ok(
-                        MemoryBroker::<Entity>::subscribe().filter_map(move |entity: Entity| {
-                            if id.is_none() || id == Some(entity.id.clone()) {
-                                Some(Ok(Value::Object(EntityObject::value_mapping(entity))))
-                            } else {
-                                // id != entity.id , then don't send anything, still listening
-                                None
+                    Ok(MemoryBroker::<EntityUpdate>::subscribe()
+                        .then(move |update: EntityUpdate| {
+                            let pool = pool.clone();
+                            let id = id.clone();
+                            async move {
+                                let entity = update.into_inner();
+                                let entity_id = format!("{:#x}", entity.entity.hashed_keys);
+                                if id.is_none() || id == Some(entity_id.clone()) {
+                                    let mut conn = match pool.acquire().await {
+                                        Ok(conn) => conn,
+                                        Err(_) => return None,
+                                    };
+
+                                    let entity = match sqlx::query_as::<_, Entity>("SELECT * FROM entities WHERE id = ?")
+                                        .bind(&entity_id)
+                                        .fetch_one(&mut *conn)
+                                        .await 
+                                    {
+                                        Ok(entity) => entity,
+                                        Err(_) => return None,
+                                    };
+                                    
+                                    Some(Ok(Value::Object(EntityObject::value_mapping(entity))))
+                                } else {
+                                    None
+                                }
                             }
-                        }),
-                    )
+                        })
+                        .filter_map(|result| result))
                 })
             },
         )

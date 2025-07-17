@@ -940,6 +940,15 @@ pub struct Event {
     pub transaction_hash: Felt,
 }
 
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
+pub struct EventWithMetadata {
+    pub id: String,
+    pub event: Event,
+    pub created_at: DateTime<Utc>,
+    pub executed_at: DateTime<Utc>,
+}
+
 impl From<Event> for proto::types::Event {
     fn from(value: Event) -> Self {
         Self {

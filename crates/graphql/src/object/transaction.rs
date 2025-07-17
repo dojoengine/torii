@@ -7,6 +7,7 @@ use async_graphql::{Name, Value};
 use sqlx::{FromRow, Pool, Sqlite};
 use starknet_crypto::Felt;
 use tokio_stream::StreamExt;
+use torii_broker::types::Transaction as TransactionUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::types::Transaction;
 
@@ -100,28 +101,47 @@ impl ResolvableObject for TransactionObject {
                         None => None,
                     };
 
+                    let pool = ctx.data::<Pool<Sqlite>>()?.clone();
                     // if hash is None, then subscribe to all transactions
                     // if hash is Some, then subscribe to only the transaction with that hash
-                    Ok(MemoryBroker::<Transaction>::subscribe().filter_map(
-                        move |transaction: Transaction| {
-                            if (hash.is_none()
-                                || hash == Some(transaction.transaction_hash.clone()))
-                                && (caller.is_none()
-                                    || transaction.calls.iter().any(|call| {
-                                        call.caller_address
-                                            == Felt::from_str(&caller.clone().unwrap()).unwrap()
-                                    }))
-                            {
-                                Some(Ok(Value::Object(TransactionObject::value_mapping(
-                                    transaction,
-                                ))))
-                            } else {
-                                // hash != transaction.transaction_hash, then don't send anything,
-                                // still listening
-                                None
+                    Ok(MemoryBroker::<TransactionUpdate>::subscribe()
+                        .then(move |transaction_update: TransactionUpdate| {
+                            let pool = pool.clone();
+                            let hash = hash.clone();
+                            let caller = caller.clone();
+                            async move {
+                                let transaction = transaction_update.into_inner();
+                                let transaction_hash = format!("{:#x}", transaction.transaction_hash);
+                                if (hash.is_none() || hash == Some(transaction_hash.clone()))
+                                    && (caller.is_none()
+                                        || transaction.calls.iter().any(|call| {
+                                            call.caller_address
+                                                == Felt::from_str(&caller.clone().unwrap()).unwrap()
+                                        }))
+                                {
+                                    let mut conn = match pool.acquire().await {
+                                        Ok(conn) => conn,
+                                        Err(_) => return None,
+                                    };
+
+                                    let transaction = match sqlx::query_as::<_, Transaction>("SELECT * FROM transactions WHERE transaction_hash = ?")
+                                        .bind(&transaction_hash)
+                                        .fetch_one(&mut *conn)
+                                        .await 
+                                    {
+                                        Ok(transaction) => transaction,
+                                        Err(_) => return None,
+                                    };
+                                    
+                                    Some(Ok(Value::Object(TransactionObject::value_mapping(
+                                        transaction,
+                                    ))))
+                                } else {
+                                    None
+                                }
                             }
-                        },
-                    ))
+                        })
+                        .filter_map(|result| result))
                 })
             },
         )

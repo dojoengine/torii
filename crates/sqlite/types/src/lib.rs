@@ -132,6 +132,16 @@ pub struct Event {
     pub created_at: DateTime<Utc>,
 }
 
+impl From<Event> for torii_proto::EventWithMetadata {
+    fn from(value: Event) -> Self {
+        Self {
+            id: value.id.clone(),
+            event: value.clone().into(),
+            created_at: value.created_at,
+            executed_at: value.executed_at,
+        }
+    }
+}
 impl From<Event> for torii_proto::Event {
     fn from(value: Event) -> Self {
         Self {
@@ -301,7 +311,7 @@ impl From<Transaction> for torii_proto::Transaction {
             block_number: value.block_number,
             transaction_type: value.transaction_type,
             block_timestamp: value.executed_at,
-            calls: value.calls.into_iter().map(Into::into).collect(),
+            calls: value.calls,
             unique_models: value.unique_models.into_iter().collect(),
         }
     }

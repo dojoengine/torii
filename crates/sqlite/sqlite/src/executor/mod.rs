@@ -422,8 +422,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 transaction.unique_models = store_transaction.unique_models;
 
                 let transaction: torii_proto::Transaction = transaction.into();
-
-                self.publish_optimistic_and_queue(BrokerMessage::Transaction(transaction.into()));
+                self.publish_optimistic_and_queue(BrokerMessage::Transaction(transaction));
             }
             QueryType::SetEntity(entity) => {
                 let row = query.fetch_one(&mut **tx).await?;

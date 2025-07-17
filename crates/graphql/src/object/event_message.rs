@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use async_graphql::dynamic::indexmap::IndexMap;
 use async_graphql::dynamic::{
     Field, FieldFuture, FieldValue, InputValue, SubscriptionField, SubscriptionFieldFuture, TypeRef,
@@ -6,9 +8,11 @@ use async_graphql::{Name, Value};
 use dojo_types::naming::get_tag;
 use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
+use starknet_crypto::Felt;
 use tokio_stream::StreamExt;
+use torii_broker::types::EventMessageUpdate;
 use torii_broker::MemoryBroker;
-use torii_sqlite::types::EventMessage;
+use torii_sqlite::types::Entity;
 
 use super::inputs::keys_input::keys_argument;
 use super::{BasicObject, ResolvableObject, TypeMapping, ValueMapping};
@@ -71,18 +75,37 @@ impl ResolvableObject for EventMessageObject {
             |ctx| {
                 SubscriptionFieldFuture::new(async move {
                     let id = match ctx.args.get("id") {
-                        Some(id) => Some(id.string()?.to_string()),
+                        Some(id) => Some(Felt::from_str(id.string()?).unwrap()),
                         None => None,
                     };
-                    Ok(MemoryBroker::<EventMessage>::subscribe().filter_map(
-                        move |entity: EventMessage| {
-                            if id.is_none() || id == Some(entity.id.clone()) {
-                                Some(Ok(Value::Object(EventMessageObject::value_mapping(entity))))
-                            } else {
-                                None
+                    let pool = ctx.data::<Pool<Sqlite>>()?.clone();
+                    Ok(MemoryBroker::<EventMessageUpdate>::subscribe()
+                        .then(move |update: EventMessageUpdate| {
+                            let pool = pool.clone();
+                            async move {
+                                let entity = update.into_inner();
+                                if id.is_none() || id == Some(entity.entity.hashed_keys) {
+                                    let mut conn = match pool.acquire().await {
+                                        Ok(conn) => conn,
+                                        Err(_) => return None,
+                                    };
+
+                                    let entity = match sqlx::query_as::<_, Entity>("SELECT * FROM event_messages WHERE id = ?")
+                                        .bind(format!("{:#x}", entity.entity.hashed_keys))
+                                        .fetch_one(&mut *conn)
+                                        .await 
+                                    {
+                                        Ok(entity) => entity,
+                                        Err(_) => return None,
+                                    };
+                                    
+                                    Some(Ok(Value::Object(EventMessageObject::value_mapping(entity))))
+                                } else {
+                                    None
+                                }
                             }
-                        },
-                    ))
+                        })
+                        .filter_map(|result| result))
                 })
             },
         )
@@ -91,7 +114,7 @@ impl ResolvableObject for EventMessageObject {
 }
 
 impl EventMessageObject {
-    pub fn value_mapping(entity: EventMessage) -> ValueMapping {
+    pub fn value_mapping(entity: Entity) -> ValueMapping {
         let keys: Vec<&str> = entity.keys.split('/').filter(|&k| !k.is_empty()).collect();
         IndexMap::from([
             (Name::new("id"), Value::from(entity.id)),
