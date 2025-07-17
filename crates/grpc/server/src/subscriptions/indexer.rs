@@ -90,7 +90,11 @@ impl Service {
     pub fn new(subs_manager: Arc<IndexerManager>) -> Self {
         let (update_sender, update_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<ContractUpdate>::subscribe()),
+            simple_broker: if subs_manager.config.optimistic {
+                Box::pin(MemoryBroker::<ContractUpdate>::subscribe_optimistic())
+            } else {
+                Box::pin(MemoryBroker::<ContractUpdate>::subscribe())
+            },
             update_sender,
         };
 
@@ -104,10 +108,6 @@ impl Service {
         mut update_receiver: UnboundedReceiver<ContractUpdate>,
     ) {
         while let Some(update) = update_receiver.recv().await {
-            if update.optimistic != subs.config.optimistic {
-                continue;
-            }
-
             Self::process_update(&subs, &update).await;
         }
     }

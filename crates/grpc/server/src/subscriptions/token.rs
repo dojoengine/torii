@@ -104,7 +104,11 @@ impl Service {
     pub fn new(subs_manager: Arc<TokenManager>) -> Self {
         let (token_sender, token_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<TokenUpdate>::subscribe()),
+            simple_broker: if subs_manager.config.optimistic {
+                Box::pin(MemoryBroker::<TokenUpdate>::subscribe_optimistic())
+            } else {
+                Box::pin(MemoryBroker::<TokenUpdate>::subscribe())
+            },
             token_sender,
         };
 
@@ -118,10 +122,6 @@ impl Service {
         mut token_receiver: UnboundedReceiver<TokenUpdate>,
     ) {
         while let Some(token) = token_receiver.recv().await {
-            if token.optimistic != subs.config.optimistic {
-                continue;
-            }
-
             Self::process_token_update(&subs, &token).await;
         }
     }

@@ -91,7 +91,11 @@ impl Service {
     pub fn new(subs_manager: Arc<EventMessageManager>) -> Self {
         let (event_sender, event_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<EventMessageUpdate>::subscribe()),
+            simple_broker: if subs_manager.config.optimistic {
+                Box::pin(MemoryBroker::<EventMessageUpdate>::subscribe_optimistic())
+            } else {
+                Box::pin(MemoryBroker::<EventMessageUpdate>::subscribe())
+            },
             event_sender,
         };
 
@@ -105,10 +109,6 @@ impl Service {
         mut event_receiver: UnboundedReceiver<EventMessageUpdate>,
     ) {
         while let Some(event) = event_receiver.recv().await {
-            if event.optimistic != subs.config.optimistic {
-                continue;
-            }
-
             Self::process_event_update(&subs, &event).await;
         }
     }
