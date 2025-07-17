@@ -12,13 +12,12 @@ use std::{
 use torii_math::I256;
 use torii_proto::schema::Entity;
 
-use crate::types::Cursor;
 use torii_proto::{
-    Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance,
-    TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery,
+    ContractCursor, Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token,
+    TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall,
+    TransactionQuery,
 };
 
-pub mod types;
 pub mod utils;
 
 pub use torii_proto as proto;
@@ -30,7 +29,7 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     fn as_read_only(&self) -> &dyn ReadOnlyStorage;
 
     /// Returns the cursors for all contracts.
-    async fn cursors(&self) -> Result<HashMap<Felt, Cursor>, StorageError>;
+    async fn cursors(&self) -> Result<HashMap<Felt, ContractCursor>, StorageError>;
 
     /// Returns the model metadata for the storage.
     async fn model(&self, model: Felt) -> Result<Model, StorageError>;
@@ -88,7 +87,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     /// Updates the contract cursors with the storage.
     async fn update_cursors(
         &self,
-        cursors: HashMap<Felt, Cursor>,
+        cursors: HashMap<Felt, ContractCursor>,
         cursor_transactions: HashMap<Felt, HashSet<Felt>>,
     ) -> Result<(), StorageError>;
 
@@ -247,7 +246,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     async fn apply_balances_diff(
         &self,
         balances_diff: HashMap<String, I256>,
-        cursors: HashMap<Felt, Cursor>,
+        cursors: HashMap<Felt, ContractCursor>,
     ) -> Result<(), StorageError>;
 
     /// Executes pending operations and commits the current transaction.

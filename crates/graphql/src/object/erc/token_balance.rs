@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use async_graphql::connection::PageInfo;
 use async_graphql::dynamic::{
     Field, FieldFuture, FieldValue, InputValue, SubscriptionField, SubscriptionFieldFuture, TypeRef,
@@ -8,10 +10,10 @@ use sqlx::sqlite::SqliteRow;
 use sqlx::{FromRow, Pool, Row, Sqlite, SqliteConnection};
 use starknet_crypto::Felt;
 use tokio_stream::StreamExt;
+use torii_broker::types::TokenBalanceUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::constants::TOKEN_BALANCE_TABLE;
-use torii_sqlite::types::TokenBalance;
-use torii_sqlite::utils::felt_to_sql_string;
+use torii_sqlite::utils::{felt_and_u256_to_sql_string, felt_to_sql_string};
 use tracing::warn;
 
 use super::erc_token::{Erc20Token, ErcTokenType};
@@ -98,16 +100,20 @@ impl ResolvableObject for ErcBalanceObject {
             |ctx| {
                 SubscriptionFieldFuture::new(async move {
                     let address = match ctx.args.get("accountAddress") {
-                        Some(addr) => Some(addr.string()?.to_string()),
+                        Some(addr) => Some(Felt::from_str(addr.string()?).unwrap()),
                         None => None,
                     };
 
                     let pool = ctx.data::<Pool<Sqlite>>()?;
-                    Ok(MemoryBroker::<TokenBalance>::subscribe()
-                        .then(move |token_balance| {
-                            let address = address.clone();
+                    Ok(MemoryBroker::<TokenBalanceUpdate>::subscribe()
+                        .then(move |update| {
+                            let token_balance = update.clone().into_inner();
                             let pool = pool.clone();
                             async move {
+                                if update.optimistic {
+                                    return None;
+                                }
+
                                 // Filter by account address if provided
                                 if let Some(addr) = &address {
                                     if token_balance.account_address != *addr {
@@ -128,10 +134,20 @@ impl ResolvableObject for ErcBalanceObject {
                                     TOKEN_BALANCE_TABLE
                                 );
 
-                                let row = match sqlx::query(&query)
-                                    .bind(&token_balance.id)
-                                    .fetch_one(&pool)
-                                    .await
+                                let token_id = if let Some(token_id) = token_balance.token_id {
+                                    felt_and_u256_to_sql_string(
+                                        &token_balance.contract_address,
+                                        &token_id.into(),
+                                    )
+                                } else {
+                                    felt_to_sql_string(&token_balance.contract_address)
+                                };
+                                let id = format!(
+                                    "{}/{}",
+                                    felt_to_sql_string(&token_balance.account_address),
+                                    token_id
+                                );
+                                let row = match sqlx::query(&query).bind(&id).fetch_one(&pool).await
                                 {
                                     Ok(row) => row,
                                     Err(_) => return None,

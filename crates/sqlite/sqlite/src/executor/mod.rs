@@ -16,23 +16,20 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
+use torii_broker::types::{
+    ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType, ModelUpdate,
+    TokenBalanceUpdate, TokenUpdate, TransactionUpdate, Update,
+};
 use torii_math::I256;
-use torii_proto::TransactionCall;
-use torii_sqlite_types::{OptimisticToken, OptimisticTransaction};
+use torii_proto::{ContractCursor, TransactionCall};
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
 use crate::error::ParseError;
 use crate::executor::error::{ExecutorError, ExecutorQueryError};
-use crate::types::{
-    ContractCursor, Entity as EntityUpdated, Event as EventEmitted,
-    EventMessage as EventMessageUpdated, Model as ModelRegistered, OptimisticEntity,
-    OptimisticEventMessage, Token, TokenBalance, Transaction,
-};
 use crate::utils::{
     felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, u256_to_sql_string,
 };
-use crate::Cursor;
 use torii_broker::MemoryBroker;
 
 pub mod erc;
@@ -55,14 +52,14 @@ pub enum Argument {
 
 #[derive(Debug, Clone)]
 pub enum BrokerMessage {
-    SetHead(ContractCursor),
-    ModelRegistered(ModelRegistered),
-    EntityUpdated(EntityUpdated),
-    EventMessageUpdated(EventMessageUpdated),
-    EventEmitted(EventEmitted),
-    TokenRegistered(Token),
-    TokenBalanceUpdated(TokenBalance),
-    Transaction(Transaction),
+    ContractUpdate(<ContractUpdate as InnerType>::Inner),
+    ModelRegistered(<ModelUpdate as InnerType>::Inner),
+    EntityUpdate(<EntityUpdate as InnerType>::Inner),
+    EventMessageUpdate(<EventMessageUpdate as InnerType>::Inner),
+    EventEmitted(<EventUpdate as InnerType>::Inner),
+    TokenRegistered(<TokenUpdate as InnerType>::Inner),
+    TokenBalanceUpdated(<TokenBalanceUpdate as InnerType>::Inner),
+    Transaction(<TransactionUpdate as InnerType>::Inner),
 }
 
 #[derive(Debug, Clone)]
@@ -77,7 +74,7 @@ pub struct DeleteEntityQuery {
 #[derive(Debug, Clone)]
 pub struct ApplyBalanceDiffQuery {
     pub balances_diff: HashMap<String, I256>,
-    pub cursors: HashMap<Felt, Cursor>,
+    pub cursors: HashMap<Felt, ContractCursor>,
 }
 
 #[derive(Debug, Clone)]
@@ -111,7 +108,7 @@ pub struct EntityQuery {
 
 #[derive(Debug, Clone)]
 pub struct UpdateCursorsQuery {
-    pub cursors: HashMap<Felt, Cursor>,
+    pub cursors: HashMap<Felt, ContractCursor>,
     pub cursor_transactions: HashMap<Felt, HashSet<Felt>>,
 }
 
@@ -310,9 +307,12 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         match query_message.query_type {
             QueryType::UpdateCursors(update_cursors) => {
                 // Read all cursors from db
-                let mut cursors: Vec<ContractCursor> = sqlx::query_as("SELECT * FROM contracts")
-                    .fetch_all(&mut **tx)
-                    .await?;
+                let mut cursors: Vec<torii_sqlite_types::ContractCursor> =
+                    sqlx::query_as("SELECT * FROM contracts")
+                        .fetch_all(&mut **tx)
+                        .await?;
+
+                let mut updates = Vec::with_capacity(update_cursors.cursors.len());
 
                 for cursor in &mut cursors {
                     let new_cursor = update_cursors
@@ -369,13 +369,17 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     .await?;
 
                     // Send appropriate ContractUpdated publish message
-                    self.publish_queue
-                        .push(BrokerMessage::SetHead(cursor.clone()));
+                    updates.push(BrokerMessage::ContractUpdate(cursor.clone().into()));
+                }
+
+                for update in updates {
+                    self.publish_optimistic_and_queue(update);
                 }
             }
             QueryType::StoreTransaction(store_transaction) => {
                 // Our transaction has alraedy been added by another contract probably.
-                let mut transaction = Transaction::from_row(&query.fetch_one(&mut **tx).await?)?;
+                let mut transaction =
+                    torii_sqlite_types::Transaction::from_row(&query.fetch_one(&mut **tx).await?)?;
 
                 for contract_address in &store_transaction.contract_addresses {
                     sqlx::query(
@@ -420,18 +424,13 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 transaction.calls = store_transaction.calls;
                 transaction.unique_models = store_transaction.unique_models;
 
-                let optimistic_transaction = unsafe {
-                    std::mem::transmute::<Transaction, OptimisticTransaction>(transaction.clone())
-                };
-                MemoryBroker::publish(optimistic_transaction);
-                self.publish_queue
-                    .push(BrokerMessage::Transaction(transaction));
+                let transaction: torii_proto::Transaction = transaction.into();
+                self.publish_optimistic_and_queue(BrokerMessage::Transaction(transaction));
             }
             QueryType::SetEntity(entity) => {
                 let row = query.fetch_one(&mut **tx).await?;
-                let mut entity_updated = EntityUpdated::from_row(&row)?;
+                let mut entity_updated = torii_sqlite_types::Entity::from_row(&row)?;
                 entity_updated.updated_model = Some(entity.ty.clone());
-                entity_updated.deleted = false;
 
                 if entity_updated.keys.is_empty() {
                     warn!(target: LOG_TARGET, "Entity has been updated without being set before. Keys are not known and non-updated values will be NULL.");
@@ -492,13 +491,9 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 .execute(&mut **tx)
                 .await?;
 
-                let optimistic_entity = unsafe {
-                    std::mem::transmute::<EntityUpdated, OptimisticEntity>(entity_updated.clone())
-                };
-                MemoryBroker::publish(optimistic_entity);
-
-                let broker_message = BrokerMessage::EntityUpdated(entity_updated);
-                self.publish_queue.push(broker_message);
+                self.publish_optimistic_and_queue(BrokerMessage::EntityUpdate(
+                    entity_updated.into(),
+                ));
             }
             QueryType::DeleteEntity(entity) => {
                 let delete_model = query.execute(&mut **tx).await?;
@@ -521,7 +516,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 .bind(entity.entity_id)
                 .fetch_one(&mut **tx)
                 .await?;
-                let mut entity_updated = EntityUpdated::from_row(&row)?;
+                let mut entity_updated = torii_sqlite_types::Entity::from_row(&row)?;
                 entity_updated.updated_model = Some(Ty::Struct(Struct {
                     name: entity.ty.name(),
                     children: vec![],
@@ -543,17 +538,16 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     entity_updated.deleted = true;
                 }
 
-                MemoryBroker::publish(unsafe {
-                    std::mem::transmute::<EntityUpdated, OptimisticEntity>(entity_updated.clone())
-                });
-                self.publish_queue
-                    .push(BrokerMessage::EntityUpdated(entity_updated));
+                self.publish_optimistic_and_queue(BrokerMessage::EntityUpdate(
+                    entity_updated.into(),
+                ));
             }
             QueryType::RegisterModel => {
                 let row = query.fetch_one(&mut **tx).await?;
-                let model_registered = ModelRegistered::from_row(&row)?;
-                self.publish_queue
-                    .push(BrokerMessage::ModelRegistered(model_registered));
+                let model_registered = torii_sqlite_types::Model::from_row(&row)?;
+                self.publish_optimistic_and_queue(BrokerMessage::ModelRegistered(
+                    model_registered.into(),
+                ));
             }
             QueryType::EventMessage(em_query) => {
                 // Must be executed first since other tables have foreign keys on event_messages.id.
@@ -598,21 +592,17 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 .execute(&mut **tx)
                 .await?;
 
-                let mut event_message = EventMessageUpdated::from_row(&event_messages_row)?;
-                event_message.updated_model = Some(em_query.ty);
+                let mut event_message = torii_sqlite_types::Entity::from_row(&event_messages_row)?;
+                event_message.updated_model = Some(em_query.ty.clone());
 
-                MemoryBroker::publish(unsafe {
-                    std::mem::transmute::<EventMessageUpdated, OptimisticEventMessage>(
-                        event_message.clone(),
-                    )
-                });
-                self.publish_queue
-                    .push(BrokerMessage::EventMessageUpdated(event_message));
+                self.publish_optimistic_and_queue(BrokerMessage::EventMessageUpdate(
+                    event_message.into(),
+                ));
             }
             QueryType::StoreEvent => {
                 let row = query.fetch_one(&mut **tx).await?;
-                let event = EventEmitted::from_row(&row)?;
-                self.publish_queue.push(BrokerMessage::EventEmitted(event));
+                let event = torii_sqlite_types::Event::from_row(&row)?;
+                self.publish_optimistic_and_queue(BrokerMessage::EventEmitted(event.into()));
             }
             QueryType::ApplyBalanceDiff(apply_balance_diff) => {
                 debug!(target: LOG_TARGET, "Applying balance diff.");
@@ -721,7 +711,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                     }
                 };
 
-                let query = sqlx::query_as::<_, Token>(
+                let query = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "INSERT INTO tokens (id, contract_address, token_id, name, symbol, decimals, \
                      metadata) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
                 )
@@ -739,14 +729,10 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 let token = query.fetch_one(&mut **tx).await?;
 
                 info!(target: LOG_TARGET, name = %name, symbol = %symbol, contract_address = %token.contract_address, token_id = %register_nft_token.token_id, "NFT token registered.");
-                MemoryBroker::publish(unsafe {
-                    std::mem::transmute::<Token, OptimisticToken>(token.clone())
-                });
-                self.publish_queue
-                    .push(BrokerMessage::TokenRegistered(token));
+                self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));
             }
             QueryType::RegisterErc20Token(register_erc20_token) => {
-                let query = sqlx::query_as::<_, Token>(
+                let query = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "INSERT INTO tokens (id, contract_address, name, symbol, decimals) VALUES (?, \
                      ?, ?, ?, ?) RETURNING *",
                 )
@@ -759,8 +745,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 let token = query.fetch_one(&mut **tx).await?;
                 info!(target: LOG_TARGET, name = %register_erc20_token.name, symbol = %register_erc20_token.symbol, contract_address = %token.contract_address, "Registered ERC20 token.");
 
-                self.publish_queue
-                    .push(BrokerMessage::TokenRegistered(token));
+                self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));
             }
             QueryType::Execute => {
                 debug!(target: LOG_TARGET, "Executing query.");
@@ -776,7 +761,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
             }
             QueryType::UpdateNftMetadata(update_metadata) => {
                 // Update metadata in database
-                let token = sqlx::query_as::<_, Token>(
+                let token = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "UPDATE tokens SET metadata = ? WHERE id = ? RETURNING *",
                 )
                 .bind(&update_metadata.metadata)
@@ -785,11 +770,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                 .await?;
 
                 info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = %update_metadata.token_id, "NFT token metadata updated.");
-                MemoryBroker::publish(unsafe {
-                    std::mem::transmute::<Token, OptimisticToken>(token.clone())
-                });
-                self.publish_queue
-                    .push(BrokerMessage::TokenRegistered(token));
+                self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));
             }
             QueryType::Other => {
                 query.execute(&mut **tx).await?;
@@ -810,7 +791,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         self.transaction = Some(self.pool.begin().await?);
 
         for message in self.publish_queue.drain(..) {
-            send_broker_message(message);
+            send_broker_message(message, false);
         }
 
         Ok(())
@@ -829,17 +810,36 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         self.publish_queue.clear();
         Ok(())
     }
+
+    fn publish_optimistic_and_queue(&mut self, message: BrokerMessage) {
+        send_broker_message(message.clone(), true);
+        self.publish_queue.push(message);
+    }
 }
 
-fn send_broker_message(message: BrokerMessage) {
+fn send_broker_message(message: BrokerMessage, optimistic: bool) {
     match message {
-        BrokerMessage::SetHead(update) => MemoryBroker::publish(update),
-        BrokerMessage::ModelRegistered(model) => MemoryBroker::publish(model),
-        BrokerMessage::EntityUpdated(entity) => MemoryBroker::publish(entity),
-        BrokerMessage::EventMessageUpdated(event) => MemoryBroker::publish(event),
-        BrokerMessage::EventEmitted(event) => MemoryBroker::publish(event),
-        BrokerMessage::TokenRegistered(token) => MemoryBroker::publish(token),
-        BrokerMessage::TokenBalanceUpdated(token_balance) => MemoryBroker::publish(token_balance),
-        BrokerMessage::Transaction(transaction) => MemoryBroker::publish(transaction),
+        BrokerMessage::ContractUpdate(contract) => {
+            MemoryBroker::publish(Update::new(contract, optimistic))
+        }
+        BrokerMessage::ModelRegistered(model) => {
+            MemoryBroker::publish(Update::new(model, optimistic))
+        }
+        BrokerMessage::EntityUpdate(entity) => {
+            MemoryBroker::publish(Update::new(entity, optimistic))
+        }
+        BrokerMessage::EventMessageUpdate(event) => {
+            MemoryBroker::publish(Update::new(event, optimistic))
+        }
+        BrokerMessage::EventEmitted(event) => MemoryBroker::publish(Update::new(event, optimistic)),
+        BrokerMessage::TokenRegistered(token) => {
+            MemoryBroker::publish(Update::new(token, optimistic))
+        }
+        BrokerMessage::TokenBalanceUpdated(token_balance) => {
+            MemoryBroker::publish(Update::new(token_balance, optimistic))
+        }
+        BrokerMessage::Transaction(transaction) => {
+            MemoryBroker::publish(Update::new(transaction, optimistic))
+        }
     }
 }

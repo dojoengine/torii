@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use crypto_bigint::{Encoding, U256};
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Enum, EnumOption, Member, Struct, Ty};
@@ -8,13 +9,23 @@ use crate::error::ProtoError;
 use crate::proto;
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
-pub struct Entity {
+pub struct EntityWithMetadata<const EVENT_MESSAGE: bool = false> {
+    pub entity: Entity<EVENT_MESSAGE>,
+    pub event_id: String,
+    pub keys: Vec<Felt>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub executed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct Entity<const EVENT_MESSAGE: bool = false> {
     pub hashed_keys: Felt,
     pub models: Vec<Struct>,
 }
 
-impl From<Entity> for proto::types::Entity {
-    fn from(entity: Entity) -> Self {
+impl<const EVENT_MESSAGE: bool> From<Entity<EVENT_MESSAGE>> for proto::types::Entity {
+    fn from(entity: Entity<EVENT_MESSAGE>) -> Self {
         proto::types::Entity {
             hashed_keys: entity.hashed_keys.to_bytes_be().to_vec(),
             models: entity
@@ -26,7 +37,7 @@ impl From<Entity> for proto::types::Entity {
     }
 }
 
-impl TryFrom<proto::types::Entity> for Entity {
+impl<const EVENT_MESSAGE: bool> TryFrom<proto::types::Entity> for Entity<EVENT_MESSAGE> {
     type Error = ProtoError;
     fn try_from(entity: proto::types::Entity) -> Result<Self, Self::Error> {
         Ok(Self {

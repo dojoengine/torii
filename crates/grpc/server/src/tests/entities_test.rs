@@ -29,11 +29,11 @@ use torii_processors::processors::Processors;
 use torii_proto::proto::world::world_server::World;
 use torii_proto::proto::world::RetrieveEntitiesRequest;
 use torii_proto::{Clause, KeysClause, PatternMatching, Query};
-use torii_sqlite::executor::Executor;
-use torii_sqlite::Sql;
 
 use torii_proto::schema::Entity;
-use torii_storage::types::{Contract, ContractType};
+use torii_sqlite::executor::Executor;
+use torii_sqlite::Sql;
+use torii_storage::proto::{Contract, ContractType};
 use torii_storage::Storage;
 
 use crate::{DojoWorld, GrpcConfig};

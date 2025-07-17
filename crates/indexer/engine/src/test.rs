@@ -25,7 +25,7 @@ use torii_sqlite::executor::Executor;
 use torii_sqlite::types::Token;
 use torii_sqlite::utils::u256_to_sql_string;
 use torii_sqlite::Sql;
-use torii_storage::types::{Contract, ContractType};
+use torii_storage::proto::{Contract, ContractType};
 use torii_storage::Storage;
 
 use crate::engine::{Engine, EngineConfig};

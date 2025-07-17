@@ -37,6 +37,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
+use torii_broker::types::ModelUpdate;
 use torii_broker::MemoryBroker;
 use torii_cache::InMemoryCache;
 use torii_cli::ToriiArgs;
@@ -48,9 +49,8 @@ use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::Model;
 use torii_sqlite::{Sql, SqlConfig};
-use torii_storage::types::{Contract, ContractType};
+use torii_storage::proto::{Contract, ContractType};
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
@@ -404,6 +404,7 @@ impl Runner {
             cross_messaging_tx,
             GrpcConfig {
                 subscription_buffer_size: self.args.grpc.subscription_buffer_size,
+                optimistic: self.args.grpc.optimistic,
             },
         )
         .await?;
@@ -546,7 +547,8 @@ async fn spawn_rebuilding_graphql_server(
     pool: Arc<SqlitePool>,
     proxy_server: Arc<Proxy>,
 ) {
-    let mut broker = MemoryBroker::<Model>::subscribe();
+    let mut broker = MemoryBroker::<ModelUpdate>::subscribe()
+        .filter(move |update: &ModelUpdate| !update.optimistic);
 
     loop {
         let shutdown_rx = shutdown_tx.subscribe();

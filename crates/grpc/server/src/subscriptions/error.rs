@@ -1,10 +1,13 @@
 use starknet::providers::ProviderError;
-use torii_sqlite::error::ParseError;
+use torii_proto::error::ProtoError;
+use torii_storage::StorageError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SubscriptionError {
     #[error(transparent)]
-    Parse(#[from] ParseError),
+    Storage(#[from] StorageError),
+    #[error(transparent)]
+    Proto(#[from] ProtoError),
     #[error(transparent)]
     Provider(ProviderError),
 }

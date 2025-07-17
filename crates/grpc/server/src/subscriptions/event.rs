@@ -1,6 +1,5 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
@@ -8,16 +7,15 @@ use dashmap::DashMap;
 use futures::Stream;
 use futures_util::StreamExt;
 use rand::Rng;
-use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
+use torii_broker::types::EventUpdate;
 use torii_broker::MemoryBroker;
 use torii_proto::KeysClause;
-use torii_sqlite::constants::SQL_FELT_DELIMITER;
-use torii_sqlite::error::{Error, ParseError};
-use torii_sqlite::types::Event;
 use tracing::{error, trace};
+
+use crate::GrpcConfig;
 
 use super::match_keys;
 use torii_proto::proto::types::Event as ProtoEvent;
@@ -36,23 +34,23 @@ pub struct EventSubscriber {
 #[derive(Debug, Default)]
 pub struct EventManager {
     subscribers: DashMap<usize, EventSubscriber>,
-    subscription_buffer_size: usize,
+    config: GrpcConfig,
 }
 
 impl EventManager {
-    pub fn new(subscription_buffer_size: usize) -> Self {
+    pub fn new(config: GrpcConfig) -> Self {
         Self {
             subscribers: DashMap::new(),
-            subscription_buffer_size,
+            config,
         }
     }
 
     pub async fn add_subscriber(
         &self,
         keys: Vec<KeysClause>,
-    ) -> Result<Receiver<Result<SubscribeEventsResponse, tonic::Status>>, Error> {
+    ) -> Receiver<Result<SubscribeEventsResponse, tonic::Status>> {
         let id = rand::thread_rng().gen::<usize>();
-        let (sender, receiver) = channel(self.subscription_buffer_size);
+        let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from
@@ -64,7 +62,7 @@ impl EventManager {
         self.subscribers
             .insert(id, EventSubscriber { keys, sender });
 
-        Ok(receiver)
+        receiver
     }
 
     pub(super) async fn remove_subscriber(&self, id: usize) {
@@ -75,15 +73,15 @@ impl EventManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = Event> + Send>>,
-    event_sender: UnboundedSender<Event>,
+    simple_broker: Pin<Box<dyn Stream<Item = EventUpdate> + Send>>,
+    event_sender: UnboundedSender<EventUpdate>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<EventManager>) -> Self {
         let (event_sender, event_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<Event>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<EventUpdate>::subscribe()),
             event_sender,
         };
 
@@ -94,50 +92,42 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<EventManager>,
-        mut event_receiver: UnboundedReceiver<Event>,
+        mut event_receiver: UnboundedReceiver<EventUpdate>,
     ) {
         while let Some(event) = event_receiver.recv().await {
-            if let Err(e) = Self::process_event(&subs, &event).await {
-                error!(target = LOG_TARGET, error = ?e, "Processing event update.");
+            if event.optimistic != subs.config.optimistic {
+                continue;
             }
+
+            Self::process_event(&subs, &event).await;
         }
     }
 
-    async fn process_event(subs: &Arc<EventManager>, event: &Event) -> Result<(), Error> {
+    async fn process_event(subs: &Arc<EventManager>, update: &EventUpdate) {
         let mut closed_stream = Vec::new();
-        let keys = event
-            .keys
-            .trim_end_matches(SQL_FELT_DELIMITER)
-            .split(SQL_FELT_DELIMITER)
-            .filter(|s| !s.is_empty())
-            .map(Felt::from_str)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::from)?;
-        let data = event
-            .data
-            .trim_end_matches(SQL_FELT_DELIMITER)
-            .split(SQL_FELT_DELIMITER)
-            .filter(|s| !s.is_empty())
-            .map(Felt::from_str)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ParseError::from)?;
 
+        let event = update.clone().into_inner().event;
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
             let sub = sub.value();
 
-            if !match_keys(&keys, &sub.keys) {
+            if !match_keys(&event.keys, &sub.keys) {
                 continue;
             }
 
             let resp = SubscribeEventsResponse {
                 event: Some(ProtoEvent {
-                    keys: keys.iter().map(|k| k.to_bytes_be().to_vec()).collect(),
-                    data: data.iter().map(|d| d.to_bytes_be().to_vec()).collect(),
-                    transaction_hash: Felt::from_str(&event.transaction_hash)
-                        .map_err(ParseError::from)?
-                        .to_bytes_be()
-                        .to_vec(),
+                    keys: event
+                        .keys
+                        .iter()
+                        .map(|k| k.to_bytes_be().to_vec())
+                        .collect(),
+                    data: event
+                        .data
+                        .iter()
+                        .map(|d| d.to_bytes_be().to_vec())
+                        .collect(),
+                    transaction_hash: event.transaction_hash.to_bytes_be().to_vec(),
                 }),
             };
 
@@ -162,8 +152,6 @@ impl Service {
             trace!(target = LOG_TARGET, id = %id, "Closing events stream.");
             subs.remove_subscriber(id).await
         }
-
-        Ok(())
     }
 }
 

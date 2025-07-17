@@ -1,11 +1,10 @@
 use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use crypto_bigint::{Encoding, U256};
+use crypto_bigint::U256;
 use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use rand::Rng;
@@ -13,13 +12,13 @@ use starknet_crypto::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
+use torii_broker::types::TokenBalanceUpdate;
 use torii_broker::MemoryBroker;
-use torii_sqlite::error::{Error, ParseError};
-use torii_sqlite::types::OptimisticTokenBalance;
 use tracing::{error, trace};
 
-use torii_proto::proto::types::TokenBalance;
 use torii_proto::proto::world::SubscribeTokenBalancesResponse;
+
+use crate::GrpcConfig;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::balance";
 
@@ -41,14 +40,14 @@ pub struct TokenBalanceSubscriber {
 #[derive(Debug, Default)]
 pub struct TokenBalanceManager {
     subscribers: DashMap<u64, TokenBalanceSubscriber>,
-    subscription_buffer_size: usize,
+    config: GrpcConfig,
 }
 
 impl TokenBalanceManager {
-    pub fn new(subscription_buffer_size: usize) -> Self {
+    pub fn new(config: GrpcConfig) -> Self {
         Self {
             subscribers: DashMap::new(),
-            subscription_buffer_size,
+            config,
         }
     }
 
@@ -57,9 +56,9 @@ impl TokenBalanceManager {
         contract_addresses: Vec<Felt>,
         account_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
-    ) -> Result<Receiver<Result<SubscribeTokenBalancesResponse, tonic::Status>>, Error> {
+    ) -> Receiver<Result<SubscribeTokenBalancesResponse, tonic::Status>> {
         let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(self.subscription_buffer_size);
+        let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
         // Send initial empty response
         let _ = sender
@@ -79,7 +78,7 @@ impl TokenBalanceManager {
             },
         );
 
-        Ok(receiver)
+        receiver
     }
 
     pub async fn update_subscriber(
@@ -104,15 +103,15 @@ impl TokenBalanceManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = OptimisticTokenBalance> + Send>>,
-    balance_sender: UnboundedSender<OptimisticTokenBalance>,
+    simple_broker: Pin<Box<dyn Stream<Item = TokenBalanceUpdate> + Send>>,
+    balance_sender: UnboundedSender<TokenBalanceUpdate>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<TokenBalanceManager>) -> Self {
         let (balance_sender, balance_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<OptimisticTokenBalance>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<TokenBalanceUpdate>::subscribe()),
             balance_sender,
         };
 
@@ -123,31 +122,20 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<TokenBalanceManager>,
-        mut balance_receiver: UnboundedReceiver<OptimisticTokenBalance>,
+        mut balance_receiver: UnboundedReceiver<TokenBalanceUpdate>,
     ) {
         while let Some(balance) = balance_receiver.recv().await {
-            if let Err(e) = Self::process_balance_update(&subs, &balance).await {
-                error!(target = LOG_TARGET, error = ?e, "Processing balance update.");
+            if balance.optimistic != subs.config.optimistic {
+                continue;
             }
+
+            Self::process_balance_update(&subs, &balance).await;
         }
     }
 
-    async fn process_balance_update(
-        subs: &Arc<TokenBalanceManager>,
-        balance: &OptimisticTokenBalance,
-    ) -> Result<(), Error> {
+    async fn process_balance_update(subs: &Arc<TokenBalanceManager>, balance: &TokenBalanceUpdate) {
         let mut closed_stream = Vec::new();
-        let contract_address =
-            Felt::from_str(&balance.contract_address).map_err(ParseError::FromStr)?;
-        let account_address =
-            Felt::from_str(&balance.account_address).map_err(ParseError::FromStr)?;
-        let id: Vec<&str> = balance.token_id.split(':').collect();
-        let token_id: U256 = if id.len() == 2 {
-            U256::from_be_hex(id[1].trim_start_matches("0x"))
-        } else {
-            U256::ZERO
-        };
-        let balance = U256::from_be_hex(balance.balance.trim_start_matches("0x"));
+        let balance = balance.clone().into_inner();
 
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
@@ -155,31 +143,29 @@ impl Service {
 
             // Skip if contract address filter doesn't match
             if !sub.contract_addresses.is_empty()
-                && !sub.contract_addresses.contains(&contract_address)
+                && !sub.contract_addresses.contains(&balance.contract_address)
             {
                 continue;
             }
 
             // Skip if account address filter doesn't match
             if !sub.account_addresses.is_empty()
-                && !sub.account_addresses.contains(&account_address)
+                && !sub.account_addresses.contains(&balance.account_address)
             {
                 continue;
             }
 
             // Skip if token ID filter doesn't match
-            if !sub.token_ids.is_empty() && !sub.token_ids.contains(&token_id) {
+            if !sub.token_ids.is_empty()
+                && balance.token_id.is_some()
+                && !sub.token_ids.contains(&balance.token_id.unwrap())
+            {
                 continue;
             }
 
             let resp = SubscribeTokenBalancesResponse {
                 subscription_id: *idx,
-                balance: Some(TokenBalance {
-                    balance: balance.to_be_bytes().to_vec(),
-                    account_address: account_address.to_bytes_be().to_vec(),
-                    contract_address: contract_address.to_bytes_be().to_vec(),
-                    token_id: token_id.to_be_bytes().to_vec(),
-                }),
+                balance: Some(balance.clone().into()),
             };
 
             // Use try_send to avoid blocking on slow subscribers
@@ -203,8 +189,6 @@ impl Service {
             trace!(target = LOG_TARGET, id = %id, "Closing balance stream.");
             subs.remove_subscriber(id).await
         }
-
-        Ok(())
     }
 }
 

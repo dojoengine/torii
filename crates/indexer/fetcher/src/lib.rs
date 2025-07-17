@@ -12,7 +12,7 @@ use hashlink::LinkedHashMap;
 pub use json_rpc::Fetcher;
 use starknet::core::types::{Event, TransactionContent};
 use starknet_crypto::Felt;
-use torii_storage::types::Cursor;
+use torii_storage::proto::ContractCursor;
 
 bitflags! {
     #[derive(Debug, Clone)]
@@ -68,14 +68,14 @@ pub struct FetchRangeResult {
     // contract_address -> transaction count
     pub cursor_transactions: HashMap<Felt, HashSet<Felt>>,
     // new updated cursors
-    pub cursors: HashMap<Felt, Cursor>,
+    pub cursors: HashMap<Felt, ContractCursor>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FetchPendingResult {
     pub block_number: u64,
     pub timestamp: u64,
-    pub cursors: HashMap<Felt, Cursor>,
+    pub cursors: HashMap<Felt, ContractCursor>,
     pub transactions: LinkedHashMap<Felt, FetchTransaction>,
     pub cursor_transactions: HashMap<Felt, HashSet<Felt>>,
 }

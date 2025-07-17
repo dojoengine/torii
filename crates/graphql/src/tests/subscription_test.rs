@@ -19,7 +19,7 @@ mod tests {
     use tokio::sync::{broadcast, mpsc};
     use torii_sqlite::executor::Executor;
     use torii_sqlite::Sql;
-    use torii_storage::types::{Contract, ContractType};
+    use torii_storage::proto::{Contract, ContractType};
     use torii_storage::Storage;
     use url::Url;
 

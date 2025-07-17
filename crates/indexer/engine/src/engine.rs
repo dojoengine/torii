@@ -19,7 +19,7 @@ use torii_processors::{
     BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors,
     TransactionProcessorContext,
 };
-use torii_storage::types::{Contract, ContractType};
+use torii_storage::proto::{Contract, ContractType};
 use torii_storage::utils::format_event_id;
 use torii_storage::Storage;
 use tracing::{debug, error, info, trace};

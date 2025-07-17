@@ -6,8 +6,9 @@ use async_graphql::{Name, Value};
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Pool, Row, Sqlite, SqliteConnection};
 use tokio_stream::StreamExt;
+use torii_broker::types::TokenUpdate;
 use torii_broker::MemoryBroker;
-use torii_sqlite::types::Token;
+use torii_sqlite::utils::{felt_and_u256_to_sql_string, felt_to_sql_string};
 use tracing::warn;
 
 use super::handle_cursor;
@@ -468,10 +469,15 @@ impl ResolvableObject for TokenObject {
             |ctx| {
                 SubscriptionFieldFuture::new(async move {
                     let pool = ctx.data::<Pool<Sqlite>>()?;
-                    Ok(MemoryBroker::<Token>::subscribe()
-                        .then(move |token| {
+                    Ok(MemoryBroker::<TokenUpdate>::subscribe()
+                        .then(move |update| {
+                            let token = update.clone().into_inner();
                             let pool = pool.clone();
                             async move {
+                                if update.optimistic {
+                                    return None;
+                                }
+
                                 // Fetch complete token data including contract type
                                 let query = "SELECT t.*, c.contract_type 
                                                FROM tokens t 
@@ -479,12 +485,22 @@ impl ResolvableObject for TokenObject {
                                              c.contract_address 
                                                WHERE t.id = ?";
 
-                                let row =
-                                    match sqlx::query(query).bind(&token.id).fetch_one(&pool).await
-                                    {
-                                        Ok(row) => row,
-                                        Err(_) => return None,
-                                    };
+                                let token_id = if let Some(token_id) = token.token_id {
+                                    felt_and_u256_to_sql_string(
+                                        &token.contract_address,
+                                        &token_id.into(),
+                                    )
+                                } else {
+                                    felt_to_sql_string(&token.contract_address)
+                                };
+                                let row = match sqlx::query(query)
+                                    .bind(token_id)
+                                    .fetch_one(&pool)
+                                    .await
+                                {
+                                    Ok(row) => row,
+                                    Err(_) => return None,
+                                };
 
                                 let contract_type: String = row.get("contract_type");
                                 let token_metadata = match contract_type.to_lowercase().as_str() {

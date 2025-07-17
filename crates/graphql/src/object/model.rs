@@ -3,7 +3,9 @@ use async_graphql::dynamic::{
     Enum, Field, InputObject, InputValue, SubscriptionField, SubscriptionFieldFuture, TypeRef,
 };
 use async_graphql::{Name, Value};
+use sqlx::{Pool, Sqlite};
 use tokio_stream::StreamExt;
+use torii_broker::types::ModelUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::types::Model;
 
@@ -96,18 +98,44 @@ impl ResolvableObject for ModelObject {
                             Some(id) => Some(id.string()?.to_string()),
                             None => None,
                         };
+                        let pool = ctx.data::<Pool<Sqlite>>()?.clone();
                         // if id is None, then subscribe to all models
                         // if id is Some, then subscribe to only the model with that id
-                        Ok(
-                            MemoryBroker::<Model>::subscribe().filter_map(move |model: Model| {
-                                if id.is_none() || id == Some(model.id.clone()) {
-                                    Some(Ok(Value::Object(ModelObject::value_mapping(model))))
-                                } else {
-                                    // id != model.id, so don't send anything, still listening
-                                    None
+                        Ok(MemoryBroker::<ModelUpdate>::subscribe()
+                            .then(move |model_update: ModelUpdate| {
+                                let pool = pool.clone();
+                                let id = id.clone();
+                                async move {
+                                    if model_update.optimistic {
+                                        return None;
+                                    }
+
+                                    let model = model_update.into_inner();
+                                    let model_id = format!("{:#x}", model.selector);
+                                    if id.is_none() || id == Some(model_id.clone()) {
+                                        let mut conn = match pool.acquire().await {
+                                            Ok(conn) => conn,
+                                            Err(_) => return None,
+                                        };
+
+                                        let model = match sqlx::query_as::<_, Model>(
+                                            "SELECT * FROM models WHERE id = ?",
+                                        )
+                                        .bind(&model_id)
+                                        .fetch_one(&mut *conn)
+                                        .await
+                                        {
+                                            Ok(model) => model,
+                                            Err(_) => return None,
+                                        };
+
+                                        Some(Ok(Value::Object(ModelObject::value_mapping(model))))
+                                    } else {
+                                        None
+                                    }
                                 }
-                            }),
-                        )
+                            })
+                            .filter_map(|result| result))
                     })
                 }
             },

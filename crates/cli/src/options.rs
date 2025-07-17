@@ -8,8 +8,8 @@ use merge_options::MergeOptions;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
+use torii_proto::{Contract, ContractType};
 use torii_sqlite_types::{Hook, HookEvent, ModelIndices};
-use torii_storage::types::{Contract, ContractType};
 
 pub const DEFAULT_HTTP_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 pub const DEFAULT_HTTP_PORT: u16 = 8080;
@@ -507,6 +507,16 @@ pub struct GrpcOptions {
         help = "The buffer size for the subscription channel."
     )]
     pub subscription_buffer_size: usize,
+
+    /// Whether or not to broadcast optimistic updates to the subscribers.
+    #[arg(
+        long = "grpc.optimistic",
+        default_value_t = false,
+        help = "Whether or not to broadcast optimistic updates to the subscribers. If enabled, \
+                the subscribers will receive optimistic updates for the events that are not yet \
+                committed to the database."
+    )]
+    pub optimistic: bool,
 }
 
 // Parses clap cli argument which is expected to be in the format:

@@ -11589,6 +11589,7 @@ dependencies = [
  "once_cell",
  "slab",
  "tokio",
+ "torii-proto",
  "tracing",
 ]
 
@@ -11624,8 +11625,8 @@ dependencies = [
  "serde",
  "starknet 0.14.0",
  "toml 0.8.19",
+ "torii-proto",
  "torii-sqlite-types",
- "torii-storage",
  "url",
 ]
 
@@ -12187,6 +12188,7 @@ dependencies = [
  "crypto-bigint",
  "dojo-types 1.6.0-alpha.1",
  "serde",
+ "serde_json",
  "sqlx",
  "starknet 0.14.0",
  "torii-proto",

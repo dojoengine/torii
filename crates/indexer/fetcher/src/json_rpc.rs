@@ -17,7 +17,7 @@ use starknet::core::types::{
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
 use tokio::time::{sleep, Instant};
-use torii_storage::types::Cursor;
+use torii_storage::proto::ContractCursor;
 use tracing::{debug, error, trace, warn};
 
 use crate::error::Error;
@@ -39,7 +39,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         Self { config, provider }
     }
 
-    pub async fn fetch(&self, cursors: &HashMap<Felt, Cursor>) -> Result<FetchResult, Error> {
+    pub async fn fetch(
+        &self,
+        cursors: &HashMap<Felt, ContractCursor>,
+    ) -> Result<FetchResult, Error> {
         let fetch_start = Instant::now();
 
         let latest_block = self.provider.block_hash_and_number().await?;
@@ -75,7 +78,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
 
     pub async fn fetch_range(
         &self,
-        cursors: &HashMap<Felt, Cursor>,
+        cursors: &HashMap<Felt, ContractCursor>,
         latest_block: BlockHashAndNumber,
     ) -> Result<FetchRangeResult, Error> {
         let mut events = vec![];
@@ -267,7 +270,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
     async fn fetch_pending(
         &self,
         latest_block: BlockHashAndNumber,
-        cursors: &HashMap<Felt, Cursor>,
+        cursors: &HashMap<Felt, ContractCursor>,
     ) -> Result<Option<FetchPendingResult>, Error> {
         let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
             .provider
@@ -371,7 +374,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
     async fn fetch_events(
         &self,
         initial_requests: Vec<(Felt, u64, u64, ProviderRequestData)>,
-        cursors: &mut HashMap<Felt, Cursor>,
+        cursors: &mut HashMap<Felt, ContractCursor>,
         latest_block_number: u64,
     ) -> Result<Vec<EmittedEvent>, Error> {
         let mut all_events = Vec::new();

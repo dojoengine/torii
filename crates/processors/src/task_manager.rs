@@ -6,7 +6,7 @@ use starknet::core::types::Event;
 use starknet::providers::Provider;
 use tokio::sync::Semaphore;
 use torii_cache::Cache;
-use torii_storage::types::ContractType;
+use torii_proto::ContractType;
 use torii_storage::Storage;
 use torii_task_network::TaskNetwork;
 use tracing::{debug, error};

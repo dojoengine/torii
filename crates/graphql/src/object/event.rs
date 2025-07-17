@@ -1,11 +1,13 @@
+use std::str::FromStr;
+
 use async_graphql::dynamic::{
     Field, InputValue, SubscriptionField, SubscriptionFieldFuture, TypeRef,
 };
-use async_graphql::{Name, Result, Value};
-use tokio_stream::{Stream, StreamExt};
+use async_graphql::{Name, Value};
+use starknet_crypto::Felt;
+use tokio_stream::StreamExt;
+use torii_broker::types::{EventUpdate, InnerType};
 use torii_broker::MemoryBroker;
-use torii_sqlite::constants::SQL_FELT_DELIMITER;
-use torii_sqlite::types::Event;
 
 use super::inputs::keys_input::{keys_argument, parse_keys_argument};
 use super::{resolve_many, BasicObject, ResolvableObject, TypeMapping};
@@ -51,7 +53,17 @@ impl ResolvableObject for EventObject {
             |ctx| {
                 SubscriptionFieldFuture::new(async move {
                     let input_keys = parse_keys_argument(&ctx)?;
-                    Ok(EventObject::subscription_stream(input_keys))
+                    Ok(MemoryBroker::<EventUpdate>::subscribe().filter_map(
+                        move |event_update: EventUpdate| {
+                            if event_update.optimistic {
+                                return None;
+                            }
+
+                            let event = event_update.into_inner();
+                            EventObject::match_and_map_event(&input_keys, event)
+                                .map(|value_mapping| Ok(Value::Object(value_mapping)))
+                        },
+                    ))
                 })
             },
         )
@@ -63,36 +75,42 @@ impl ResolvableObject for EventObject {
 }
 
 impl EventObject {
-    fn value_mapping(event: Event) -> ValueMapping {
-        let keys: Vec<&str> = event.keys.split('/').filter(|&k| !k.is_empty()).collect();
-        let data: Vec<&str> = event.data.split('/').filter(|&k| !k.is_empty()).collect();
+    fn value_mapping(event: <EventUpdate as InnerType>::Inner) -> ValueMapping {
+        let keys: Vec<String> = event
+            .event
+            .keys
+            .iter()
+            .map(|k| format!("{:#x}", k))
+            .collect();
+        let data: Vec<String> = event
+            .event
+            .data
+            .iter()
+            .map(|k| format!("{:#x}", k))
+            .collect();
         ValueMapping::from([
             (Name::new("id"), Value::from(event.id)),
             (Name::new("keys"), Value::from(keys)),
             (Name::new("data"), Value::from(data)),
             (
                 Name::new("transactionHash"),
-                Value::from(event.transaction_hash),
-            ),
-            (
-                Name::new("createdAt"),
-                Value::from(event.created_at.format(DATETIME_FORMAT).to_string()),
+                Value::from(format!("{:#x}", event.event.transaction_hash)),
             ),
             (
                 Name::new("executedAt"),
                 Value::from(event.executed_at.format(DATETIME_FORMAT).to_string()),
             ),
+            (
+                Name::new("createdAt"),
+                Value::from(event.created_at.format(DATETIME_FORMAT).to_string()),
+            ),
         ])
     }
 
-    fn subscription_stream(input_keys: Option<Vec<String>>) -> impl Stream<Item = Result<Value>> {
-        MemoryBroker::<Event>::subscribe().filter_map(move |event| {
-            EventObject::match_and_map_event(&input_keys, event)
-                .map(|value_mapping| Ok(Value::Object(value_mapping)))
-        })
-    }
-
-    fn match_and_map_event(input_keys: &Option<Vec<String>>, event: Event) -> Option<ValueMapping> {
+    fn match_and_map_event(
+        input_keys: &Option<Vec<String>>,
+        event: <EventUpdate as InnerType>::Inner,
+    ) -> Option<ValueMapping> {
         if let Some(ref keys) = input_keys {
             if EventObject::match_keys(keys, &event) {
                 return Some(EventObject::value_mapping(event));
@@ -108,19 +126,13 @@ impl EventObject {
 
     // Checks if the provided keys match the event's keys, allowing '*' as a wildcard. Returns true
     // if all keys match or if a wildcard is present at the respective position.
-    pub fn match_keys(input_keys: &[String], event: &Event) -> bool {
-        let event_keys: Vec<&str> = event
-            .keys
-            .split(SQL_FELT_DELIMITER)
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        if input_keys.len() > event_keys.len() {
+    pub fn match_keys(input_keys: &[String], event: &<EventUpdate as InnerType>::Inner) -> bool {
+        if input_keys.len() > event.event.keys.len() {
             return false;
         }
 
-        for (input_key, event_key) in input_keys.iter().zip(event_keys.iter()) {
-            if input_key != "*" && input_key != event_key {
+        for (input_key, event_key) in input_keys.iter().zip(event.event.keys.iter()) {
+            if input_key != "*" && Felt::from_str(input_key).unwrap() != *event_key {
                 return false;
             }
         }

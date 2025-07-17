@@ -1,11 +1,10 @@
 use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use crypto_bigint::{Encoding, U256};
+use crypto_bigint::U256;
 use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use rand::Rng;
@@ -14,12 +13,12 @@ use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
 use torii_broker::MemoryBroker;
-use torii_sqlite::error::{Error, ParseError};
-use torii_sqlite::types::OptimisticToken;
 use tracing::{error, trace};
 
-use torii_proto::proto::types::Token;
+use torii_broker::types::TokenUpdate;
 use torii_proto::proto::world::SubscribeTokensResponse;
+
+use crate::GrpcConfig;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::token";
 
@@ -38,14 +37,14 @@ pub struct TokenSubscriber {
 #[derive(Debug, Default)]
 pub struct TokenManager {
     subscribers: DashMap<u64, TokenSubscriber>,
-    subscription_buffer_size: usize,
+    config: GrpcConfig,
 }
 
 impl TokenManager {
-    pub fn new(subscription_buffer_size: usize) -> Self {
+    pub fn new(config: GrpcConfig) -> Self {
         Self {
             subscribers: DashMap::new(),
-            subscription_buffer_size,
+            config,
         }
     }
 
@@ -53,9 +52,9 @@ impl TokenManager {
         &self,
         contract_addresses: Vec<Felt>,
         token_ids: Vec<U256>,
-    ) -> Result<Receiver<Result<SubscribeTokensResponse, tonic::Status>>, Error> {
+    ) -> Receiver<Result<SubscribeTokensResponse, tonic::Status>> {
         let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(self.subscription_buffer_size);
+        let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
         // Send initial empty response
         let _ = sender
@@ -74,7 +73,7 @@ impl TokenManager {
             },
         );
 
-        Ok(receiver)
+        receiver
     }
 
     pub async fn update_subscriber(
@@ -97,15 +96,15 @@ impl TokenManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = OptimisticToken> + Send>>,
-    token_sender: UnboundedSender<OptimisticToken>,
+    simple_broker: Pin<Box<dyn Stream<Item = TokenUpdate> + Send>>,
+    token_sender: UnboundedSender<TokenUpdate>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<TokenManager>) -> Self {
         let (token_sender, token_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<OptimisticToken>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<TokenUpdate>::subscribe()),
             token_sender,
         };
 
@@ -116,50 +115,43 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<TokenManager>,
-        mut token_receiver: UnboundedReceiver<OptimisticToken>,
+        mut token_receiver: UnboundedReceiver<TokenUpdate>,
     ) {
         while let Some(token) = token_receiver.recv().await {
-            if let Err(e) = Self::process_token_update(&subs, &token).await {
-                error!(target = LOG_TARGET, error = ?e, "Processing token update.");
+            if token.optimistic != subs.config.optimistic {
+                continue;
             }
+
+            Self::process_token_update(&subs, &token).await;
         }
     }
 
-    async fn process_token_update(
-        subs: &Arc<TokenManager>,
-        token: &OptimisticToken,
-    ) -> Result<(), Error> {
+    async fn process_token_update(subs: &Arc<TokenManager>, update: &TokenUpdate) {
         let mut closed_stream = Vec::new();
-        let contract_address =
-            Felt::from_str(&token.contract_address).map_err(ParseError::FromStr)?;
-        let token_id = U256::from_be_hex(token.token_id.trim_start_matches("0x"));
 
+        let token = update.clone().into_inner();
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
             let sub = sub.value();
 
             // Skip if contract address filter doesn't match
             if !sub.contract_addresses.is_empty()
-                && !sub.contract_addresses.contains(&contract_address)
+                && !sub.contract_addresses.contains(&token.contract_address)
             {
                 continue;
             }
 
             // Skip if token ID filter doesn't match
-            if !sub.token_ids.is_empty() && !sub.token_ids.contains(&token_id) {
+            if !sub.token_ids.is_empty()
+                && token.token_id.is_some()
+                && !sub.token_ids.contains(&token.token_id.unwrap())
+            {
                 continue;
             }
 
             let resp = SubscribeTokensResponse {
                 subscription_id: *idx,
-                token: Some(Token {
-                    token_id: token_id.to_be_bytes().to_vec(),
-                    contract_address: contract_address.to_bytes_be().to_vec(),
-                    name: token.name.clone(),
-                    symbol: token.symbol.clone(),
-                    decimals: token.decimals as u32,
-                    metadata: token.metadata.as_bytes().to_vec(),
-                }),
+                token: Some(token.clone().into()),
             };
 
             // Use try_send to avoid blocking on slow subscribers
@@ -183,8 +175,6 @@ impl Service {
             trace!(target = LOG_TARGET, id = %id, "Closing token stream.");
             subs.remove_subscriber(id).await
         }
-
-        Ok(())
     }
 }
 
