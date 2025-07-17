@@ -59,7 +59,7 @@ use torii_proto::Message;
 
 use anyhow::{anyhow, Error};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DojoWorld<P: Provider + Sync> {
     storage: Arc<dyn Storage>,
     provider: Arc<P>,
@@ -73,6 +73,8 @@ pub struct DojoWorld<P: Provider + Sync> {
     token_manager: Arc<TokenManager>,
     transaction_manager: Arc<TransactionManager>,
     _config: GrpcConfig,
+    // Keep runtime alive
+    _subscriptions_runtime: tokio::runtime::Runtime,
 }
 
 impl<P: Provider + Sync> DojoWorld<P> {
@@ -91,31 +93,40 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let token_manager = Arc::new(TokenManager::new(config.clone()));
         let transaction_manager = Arc::new(TransactionManager::new(config.clone()));
 
-        tokio::task::spawn(subscriptions::entity::Service::new(Arc::clone(
+        // Create a separate runtime for subscription processing
+        // This isolates subscription work from gRPC request handling
+        let subscriptions_runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(num_cpus::get().min(4)) // Dedicated threads for subscriptions
+            .thread_name("torii-grpc-subscriptions")
+            .build()
+            .expect("Failed to create subscriptions runtime");
+
+        // Spawn subscription services on the dedicated runtime
+        subscriptions_runtime.spawn(subscriptions::entity::Service::new(Arc::clone(
             &entity_manager,
         )));
 
-        tokio::task::spawn(subscriptions::event_message::Service::new(Arc::clone(
+        subscriptions_runtime.spawn(subscriptions::event_message::Service::new(Arc::clone(
             &event_message_manager,
         )));
 
-        tokio::task::spawn(subscriptions::event::Service::new(Arc::clone(
+        subscriptions_runtime.spawn(subscriptions::event::Service::new(Arc::clone(
             &event_manager,
         )));
 
-        tokio::task::spawn(subscriptions::indexer::Service::new(Arc::clone(
+        subscriptions_runtime.spawn(subscriptions::indexer::Service::new(Arc::clone(
             &indexer_manager,
         )));
 
-        tokio::task::spawn(subscriptions::token_balance::Service::new(Arc::clone(
+        subscriptions_runtime.spawn(subscriptions::token_balance::Service::new(Arc::clone(
             &token_balance_manager,
         )));
 
-        tokio::task::spawn(subscriptions::token::Service::new(Arc::clone(
+        subscriptions_runtime.spawn(subscriptions::token::Service::new(Arc::clone(
             &token_manager,
         )));
 
-        tokio::task::spawn(subscriptions::transaction::Service::new(Arc::clone(
+        subscriptions_runtime.spawn(subscriptions::transaction::Service::new(Arc::clone(
             &transaction_manager,
         )));
 
@@ -132,6 +143,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             token_manager,
             transaction_manager,
             _config: config,
+            _subscriptions_runtime: subscriptions_runtime,
         }
     }
 }
