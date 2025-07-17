@@ -7,7 +7,7 @@ message World {
     // The hex-encoded address of the world.
     string world_address = 1;
     // A list of metadata for all registered components in the world. 
-    repeated Model models = 5;
+    repeated Model models = 2;
 }
 
 message Model {
@@ -35,7 +35,7 @@ message Entity {
     // The entity's hashed keys
     bytes hashed_keys = 1;
     // Models of the entity
-    repeated Struct models = 5;
+    repeated Struct models = 2;
 }
 
 message Event {
