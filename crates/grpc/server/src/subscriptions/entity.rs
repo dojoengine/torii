@@ -14,6 +14,8 @@ use tokio::sync::mpsc::{
 use torii_broker::{types::EntityUpdate, MemoryBroker};
 use tracing::{error, trace};
 
+use crate::GrpcConfig;
+
 use super::match_entity;
 use torii_proto::proto::world::SubscribeEntityResponse;
 use torii_proto::Clause;
@@ -30,14 +32,14 @@ pub struct EntitiesSubscriber {
 #[derive(Debug, Default)]
 pub struct EntityManager {
     subscribers: DashMap<u64, EntitiesSubscriber>,
-    subscription_buffer_size: usize,
+    config: GrpcConfig,
 }
 
 impl EntityManager {
-    pub fn new(subscription_buffer_size: usize) -> Self {
+    pub fn new(config: GrpcConfig) -> Self {
         Self {
             subscribers: DashMap::new(),
-            subscription_buffer_size,
+            config,
         }
     }
 
@@ -46,7 +48,7 @@ impl EntityManager {
         clause: Option<Clause>,
     ) -> Receiver<Result<SubscribeEntityResponse, tonic::Status>> {
         let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(self.subscription_buffer_size);
+        let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from
@@ -99,8 +101,12 @@ impl Service {
         subs: Arc<EntityManager>,
         mut entity_receiver: UnboundedReceiver<EntityUpdate>,
     ) {
-        while let Some(entity) = entity_receiver.recv().await {
-            Self::process_entity_update(&subs, &entity).await;
+        while let Some(update) = entity_receiver.recv().await {
+            if update.optimistic != subs.config.optimistic {
+                continue;
+            }
+
+            Self::process_entity_update(&subs, &update).await;
         }
     }
 

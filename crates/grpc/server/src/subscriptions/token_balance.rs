@@ -18,6 +18,8 @@ use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeTokenBalancesResponse;
 
+use crate::GrpcConfig;
+
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::balance";
 
 #[derive(Debug)]
@@ -38,14 +40,14 @@ pub struct TokenBalanceSubscriber {
 #[derive(Debug, Default)]
 pub struct TokenBalanceManager {
     subscribers: DashMap<u64, TokenBalanceSubscriber>,
-    subscription_buffer_size: usize,
+    config: GrpcConfig,
 }
 
 impl TokenBalanceManager {
-    pub fn new(subscription_buffer_size: usize) -> Self {
+    pub fn new(config: GrpcConfig) -> Self {
         Self {
             subscribers: DashMap::new(),
-            subscription_buffer_size,
+            config,
         }
     }
 
@@ -56,7 +58,7 @@ impl TokenBalanceManager {
         token_ids: Vec<U256>,
     ) -> Receiver<Result<SubscribeTokenBalancesResponse, tonic::Status>> {
         let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(self.subscription_buffer_size);
+        let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
         // Send initial empty response
         let _ = sender
@@ -123,6 +125,10 @@ impl Service {
         mut balance_receiver: UnboundedReceiver<TokenBalanceUpdated>,
     ) {
         while let Some(balance) = balance_receiver.recv().await {
+            if balance.optimistic != subs.config.optimistic {
+                continue;
+            }
+
             Self::process_balance_update(&subs, &balance).await;
         }
     }

@@ -507,6 +507,16 @@ pub struct GrpcOptions {
         help = "The buffer size for the subscription channel."
     )]
     pub subscription_buffer_size: usize,
+
+    /// Whether or not to broadcast optimistic updates to the subscribers.
+    #[arg(
+        long = "grpc.optimistic",
+        default_value_t = false,
+        help = "Whether or not to broadcast optimistic updates to the subscribers. If enabled, \
+                the subscribers will receive optimistic updates for the events that are not yet \
+                committed to the database."
+    )]
+    pub optimistic: bool,
 }
 
 // Parses clap cli argument which is expected to be in the format:

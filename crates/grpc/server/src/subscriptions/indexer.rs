@@ -18,6 +18,8 @@ use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeIndexerResponse;
 
+use crate::GrpcConfig;
+
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::indexer";
 
 #[derive(Debug)]
@@ -31,14 +33,14 @@ pub struct IndexerSubscriber {
 #[derive(Debug, Default)]
 pub struct IndexerManager {
     subscribers: DashMap<usize, IndexerSubscriber>,
-    subscription_buffer_size: usize,
+    config: GrpcConfig,
 }
 
 impl IndexerManager {
-    pub fn new(subscription_buffer_size: usize) -> Self {
+    pub fn new(config: GrpcConfig) -> Self {
         Self {
             subscribers: DashMap::new(),
-            subscription_buffer_size,
+            config,
         }
     }
 
@@ -48,7 +50,7 @@ impl IndexerManager {
         contract_address: Felt,
     ) -> Result<Receiver<Result<SubscribeIndexerResponse, tonic::Status>>, StorageError> {
         let id = rand::thread_rng().gen::<usize>();
-        let (sender, receiver) = channel(self.subscription_buffer_size);
+        let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
         let contracts = storage.cursors().await?;
         for (contract_address, contract) in contracts {
@@ -102,6 +104,10 @@ impl Service {
         mut update_receiver: UnboundedReceiver<ContractUpdate>,
     ) {
         while let Some(update) = update_receiver.recv().await {
+            if update.optimistic != subs.config.optimistic {
+                continue;
+            }
+
             Self::process_update(&subs, &update).await;
         }
     }

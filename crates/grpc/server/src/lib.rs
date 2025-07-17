@@ -83,16 +83,13 @@ impl<P: Provider + Sync> DojoWorld<P> {
         cross_messaging_tx: Option<UnboundedSender<Message>>,
         config: GrpcConfig,
     ) -> Self {
-        let entity_manager = Arc::new(EntityManager::new(config.subscription_buffer_size));
-        let event_message_manager =
-            Arc::new(EventMessageManager::new(config.subscription_buffer_size));
-        let event_manager = Arc::new(EventManager::new(config.subscription_buffer_size));
-        let indexer_manager = Arc::new(IndexerManager::new(config.subscription_buffer_size));
-        let token_balance_manager =
-            Arc::new(TokenBalanceManager::new(config.subscription_buffer_size));
-        let token_manager = Arc::new(TokenManager::new(config.subscription_buffer_size));
-        let transaction_manager =
-            Arc::new(TransactionManager::new(config.subscription_buffer_size));
+        let entity_manager = Arc::new(EntityManager::new(config.clone()));
+        let event_message_manager = Arc::new(EventMessageManager::new(config.clone()));
+        let event_manager = Arc::new(EventManager::new(config.clone()));
+        let indexer_manager = Arc::new(IndexerManager::new(config.clone()));
+        let token_balance_manager = Arc::new(TokenBalanceManager::new(config.clone()));
+        let token_manager = Arc::new(TokenManager::new(config.clone()));
+        let transaction_manager = Arc::new(TransactionManager::new(config.clone()));
 
         tokio::task::spawn(subscriptions::entity::Service::new(Arc::clone(
             &entity_manager,
@@ -736,12 +733,14 @@ const DEFAULT_ALLOW_HEADERS: [&str; 6] = [
 #[derive(Clone, Debug)]
 pub struct GrpcConfig {
     pub subscription_buffer_size: usize,
+    pub optimistic: bool,
 }
 
 impl Default for GrpcConfig {
     fn default() -> Self {
         Self {
             subscription_buffer_size: 1000,
+            optimistic: false,
         }
     }
 }

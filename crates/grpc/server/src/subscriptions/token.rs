@@ -18,6 +18,8 @@ use tracing::{error, trace};
 use torii_broker::types::TokenRegistered;
 use torii_proto::proto::world::SubscribeTokensResponse;
 
+use crate::GrpcConfig;
+
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::token";
 
 #[derive(Debug)]
@@ -35,14 +37,14 @@ pub struct TokenSubscriber {
 #[derive(Debug, Default)]
 pub struct TokenManager {
     subscribers: DashMap<u64, TokenSubscriber>,
-    subscription_buffer_size: usize,
+    config: GrpcConfig,
 }
 
 impl TokenManager {
-    pub fn new(subscription_buffer_size: usize) -> Self {
+    pub fn new(config: GrpcConfig) -> Self {
         Self {
             subscribers: DashMap::new(),
-            subscription_buffer_size,
+            config,
         }
     }
 
@@ -52,7 +54,7 @@ impl TokenManager {
         token_ids: Vec<U256>,
     ) -> Receiver<Result<SubscribeTokensResponse, tonic::Status>> {
         let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(self.subscription_buffer_size);
+        let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
         // Send initial empty response
         let _ = sender
@@ -116,6 +118,10 @@ impl Service {
         mut token_receiver: UnboundedReceiver<TokenRegistered>,
     ) {
         while let Some(token) = token_receiver.recv().await {
+            if token.optimistic != subs.config.optimistic {
+                continue;
+            }
+
             Self::process_token_update(&subs, &token).await;
         }
     }

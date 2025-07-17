@@ -18,6 +18,8 @@ use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeEntityResponse;
 
+use crate::GrpcConfig;
+
 use super::match_entity;
 
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::event_message";
@@ -33,14 +35,14 @@ pub struct EventMessageSubscriber {
 #[derive(Debug, Default)]
 pub struct EventMessageManager {
     subscribers: DashMap<u64, EventMessageSubscriber>,
-    subscription_buffer_size: usize,
+    config: GrpcConfig,
 }
 
 impl EventMessageManager {
-    pub fn new(subscription_buffer_size: usize) -> Self {
+    pub fn new(config: GrpcConfig) -> Self {
         Self {
             subscribers: DashMap::new(),
-            subscription_buffer_size,
+            config,
         }
     }
 
@@ -49,7 +51,7 @@ impl EventMessageManager {
         clause: Option<Clause>,
     ) -> Receiver<Result<SubscribeEntityResponse, tonic::Status>> {
         let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(self.subscription_buffer_size);
+        let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from
@@ -103,6 +105,10 @@ impl Service {
         mut event_receiver: UnboundedReceiver<EventMessageUpdate>,
     ) {
         while let Some(event) = event_receiver.recv().await {
+            if event.optimistic != subs.config.optimistic {
+                continue;
+            }
+
             Self::process_event_update(&subs, &event).await;
         }
     }

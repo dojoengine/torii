@@ -15,6 +15,8 @@ use torii_broker::MemoryBroker;
 use torii_proto::KeysClause;
 use tracing::{error, trace};
 
+use crate::GrpcConfig;
+
 use super::match_keys;
 use torii_proto::proto::types::Event as ProtoEvent;
 use torii_proto::proto::world::SubscribeEventsResponse;
@@ -32,14 +34,14 @@ pub struct EventSubscriber {
 #[derive(Debug, Default)]
 pub struct EventManager {
     subscribers: DashMap<usize, EventSubscriber>,
-    subscription_buffer_size: usize,
+    config: GrpcConfig,
 }
 
 impl EventManager {
-    pub fn new(subscription_buffer_size: usize) -> Self {
+    pub fn new(config: GrpcConfig) -> Self {
         Self {
             subscribers: DashMap::new(),
-            subscription_buffer_size,
+            config,
         }
     }
 
@@ -48,7 +50,7 @@ impl EventManager {
         keys: Vec<KeysClause>,
     ) -> Receiver<Result<SubscribeEventsResponse, tonic::Status>> {
         let id = rand::thread_rng().gen::<usize>();
-        let (sender, receiver) = channel(self.subscription_buffer_size);
+        let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from
@@ -93,6 +95,10 @@ impl Service {
         mut event_receiver: UnboundedReceiver<EventEmitted>,
     ) {
         while let Some(event) = event_receiver.recv().await {
+            if event.optimistic != subs.config.optimistic {
+                continue;
+            }
+
             Self::process_event(&subs, &event).await;
         }
     }

@@ -17,6 +17,8 @@ use tracing::{error, trace};
 use torii_proto::proto::world::SubscribeTransactionsResponse;
 use torii_proto::TransactionFilter;
 
+use crate::GrpcConfig;
+
 pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::transaction";
 
 #[derive(Debug)]
@@ -30,14 +32,14 @@ pub struct TransactionSubscriber {
 #[derive(Debug, Default)]
 pub struct TransactionManager {
     subscribers: DashMap<usize, TransactionSubscriber>,
-    subscription_buffer_size: usize,
+    config: GrpcConfig,
 }
 
 impl TransactionManager {
-    pub fn new(subscription_buffer_size: usize) -> Self {
+    pub fn new(config: GrpcConfig) -> Self {
         Self {
             subscribers: DashMap::new(),
-            subscription_buffer_size,
+            config,
         }
     }
 
@@ -47,7 +49,7 @@ impl TransactionManager {
         filter: Option<TransactionFilter>,
     ) -> Receiver<Result<SubscribeTransactionsResponse, tonic::Status>> {
         let id = rand::thread_rng().gen::<usize>();
-        let (sender, receiver) = channel(self.subscription_buffer_size);
+        let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
         // NOTE: unlock issue with firefox/safari
         // initially send empty stream message to return from
@@ -92,6 +94,10 @@ impl Service {
         mut transaction_receiver: UnboundedReceiver<Transaction>,
     ) {
         while let Some(transaction) = transaction_receiver.recv().await {
+            if transaction.optimistic != subs.config.optimistic {
+                continue;
+            }
+
             Self::process_transaction(&subs, &transaction).await;
         }
     }
