@@ -77,15 +77,10 @@ impl ResolvableObject for EntityObject {
                     // if id is None, then subscribe to all entities
                     // if id is Some, then subscribe to only the entity with that id
                     Ok(MemoryBroker::<EntityUpdate>::subscribe()
-                        .then(move |update: EntityUpdate| {
+                        .then(move |entity| {
                             let pool = pool.clone();
                             let id = id.clone();
                             async move {
-                                if update.optimistic {
-                                    return None;
-                                }
-
-                                let entity = update.into_inner();
                                 let entity_id = format!("{:#x}", entity.entity.hashed_keys);
                                 if id.is_none() || id == Some(entity_id.clone()) {
                                     let mut conn = match pool.acquire().await {

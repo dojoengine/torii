@@ -12,6 +12,7 @@ use tokio::sync::mpsc::{
 };
 use torii_broker::types::ContractUpdate;
 use torii_broker::MemoryBroker;
+use torii_proto::ContractCursor;
 use torii_storage::Storage;
 use torii_storage::StorageError;
 use tracing::{error, trace};
@@ -82,15 +83,19 @@ impl IndexerManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = ContractUpdate> + Send>>,
-    update_sender: UnboundedSender<ContractUpdate>,
+    simple_broker: Pin<Box<dyn Stream<Item = ContractCursor> + Send>>,
+    update_sender: UnboundedSender<ContractCursor>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<IndexerManager>) -> Self {
         let (update_sender, update_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<ContractUpdate>::subscribe()),
+            simple_broker: if subs_manager.config.optimistic {
+                Box::pin(MemoryBroker::<ContractUpdate>::subscribe_optimistic())
+            } else {
+                Box::pin(MemoryBroker::<ContractUpdate>::subscribe())
+            },
             update_sender,
         };
 
@@ -101,20 +106,15 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<IndexerManager>,
-        mut update_receiver: UnboundedReceiver<ContractUpdate>,
+        mut update_receiver: UnboundedReceiver<ContractCursor>,
     ) {
         while let Some(update) = update_receiver.recv().await {
-            if update.optimistic != subs.config.optimistic {
-                continue;
-            }
-
             Self::process_update(&subs, &update).await;
         }
     }
 
-    async fn process_update(subs: &Arc<IndexerManager>, update: &ContractUpdate) {
+    async fn process_update(subs: &Arc<IndexerManager>, contract: &ContractCursor) {
         let mut closed_stream = Vec::new();
-        let contract = update.clone().into_inner();
 
         for sub in subs.subscribers.iter() {
             let idx = sub.key();

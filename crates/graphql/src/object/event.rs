@@ -53,17 +53,12 @@ impl ResolvableObject for EventObject {
             |ctx| {
                 SubscriptionFieldFuture::new(async move {
                     let input_keys = parse_keys_argument(&ctx)?;
-                    Ok(MemoryBroker::<EventUpdate>::subscribe().filter_map(
-                        move |event_update: EventUpdate| {
-                            if event_update.optimistic {
-                                return None;
-                            }
-
-                            let event = event_update.into_inner();
+                    Ok(
+                        MemoryBroker::<EventUpdate>::subscribe().filter_map(move |event| {
                             EventObject::match_and_map_event(&input_keys, event)
                                 .map(|value_mapping| Ok(Value::Object(value_mapping)))
-                        },
-                    ))
+                        }),
+                    )
                 })
             },
         )

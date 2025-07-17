@@ -105,16 +105,11 @@ impl ResolvableObject for TransactionObject {
                     // if hash is None, then subscribe to all transactions
                     // if hash is Some, then subscribe to only the transaction with that hash
                     Ok(MemoryBroker::<TransactionUpdate>::subscribe()
-                        .then(move |transaction_update: TransactionUpdate| {
+                        .then(move |transaction| {
                             let pool = pool.clone();
                             let hash = hash.clone();
                             let caller = caller.clone();
                             async move {
-                                if transaction_update.optimistic {
-                                    return None;
-                                }
-
-                                let transaction = transaction_update.into_inner();
                                 let transaction_hash =
                                     format!("{:#x}", transaction.transaction_hash);
                                 if (hash.is_none() || hash == Some(transaction_hash.clone()))

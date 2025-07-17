@@ -12,6 +12,7 @@ use tokio::sync::mpsc::{
 };
 use torii_broker::types::EventUpdate;
 use torii_broker::MemoryBroker;
+use torii_proto::EventWithMetadata;
 use torii_proto::KeysClause;
 use tracing::{error, trace};
 
@@ -73,15 +74,19 @@ impl EventManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = EventUpdate> + Send>>,
-    event_sender: UnboundedSender<EventUpdate>,
+    simple_broker: Pin<Box<dyn Stream<Item = EventWithMetadata> + Send>>,
+    event_sender: UnboundedSender<EventWithMetadata>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<EventManager>) -> Self {
         let (event_sender, event_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<EventUpdate>::subscribe()),
+            simple_broker: if subs_manager.config.optimistic {
+                Box::pin(MemoryBroker::<EventUpdate>::subscribe_optimistic())
+            } else {
+                Box::pin(MemoryBroker::<EventUpdate>::subscribe())
+            },
             event_sender,
         };
 
@@ -92,21 +97,17 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<EventManager>,
-        mut event_receiver: UnboundedReceiver<EventUpdate>,
+        mut event_receiver: UnboundedReceiver<EventWithMetadata>,
     ) {
         while let Some(event) = event_receiver.recv().await {
-            if event.optimistic != subs.config.optimistic {
-                continue;
-            }
-
             Self::process_event(&subs, &event).await;
         }
     }
 
-    async fn process_event(subs: &Arc<EventManager>, update: &EventUpdate) {
+    async fn process_event(subs: &Arc<EventManager>, event: &EventWithMetadata) {
         let mut closed_stream = Vec::new();
 
-        let event = update.clone().into_inner().event;
+        let event = event.event.clone();
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
             let sub = sub.value();

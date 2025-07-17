@@ -15,6 +15,7 @@ use torii_broker::MemoryBroker;
 use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeTransactionsResponse;
+use torii_proto::Transaction;
 use torii_proto::TransactionFilter;
 
 use crate::GrpcConfig;
@@ -72,15 +73,19 @@ impl TransactionManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = TransactionUpdate> + Send>>,
-    transaction_sender: UnboundedSender<TransactionUpdate>,
+    simple_broker: Pin<Box<dyn Stream<Item = Transaction> + Send>>,
+    transaction_sender: UnboundedSender<Transaction>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<TransactionManager>) -> Self {
         let (transaction_sender, transaction_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<TransactionUpdate>::subscribe()),
+            simple_broker: if subs_manager.config.optimistic {
+                Box::pin(MemoryBroker::<TransactionUpdate>::subscribe_optimistic())
+            } else {
+                Box::pin(MemoryBroker::<TransactionUpdate>::subscribe())
+            },
             transaction_sender,
         };
 
@@ -91,21 +96,16 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<TransactionManager>,
-        mut transaction_receiver: UnboundedReceiver<TransactionUpdate>,
+        mut transaction_receiver: UnboundedReceiver<Transaction>,
     ) {
         while let Some(transaction) = transaction_receiver.recv().await {
-            if transaction.optimistic != subs.config.optimistic {
-                continue;
-            }
-
             Self::process_transaction(&subs, &transaction).await;
         }
     }
 
-    async fn process_transaction(subs: &Arc<TransactionManager>, update: &TransactionUpdate) {
+    async fn process_transaction(subs: &Arc<TransactionManager>, transaction: &Transaction) {
         let mut closed_stream = Vec::new();
 
-        let transaction = update.clone().into_inner();
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
             let sub = sub.value();
