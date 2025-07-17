@@ -108,7 +108,6 @@ impl ResolvableObject for ErcBalanceObject {
                     Ok(MemoryBroker::<TokenBalanceUpdate>::subscribe()
                         .then(move |token_balance| {
                             let token_balance = token_balance.into_inner();
-                            let address = address.clone();
                             let pool = pool.clone();
                             async move {
                                 // Filter by account address if provided

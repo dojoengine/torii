@@ -133,10 +133,7 @@ impl Service {
         }
     }
 
-    async fn process_balance_update(
-        subs: &Arc<TokenBalanceManager>,
-        balance: &TokenBalanceUpdate,
-    ) {
+    async fn process_balance_update(subs: &Arc<TokenBalanceManager>, balance: &TokenBalanceUpdate) {
         let mut closed_stream = Vec::new();
         let balance = balance.clone().into_inner();
 

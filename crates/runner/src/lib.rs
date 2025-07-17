@@ -37,7 +37,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
-use torii_broker::types::ModelRegistered;
+use torii_broker::types::ModelUpdate;
 use torii_broker::MemoryBroker;
 use torii_cache::InMemoryCache;
 use torii_cli::ToriiArgs;
@@ -547,11 +547,8 @@ async fn spawn_rebuilding_graphql_server(
     pool: Arc<SqlitePool>,
     proxy_server: Arc<Proxy>,
 ) {
-    let mut broker = MemoryBroker::<ModelRegistered>::subscribe().filter(
-        move |update: &ModelRegistered| {
-            !update.optimistic
-        },
-    );
+    let mut broker = MemoryBroker::<ModelUpdate>::subscribe()
+        .filter(move |update: &ModelUpdate| !update.optimistic);
 
     loop {
         let shutdown_rx = shutdown_tx.subscribe();

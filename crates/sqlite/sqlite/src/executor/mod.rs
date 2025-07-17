@@ -17,7 +17,8 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 use torii_broker::types::{
-    ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType, ModelUpdate, TokenBalanceUpdate, TokenUpdate, TransactionUpdate, Update
+    ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType, ModelUpdate,
+    TokenBalanceUpdate, TokenUpdate, TransactionUpdate, Update,
 };
 use torii_math::I256;
 use torii_proto::{ContractCursor, TransactionCall};
