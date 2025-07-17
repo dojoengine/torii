@@ -12,6 +12,10 @@ impl<T> Update<T> {
     pub fn into_inner(self) -> T {
         self.inner
     }
+
+    pub fn is_optimistic(&self) -> bool {
+        self.optimistic
+    }
 }
 
 impl<T> From<T> for Update<T> {

@@ -9,35 +9,37 @@ use futures_util::{Stream, StreamExt};
 use once_cell::sync::Lazy;
 use slab::Slab;
 
+use crate::types::Update;
+
 static SUBSCRIBERS: Lazy<DashMap<TypeId, Box<dyn Any + Send + Sync>>> = Lazy::new(Default::default);
 
 #[derive(Debug)]
-pub struct Senders<T: std::fmt::Debug>(pub Slab<UnboundedSender<T>>);
+pub struct Senders<U: std::fmt::Debug + Clone + Send + Sync + 'static>(pub Slab<UnboundedSender<U>>);
 
-struct BrokerStream<T: Sync + Send + Clone + std::fmt::Debug + 'static>(
+struct BrokerStream<U: std::fmt::Debug + Clone + Send + Sync + 'static>(
     usize,
-    UnboundedReceiver<T>,
+    UnboundedReceiver<U>,
 );
 
-fn with_senders<T, F, R>(f: F) -> R
+fn with_senders<U, F, R>(f: F) -> R
 where
-    T: Sync + Send + Clone + std::fmt::Debug + 'static,
-    F: FnOnce(&mut Senders<T>) -> R,
+    U: std::fmt::Debug + Clone + Send + Sync + 'static,
+    F: FnOnce(&mut Senders<U>) -> R,
 {
     let mut senders = SUBSCRIBERS
-        .entry(TypeId::of::<Senders<T>>())
-        .or_insert_with(|| Box::new(Senders::<T>(Default::default())));
-    f(senders.downcast_mut::<Senders<T>>().unwrap())
+        .entry(TypeId::of::<Senders<U>>())
+        .or_insert_with(|| Box::new(Senders::<U>(Default::default())));
+    f(senders.downcast_mut::<Senders<U>>().unwrap())
 }
 
-impl<T: Sync + Send + Clone + std::fmt::Debug + 'static> Drop for BrokerStream<T> {
+impl<U: std::fmt::Debug + Clone + Send + Sync + 'static> Drop for BrokerStream<U> {
     fn drop(&mut self) {
-        with_senders::<T, _, _>(|senders| senders.0.remove(self.0));
+        with_senders::<U, _, _>(|senders| senders.0.remove(self.0));
     }
 }
 
-impl<T: Sync + Send + Clone + std::fmt::Debug + 'static> Stream for BrokerStream<T> {
-    type Item = T;
+impl<U: std::fmt::Debug + Clone + Send + Sync + 'static> Stream for BrokerStream<U> {
+    type Item = U;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.1.poll_next_unpin(cx)
@@ -45,33 +47,55 @@ impl<T: Sync + Send + Clone + std::fmt::Debug + 'static> Stream for BrokerStream
 }
 
 #[derive(Debug)]
-/// A simple broker based on memory
-pub struct MemoryBroker<T>(PhantomData<T>);
+/// A simple broker based on memory that works with Update<T> types
+pub struct MemoryBroker<U>(PhantomData<U>)
+where
+    U: std::fmt::Debug + Clone + Send + Sync + 'static;
 
-impl<T: Sync + Send + Clone + std::fmt::Debug + 'static> MemoryBroker<T> {
-    /// Publish a message that all subscription streams can receive.
-    pub fn publish(msg: T) {
-        with_senders::<T, _, _>(|senders| {
+impl<T> MemoryBroker<Update<T>>
+where
+    T: std::fmt::Debug + Clone + Send + Sync + 'static,
+{
+    /// Publish an update message that all subscription streams can receive.
+    pub fn publish(msg: Update<T>) {
+        with_senders::<Update<T>, _, _>(|senders| {
             for (_, sender) in senders.0.iter_mut() {
                 sender.start_send(msg.clone()).ok();
             }
         });
     }
 
-    /// Subscribe to the message of the specified type and returns a `Stream`.
-    pub fn subscribe() -> impl Stream<Item = T> {
-        with_senders::<T, _, _>(|senders| {
+    /// Subscribe to all update messages and returns a `Stream`.
+    pub fn subscribe() -> impl Stream<Item = Update<T>> {
+        with_senders::<Update<T>, _, _>(|senders| {
             let (tx, rx) = mpsc::unbounded();
             let id = senders.0.insert(tx);
             BrokerStream(id, rx)
         })
     }
 
+    /// Subscribe to only optimistic update messages and returns a `Stream`.
+    pub fn subscribe_optimistic() -> impl Stream<Item = Update<T>> {
+        Self::subscribe().filter(|update| futures_util::future::ready(update.is_optimistic()))
+    }
+
+    /// Subscribe to only non-optimistic (confirmed) update messages and returns a `Stream`.
+    pub fn subscribe_non_optimistic() -> impl Stream<Item = Update<T>> {
+        Self::subscribe().filter(|update| futures_util::future::ready(!update.is_optimistic()))
+    }
+
+    /// Subscribe to messages with a custom filter predicate.
+    pub fn subscribe_with_filter<F>(filter: F) -> impl Stream<Item = Update<T>>
+    where
+        F: Fn(&Update<T>) -> bool + Send + Sync + 'static,
+    {
+        Self::subscribe().filter(move |update| futures_util::future::ready(filter(update)))
+    }
+
     /// Execute the given function with the _subscribers_ of the specified subscription type.
     pub fn with_subscribers<F, R>(f: F) -> R
     where
-        T: Sync + Send + Clone + std::fmt::Debug + 'static,
-        F: FnOnce(&mut Senders<T>) -> R,
+        F: FnOnce(&mut Senders<Update<T>>) -> R,
     {
         with_senders(f)
     }
