@@ -67,8 +67,8 @@ where
         });
     }
 
-    /// Subscribe to all update messages and returns a `Stream`.
-    pub fn subscribe() -> impl Stream<Item = Update<T>> {
+    /// Subscribe to all updates, regardless if they're optimistic or not.
+    pub fn subscribe_all() -> impl Stream<Item = Update<T>> {
         with_senders::<Update<T>, _, _>(|senders| {
             let (tx, rx) = mpsc::unbounded();
             let id = senders.0.insert(tx);
@@ -76,22 +76,14 @@ where
         })
     }
 
+    /// Subscribe to non-optimistic update messages
+    pub fn subscribe() -> impl Stream<Item = Update<T>> {
+        Self::subscribe_all().filter(|u| futures_util::future::ready(!u.optimistic))
+    }
+
     /// Subscribe to only optimistic update messages and returns a `Stream`.
     pub fn subscribe_optimistic() -> impl Stream<Item = Update<T>> {
         Self::subscribe().filter(|update| futures_util::future::ready(update.is_optimistic()))
-    }
-
-    /// Subscribe to only non-optimistic (confirmed) update messages and returns a `Stream`.
-    pub fn subscribe_non_optimistic() -> impl Stream<Item = Update<T>> {
-        Self::subscribe().filter(|update| futures_util::future::ready(!update.is_optimistic()))
-    }
-
-    /// Subscribe to messages with a custom filter predicate.
-    pub fn subscribe_with_filter<F>(filter: F) -> impl Stream<Item = Update<T>>
-    where
-        F: Fn(&Update<T>) -> bool + Send + Sync + 'static,
-    {
-        Self::subscribe().filter(move |update| futures_util::future::ready(filter(update)))
     }
 
     /// Execute the given function with the _subscribers_ of the specified subscription type.

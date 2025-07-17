@@ -110,10 +110,6 @@ impl ResolvableObject for ErcBalanceObject {
                             let token_balance = update.clone().into_inner();
                             let pool = pool.clone();
                             async move {
-                                if update.optimistic {
-                                    return None;
-                                }
-
                                 // Filter by account address if provided
                                 if let Some(addr) = &address {
                                     if token_balance.account_address != *addr {

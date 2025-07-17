@@ -474,10 +474,6 @@ impl ResolvableObject for TokenObject {
                             let token = update.clone().into_inner();
                             let pool = pool.clone();
                             async move {
-                                if update.optimistic {
-                                    return None;
-                                }
-
                                 // Fetch complete token data including contract type
                                 let query = "SELECT t.*, c.contract_type 
                                                FROM tokens t 

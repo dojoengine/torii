@@ -81,10 +81,6 @@ impl ResolvableObject for EntityObject {
                             let pool = pool.clone();
                             let id = id.clone();
                             async move {
-                                if update.optimistic {
-                                    return None;
-                                }
-
                                 let entity = update.into_inner();
                                 let entity_id = format!("{:#x}", entity.entity.hashed_keys);
                                 if id.is_none() || id == Some(entity_id.clone()) {

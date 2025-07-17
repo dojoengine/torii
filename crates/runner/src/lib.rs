@@ -547,8 +547,7 @@ async fn spawn_rebuilding_graphql_server(
     pool: Arc<SqlitePool>,
     proxy_server: Arc<Proxy>,
 ) {
-    let mut broker = MemoryBroker::<ModelUpdate>::subscribe()
-        .filter(move |update: &ModelUpdate| !update.optimistic);
+    let mut broker = MemoryBroker::<ModelUpdate>::subscribe();
 
     loop {
         let shutdown_rx = shutdown_tx.subscribe();
