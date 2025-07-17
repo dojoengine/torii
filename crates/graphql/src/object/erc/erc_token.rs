@@ -471,9 +471,13 @@ impl ResolvableObject for TokenObject {
                     let pool = ctx.data::<Pool<Sqlite>>()?;
                     Ok(MemoryBroker::<TokenUpdate>::subscribe()
                         .then(move |update| {
-                            let token = update.into_inner();
+                            let token = update.clone().into_inner();
                             let pool = pool.clone();
                             async move {
+                                if update.optimistic {
+                                    return None;
+                                }
+
                                 // Fetch complete token data including contract type
                                 let query = "SELECT t.*, c.contract_type 
                                                FROM tokens t 
