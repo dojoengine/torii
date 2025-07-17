@@ -37,6 +37,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
+use torii_broker::types::ModelRegistered;
 use torii_broker::MemoryBroker;
 use torii_cache::InMemoryCache;
 use torii_cli::ToriiArgs;
@@ -48,7 +49,6 @@ use torii_libp2p_relay::Relay;
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::types::Model;
 use torii_sqlite::{Sql, SqlConfig};
 use torii_storage::proto::{Contract, ContractType};
 use tracing::{error, info, info_span, warn, Instrument, Span};
@@ -546,7 +546,7 @@ async fn spawn_rebuilding_graphql_server(
     pool: Arc<SqlitePool>,
     proxy_server: Arc<Proxy>,
 ) {
-    let mut broker = MemoryBroker::<Model>::subscribe();
+    let mut broker = MemoryBroker::<ModelRegistered>::subscribe();
 
     loop {
         let shutdown_rx = shutdown_tx.subscribe();
