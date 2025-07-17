@@ -55,6 +55,10 @@ impl ResolvableObject for EventObject {
                     let input_keys = parse_keys_argument(&ctx)?;
                     Ok(MemoryBroker::<EventEmitted>::subscribe().filter_map(
                         move |event_update: EventEmitted| {
+                            if event_update.optimistic {
+                                return None;
+                            }
+
                             let event = event_update.into_inner();
                             EventObject::match_and_map_event(&input_keys, event)
                                 .map(|value_mapping| Ok(Value::Object(value_mapping)))

@@ -83,6 +83,10 @@ impl ResolvableObject for EventMessageObject {
                         .then(move |update: EventMessageUpdate| {
                             let pool = pool.clone();
                             async move {
+                                if update.optimistic {
+                                    return None;
+                                }
+
                                 let entity = update.into_inner();
                                 if id.is_none() || id == Some(entity.entity.hashed_keys) {
                                     let mut conn = match pool.acquire().await {

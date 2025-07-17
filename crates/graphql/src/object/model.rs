@@ -106,6 +106,10 @@ impl ResolvableObject for ModelObject {
                                 let pool = pool.clone();
                                 let id = id.clone();
                                 async move {
+                                    if model_update.optimistic {
+                                        return None;
+                                    }
+
                                     let model = model_update.into_inner();
                                     let model_id = format!("{:#x}", model.selector);
                                     if id.is_none() || id == Some(model_id.clone()) {

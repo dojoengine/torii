@@ -110,6 +110,10 @@ impl ResolvableObject for TransactionObject {
                             let hash = hash.clone();
                             let caller = caller.clone();
                             async move {
+                                if transaction_update.optimistic {
+                                    return None;
+                                }
+
                                 let transaction = transaction_update.into_inner();
                                 let transaction_hash =
                                     format!("{:#x}", transaction.transaction_hash);
