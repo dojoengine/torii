@@ -7,7 +7,7 @@ pub const SQL_FELT_DELIMITER: &str = "/";
 pub const REQ_MAX_RETRIES: u8 = 3;
 
 pub const SQL_DEFAULT_LIMIT: u64 = 10000;
-pub const SQL_MAX_JOINS: usize = 60;
+pub const SQL_MAX_JOINS: usize = 64;
 
 pub const ENTITIES_TABLE: &str = "entities";
 pub const ENTITIES_MODEL_RELATION_TABLE: &str = "entity_model";
