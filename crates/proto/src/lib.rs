@@ -92,7 +92,6 @@ impl std::fmt::Display for Contract {
     }
 }
 
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct Page<T> {
     pub items: Vec<T>,
@@ -939,7 +938,6 @@ pub struct Event {
     pub data: Vec<Felt>,
     pub transaction_hash: Felt,
 }
-
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct EventWithMetadata {

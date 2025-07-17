@@ -96,10 +96,7 @@ impl Service {
         }
     }
 
-    async fn process_transaction(
-        subs: &Arc<TransactionManager>,
-        update: &Transaction,
-    ) {
+    async fn process_transaction(subs: &Arc<TransactionManager>, update: &Transaction) {
         let mut closed_stream = Vec::new();
 
         let transaction = update.clone().into_inner();
@@ -109,7 +106,9 @@ impl Service {
 
             if let Some(filter) = &sub.filter {
                 if !filter.transaction_hashes.is_empty()
-                    && !filter.transaction_hashes.contains(&transaction.transaction_hash)
+                    && !filter
+                        .transaction_hashes
+                        .contains(&transaction.transaction_hash)
                 {
                     continue;
                 }

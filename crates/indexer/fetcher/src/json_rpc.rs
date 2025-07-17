@@ -39,7 +39,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
         Self { config, provider }
     }
 
-    pub async fn fetch(&self, cursors: &HashMap<Felt, ContractCursor>) -> Result<FetchResult, Error> {
+    pub async fn fetch(
+        &self,
+        cursors: &HashMap<Felt, ContractCursor>,
+    ) -> Result<FetchResult, Error> {
         let fetch_start = Instant::now();
 
         let latest_block = self.provider.block_hash_and_number().await?;

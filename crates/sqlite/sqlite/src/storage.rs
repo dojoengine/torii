@@ -12,7 +12,9 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    schema::Entity, CallType, Clause, CompositeClause, ContractCursor, Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery
+    schema::Entity, CallType, Clause, CompositeClause, ContractCursor, Controller, ControllerQuery,
+    Event, EventQuery, LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery,
+    TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{ReadOnlyStorage, Storage, StorageError};
@@ -53,9 +55,10 @@ impl ReadOnlyStorage for Sql {
 
     /// Returns the cursors for all contracts.
     async fn cursors(&self) -> Result<HashMap<Felt, ContractCursor>, StorageError> {
-        let cursors = sqlx::query_as::<_, torii_sqlite_types::ContractCursor>("SELECT * FROM contracts")
-            .fetch_all(&self.pool)
-            .await?;
+        let cursors =
+            sqlx::query_as::<_, torii_sqlite_types::ContractCursor>("SELECT * FROM contracts")
+                .fetch_all(&self.pool)
+                .await?;
 
         let mut cursors_map = HashMap::new();
         for c in cursors {

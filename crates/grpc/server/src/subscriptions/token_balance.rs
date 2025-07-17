@@ -12,8 +12,8 @@ use starknet_crypto::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use torii_broker::MemoryBroker;
 use torii_broker::types::TokenBalanceUpdated;
+use torii_broker::MemoryBroker;
 use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeTokenBalancesResponse;

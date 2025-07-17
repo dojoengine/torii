@@ -13,7 +13,9 @@ use torii_math::I256;
 use torii_proto::schema::Entity;
 
 use torii_proto::{
-    Controller, ControllerQuery, ContractCursor, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery
+    ContractCursor, Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token,
+    TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall,
+    TransactionQuery,
 };
 
 pub mod utils;

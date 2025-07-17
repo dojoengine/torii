@@ -111,7 +111,8 @@ impl ResolvableObject for TransactionObject {
                             let caller = caller.clone();
                             async move {
                                 let transaction = transaction_update.into_inner();
-                                let transaction_hash = format!("{:#x}", transaction.transaction_hash);
+                                let transaction_hash =
+                                    format!("{:#x}", transaction.transaction_hash);
                                 if (hash.is_none() || hash == Some(transaction_hash.clone()))
                                     && (caller.is_none()
                                         || transaction.calls.iter().any(|call| {
@@ -124,15 +125,17 @@ impl ResolvableObject for TransactionObject {
                                         Err(_) => return None,
                                     };
 
-                                    let transaction = match sqlx::query_as::<_, Transaction>("SELECT * FROM transactions WHERE transaction_hash = ?")
-                                        .bind(&transaction_hash)
-                                        .fetch_one(&mut *conn)
-                                        .await 
+                                    let transaction = match sqlx::query_as::<_, Transaction>(
+                                        "SELECT * FROM transactions WHERE transaction_hash = ?",
+                                    )
+                                    .bind(&transaction_hash)
+                                    .fetch_one(&mut *conn)
+                                    .await
                                     {
                                         Ok(transaction) => transaction,
                                         Err(_) => return None,
                                     };
-                                    
+
                                     Some(Ok(Value::Object(TransactionObject::value_mapping(
                                         transaction,
                                     ))))

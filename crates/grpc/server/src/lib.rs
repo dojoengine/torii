@@ -267,10 +267,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .transpose()
             .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
 
-        let rx = self
-            .transaction_manager
-            .add_subscriber(filter)
-            .await;
+        let rx = self.transaction_manager.add_subscriber(filter).await;
         Ok(Response::new(
             Box::pin(ReceiverStream::new(rx)) as Self::SubscribeTransactionsStream
         ))
@@ -511,10 +508,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .transpose()
             .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
 
-        let rx = self
-            .entity_manager
-            .add_subscriber(clause)
-            .await;
+        let rx = self.entity_manager.add_subscriber(clause).await;
 
         Ok(Response::new(
             Box::pin(ReceiverStream::new(rx)) as Self::SubscribeEntitiesStream
@@ -615,10 +609,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .map(|c| c.try_into())
             .transpose()
             .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
-        let rx = self
-            .event_message_manager
-            .add_subscriber(clause)
-            .await;
+        let rx = self.event_message_manager.add_subscriber(clause).await;
 
         Ok(Response::new(
             Box::pin(ReceiverStream::new(rx)) as Self::SubscribeEntitiesStream

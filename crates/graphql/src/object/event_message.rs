@@ -90,16 +90,20 @@ impl ResolvableObject for EventMessageObject {
                                         Err(_) => return None,
                                     };
 
-                                    let entity = match sqlx::query_as::<_, Entity>("SELECT * FROM event_messages WHERE id = ?")
-                                        .bind(format!("{:#x}", entity.entity.hashed_keys))
-                                        .fetch_one(&mut *conn)
-                                        .await 
+                                    let entity = match sqlx::query_as::<_, Entity>(
+                                        "SELECT * FROM event_messages WHERE id = ?",
+                                    )
+                                    .bind(format!("{:#x}", entity.entity.hashed_keys))
+                                    .fetch_one(&mut *conn)
+                                    .await
                                     {
                                         Ok(entity) => entity,
                                         Err(_) => return None,
                                     };
-                                    
-                                    Some(Ok(Value::Object(EventMessageObject::value_mapping(entity))))
+
+                                    Some(Ok(Value::Object(EventMessageObject::value_mapping(
+                                        entity,
+                                    ))))
                                 } else {
                                     None
                                 }

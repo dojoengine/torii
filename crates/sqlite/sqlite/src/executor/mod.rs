@@ -16,7 +16,10 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
-use torii_broker::types::{ContractUpdate, EntityUpdate, EventMessageUpdate, EventEmitted, InnerType, ModelRegistered, TokenBalanceUpdated, TokenRegistered, Transaction, Update};
+use torii_broker::types::{
+    ContractUpdate, EntityUpdate, EventEmitted, EventMessageUpdate, InnerType, ModelRegistered,
+    TokenBalanceUpdated, TokenRegistered, Transaction, Update,
+};
 use torii_math::I256;
 use torii_proto::{ContractCursor, TransactionCall};
 use tracing::{debug, error, info, warn};

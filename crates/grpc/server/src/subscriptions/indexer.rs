@@ -10,8 +10,8 @@ use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use torii_broker::MemoryBroker;
 use torii_broker::types::ContractUpdate;
+use torii_broker::MemoryBroker;
 use torii_storage::Storage;
 use torii_storage::StorageError;
 use tracing::{error, trace};
@@ -106,10 +106,7 @@ impl Service {
         }
     }
 
-    async fn process_update(
-        subs: &Arc<IndexerManager>,
-        update: &ContractUpdate,
-    ) {
+    async fn process_update(subs: &Arc<IndexerManager>, update: &ContractUpdate) {
         let mut closed_stream = Vec::new();
         let contract = update.clone().into_inner();
 
@@ -117,7 +114,9 @@ impl Service {
             let idx = sub.key();
             let sub = sub.value();
 
-            if sub.contract_address != Felt::ZERO && sub.contract_address != contract.contract_address {
+            if sub.contract_address != Felt::ZERO
+                && sub.contract_address != contract.contract_address
+            {
                 continue;
             }
 

@@ -10,9 +10,9 @@ pub mod json_rpc;
 use bitflags::bitflags;
 use hashlink::LinkedHashMap;
 pub use json_rpc::Fetcher;
-use torii_storage::proto::ContractCursor;
 use starknet::core::types::{Event, TransactionContent};
 use starknet_crypto::Felt;
+use torii_storage::proto::ContractCursor;
 
 bitflags! {
     #[derive(Debug, Clone)]

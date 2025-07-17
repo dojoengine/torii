@@ -53,12 +53,13 @@ impl ResolvableObject for EventObject {
             |ctx| {
                 SubscriptionFieldFuture::new(async move {
                     let input_keys = parse_keys_argument(&ctx)?;
-                    Ok(MemoryBroker::<EventEmitted>::subscribe()
-                        .filter_map(move |event_update: EventEmitted| {
+                    Ok(MemoryBroker::<EventEmitted>::subscribe().filter_map(
+                        move |event_update: EventEmitted| {
                             let event = event_update.into_inner();
                             EventObject::match_and_map_event(&input_keys, event)
                                 .map(|value_mapping| Ok(Value::Object(value_mapping)))
-                        }))
+                        },
+                    ))
                 })
             },
         )
@@ -71,8 +72,18 @@ impl ResolvableObject for EventObject {
 
 impl EventObject {
     fn value_mapping(event: <EventEmitted as InnerType>::Inner) -> ValueMapping {
-        let keys: Vec<String> = event.event.keys.iter().map(|k| format!("{:#x}", k)).collect();
-        let data: Vec<String> = event.event.data.iter().map(|k| format!("{:#x}", k)).collect();
+        let keys: Vec<String> = event
+            .event
+            .keys
+            .iter()
+            .map(|k| format!("{:#x}", k))
+            .collect();
+        let data: Vec<String> = event
+            .event
+            .data
+            .iter()
+            .map(|k| format!("{:#x}", k))
+            .collect();
         ValueMapping::from([
             (Name::new("id"), Value::from(event.id)),
             (Name::new("keys"), Value::from(keys)),
@@ -92,7 +103,10 @@ impl EventObject {
         ])
     }
 
-    fn match_and_map_event(input_keys: &Option<Vec<String>>, event: <EventEmitted as InnerType>::Inner) -> Option<ValueMapping> {
+    fn match_and_map_event(
+        input_keys: &Option<Vec<String>>,
+        event: <EventEmitted as InnerType>::Inner,
+    ) -> Option<ValueMapping> {
         if let Some(ref keys) = input_keys {
             if EventObject::match_keys(keys, &event) {
                 return Some(EventObject::value_mapping(event));

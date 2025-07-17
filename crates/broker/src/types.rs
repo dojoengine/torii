@@ -6,10 +6,7 @@ pub struct Update<T> {
 
 impl<T> Update<T> {
     pub fn new(inner: T, optimistic: bool) -> Self {
-        Self {
-            inner,
-            optimistic,
-        }
+        Self { inner, optimistic }
     }
 
     pub fn into_inner(self) -> T {

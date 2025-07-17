@@ -89,15 +89,17 @@ impl ResolvableObject for EntityObject {
                                         Err(_) => return None,
                                     };
 
-                                    let entity = match sqlx::query_as::<_, Entity>("SELECT * FROM entities WHERE id = ?")
-                                        .bind(&entity_id)
-                                        .fetch_one(&mut *conn)
-                                        .await 
+                                    let entity = match sqlx::query_as::<_, Entity>(
+                                        "SELECT * FROM entities WHERE id = ?",
+                                    )
+                                    .bind(&entity_id)
+                                    .fetch_one(&mut *conn)
+                                    .await
                                     {
                                         Ok(entity) => entity,
                                         Err(_) => return None,
                                     };
-                                    
+
                                     Some(Ok(Value::Object(EntityObject::value_mapping(entity))))
                                 } else {
                                     None

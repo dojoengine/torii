@@ -120,10 +120,7 @@ impl Service {
         }
     }
 
-    async fn process_token_update(
-        subs: &Arc<TokenManager>,
-        update: &TokenRegistered,
-    ) {
+    async fn process_token_update(subs: &Arc<TokenManager>, update: &TokenRegistered) {
         let mut closed_stream = Vec::new();
 
         let token = update.clone().into_inner();

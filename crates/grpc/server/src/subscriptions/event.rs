@@ -111,8 +111,16 @@ impl Service {
 
             let resp = SubscribeEventsResponse {
                 event: Some(ProtoEvent {
-                    keys: event.keys.iter().map(|k| k.to_bytes_be().to_vec()).collect(),
-                    data: event.data.iter().map(|d| d.to_bytes_be().to_vec()).collect(),
+                    keys: event
+                        .keys
+                        .iter()
+                        .map(|k| k.to_bytes_be().to_vec())
+                        .collect(),
+                    data: event
+                        .data
+                        .iter()
+                        .map(|d| d.to_bytes_be().to_vec())
+                        .collect(),
                     transaction_hash: event.transaction_hash.to_bytes_be().to_vec(),
                 }),
             };

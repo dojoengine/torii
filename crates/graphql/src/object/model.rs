@@ -114,15 +114,17 @@ impl ResolvableObject for ModelObject {
                                             Err(_) => return None,
                                         };
 
-                                        let model = match sqlx::query_as::<_, Model>("SELECT * FROM models WHERE id = ?")
-                                            .bind(&model_id)
-                                            .fetch_one(&mut *conn)
-                                            .await 
+                                        let model = match sqlx::query_as::<_, Model>(
+                                            "SELECT * FROM models WHERE id = ?",
+                                        )
+                                        .bind(&model_id)
+                                        .fetch_one(&mut *conn)
+                                        .await
                                         {
                                             Ok(model) => model,
                                             Err(_) => return None,
                                         };
-                                        
+
                                         Some(Ok(Value::Object(ModelObject::value_mapping(model))))
                                     } else {
                                         None
