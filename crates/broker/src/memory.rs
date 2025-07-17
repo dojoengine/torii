@@ -14,7 +14,9 @@ use crate::types::Update;
 static SUBSCRIBERS: Lazy<DashMap<TypeId, Box<dyn Any + Send + Sync>>> = Lazy::new(Default::default);
 
 #[derive(Debug)]
-pub struct Senders<U: std::fmt::Debug + Clone + Send + Sync + 'static>(pub Slab<UnboundedSender<U>>);
+pub struct Senders<U: std::fmt::Debug + Clone + Send + Sync + 'static>(
+    pub Slab<UnboundedSender<U>>,
+);
 
 struct BrokerStream<U: std::fmt::Debug + Clone + Send + Sync + 'static>(
     usize,
