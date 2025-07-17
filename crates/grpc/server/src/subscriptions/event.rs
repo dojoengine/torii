@@ -12,8 +12,8 @@ use tokio::sync::mpsc::{
 };
 use torii_broker::types::EventUpdate;
 use torii_broker::MemoryBroker;
-use torii_proto::KeysClause;
 use torii_proto::EventWithMetadata;
+use torii_proto::KeysClause;
 use tracing::{error, trace};
 
 use crate::GrpcConfig;

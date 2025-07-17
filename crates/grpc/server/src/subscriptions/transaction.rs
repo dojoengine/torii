@@ -15,8 +15,8 @@ use torii_broker::MemoryBroker;
 use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeTransactionsResponse;
-use torii_proto::TransactionFilter;
 use torii_proto::Transaction;
+use torii_proto::TransactionFilter;
 
 use crate::GrpcConfig;
 

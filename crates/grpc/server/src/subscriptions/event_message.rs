@@ -114,7 +114,10 @@ impl Service {
         }
     }
 
-    async fn process_event_update(subs: &Arc<EventMessageManager>, event: &EntityWithMetadata<true>) {
+    async fn process_event_update(
+        subs: &Arc<EventMessageManager>,
+        event: &EntityWithMetadata<true>,
+    ) {
         let mut closed_stream = Vec::new();
 
         for sub in subs.subscribers.iter() {
