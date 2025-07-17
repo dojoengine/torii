@@ -6,7 +6,7 @@ use async_graphql::dynamic::{
 use async_graphql::{Name, Value};
 use starknet_crypto::Felt;
 use tokio_stream::StreamExt;
-use torii_broker::types::{EventEmitted, InnerType};
+use torii_broker::types::{EventUpdate, InnerType};
 use torii_broker::MemoryBroker;
 
 use super::inputs::keys_input::{keys_argument, parse_keys_argument};
@@ -53,8 +53,8 @@ impl ResolvableObject for EventObject {
             |ctx| {
                 SubscriptionFieldFuture::new(async move {
                     let input_keys = parse_keys_argument(&ctx)?;
-                    Ok(MemoryBroker::<EventEmitted>::subscribe().filter_map(
-                        move |event_update: EventEmitted| {
+                    Ok(MemoryBroker::<EventUpdate>::subscribe().filter_map(
+                        move |event_update: EventUpdate| {
                             if event_update.optimistic {
                                 return None;
                             }
@@ -75,7 +75,7 @@ impl ResolvableObject for EventObject {
 }
 
 impl EventObject {
-    fn value_mapping(event: <EventEmitted as InnerType>::Inner) -> ValueMapping {
+    fn value_mapping(event: <EventUpdate as InnerType>::Inner) -> ValueMapping {
         let keys: Vec<String> = event
             .event
             .keys
@@ -109,7 +109,7 @@ impl EventObject {
 
     fn match_and_map_event(
         input_keys: &Option<Vec<String>>,
-        event: <EventEmitted as InnerType>::Inner,
+        event: <EventUpdate as InnerType>::Inner,
     ) -> Option<ValueMapping> {
         if let Some(ref keys) = input_keys {
             if EventObject::match_keys(keys, &event) {
@@ -126,7 +126,7 @@ impl EventObject {
 
     // Checks if the provided keys match the event's keys, allowing '*' as a wildcard. Returns true
     // if all keys match or if a wildcard is present at the respective position.
-    pub fn match_keys(input_keys: &[String], event: &<EventEmitted as InnerType>::Inner) -> bool {
+    pub fn match_keys(input_keys: &[String], event: &<EventUpdate as InnerType>::Inner) -> bool {
         if input_keys.len() > event.event.keys.len() {
             return false;
         }

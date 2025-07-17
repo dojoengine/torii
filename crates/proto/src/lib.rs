@@ -184,7 +184,7 @@ impl TryFrom<proto::types::Controller> for Controller {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct Token {
-    pub token_id: U256,
+    pub token_id: Option<U256>,
     pub contract_address: Felt,
     pub name: String,
     pub symbol: String,
@@ -195,7 +195,7 @@ pub struct Token {
 impl From<Token> for proto::types::Token {
     fn from(value: Token) -> Self {
         Self {
-            token_id: value.token_id.to_be_bytes().to_vec(),
+            token_id: value.token_id.map(|id| id.to_be_bytes().to_vec()),
             contract_address: value.contract_address.to_bytes_be().into(),
             name: value.name,
             symbol: value.symbol,
@@ -209,7 +209,7 @@ impl TryFrom<proto::types::Token> for Token {
     type Error = ProtoError;
     fn try_from(value: proto::types::Token) -> Result<Self, Self::Error> {
         Ok(Self {
-            token_id: U256::from_be_slice(&value.token_id),
+            token_id: value.token_id.map(|id| U256::from_be_slice(&id)),
             contract_address: Felt::from_bytes_be_slice(&value.contract_address),
             name: value.name,
             symbol: value.symbol,
@@ -222,7 +222,7 @@ impl TryFrom<proto::types::TokenCollection> for Token {
     type Error = ProtoError;
     fn try_from(value: proto::types::TokenCollection) -> Result<Self, Self::Error> {
         Ok(Self {
-            token_id: U256::ZERO,
+            token_id: None,
             contract_address: Felt::from_bytes_be_slice(&value.contract_address),
             name: value.name,
             symbol: value.symbol,
@@ -274,7 +274,7 @@ pub struct TokenBalance {
     pub balance: U256,
     pub account_address: Felt,
     pub contract_address: Felt,
-    pub token_id: U256,
+    pub token_id: Option<U256>,
 }
 
 impl From<TokenBalance> for proto::types::TokenBalance {
@@ -283,7 +283,7 @@ impl From<TokenBalance> for proto::types::TokenBalance {
             balance: value.balance.to_be_bytes().to_vec(),
             account_address: value.account_address.to_bytes_be().into(),
             contract_address: value.contract_address.to_bytes_be().into(),
-            token_id: value.token_id.to_be_bytes().to_vec(),
+            token_id: value.token_id.map(|id| id.to_be_bytes().to_vec()),
         }
     }
 }
@@ -295,7 +295,7 @@ impl TryFrom<proto::types::TokenBalance> for TokenBalance {
             balance: U256::from_be_slice(&value.balance),
             account_address: Felt::from_bytes_be_slice(&value.account_address),
             contract_address: Felt::from_bytes_be_slice(&value.contract_address),
-            token_id: U256::from_be_slice(&value.token_id),
+            token_id: value.token_id.map(|id| U256::from_be_slice(&id)),
         })
     }
 }

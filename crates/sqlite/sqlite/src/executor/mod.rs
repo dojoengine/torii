@@ -17,8 +17,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 use torii_broker::types::{
-    ContractUpdate, EntityUpdate, EventEmitted, EventMessageUpdate, InnerType, ModelRegistered,
-    TokenBalanceUpdated, TokenRegistered, Transaction, Update,
+    ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType, ModelUpdate, TokenBalanceUpdate, TokenUpdate, TransactionUpdate, Update
 };
 use torii_math::I256;
 use torii_proto::{ContractCursor, TransactionCall};
@@ -53,13 +52,13 @@ pub enum Argument {
 #[derive(Debug, Clone)]
 pub enum BrokerMessage {
     ContractUpdate(<ContractUpdate as InnerType>::Inner),
-    ModelRegistered(<ModelRegistered as InnerType>::Inner),
+    ModelRegistered(<ModelUpdate as InnerType>::Inner),
     EntityUpdate(<EntityUpdate as InnerType>::Inner),
     EventMessageUpdate(<EventMessageUpdate as InnerType>::Inner),
-    EventEmitted(<EventEmitted as InnerType>::Inner),
-    TokenRegistered(<TokenRegistered as InnerType>::Inner),
-    TokenBalanceUpdated(<TokenBalanceUpdated as InnerType>::Inner),
-    Transaction(<Transaction as InnerType>::Inner),
+    EventEmitted(<EventUpdate as InnerType>::Inner),
+    TokenRegistered(<TokenUpdate as InnerType>::Inner),
+    TokenBalanceUpdated(<TokenBalanceUpdate as InnerType>::Inner),
+    Transaction(<TransactionUpdate as InnerType>::Inner),
 }
 
 #[derive(Debug, Clone)]

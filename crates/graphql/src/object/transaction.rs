@@ -7,7 +7,7 @@ use async_graphql::{Name, Value};
 use sqlx::{FromRow, Pool, Sqlite};
 use starknet_crypto::Felt;
 use tokio_stream::StreamExt;
-use torii_broker::types::Transaction as TransactionUpdate;
+use torii_broker::types::TransactionUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::types::Transaction;
 

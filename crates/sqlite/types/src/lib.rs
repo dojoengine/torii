@@ -178,9 +178,9 @@ impl From<Token> for torii_proto::Token {
     fn from(value: Token) -> Self {
         Self {
             token_id: if value.token_id.is_empty() {
-                U256::ZERO
+                None
             } else {
-                U256::from_be_hex(value.token_id.trim_start_matches("0x"))
+                Some(U256::from_be_hex(value.token_id.trim_start_matches("0x")))
             },
             contract_address: Felt::from_str(&value.contract_address).unwrap(),
             name: value.name,
@@ -234,9 +234,9 @@ impl From<TokenBalance> for torii_proto::TokenBalance {
             account_address: Felt::from_str(&value.account_address).unwrap(),
             contract_address: Felt::from_str(&value.contract_address).unwrap(),
             token_id: if id.len() == 2 {
-                U256::from_be_hex(id[1].trim_start_matches("0x"))
+                Some(U256::from_be_hex(id[1].trim_start_matches("0x")))
             } else {
-                U256::ZERO
+                None
             },
         }
     }

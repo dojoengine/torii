@@ -5,7 +5,7 @@ use async_graphql::dynamic::{
 use async_graphql::{Name, Value};
 use sqlx::{Pool, Sqlite};
 use tokio_stream::StreamExt;
-use torii_broker::types::ModelRegistered;
+use torii_broker::types::ModelUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::types::Model;
 
@@ -101,8 +101,8 @@ impl ResolvableObject for ModelObject {
                         let pool = ctx.data::<Pool<Sqlite>>()?.clone();
                         // if id is None, then subscribe to all models
                         // if id is Some, then subscribe to only the model with that id
-                        Ok(MemoryBroker::<ModelRegistered>::subscribe()
-                            .then(move |model_update: ModelRegistered| {
+                        Ok(MemoryBroker::<ModelUpdate>::subscribe()
+                            .then(move |model_update: ModelUpdate| {
                                 let pool = pool.clone();
                                 let id = id.clone();
                                 async move {

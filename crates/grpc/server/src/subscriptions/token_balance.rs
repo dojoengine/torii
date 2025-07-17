@@ -12,7 +12,7 @@ use starknet_crypto::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use torii_broker::types::TokenBalanceUpdated;
+use torii_broker::types::TokenBalanceUpdate;
 use torii_broker::MemoryBroker;
 use tracing::{error, trace};
 
@@ -103,15 +103,15 @@ impl TokenBalanceManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = TokenBalanceUpdated> + Send>>,
-    balance_sender: UnboundedSender<TokenBalanceUpdated>,
+    simple_broker: Pin<Box<dyn Stream<Item = TokenBalanceUpdate> + Send>>,
+    balance_sender: UnboundedSender<TokenBalanceUpdate>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<TokenBalanceManager>) -> Self {
         let (balance_sender, balance_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<TokenBalanceUpdated>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<TokenBalanceUpdate>::subscribe()),
             balance_sender,
         };
 
@@ -122,7 +122,7 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<TokenBalanceManager>,
-        mut balance_receiver: UnboundedReceiver<TokenBalanceUpdated>,
+        mut balance_receiver: UnboundedReceiver<TokenBalanceUpdate>,
     ) {
         while let Some(balance) = balance_receiver.recv().await {
             if balance.optimistic != subs.config.optimistic {
@@ -135,7 +135,7 @@ impl Service {
 
     async fn process_balance_update(
         subs: &Arc<TokenBalanceManager>,
-        balance: &TokenBalanceUpdated,
+        balance: &TokenBalanceUpdate,
     ) {
         let mut closed_stream = Vec::new();
         let balance = balance.clone().into_inner();
@@ -159,7 +159,10 @@ impl Service {
             }
 
             // Skip if token ID filter doesn't match
-            if !sub.token_ids.is_empty() && !sub.token_ids.contains(&balance.token_id) {
+            if !sub.token_ids.is_empty()
+                && balance.token_id.is_some()
+                && !sub.token_ids.contains(&balance.token_id.unwrap())
+            {
                 continue;
             }
 

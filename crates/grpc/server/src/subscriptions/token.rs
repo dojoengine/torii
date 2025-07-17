@@ -15,7 +15,7 @@ use tokio::sync::mpsc::{
 use torii_broker::MemoryBroker;
 use tracing::{error, trace};
 
-use torii_broker::types::TokenRegistered;
+use torii_broker::types::TokenUpdate;
 use torii_proto::proto::world::SubscribeTokensResponse;
 
 use crate::GrpcConfig;
@@ -96,15 +96,15 @@ impl TokenManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = TokenRegistered> + Send>>,
-    token_sender: UnboundedSender<TokenRegistered>,
+    simple_broker: Pin<Box<dyn Stream<Item = TokenUpdate> + Send>>,
+    token_sender: UnboundedSender<TokenUpdate>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<TokenManager>) -> Self {
         let (token_sender, token_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<TokenRegistered>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<TokenUpdate>::subscribe()),
             token_sender,
         };
 
@@ -115,7 +115,7 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<TokenManager>,
-        mut token_receiver: UnboundedReceiver<TokenRegistered>,
+        mut token_receiver: UnboundedReceiver<TokenUpdate>,
     ) {
         while let Some(token) = token_receiver.recv().await {
             if token.optimistic != subs.config.optimistic {
@@ -126,7 +126,7 @@ impl Service {
         }
     }
 
-    async fn process_token_update(subs: &Arc<TokenManager>, update: &TokenRegistered) {
+    async fn process_token_update(subs: &Arc<TokenManager>, update: &TokenUpdate) {
         let mut closed_stream = Vec::new();
 
         let token = update.clone().into_inner();
@@ -142,7 +142,10 @@ impl Service {
             }
 
             // Skip if token ID filter doesn't match
-            if !sub.token_ids.is_empty() && !sub.token_ids.contains(&token.token_id) {
+            if !sub.token_ids.is_empty()
+                && token.token_id.is_some()
+                && !sub.token_ids.contains(&token.token_id.unwrap())
+            {
                 continue;
             }
 
