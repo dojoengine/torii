@@ -68,7 +68,7 @@ where
     }
 
     /// Subscribe to all updates, regardless if they're optimistic or not.
-    pub fn subscribe_all() -> impl Stream<Item = Update<T>> {
+    pub fn subscribe_raw() -> impl Stream<Item = Update<T>> {
         with_senders::<Update<T>, _, _>(|senders| {
             let (tx, rx) = mpsc::unbounded();
             let id = senders.0.insert(tx);
@@ -78,7 +78,7 @@ where
 
     /// Subscribe to non-optimistic update messages
     pub fn subscribe() -> impl Stream<Item = T> {
-        Self::subscribe_all().filter_map(|u| {
+        Self::subscribe_raw().filter_map(|u| {
             futures_util::future::ready(if u.is_optimistic() {
                 None
             } else {
@@ -89,7 +89,7 @@ where
 
     /// Subscribe to only optimistic update messages and returns a `Stream`.
     pub fn subscribe_optimistic() -> impl Stream<Item = T> {
-        Self::subscribe_all().filter_map(|u| {
+        Self::subscribe_raw().filter_map(|u| {
             futures_util::future::ready(if u.is_optimistic() {
                 Some(u.into_inner())
             } else {
