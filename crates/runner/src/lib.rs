@@ -404,6 +404,7 @@ impl Runner {
             cross_messaging_tx,
             GrpcConfig {
                 subscription_buffer_size: self.args.grpc.subscription_buffer_size,
+                optimistic: self.args.grpc.optimistic,
             },
         )
         .await?;
