@@ -10,7 +10,7 @@ use rand::Rng;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use torii_broker::types::Transaction;
+use torii_broker::types::TransactionUpdate;
 use torii_broker::MemoryBroker;
 use tracing::{error, trace};
 
@@ -72,15 +72,15 @@ impl TransactionManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = Transaction> + Send>>,
-    transaction_sender: UnboundedSender<Transaction>,
+    simple_broker: Pin<Box<dyn Stream<Item = TransactionUpdate> + Send>>,
+    transaction_sender: UnboundedSender<TransactionUpdate>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<TransactionManager>) -> Self {
         let (transaction_sender, transaction_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<Transaction>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<TransactionUpdate>::subscribe()),
             transaction_sender,
         };
 
@@ -91,7 +91,7 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<TransactionManager>,
-        mut transaction_receiver: UnboundedReceiver<Transaction>,
+        mut transaction_receiver: UnboundedReceiver<TransactionUpdate>,
     ) {
         while let Some(transaction) = transaction_receiver.recv().await {
             if transaction.optimistic != subs.config.optimistic {
@@ -102,7 +102,7 @@ impl Service {
         }
     }
 
-    async fn process_transaction(subs: &Arc<TransactionManager>, update: &Transaction) {
+    async fn process_transaction(subs: &Arc<TransactionManager>, update: &TransactionUpdate) {
         let mut closed_stream = Vec::new();
 
         let transaction = update.clone().into_inner();

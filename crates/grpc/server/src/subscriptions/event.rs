@@ -10,7 +10,7 @@ use rand::Rng;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
-use torii_broker::types::EventEmitted;
+use torii_broker::types::EventUpdate;
 use torii_broker::MemoryBroker;
 use torii_proto::KeysClause;
 use tracing::{error, trace};
@@ -73,15 +73,15 @@ impl EventManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = EventEmitted> + Send>>,
-    event_sender: UnboundedSender<EventEmitted>,
+    simple_broker: Pin<Box<dyn Stream<Item = EventUpdate> + Send>>,
+    event_sender: UnboundedSender<EventUpdate>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<EventManager>) -> Self {
         let (event_sender, event_receiver) = unbounded_channel();
         let service = Self {
-            simple_broker: Box::pin(MemoryBroker::<EventEmitted>::subscribe()),
+            simple_broker: Box::pin(MemoryBroker::<EventUpdate>::subscribe()),
             event_sender,
         };
 
@@ -92,7 +92,7 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<EventManager>,
-        mut event_receiver: UnboundedReceiver<EventEmitted>,
+        mut event_receiver: UnboundedReceiver<EventUpdate>,
     ) {
         while let Some(event) = event_receiver.recv().await {
             if event.optimistic != subs.config.optimistic {
@@ -103,7 +103,7 @@ impl Service {
         }
     }
 
-    async fn process_event(subs: &Arc<EventManager>, update: &EventEmitted) {
+    async fn process_event(subs: &Arc<EventManager>, update: &EventUpdate) {
         let mut closed_stream = Vec::new();
 
         let event = update.clone().into_inner().event;
