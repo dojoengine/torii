@@ -418,13 +418,13 @@ impl Runner {
             GrpcConfig {
                 subscription_buffer_size: self.args.grpc.subscription_buffer_size,
                 optimistic: self.args.grpc.optimistic,
-                tcp_keepalive_interval: Duration::from_secs(
-                    self.args.grpc.tcp_keepalive_interval,
-                ),
+                tcp_keepalive_interval: Duration::from_secs(self.args.grpc.tcp_keepalive_interval),
                 http2_keepalive_interval: Duration::from_secs(
                     self.args.grpc.http2_keepalive_interval,
                 ),
-                http2_keepalive_timeout: Duration::from_secs(self.args.grpc.http2_keepalive_timeout),
+                http2_keepalive_timeout: Duration::from_secs(
+                    self.args.grpc.http2_keepalive_timeout,
+                ),
             },
         )
         .await?;
