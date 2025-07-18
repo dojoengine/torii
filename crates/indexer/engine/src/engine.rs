@@ -4,12 +4,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use dojo_world::contracts::world::WorldContractReader;
-use std::sync::LazyLock;
 use metrics::{counter, gauge, histogram};
 use starknet::core::types::{Event, TransactionContent};
 use starknet::macros::selector;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
+use std::sync::LazyLock;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Semaphore;
 use tokio::time::{sleep, Instant};

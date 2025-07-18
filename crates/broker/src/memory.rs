@@ -11,7 +11,8 @@ use slab::Slab;
 
 use crate::types::Update;
 
-static SUBSCRIBERS: LazyLock<DashMap<TypeId, Box<dyn Any + Send + Sync>>> = LazyLock::new(Default::default);
+static SUBSCRIBERS: LazyLock<DashMap<TypeId, Box<dyn Any + Send + Sync>>> =
+    LazyLock::new(Default::default);
 
 #[derive(Debug)]
 pub struct Senders<U: std::fmt::Debug + Clone + Send + Sync + 'static>(
