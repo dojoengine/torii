@@ -184,7 +184,11 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                     break Ok(());
                 }
                 res = async {
-                    if let Some(last_fetch_result) = cached_data.as_ref() {
+                    // Start controller sync in background if available
+                    let controller_sync_handle = self.start_sync_controllers().await;
+
+                    // Fetch data
+                    let fetch_result = if let Some(last_fetch_result) = cached_data.as_ref() {
                         Result::<_, Error>::Ok(last_fetch_result.clone())
                     } else {
                         let fetch_start = Instant::now();
@@ -193,65 +197,76 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                         histogram!("torii_indexer_fetch_duration_seconds").record(fetch_start.elapsed().as_secs_f64());
                         counter!("torii_indexer_fetch_total", "status" => "success").increment(1);
                         Ok(Arc::new(fetch_result))
-                    }
+                    };
+
+                    Result::<_, Error>::Ok((fetch_result, controller_sync_handle))
                 } => {
                     match res {
-                        Ok(fetch_result) => {
-                            if fetching_erroring_out && cached_data.is_none() {
-                                fetching_erroring_out = false;
-                                fetching_backoff_delay = Duration::from_secs(1);
-                                gauge!("torii_indexer_backoff_delay_seconds", "operation" => "fetch").set(0.0);
-                                info!(target: LOG_TARGET, "Fetching reestablished.");
-                            }
-
-                            // Cache the fetch result for retry
-                            cached_data = Some(fetch_result.clone());
-
-                            let process_start = Instant::now();
-                            match self.process(&fetch_result).await {
-                                Ok(_) => {
-                                    histogram!("torii_indexer_process_duration_seconds").record(process_start.elapsed().as_secs_f64());
-                                    counter!("torii_indexer_process_total", "status" => "success").increment(1);
-
-                                    // Only reset backoff delay after successful processing
-                                    if processing_erroring_out {
-                                        processing_erroring_out = false;
-                                        processing_backoff_delay = Duration::from_secs(1);
-                                        gauge!("torii_indexer_backoff_delay_seconds", "operation" => "process").set(0.0);
-                                        info!(target: LOG_TARGET, "Processing reestablished.");
+                        Ok((fetch_result, controller_sync_handle)) => {
+                            match fetch_result {
+                                Ok(fetch_result) => {
+                                    if fetching_erroring_out && cached_data.is_none() {
+                                        fetching_erroring_out = false;
+                                        fetching_backoff_delay = Duration::from_secs(1);
+                                        gauge!("torii_indexer_backoff_delay_seconds", "operation" => "fetch").set(0.0);
+                                        info!(target: LOG_TARGET, "Fetching reestablished.");
                                     }
-                                    // Reset the cached data
-                                    cached_data = None;
-                                    // Sync controllers
-                                    if let Some(controllers) = &self.controllers {
-                                        let controller_start = Instant::now();
-                                        debug!(target: LOG_TARGET, "Syncing controllers.");
-                                        let num_controllers = controllers.sync().await.map_err(Error::ControllerSync)?;
-                                        histogram!("torii_indexer_controller_sync_duration_seconds").record(controller_start.elapsed().as_secs_f64());
-                                        counter!("torii_indexer_controllers_synced_total").increment(num_controllers as u64);
-                                        debug!(target: LOG_TARGET, duration = ?controller_start.elapsed(), num_controllers = num_controllers, "Synced controllers.");
-                                        if num_controllers > 0 {
-                                            info!(target: LOG_TARGET, num_controllers = num_controllers, "Synced controllers.");
+
+                                    // Cache the fetch result for retry
+                                    cached_data = Some(fetch_result.clone());
+
+                                    let process_start = Instant::now();
+                                    match self.process(&fetch_result).await {
+                                        Ok(_) => {
+                                            histogram!("torii_indexer_process_duration_seconds").record(process_start.elapsed().as_secs_f64());
+                                            counter!("torii_indexer_process_total", "status" => "success").increment(1);
+
+                                            // Only reset backoff delay after successful processing
+                                            if processing_erroring_out {
+                                                processing_erroring_out = false;
+                                                processing_backoff_delay = Duration::from_secs(1);
+                                                gauge!("torii_indexer_backoff_delay_seconds", "operation" => "process").set(0.0);
+                                                info!(target: LOG_TARGET, "Processing reestablished.");
+                                            }
+                                            // Reset the cached data
+                                            cached_data = None;
+
+                                            // Wait for controller sync to complete before executing
+                                            self.join_controllers_sync(controller_sync_handle).await?;
+                                            self.storage.execute().await?;
+                                        },
+                                        Err(e) => {
+                                            self.abort_controllers_sync(controller_sync_handle).await;
+                                            counter!("torii_indexer_process_total", "status" => "error").increment(1);
+                                            counter!("torii_indexer_errors_total", "operation" => "process").increment(1);
+                                            error!(target: LOG_TARGET, error = ?e, "Processing fetched data.");
+                                            processing_erroring_out = true;
+                                            self.storage.rollback().await?;
+                                            self.task_manager.clear_tasks();
+                                            gauge!("torii_indexer_backoff_delay_seconds", "operation" => "process").set(processing_backoff_delay.as_secs_f64());
+                                            sleep(processing_backoff_delay).await;
+                                            if processing_backoff_delay < max_backoff_delay {
+                                                processing_backoff_delay *= 2;
+                                            }
                                         }
                                     }
-                                    self.storage.execute().await?;
-                                },
+
+                                    debug!(target: LOG_TARGET, duration = ?process_start.elapsed(), "Processed fetched data.");
+                                }
                                 Err(e) => {
-                                    counter!("torii_indexer_process_total", "status" => "error").increment(1);
-                                    counter!("torii_indexer_errors_total", "operation" => "process").increment(1);
-                                    error!(target: LOG_TARGET, error = ?e, "Processing fetched data.");
-                                    processing_erroring_out = true;
-                                    self.storage.rollback().await?;
-                                    self.task_manager.clear_tasks();
-                                    gauge!("torii_indexer_backoff_delay_seconds", "operation" => "process").set(processing_backoff_delay.as_secs_f64());
-                                    sleep(processing_backoff_delay).await;
-                                    if processing_backoff_delay < max_backoff_delay {
-                                        processing_backoff_delay *= 2;
+                                    self.abort_controllers_sync(controller_sync_handle).await;
+                                    counter!("torii_indexer_fetch_total", "status" => "error").increment(1);
+                                    counter!("torii_indexer_errors_total", "operation" => "fetch").increment(1);
+                                    fetching_erroring_out = true;
+                                    cached_data = None;
+                                    error!(target: LOG_TARGET, error = ?e, "Fetching data.");
+                                    gauge!("torii_indexer_backoff_delay_seconds", "operation" => "fetch").set(fetching_backoff_delay.as_secs_f64());
+                                    sleep(fetching_backoff_delay).await;
+                                    if fetching_backoff_delay < max_backoff_delay {
+                                        fetching_backoff_delay *= 2;
                                     }
                                 }
                             }
-
-                            debug!(target: LOG_TARGET, duration = ?process_start.elapsed(), "Processed fetched data.");
                         }
                         Err(e) => {
                             counter!("torii_indexer_fetch_total", "status" => "error").increment(1);
@@ -585,5 +600,70 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         );
 
         Ok(())
+    }
+
+    async fn start_sync_controllers(
+        &self,
+    ) -> Option<tokio::task::JoinHandle<Result<usize, torii_controllers::error::Error>>> {
+        if let Some(controllers) = &self.controllers {
+            let controllers_clone = controllers.clone();
+            Some(tokio::spawn(async move {
+                let controller_start = Instant::now();
+                debug!(target: LOG_TARGET, "Syncing controllers in background.");
+                let result = controllers_clone.sync().await;
+                let duration = controller_start.elapsed();
+                match &result {
+                    Ok(num_controllers) => {
+                        histogram!("torii_indexer_controller_sync_duration_seconds")
+                            .record(duration.as_secs_f64());
+                        counter!("torii_indexer_controllers_synced_total")
+                            .increment(*num_controllers as u64);
+                        debug!(target: LOG_TARGET, duration = ?duration, num_controllers = num_controllers, "Synced controllers in background.");
+                    }
+                    Err(e) => {
+                        error!(target: LOG_TARGET, error = ?e, duration = ?duration, "Syncing controllers failed in background.");
+                    }
+                }
+                result
+            }))
+        } else {
+            None
+        }
+    }
+
+    async fn join_controllers_sync(
+        &self,
+        handle: Option<tokio::task::JoinHandle<Result<usize, torii_controllers::error::Error>>>,
+    ) -> Result<(), Error> {
+        if let Some(handle) = handle {
+            match handle.await {
+                Ok(Ok(num_controllers)) => {
+                    if num_controllers > 0 {
+                        info!(target: LOG_TARGET, num_controllers = num_controllers, "Synced controllers.");
+                    }
+                    Ok(())
+                }
+                Ok(Err(e)) => Err(Error::ControllerSync(e)),
+                Err(e) => {
+                    error!(target: LOG_TARGET, error = ?e, "Syncing controllers panicked.");
+                    Err(Error::ControllerSync(
+                        torii_controllers::error::Error::ApiError(
+                            "Syncing controllers panicked".to_string(),
+                        ),
+                    ))
+                }
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    async fn abort_controllers_sync(
+        &self,
+        handle: Option<tokio::task::JoinHandle<Result<usize, torii_controllers::error::Error>>>,
+    ) {
+        if let Some(handle) = handle {
+            handle.abort();
+        }
     }
 }
