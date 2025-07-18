@@ -230,12 +230,9 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                                             }
                                             // Reset the cached data
                                             cached_data = None;
-                                            
+
                                             // Wait for controller sync to complete before executing
-                                            if let Err(e) = self.join_controllers_sync(controller_sync_handle).await {
-                                                return Err(e);
-                                            }
-                                            
+                                            self.join_controllers_sync(controller_sync_handle).await?;
                                             self.storage.execute().await?;
                                         },
                                         Err(e) => {
@@ -605,22 +602,26 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         Ok(())
     }
 
-    async fn start_sync_controllers(&self) -> Option<tokio::task::JoinHandle<Result<usize, torii_controllers::error::Error>>> {
+    async fn start_sync_controllers(
+        &self,
+    ) -> Option<tokio::task::JoinHandle<Result<usize, torii_controllers::error::Error>>> {
         if let Some(controllers) = &self.controllers {
             let controllers_clone = controllers.clone();
             Some(tokio::spawn(async move {
                 let controller_start = Instant::now();
-                debug!(target: LOG_TARGET, "Starting controller sync in background.");
+                debug!(target: LOG_TARGET, "Syncing controllers in background.");
                 let result = controllers_clone.sync().await;
                 let duration = controller_start.elapsed();
                 match &result {
                     Ok(num_controllers) => {
-                        histogram!("torii_indexer_controller_sync_duration_seconds").record(duration.as_secs_f64());
-                        counter!("torii_indexer_controllers_synced_total").increment(*num_controllers as u64);
-                        debug!(target: LOG_TARGET, duration = ?duration, num_controllers = num_controllers, "Controller sync completed in background.");
+                        histogram!("torii_indexer_controller_sync_duration_seconds")
+                            .record(duration.as_secs_f64());
+                        counter!("torii_indexer_controllers_synced_total")
+                            .increment(*num_controllers as u64);
+                        debug!(target: LOG_TARGET, duration = ?duration, num_controllers = num_controllers, "Synced controllers in background.");
                     }
                     Err(e) => {
-                        error!(target: LOG_TARGET, error = ?e, duration = ?duration, "Controller sync failed in background.");
+                        error!(target: LOG_TARGET, error = ?e, duration = ?duration, "Syncing controllers failed in background.");
                     }
                 }
                 result
@@ -630,21 +631,26 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
     }
 
-    async fn join_controllers_sync(&self, handle: Option<tokio::task::JoinHandle<Result<usize, torii_controllers::error::Error>>>) -> Result<(), Error> {
+    async fn join_controllers_sync(
+        &self,
+        handle: Option<tokio::task::JoinHandle<Result<usize, torii_controllers::error::Error>>>,
+    ) -> Result<(), Error> {
         if let Some(handle) = handle {
             match handle.await {
                 Ok(Ok(num_controllers)) => {
                     if num_controllers > 0 {
-                        info!(target: LOG_TARGET, num_controllers = num_controllers, "Controller sync completed.");
+                        info!(target: LOG_TARGET, num_controllers = num_controllers, "Synced controllers.");
                     }
                     Ok(())
                 }
-                Ok(Err(e)) => {
-                    Err(Error::ControllerSync(e))
-                }
+                Ok(Err(e)) => Err(Error::ControllerSync(e)),
                 Err(e) => {
-                    error!(target: LOG_TARGET, error = ?e, "Controller sync task panicked.");
-                    Err(Error::ControllerSync(torii_controllers::error::Error::ApiError("Controller sync task panicked".to_string())))
+                    error!(target: LOG_TARGET, error = ?e, "Syncing controllers panicked.");
+                    Err(Error::ControllerSync(
+                        torii_controllers::error::Error::ApiError(
+                            "Syncing controllers panicked".to_string(),
+                        ),
+                    ))
                 }
             }
         } else {
@@ -652,7 +658,10 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         }
     }
 
-    async fn abort_controllers_sync(&self, handle: Option<tokio::task::JoinHandle<Result<usize, torii_controllers::error::Error>>>) {
+    async fn abort_controllers_sync(
+        &self,
+        handle: Option<tokio::task::JoinHandle<Result<usize, torii_controllers::error::Error>>>,
+    ) {
         if let Some(handle) = handle {
             handle.abort();
         }
