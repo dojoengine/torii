@@ -1,209 +1,78 @@
 use std::collections::HashSet;
-use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
-use std::task::{Context, Poll};
 
 use crypto_bigint::U256;
-use dashmap::DashMap;
-use futures::{Stream, StreamExt};
+use futures::{Stream, stream};
+use futures_util::StreamExt;
 use rand::Rng;
 use starknet_crypto::Felt;
-use tokio::sync::mpsc::{
-    channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
-};
 use torii_broker::types::TokenBalanceUpdate;
 use torii_broker::MemoryBroker;
 use torii_proto::TokenBalance;
-use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeTokenBalancesResponse;
 
 use crate::GrpcConfig;
 
-pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::balance";
-
-#[derive(Debug)]
-pub struct TokenBalanceSubscriber {
-    /// Contract addresses that the subscriber is interested in
-    /// If empty, subscriber receives updates for all contracts
-    pub contract_addresses: HashSet<Felt>,
-    /// Account addresses that the subscriber is interested in
-    /// If empty, subscriber receives updates for all accounts
-    pub account_addresses: HashSet<Felt>,
-    /// Token IDs that the subscriber is interested in
-    /// If empty, subscriber receives updates for all tokens
-    pub token_ids: HashSet<U256>,
-    /// The channel to send the response back to the subscriber.
-    pub sender: Sender<Result<SubscribeTokenBalancesResponse, tonic::Status>>,
-}
-
-#[derive(Debug, Default)]
-pub struct TokenBalanceManager {
-    subscribers: DashMap<u64, TokenBalanceSubscriber>,
+/// Creates a stream that subscribes to token balance updates from the broker and applies filtering
+pub fn subscribe_token_balances_stream(
+    contract_addresses: Vec<Felt>,
+    account_addresses: Vec<Felt>,
+    token_ids: Vec<U256>,
     config: GrpcConfig,
-}
+) -> Pin<Box<dyn Stream<Item = Result<SubscribeTokenBalancesResponse, tonic::Status>> + Send>> {
+    let subscription_id = rand::thread_rng().gen::<u64>();
+    let contract_addresses_set: HashSet<Felt> = contract_addresses.into_iter().collect();
+    let account_addresses_set: HashSet<Felt> = account_addresses.into_iter().collect();
+    let token_ids_set: HashSet<U256> = token_ids.into_iter().collect();
+    
+    let broker_stream: Pin<Box<dyn Stream<Item = TokenBalance> + Send>> = if config.optimistic {
+        Box::pin(MemoryBroker::<TokenBalanceUpdate>::subscribe_optimistic())
+    } else {
+        Box::pin(MemoryBroker::<TokenBalanceUpdate>::subscribe())
+    };
 
-impl TokenBalanceManager {
-    pub fn new(config: GrpcConfig) -> Self {
-        Self {
-            subscribers: DashMap::new(),
-            config,
-        }
-    }
+    let filtered_stream = broker_stream
+        .filter_map(move |balance: TokenBalance| {
+            let contract_addresses_filter = contract_addresses_set.clone();
+            let account_addresses_filter = account_addresses_set.clone();
+            let token_ids_filter = token_ids_set.clone();
+            async move {
+                // Apply contract address filter
+                if !contract_addresses_filter.is_empty()
+                    && !contract_addresses_filter.contains(&balance.contract_address)
+                {
+                    return None;
+                }
 
-    pub async fn add_subscriber(
-        &self,
-        contract_addresses: Vec<Felt>,
-        account_addresses: Vec<Felt>,
-        token_ids: Vec<U256>,
-    ) -> Receiver<Result<SubscribeTokenBalancesResponse, tonic::Status>> {
-        let subscription_id = rand::thread_rng().gen::<u64>();
-        let (sender, receiver) = channel(self.config.subscription_buffer_size);
+                // Apply account address filter
+                if !account_addresses_filter.is_empty()
+                    && !account_addresses_filter.contains(&balance.account_address)
+                {
+                    return None;
+                }
 
-        // Send initial empty response
-        let _ = sender
-            .send(Ok(SubscribeTokenBalancesResponse {
+                // Apply token ID filter
+                if !token_ids_filter.is_empty()
+                    && balance.token_id.is_some()
+                    && !token_ids_filter.contains(&balance.token_id.unwrap())
+                {
+                    return None;
+                }
+
+                Some(Ok(SubscribeTokenBalancesResponse {
+                    subscription_id,
+                    balance: Some(balance.clone().into()),
+                }))
+            }
+        })
+        .chain(stream::once(async move {
+            // Send initial empty response for firefox/safari unlock issue
+            Ok(SubscribeTokenBalancesResponse {
                 subscription_id,
                 balance: None,
-            }))
-            .await;
+            })
+        }));
 
-        self.subscribers.insert(
-            subscription_id,
-            TokenBalanceSubscriber {
-                contract_addresses: contract_addresses.into_iter().collect(),
-                account_addresses: account_addresses.into_iter().collect(),
-                token_ids: token_ids.into_iter().collect(),
-                sender,
-            },
-        );
-
-        receiver
-    }
-
-    pub async fn update_subscriber(
-        &self,
-        id: u64,
-        contract_addresses: Vec<Felt>,
-        account_addresses: Vec<Felt>,
-        token_ids: Vec<U256>,
-    ) {
-        if let Some(mut subscriber) = self.subscribers.get_mut(&id) {
-            subscriber.contract_addresses = contract_addresses.into_iter().collect();
-            subscriber.account_addresses = account_addresses.into_iter().collect();
-            subscriber.token_ids = token_ids.into_iter().collect();
-        }
-    }
-
-    pub(super) async fn remove_subscriber(&self, id: u64) {
-        self.subscribers.remove(&id);
-    }
-}
-
-#[must_use = "Service does nothing unless polled"]
-#[allow(missing_debug_implementations)]
-pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = TokenBalance> + Send>>,
-    balance_sender: UnboundedSender<TokenBalance>,
-}
-
-impl Service {
-    pub fn new(subs_manager: Arc<TokenBalanceManager>) -> Self {
-        let (balance_sender, balance_receiver) = unbounded_channel();
-        let service = Self {
-            simple_broker: if subs_manager.config.optimistic {
-                Box::pin(MemoryBroker::<TokenBalanceUpdate>::subscribe_optimistic())
-            } else {
-                Box::pin(MemoryBroker::<TokenBalanceUpdate>::subscribe())
-            },
-            balance_sender,
-        };
-
-        tokio::spawn(Self::publish_updates(subs_manager, balance_receiver));
-
-        service
-    }
-
-    async fn publish_updates(
-        subs: Arc<TokenBalanceManager>,
-        mut balance_receiver: UnboundedReceiver<TokenBalance>,
-    ) {
-        while let Some(balance) = balance_receiver.recv().await {
-            Self::process_balance_update(&subs, &balance).await;
-        }
-    }
-
-    async fn process_balance_update(subs: &Arc<TokenBalanceManager>, balance: &TokenBalance) {
-        let mut closed_stream = Vec::new();
-
-        for sub in subs.subscribers.iter() {
-            let idx = sub.key();
-            let sub = sub.value();
-
-            // Skip if contract address filter doesn't match
-            if !sub.contract_addresses.is_empty()
-                && !sub.contract_addresses.contains(&balance.contract_address)
-            {
-                continue;
-            }
-
-            // Skip if account address filter doesn't match
-            if !sub.account_addresses.is_empty()
-                && !sub.account_addresses.contains(&balance.account_address)
-            {
-                continue;
-            }
-
-            // Skip if token ID filter doesn't match
-            if !sub.token_ids.is_empty()
-                && balance.token_id.is_some()
-                && !sub.token_ids.contains(&balance.token_id.unwrap())
-            {
-                continue;
-            }
-
-            let resp = SubscribeTokenBalancesResponse {
-                subscription_id: *idx,
-                balance: Some(balance.clone().into()),
-            };
-
-            // Use try_send to avoid blocking on slow subscribers
-            match sub.sender.try_send(Ok(resp)) {
-                Ok(_) => {
-                    // Message sent successfully
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    // Channel is full, subscriber is too slow - disconnect them
-                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
-                    closed_stream.push(*idx);
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    // Channel is closed, subscriber has disconnected
-                    closed_stream.push(*idx);
-                }
-            }
-        }
-
-        for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing balance stream.");
-            subs.remove_subscriber(id).await
-        }
-    }
-}
-
-impl Future for Service {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-
-        while let Poll::Ready(Some(balance)) = this.simple_broker.poll_next_unpin(cx) {
-            if let Err(e) = this.balance_sender.send(balance) {
-                error!(target = LOG_TARGET, error = ?e, "Sending balance update to processor.");
-            }
-        }
-
-        Poll::Pending
-    }
+    Box::pin(filtered_stream)
 }

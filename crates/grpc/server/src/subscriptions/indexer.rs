@@ -1,174 +1,65 @@
-use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
-use dashmap::DashMap;
-use futures::{Stream, StreamExt};
-use rand::Rng;
+use futures::{Stream, stream};
+use futures_util::StreamExt;
 use starknet::core::types::Felt;
-use tokio::sync::mpsc::{
-    channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
-};
 use torii_broker::types::ContractUpdate;
 use torii_broker::MemoryBroker;
 use torii_proto::ContractCursor;
 use torii_storage::Storage;
 use torii_storage::StorageError;
-use tracing::{error, trace};
 
 use torii_proto::proto::world::SubscribeIndexerResponse;
 
 use crate::GrpcConfig;
 
-pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::indexer";
-
-#[derive(Debug)]
-pub struct IndexerSubscriber {
-    /// Contract address that the subscriber is interested in
+/// Creates a stream that subscribes to indexer updates from the broker and applies filtering
+pub async fn subscribe_indexer_stream(
+    storage: Arc<dyn Storage>,
     contract_address: Felt,
-    /// The channel to send the response back to the subscriber.
-    sender: Sender<Result<SubscribeIndexerResponse, tonic::Status>>,
-}
-
-#[derive(Debug, Default)]
-pub struct IndexerManager {
-    subscribers: DashMap<usize, IndexerSubscriber>,
     config: GrpcConfig,
-}
+) -> Result<Pin<Box<dyn Stream<Item = Result<SubscribeIndexerResponse, tonic::Status>> + Send>>, StorageError> {
+    let broker_stream: Pin<Box<dyn Stream<Item = ContractCursor> + Send>> = if config.optimistic {
+        Box::pin(MemoryBroker::<ContractUpdate>::subscribe_optimistic())
+    } else {
+        Box::pin(MemoryBroker::<ContractUpdate>::subscribe())
+    };
 
-impl IndexerManager {
-    pub fn new(config: GrpcConfig) -> Self {
-        Self {
-            subscribers: DashMap::new(),
-            config,
-        }
-    }
-
-    pub async fn add_subscriber(
-        &self,
-        storage: Arc<dyn Storage>,
-        contract_address: Felt,
-    ) -> Result<Receiver<Result<SubscribeIndexerResponse, tonic::Status>>, StorageError> {
-        let id = rand::thread_rng().gen::<usize>();
-        let (sender, receiver) = channel(self.config.subscription_buffer_size);
-
-        let contracts = storage.cursors().await?;
-        for (contract_address, contract) in contracts {
-            let _ = sender
-                .send(Ok(SubscribeIndexerResponse {
-                    head: contract.head.unwrap() as i64,
-                    tps: contract.tps.unwrap() as i64,
-                    last_block_timestamp: contract.last_block_timestamp.unwrap() as i64,
-                    contract_address: contract_address.to_bytes_be().to_vec(),
-                }))
-                .await;
-        }
-        self.subscribers.insert(
-            id,
-            IndexerSubscriber {
-                contract_address,
-                sender,
-            },
-        );
-
-        Ok(receiver)
-    }
-
-    pub(super) async fn remove_subscriber(&self, id: usize) {
-        self.subscribers.remove(&id);
-    }
-}
-
-#[must_use = "Service does nothing unless polled"]
-#[allow(missing_debug_implementations)]
-pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = ContractCursor> + Send>>,
-    update_sender: UnboundedSender<ContractCursor>,
-}
-
-impl Service {
-    pub fn new(subs_manager: Arc<IndexerManager>) -> Self {
-        let (update_sender, update_receiver) = unbounded_channel();
-        let service = Self {
-            simple_broker: if subs_manager.config.optimistic {
-                Box::pin(MemoryBroker::<ContractUpdate>::subscribe_optimistic())
-            } else {
-                Box::pin(MemoryBroker::<ContractUpdate>::subscribe())
-            },
-            update_sender,
-        };
-
-        tokio::spawn(Self::publish_updates(subs_manager, update_receiver));
-
-        service
-    }
-
-    async fn publish_updates(
-        subs: Arc<IndexerManager>,
-        mut update_receiver: UnboundedReceiver<ContractCursor>,
-    ) {
-        while let Some(update) = update_receiver.recv().await {
-            Self::process_update(&subs, &update).await;
-        }
-    }
-
-    async fn process_update(subs: &Arc<IndexerManager>, contract: &ContractCursor) {
-        let mut closed_stream = Vec::new();
-
-        for sub in subs.subscribers.iter() {
-            let idx = sub.key();
-            let sub = sub.value();
-
-            if sub.contract_address != Felt::ZERO
-                && sub.contract_address != contract.contract_address
-            {
-                continue;
-            }
-
-            let resp = SubscribeIndexerResponse {
+    // Get initial contract cursors
+    let contracts = storage.cursors().await?;
+    let initial_responses: Vec<Result<SubscribeIndexerResponse, tonic::Status>> = contracts
+        .into_iter()
+        .map(|(contract_addr, contract)| {
+            Ok(SubscribeIndexerResponse {
                 head: contract.head.unwrap() as i64,
                 tps: contract.tps.unwrap() as i64,
                 last_block_timestamp: contract.last_block_timestamp.unwrap() as i64,
-                contract_address: contract.contract_address.to_bytes_be().to_vec(),
-            };
+                contract_address: contract_addr.to_bytes_be().to_vec(),
+            })
+        })
+        .collect();
 
-            // Use try_send to avoid blocking on slow subscribers
-            match sub.sender.try_send(Ok(resp)) {
-                Ok(_) => {
-                    // Message sent successfully
+    let filtered_stream = broker_stream
+        .filter_map(move |contract: ContractCursor| {
+            let contract_address_filter = contract_address;
+            async move {
+                // Apply contract address filter
+                if contract_address_filter != Felt::ZERO
+                    && contract_address_filter != contract.contract_address
+                {
+                    return None;
                 }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    // Channel is full, subscriber is too slow - disconnect them
-                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
-                    closed_stream.push(*idx);
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    // Channel is closed, subscriber has disconnected
-                    closed_stream.push(*idx);
-                }
+
+                Some(Ok(SubscribeIndexerResponse {
+                    head: contract.head.unwrap() as i64,
+                    tps: contract.tps.unwrap() as i64,
+                    last_block_timestamp: contract.last_block_timestamp.unwrap() as i64,
+                    contract_address: contract.contract_address.to_bytes_be().to_vec(),
+                }))
             }
-        }
+        })
+        .chain(stream::iter(initial_responses.into_iter()));
 
-        for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing indexer updates stream.");
-            subs.remove_subscriber(id).await
-        }
-    }
-}
-
-impl Future for Service {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-
-        while let Poll::Ready(Some(update)) = this.simple_broker.poll_next_unpin(cx) {
-            if let Err(e) = this.update_sender.send(update) {
-                error!(target = LOG_TARGET, error = ?e, "Sending indexer update to processor.");
-            }
-        }
-
-        Poll::Pending
-    }
+    Ok(Box::pin(filtered_stream))
 }
