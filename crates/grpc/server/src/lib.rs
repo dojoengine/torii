@@ -750,6 +750,9 @@ const DEFAULT_ALLOW_HEADERS: [&str; 6] = [
 pub struct GrpcConfig {
     pub subscription_buffer_size: usize,
     pub optimistic: bool,
+    pub tcp_keepalive_interval: Duration,
+    pub http2_keepalive_interval: Duration,
+    pub http2_keepalive_timeout: Duration,
 }
 
 impl Default for GrpcConfig {
@@ -757,6 +760,9 @@ impl Default for GrpcConfig {
         Self {
             subscription_buffer_size: 1000,
             optimistic: false,
+            tcp_keepalive_interval: Duration::from_secs(60),
+            http2_keepalive_interval: Duration::from_secs(30),
+            http2_keepalive_timeout: Duration::from_secs(10),
         }
     }
 }
@@ -783,6 +789,11 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
         .build()
         .unwrap();
 
+    // Extract keepalive settings before moving config
+    let tcp_keepalive = config.tcp_keepalive_interval;
+    let http2_keepalive_interval = config.http2_keepalive_interval;
+    let http2_keepalive_timeout = config.http2_keepalive_timeout;
+
     let world = DojoWorld::new(
         storage,
         provider,
@@ -797,6 +808,10 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     let server_future = Server::builder()
         // GrpcWeb is over http1 so we must enable it.
         .accept_http1(true)
+        // Configure keepalive for long-lived streaming connections
+        .tcp_keepalive(Some(tcp_keepalive))
+        .http2_keepalive_interval(Some(http2_keepalive_interval))
+        .http2_keepalive_timeout(Some(http2_keepalive_timeout))
         .layer(
             CorsLayer::new()
                 .allow_origin(AllowOrigin::mirror_request())
