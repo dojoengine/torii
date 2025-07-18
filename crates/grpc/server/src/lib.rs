@@ -61,11 +61,14 @@ use torii_proto::Message;
 use anyhow::{anyhow, Error};
 
 // Shared subscription runtime for all DojoWorld instances
-// This provides performance isolation from gRPC request handling
+// This provides performance isolation from user-facing API requests
+// Subscriptions involve heavy polling and should not starve API response threads
 static SUBSCRIPTION_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+    let worker_threads = (num_cpus::get() / 2).clamp(2, 8);
     tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(num_cpus::get().min(4)) // Dedicated threads for subscriptions
+        .worker_threads(worker_threads)
         .thread_name("torii-grpc-subscriptions")
+        .enable_all()
         .build()
         .expect("Failed to create subscriptions runtime")
 });
@@ -103,6 +106,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let transaction_manager = Arc::new(TransactionManager::new(config.clone()));
 
         // Spawn subscription services on the dedicated subscription runtime
+        // These services do heavy polling and should be isolated from API request handling
         SUBSCRIPTION_RUNTIME.spawn(subscriptions::entity::Service::new(Arc::clone(
             &entity_manager,
         )));
