@@ -63,13 +63,13 @@ use crate::constants::LOG_TARGET;
 // Shared runtime for GraphQL and gRPC services
 // This provides performance isolation for user-facing query services
 static QUERY_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
-    let worker_threads = (num_cpus::get() / 2).max(2).min(8); // Scale with CPU count, user-facing priority
+    let worker_threads = (num_cpus::get() / 2).clamp(2, 8);
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(worker_threads)
         .thread_name("torii-query")
         .enable_all()
         .build()
-        .expect("Failed to create API runtime")
+        .expect("Failed to create query runtime")
 });
 
 /// Creates a responsive progress bar template based on terminal size
