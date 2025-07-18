@@ -47,6 +47,7 @@ torii-storage.workspace = true
 torii-cache.workspace = true
 
 [dev-dependencies]
+chrono.workspace = true
 cainome.workspace = true
 camino.workspace = true
 dojo-test-utils.workspace = true
