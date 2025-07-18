@@ -8,6 +8,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::str;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use crypto_bigint::U256;
@@ -26,7 +27,6 @@ use subscriptions::token::TokenManager;
 use subscriptions::token_balance::TokenBalanceManager;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::task::JoinHandle;
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::codec::CompressionEncoding;
 use tonic::transport::Server;
@@ -60,6 +60,16 @@ use torii_proto::Message;
 
 use anyhow::{anyhow, Error};
 
+// Shared subscription runtime for all DojoWorld instances
+// This provides performance isolation from gRPC request handling
+static SUBSCRIPTION_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(num_cpus::get().min(4)) // Dedicated threads for subscriptions
+        .thread_name("torii-grpc-subscriptions")
+        .build()
+        .expect("Failed to create subscriptions runtime")
+});
+
 #[derive(Debug)]
 pub struct DojoWorld<P: Provider + Sync> {
     storage: Arc<dyn Storage>,
@@ -74,8 +84,6 @@ pub struct DojoWorld<P: Provider + Sync> {
     token_manager: Arc<TokenManager>,
     transaction_manager: Arc<TransactionManager>,
     _config: GrpcConfig,
-    // Keep subscription service tasks alive
-    _subscription_handles: Vec<JoinHandle<()>>,
 }
 
 impl<P: Provider + Sync> DojoWorld<P> {
@@ -94,35 +102,33 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let token_manager = Arc::new(TokenManager::new(config.clone()));
         let transaction_manager = Arc::new(TransactionManager::new(config.clone()));
 
-        // Spawn subscription services on the current runtime
-        let mut subscription_handles = Vec::new();
-        
-        subscription_handles.push(tokio::spawn(subscriptions::entity::Service::new(
-            Arc::clone(&entity_manager),
+        // Spawn subscription services on the dedicated subscription runtime
+        SUBSCRIPTION_RUNTIME.spawn(subscriptions::entity::Service::new(Arc::clone(
+            &entity_manager,
         )));
 
-        subscription_handles.push(tokio::spawn(subscriptions::event_message::Service::new(
-            Arc::clone(&event_message_manager),
+        SUBSCRIPTION_RUNTIME.spawn(subscriptions::event_message::Service::new(Arc::clone(
+            &event_message_manager,
         )));
 
-        subscription_handles.push(tokio::spawn(subscriptions::event::Service::new(
-            Arc::clone(&event_manager),
+        SUBSCRIPTION_RUNTIME.spawn(subscriptions::event::Service::new(Arc::clone(
+            &event_manager,
         )));
 
-        subscription_handles.push(tokio::spawn(subscriptions::indexer::Service::new(
-            Arc::clone(&indexer_manager),
+        SUBSCRIPTION_RUNTIME.spawn(subscriptions::indexer::Service::new(Arc::clone(
+            &indexer_manager,
         )));
 
-        subscription_handles.push(tokio::spawn(subscriptions::token_balance::Service::new(
-            Arc::clone(&token_balance_manager),
+        SUBSCRIPTION_RUNTIME.spawn(subscriptions::token_balance::Service::new(Arc::clone(
+            &token_balance_manager,
         )));
 
-        subscription_handles.push(tokio::spawn(subscriptions::token::Service::new(
-            Arc::clone(&token_manager),
+        SUBSCRIPTION_RUNTIME.spawn(subscriptions::token::Service::new(Arc::clone(
+            &token_manager,
         )));
 
-        subscription_handles.push(tokio::spawn(subscriptions::transaction::Service::new(
-            Arc::clone(&transaction_manager),
+        SUBSCRIPTION_RUNTIME.spawn(subscriptions::transaction::Service::new(Arc::clone(
+            &transaction_manager,
         )));
 
         Self {
@@ -138,7 +144,6 @@ impl<P: Provider + Sync> DojoWorld<P> {
             token_manager,
             transaction_manager,
             _config: config,
-            _subscription_handles: subscription_handles,
         }
     }
 }
