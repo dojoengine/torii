@@ -16,6 +16,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use camino::Utf8PathBuf;
@@ -58,6 +59,18 @@ use url::form_urlencoded;
 mod constants;
 
 use crate::constants::LOG_TARGET;
+
+// Shared runtime for GraphQL and gRPC services
+// This provides performance isolation for user-facing query services
+static QUERY_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+    let worker_threads = (num_cpus::get() / 2).clamp(2, 8);
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(worker_threads)
+        .thread_name("torii-query")
+        .enable_all()
+        .build()
+        .expect("Failed to create query runtime")
+});
 
 /// Creates a responsive progress bar template based on terminal size
 fn create_progress_bar_template() -> String {
@@ -518,9 +531,10 @@ impl Runner {
         let proxy_server_handle =
             tokio::spawn(async move { proxy_server.start(shutdown_tx.subscribe()).await });
 
-        let graphql_server_handle = tokio::spawn(graphql_server);
+        // Spawn user-facing query services on dedicated API runtime for better performance isolation
+        let graphql_server_handle = QUERY_RUNTIME.spawn(graphql_server);
 
-        let grpc_server_handle = tokio::spawn(grpc_server);
+        let grpc_server_handle = QUERY_RUNTIME.spawn(grpc_server);
 
         let libp2p_relay_server_handle =
             tokio::spawn(async move { libp2p_relay_server.run().await });
