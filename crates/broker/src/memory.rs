@@ -1,17 +1,18 @@
 use std::any::{Any, TypeId};
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::LazyLock;
 use std::task::{Context, Poll};
 
 use dashmap::DashMap;
 use futures_channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use futures_util::{Stream, StreamExt};
-use once_cell::sync::Lazy;
 use slab::Slab;
 
 use crate::types::Update;
 
-static SUBSCRIBERS: Lazy<DashMap<TypeId, Box<dyn Any + Send + Sync>>> = Lazy::new(Default::default);
+static SUBSCRIBERS: LazyLock<DashMap<TypeId, Box<dyn Any + Send + Sync>>> =
+    LazyLock::new(Default::default);
 
 #[derive(Debug)]
 pub struct Senders<U: std::fmt::Debug + Clone + Send + Sync + 'static>(

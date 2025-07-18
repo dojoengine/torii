@@ -18,7 +18,6 @@ hyper-reverse-proxy = { git = "https://github.com/tarrencev/hyper-reverse-proxy"
 hyper.workspace = true
 image.workspace = true
 indexmap.workspace = true
-lazy_static.workspace = true
 mime_guess.workspace = true
 reqwest.workspace = true
 serde.workspace = true

@@ -55,23 +55,12 @@ const DEFAULT_EXPOSED_HEADERS: [&str; 4] = [
 ];
 const DEFAULT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
-lazy_static::lazy_static! {
-    pub(crate) static ref WEBSOCKET_PROXY_CLIENT: ReverseProxy<HttpConnector<GaiResolver>> = {
-        ReverseProxy::new(
-            Client::builder()
-             .build_http(),
-        )
-    };
+pub(crate) static WEBSOCKET_PROXY_CLIENT: std::sync::LazyLock<
+    ReverseProxy<HttpConnector<GaiResolver>>,
+> = std::sync::LazyLock::new(|| ReverseProxy::new(Client::builder().build_http()));
 
-
-    pub(crate) static ref PROXY_CLIENT: ReverseProxy<HttpConnector<GaiResolver>> = {
-        ReverseProxy::new(
-            Client::builder()
-             .http2_only(true)
-             .build_http(),
-        )
-    };
-}
+pub(crate) static PROXY_CLIENT: std::sync::LazyLock<ReverseProxy<HttpConnector<GaiResolver>>> =
+    std::sync::LazyLock::new(|| ReverseProxy::new(Client::builder().http2_only(true).build_http()));
 
 // Helper function to check if a request is a WebSocket upgrade request
 pub fn is_websocket_upgrade(req: &Request<Body>) -> bool {

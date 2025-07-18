@@ -26,7 +26,6 @@ dojo-world.workspace = true
 futures-channel = "0.3.0"
 futures-util.workspace = true
 hashlink.workspace = true
-once_cell.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
