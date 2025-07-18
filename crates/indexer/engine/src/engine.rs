@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use dojo_world::contracts::world::WorldContractReader;
-use lazy_static::lazy_static;
+use std::sync::LazyLock;
 use metrics::{counter, gauge, histogram};
 use starknet::core::types::{Event, TransactionContent};
 use starknet::macros::selector;
@@ -32,17 +32,15 @@ use torii_indexer_fetcher::{
 };
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
 
-lazy_static! {
-    static ref DOJO_RELATED_EVENTS: HashSet<Felt> = {
-        HashSet::from([
-            selector!("StoreSetRecord"),
-            selector!("StoreUpdateRecord"),
-            selector!("StoreDelRecord"),
-            selector!("StoreUpdateMember"),
-            selector!("EventEmitted"),
-        ])
-    };
-}
+static DOJO_RELATED_EVENTS: LazyLock<HashSet<Felt>> = LazyLock::new(|| {
+    HashSet::from([
+        selector!("StoreSetRecord"),
+        selector!("StoreUpdateRecord"),
+        selector!("StoreDelRecord"),
+        selector!("StoreUpdateMember"),
+        selector!("EventEmitted"),
+    ])
+});
 
 #[derive(Debug)]
 pub struct EngineConfig {

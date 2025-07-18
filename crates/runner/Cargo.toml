@@ -27,7 +27,6 @@ http.workspace = true
 hyper-reverse-proxy = { git = "https://github.com/tarrencev/hyper-reverse-proxy" }
 hyper.workspace = true
 indexmap.workspace = true
-lazy_static.workspace = true
 num_cpus = "1.16.0"
 serde.workspace = true
 serde_json.workspace = true

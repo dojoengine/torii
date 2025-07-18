@@ -1,8 +1,8 @@
 use std::time::Duration;
+use std::sync::LazyLock;
 
 use futures_util::TryStreamExt;
 use ipfs_api_backend_hyper::{IpfsApi, IpfsClient, TryFromUri};
-use once_cell::sync::Lazy;
 use reqwest::Client;
 use tokio_util::bytes::Bytes;
 use tracing::debug;
@@ -13,7 +13,7 @@ use crate::{
 };
 
 // Global clients
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
     Client::builder()
         .timeout(Duration::from_secs(10))
         .pool_idle_timeout(Duration::from_secs(90))
@@ -21,7 +21,7 @@ static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
         .expect("Failed to create HTTP client")
 });
 
-static IPFS_CLIENT: Lazy<IpfsClient> = Lazy::new(|| {
+static IPFS_CLIENT: LazyLock<IpfsClient> = LazyLock::new(|| {
     IpfsClient::from_str(IPFS_CLIENT_URL)
         .expect("Failed to create IPFS client")
         .with_credentials(IPFS_CLIENT_USERNAME, IPFS_CLIENT_PASSWORD)
