@@ -8,3 +8,6 @@ pub mod types;
 
 // Re-export commonly used types from memory module
 pub use memory::{MemoryBroker, Senders};
+
+#[cfg(test)]
+mod test;
