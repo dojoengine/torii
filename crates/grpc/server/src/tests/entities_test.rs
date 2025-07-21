@@ -324,8 +324,10 @@ async fn test_entity_broker_stress_test() {
     println!("🚀 Starting broker stress test...");
 
     // Create entity manager with larger buffer size for stress test
-    let mut config = GrpcConfig::default();
-    config.subscription_buffer_size = 10000; // Increase buffer size
+    let config = GrpcConfig {
+        subscription_buffer_size: 10000,
+        ..Default::default()
+    };
     let entity_manager = Arc::new(EntityManager::new(config));
 
     // Create the service that will process broker updates and spawn it as a task
