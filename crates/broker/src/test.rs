@@ -7,17 +7,17 @@ use tokio::time::{timeout, Duration};
 mod tests {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq)]
-    struct TestMessage {
-        id: u32,
-        content: String,
-    }
-
     #[tokio::test]
     async fn test_publish_and_subscribe() {
-        let mut stream = MemoryBroker::<Update<TestMessage>>::subscribe();
+        #[derive(Debug, Clone, PartialEq)]
+        struct PublishSubscribeMsg {
+            id: u32,
+            content: String,
+        }
 
-        let msg = TestMessage {
+        let mut stream = MemoryBroker::<Update<PublishSubscribeMsg>>::subscribe();
+
+        let msg = PublishSubscribeMsg {
             id: 1,
             content: "Hello World".to_string(),
         };
@@ -34,14 +34,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_subscribe_raw_receives_all_messages() {
-        let mut stream = MemoryBroker::<Update<TestMessage>>::subscribe_raw();
+        #[derive(Debug, Clone, PartialEq)]
+        struct RawSubscribeMsg {
+            id: u32,
+            content: String,
+        }
 
-        let optimistic_msg = TestMessage {
+        let mut stream = MemoryBroker::<Update<RawSubscribeMsg>>::subscribe_raw();
+
+        let optimistic_msg = RawSubscribeMsg {
             id: 1,
             content: "Optimistic".to_string(),
         };
 
-        let non_optimistic_msg = TestMessage {
+        let non_optimistic_msg = RawSubscribeMsg {
             id: 2,
             content: "Non-Optimistic".to_string(),
         };
@@ -67,14 +73,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_subscribe_filters_optimistic_messages() {
-        let mut stream = MemoryBroker::<Update<TestMessage>>::subscribe();
+        #[derive(Debug, Clone, PartialEq)]
+        struct FilterOptimisticMsg {
+            id: u32,
+            content: String,
+        }
 
-        let optimistic_msg = TestMessage {
+        let mut stream = MemoryBroker::<Update<FilterOptimisticMsg>>::subscribe();
+
+        let optimistic_msg = FilterOptimisticMsg {
             id: 1,
             content: "Should be filtered".to_string(),
         };
 
-        let non_optimistic_msg = TestMessage {
+        let non_optimistic_msg = FilterOptimisticMsg {
             id: 2,
             content: "Should pass through".to_string(),
         };
@@ -98,14 +110,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_subscribe_optimistic_only_receives_optimistic() {
-        let mut stream = MemoryBroker::<Update<TestMessage>>::subscribe_optimistic();
+        #[derive(Debug, Clone, PartialEq)]
+        struct OptimisticOnlyMsg {
+            id: u32,
+            content: String,
+        }
 
-        let optimistic_msg = TestMessage {
+        let mut stream = MemoryBroker::<Update<OptimisticOnlyMsg>>::subscribe_optimistic();
+
+        let optimistic_msg = OptimisticOnlyMsg {
             id: 1,
             content: "Optimistic message".to_string(),
         };
 
-        let non_optimistic_msg = TestMessage {
+        let non_optimistic_msg = OptimisticOnlyMsg {
             id: 2,
             content: "Non-optimistic message".to_string(),
         };
@@ -129,11 +147,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_subscribers_receive_same_message() {
-        let mut stream1 = MemoryBroker::<Update<TestMessage>>::subscribe();
-        let mut stream2 = MemoryBroker::<Update<TestMessage>>::subscribe();
-        let mut stream3 = MemoryBroker::<Update<TestMessage>>::subscribe_raw();
+        #[derive(Debug, Clone, PartialEq)]
+        struct MultipleSubscribersMsg {
+            id: u32,
+            content: String,
+        }
 
-        let msg = TestMessage {
+        let mut stream1 = MemoryBroker::<Update<MultipleSubscribersMsg>>::subscribe();
+        let mut stream2 = MemoryBroker::<Update<MultipleSubscribersMsg>>::subscribe();
+        let mut stream3 = MemoryBroker::<Update<MultipleSubscribersMsg>>::subscribe_raw();
+
+        let msg = MultipleSubscribersMsg {
             id: 42,
             content: "Broadcast message".to_string(),
         };
@@ -160,7 +184,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_late_subscriber_misses_early_messages() {
-        let msg1 = TestMessage {
+        #[derive(Debug, Clone, PartialEq)]
+        struct LateSubscriberMsg {
+            id: u32,
+            content: String,
+        }
+
+        let msg1 = LateSubscriberMsg {
             id: 1,
             content: "Early message".to_string(),
         };
@@ -169,9 +199,9 @@ mod tests {
         MemoryBroker::publish(Update::new(msg1, false));
 
         // Create subscriber after publishing
-        let mut stream = MemoryBroker::<Update<TestMessage>>::subscribe();
+        let mut stream = MemoryBroker::<Update<LateSubscriberMsg>>::subscribe();
 
-        let msg2 = TestMessage {
+        let msg2 = LateSubscriberMsg {
             id: 2,
             content: "Late message".to_string(),
         };
@@ -192,20 +222,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_cleanup_on_drop() {
+        #[derive(Debug, Clone, PartialEq)]
+        struct StreamCleanupMsg {
+            id: u32,
+            content: String,
+        }
+
         // This test verifies that dropping a stream properly cleans up the sender
-        let msg = TestMessage {
+        let msg = StreamCleanupMsg {
             id: 1,
             content: "Test message".to_string(),
         };
 
         // Create and immediately drop a stream
         {
-            let _stream = MemoryBroker::<Update<TestMessage>>::subscribe();
+            let _stream = MemoryBroker::<Update<StreamCleanupMsg>>::subscribe();
             // Stream gets dropped here
         }
 
         // Verify we can still use the broker normally
-        let mut new_stream = MemoryBroker::<Update<TestMessage>>::subscribe();
+        let mut new_stream = MemoryBroker::<Update<StreamCleanupMsg>>::subscribe();
         MemoryBroker::publish(Update::new(msg.clone(), false));
 
         let received = timeout(Duration::from_millis(100), new_stream.next()).await;
@@ -216,14 +252,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_publishing_and_subscribing() {
+        #[derive(Debug, Clone, PartialEq)]
+        struct ConcurrentMsg {
+            id: u32,
+            content: String,
+        }
+
         use tokio::task;
 
-        let mut stream = MemoryBroker::<Update<TestMessage>>::subscribe_raw();
+        let mut stream = MemoryBroker::<Update<ConcurrentMsg>>::subscribe_raw();
 
         // Spawn concurrent publishing tasks
         let publish_handle = task::spawn(async {
             for i in 0..10 {
-                let msg = TestMessage {
+                let msg = ConcurrentMsg {
                     id: i,
                     content: format!("Message {}", i),
                 };
@@ -253,15 +295,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_with_subscribers_function() {
+        #[derive(Debug, Clone, PartialEq)]
+        struct WithSubscribersMsg {
+            id: u32,
+            content: String,
+        }
+
         // Test the with_subscribers utility function
         let initial_count =
-            MemoryBroker::<Update<TestMessage>>::with_subscribers(|senders| senders.0.len());
+            MemoryBroker::<Update<WithSubscribersMsg>>::with_subscribers(|senders| senders.0.len());
 
-        let _stream1 = MemoryBroker::<Update<TestMessage>>::subscribe();
-        let _stream2 = MemoryBroker::<Update<TestMessage>>::subscribe_raw();
+        let _stream1 = MemoryBroker::<Update<WithSubscribersMsg>>::subscribe();
+        let _stream2 = MemoryBroker::<Update<WithSubscribersMsg>>::subscribe_raw();
 
         let count_with_subscribers =
-            MemoryBroker::<Update<TestMessage>>::with_subscribers(|senders| senders.0.len());
+            MemoryBroker::<Update<WithSubscribersMsg>>::with_subscribers(|senders| senders.0.len());
 
         // Should have 2 more subscribers now
         assert_eq!(count_with_subscribers, initial_count + 2);
