@@ -11,3 +11,6 @@ slab = "0.4"
 tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1" 
 torii-proto.workspace = true
+
+[dev-dependencies]
+tokio-test = "0.4"
