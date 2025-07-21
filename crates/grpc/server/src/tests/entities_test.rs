@@ -191,17 +191,17 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_entity_broker_multiple_subscriptions() {
+    use crate::subscriptions::entity::{EntityManager, Service};
+    use chrono::Utc;
     use std::time::Duration;
     use tokio::time::timeout;
-    use chrono::Utc;
     use torii_broker::{types::EntityUpdate, MemoryBroker};
     use torii_proto::schema::{Entity, EntityWithMetadata};
-    use crate::subscriptions::entity::{EntityManager, Service};
 
     // Create entity manager with default config
     let config = GrpcConfig::default();
     let entity_manager = Arc::new(EntityManager::new(config));
-    
+
     // Create the service that will process broker updates and spawn it as a task
     let service = Service::new(entity_manager.clone());
     tokio::spawn(service);
@@ -209,7 +209,7 @@ async fn test_entity_broker_multiple_subscriptions() {
     // Create multiple subscribers with NO clauses (all should receive all updates)
     let num_subscribers = 5;
     let mut subscribers = Vec::new();
-    
+
     for i in 0..num_subscribers {
         let receiver = entity_manager.add_subscriber(None).await; // No clause = receive all
         subscribers.push((i, receiver));
@@ -220,17 +220,17 @@ async fn test_entity_broker_multiple_subscriptions() {
 
     // Create and publish many entity updates
     let num_updates = 200;
-    
+
     for update_id in 0..num_updates {
         let hashed_keys = starknet_crypto::Felt::from(update_id as u64);
         let keys = vec![hashed_keys];
-        
+
         // Create a test entity
         let entity = Entity {
             hashed_keys,
             models: vec![],
         };
-        
+
         let now = Utc::now();
         let entity_with_metadata = EntityWithMetadata {
             entity,
@@ -240,11 +240,11 @@ async fn test_entity_broker_multiple_subscriptions() {
             updated_at: now,
             executed_at: now,
         };
-        
+
         // Publish the update to the broker
         let update = EntityUpdate::new(entity_with_metadata, false);
         MemoryBroker::publish(update);
-        
+
         // Small delay every 50 updates to prevent overwhelming the system
         if update_id % 50 == 0 {
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -253,10 +253,10 @@ async fn test_entity_broker_multiple_subscriptions() {
 
     // Collect results from all subscribers
     let mut received_counts = Vec::new();
-    
+
     for (subscriber_id, mut receiver) in subscribers {
         let mut count = 0;
-        
+
         // Skip the initial empty response
         if let Ok(Some(response)) = timeout(Duration::from_secs(1), receiver.recv()).await {
             match response {
@@ -266,55 +266,60 @@ async fn test_entity_broker_multiple_subscriptions() {
                 Err(e) => panic!("Subscriber {} received error: {:?}", subscriber_id, e),
             }
         }
-        
+
         // Collect all updates (each subscriber should receive all num_updates)
         while count < num_updates {
             match timeout(Duration::from_secs(3), receiver.recv()).await {
-                Ok(Some(response)) => {
-                    match response {
-                        Ok(resp) => {
-                            if let Some(_entity) = resp.entity {
-                                count += 1;
-                            }
+                Ok(Some(response)) => match response {
+                    Ok(resp) => {
+                        if let Some(_entity) = resp.entity {
+                            count += 1;
                         }
-                        Err(e) => panic!("Subscriber {} received error: {:?}", subscriber_id, e),
                     }
-                }
+                    Err(e) => panic!("Subscriber {} received error: {:?}", subscriber_id, e),
+                },
                 Ok(None) => break,
                 Err(_) => {
-                    println!("Subscriber {} timed out after receiving {} updates (expected {})", 
-                             subscriber_id, count, num_updates);
+                    println!(
+                        "Subscriber {} timed out after receiving {} updates (expected {})",
+                        subscriber_id, count, num_updates
+                    );
                     break;
                 }
             }
         }
-        
+
         received_counts.push(count);
     }
 
     // Verify that all subscribers received all updates
     println!("Published {} updates", num_updates);
     println!("Received counts: {:?}", received_counts);
-    
+
     for (subscriber_id, received_count) in received_counts.iter().enumerate() {
-        assert_eq!(*received_count, num_updates, 
-                  "Subscriber {} expected {} updates, got {}", 
-                  subscriber_id, num_updates, received_count);
+        assert_eq!(
+            *received_count, num_updates,
+            "Subscriber {} expected {} updates, got {}",
+            subscriber_id, num_updates, received_count
+        );
     }
 
-    println!("✅ Successfully tested {} subscribers with {} updates each", num_subscribers, num_updates);
+    println!(
+        "✅ Successfully tested {} subscribers with {} updates each",
+        num_subscribers, num_updates
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_entity_broker_stress_test() {
-    use std::time::{Duration, Instant};
-    use tokio::time::timeout;
+    use crate::subscriptions::entity::{EntityManager, Service};
     use chrono::Utc;
     use dojo_types::primitive::Primitive;
     use dojo_types::schema::{Member, Struct, Ty};
+    use std::time::{Duration, Instant};
+    use tokio::time::timeout;
     use torii_broker::{types::EntityUpdate, MemoryBroker};
     use torii_proto::schema::{Entity, EntityWithMetadata};
-    use crate::subscriptions::entity::{EntityManager, Service};
 
     println!("🚀 Starting broker stress test...");
 
@@ -322,7 +327,7 @@ async fn test_entity_broker_stress_test() {
     let mut config = GrpcConfig::default();
     config.subscription_buffer_size = 10000; // Increase buffer size
     let entity_manager = Arc::new(EntityManager::new(config));
-    
+
     // Create the service that will process broker updates and spawn it as a task
     let service = Service::new(entity_manager.clone());
     tokio::spawn(service);
@@ -330,13 +335,13 @@ async fn test_entity_broker_stress_test() {
     // Create hundreds of subscribers with NO clauses (all should receive all updates)
     let num_subscribers = 500;
     let mut subscribers = Vec::new();
-    
+
     println!("📡 Creating {} subscribers...", num_subscribers);
-    
+
     for i in 0..num_subscribers {
         let receiver = entity_manager.add_subscriber(None).await; // No clause = receive all
         subscribers.push((i, receiver));
-        
+
         // Progress indicator
         if i % 100 == 0 {
             println!("  Created {} subscribers", i + 1);
@@ -350,17 +355,20 @@ async fn test_entity_broker_stress_test() {
     let num_updates = 5000;
     let batch_size = 100;
     let start_time = Instant::now();
-    
-    println!("📦 Publishing {} updates in batches of {}...", num_updates, batch_size);
-    
+
+    println!(
+        "📦 Publishing {} updates in batches of {}...",
+        num_updates, batch_size
+    );
+
     for batch in 0..(num_updates / batch_size) {
         let batch_start = batch * batch_size;
         let batch_end = std::cmp::min(batch_start + batch_size, num_updates);
-        
+
         for update_id in batch_start..batch_end {
             let hashed_keys = starknet_crypto::Felt::from(update_id as u64);
             let keys = vec![hashed_keys];
-            
+
             // Create realistic game models that cycle through different types
             let models = match update_id % 4 {
                 0 => {
@@ -380,7 +388,9 @@ async fn test_entity_broker_stress_test() {
                             },
                             Member {
                                 name: "level".to_string(),
-                                ty: Ty::Primitive(Primitive::U32(Some((update_id % 100 + 1) as u32))),
+                                ty: Ty::Primitive(Primitive::U32(Some(
+                                    (update_id % 100 + 1) as u32,
+                                ))),
                                 key: false,
                             },
                             Member {
@@ -431,7 +441,9 @@ async fn test_entity_broker_stress_test() {
                             },
                             Member {
                                 name: "current_hp".to_string(),
-                                ty: Ty::Primitive(Primitive::U32(Some((update_id % 100 + 1) as u32))),
+                                ty: Ty::Primitive(Primitive::U32(Some(
+                                    (update_id % 100 + 1) as u32,
+                                ))),
                                 key: false,
                             },
                             Member {
@@ -477,13 +489,13 @@ async fn test_entity_broker_stress_test() {
                 }
                 _ => unreachable!(),
             };
-            
+
             // Create entity with realistic models
             let entity = Entity {
                 hashed_keys,
                 models,
             };
-            
+
             let now = Utc::now();
             let entity_with_metadata = EntityWithMetadata {
                 entity,
@@ -493,15 +505,15 @@ async fn test_entity_broker_stress_test() {
                 updated_at: now,
                 executed_at: now,
             };
-            
+
             // Publish the update to the broker
             let update = EntityUpdate::new(entity_with_metadata, false);
             MemoryBroker::publish(update);
         }
-        
+
         // Small delay between batches to prevent overwhelming the system
         tokio::time::sleep(Duration::from_millis(10)).await;
-        
+
         // Progress indicator
         if batch % 10 == 0 {
             let elapsed = start_time.elapsed();
@@ -510,23 +522,29 @@ async fn test_entity_broker_stress_test() {
             println!("  Sent {} updates ({:.1} updates/sec)", updates_sent, rate);
         }
     }
-    
+
     let publish_duration = start_time.elapsed();
-    println!("✅ Published {} updates in {:.2}s ({:.1} updates/sec)", 
-             num_updates, publish_duration.as_secs_f64(), 
-             num_updates as f64 / publish_duration.as_secs_f64());
+    println!(
+        "✅ Published {} updates in {:.2}s ({:.1} updates/sec)",
+        num_updates,
+        publish_duration.as_secs_f64(),
+        num_updates as f64 / publish_duration.as_secs_f64()
+    );
 
     // Collect results from all subscribers with extended timeout
     let mut received_counts = Vec::new();
     let mut successful_subscribers = 0;
     let mut failed_subscribers = 0;
-    
-    println!("📊 Collecting results from {} subscribers...", num_subscribers);
-    
+
+    println!(
+        "📊 Collecting results from {} subscribers...",
+        num_subscribers
+    );
+
     for (subscriber_id, mut receiver) in subscribers {
         let mut count = 0;
         let subscriber_start = Instant::now();
-        
+
         // Skip the initial empty response
         if let Ok(Some(response)) = timeout(Duration::from_secs(2), receiver.recv()).await {
             match response {
@@ -534,18 +552,21 @@ async fn test_entity_broker_stress_test() {
                     assert!(resp.entity.is_none()); // Initial empty response
                 }
                 Err(e) => {
-                    println!("⚠️  Subscriber {} received error during initial response: {:?}", subscriber_id, e);
+                    println!(
+                        "⚠️  Subscriber {} received error during initial response: {:?}",
+                        subscriber_id, e
+                    );
                     failed_subscribers += 1;
                     received_counts.push(0);
                     continue;
                 }
             }
         }
-        
+
         // Collect all updates with generous timeout
         let mut consecutive_timeouts = 0;
         let max_consecutive_timeouts = 3;
-        
+
         while count < num_updates {
             match timeout(Duration::from_secs(5), receiver.recv()).await {
                 Ok(Some(response)) => {
@@ -563,35 +584,46 @@ async fn test_entity_broker_stress_test() {
                     }
                 }
                 Ok(None) => {
-                    println!("⚠️  Subscriber {} channel closed unexpectedly", subscriber_id);
+                    println!(
+                        "⚠️  Subscriber {} channel closed unexpectedly",
+                        subscriber_id
+                    );
                     break;
                 }
                 Err(_) => {
                     consecutive_timeouts += 1;
                     if consecutive_timeouts >= max_consecutive_timeouts {
-                        println!("⚠️  Subscriber {} timed out {} times consecutively, stopping", 
-                                subscriber_id, consecutive_timeouts);
+                        println!(
+                            "⚠️  Subscriber {} timed out {} times consecutively, stopping",
+                            subscriber_id, consecutive_timeouts
+                        );
                         break;
                     }
                     // Continue waiting for more updates
                 }
             }
         }
-        
+
         let subscriber_duration = subscriber_start.elapsed();
-        
+
         if count == num_updates {
             successful_subscribers += 1;
             if subscriber_id % 100 == 0 {
-                println!("  ✅ Subscriber {} received all {} updates in {:.2}s", 
-                        subscriber_id, count, subscriber_duration.as_secs_f64());
+                println!(
+                    "  ✅ Subscriber {} received all {} updates in {:.2}s",
+                    subscriber_id,
+                    count,
+                    subscriber_duration.as_secs_f64()
+                );
             }
         } else {
             failed_subscribers += 1;
-            println!("  ❌ Subscriber {} received only {} updates (expected {})", 
-                    subscriber_id, count, num_updates);
+            println!(
+                "  ❌ Subscriber {} received only {} updates (expected {})",
+                subscriber_id, count, num_updates
+            );
         }
-        
+
         received_counts.push(count);
     }
 
@@ -600,34 +632,42 @@ async fn test_entity_broker_stress_test() {
     let total_received: usize = received_counts.iter().sum();
     let success_rate = (successful_subscribers as f64 / num_subscribers as f64) * 100.0;
     let delivery_rate = (total_received as f64 / total_expected as f64) * 100.0;
-    
+
     println!("\n📈 STRESS TEST RESULTS:");
     println!("  Subscribers: {}", num_subscribers);
     println!("  Updates per subscriber: {}", num_updates);
     println!("  Total expected deliveries: {}", total_expected);
     println!("  Total actual deliveries: {}", total_received);
-    println!("  Successful subscribers: {} ({:.1}%)", successful_subscribers, success_rate);
+    println!(
+        "  Successful subscribers: {} ({:.1}%)",
+        successful_subscribers, success_rate
+    );
     println!("  Failed subscribers: {}", failed_subscribers);
     println!("  Overall delivery rate: {:.2}%", delivery_rate);
-    
+
     // Calculate min, max, median received counts
     let mut sorted_counts = received_counts.clone();
     sorted_counts.sort();
     let min_received = sorted_counts[0];
     let max_received = sorted_counts[sorted_counts.len() - 1];
     let median_received = sorted_counts[sorted_counts.len() / 2];
-    
+
     println!("  Min received: {}", min_received);
     println!("  Max received: {}", max_received);
     println!("  Median received: {}", median_received);
-    
+
     // Assert that we have reasonable success rates
-    assert!(success_rate >= 95.0, 
-            "Success rate too low: {:.1}%. Expected at least 95%", success_rate);
-    assert!(delivery_rate >= 95.0, 
-            "Delivery rate too low: {:.2}%. Expected at least 95%", delivery_rate);
-    
+    assert!(
+        success_rate >= 95.0,
+        "Success rate too low: {:.1}%. Expected at least 95%",
+        success_rate
+    );
+    assert!(
+        delivery_rate >= 95.0,
+        "Delivery rate too low: {:.2}%. Expected at least 95%",
+        delivery_rate
+    );
+
     println!("🎉 Stress test completed successfully! {} subscribers handled {} updates each with {:.1}% success rate", 
              num_subscribers, num_updates, success_rate);
 }
-
