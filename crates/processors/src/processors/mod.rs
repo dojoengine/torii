@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
 use controller::ControllerProcessor;
+use erc1155_legacy_transfer_batch::Erc1155LegacyTransferBatchProcessor;
+use erc1155_legacy_transfer_single::Erc1155LegacyTransferSingleProcessor;
 use erc1155_transfer_batch::Erc1155TransferBatchProcessor;
 use erc1155_transfer_single::Erc1155TransferSingleProcessor;
 use erc20_legacy_transfer::Erc20LegacyTransferProcessor;
@@ -28,6 +30,8 @@ use upgrade_model::UpgradeModelProcessor;
 use crate::{BlockProcessor, EventProcessor, TransactionProcessor};
 
 pub(crate) mod controller;
+mod erc1155_legacy_transfer_batch;
+mod erc1155_legacy_transfer_single;
 mod erc1155_transfer_batch;
 mod erc1155_transfer_single;
 mod erc20_legacy_transfer;
@@ -114,6 +118,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Processors<P> {
                 vec![
                     Box::new(Erc1155TransferBatchProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc1155TransferSingleProcessor) as Box<dyn EventProcessor<P>>,
+                    Box::new(Erc1155LegacyTransferBatchProcessor) as Box<dyn EventProcessor<P>>,
+                    Box::new(Erc1155LegacyTransferSingleProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc4906MetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc4906BatchMetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
                 ],
