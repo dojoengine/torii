@@ -110,7 +110,9 @@ where
                 )
                 .await?;
 
-                cache.update_balance_diff(&id, from_clone, to_clone, amount).await;
+                cache
+                    .update_balance_diff(&id, from_clone, to_clone, amount)
+                    .await;
 
                 storage
                     .store_erc_transfer_event(
@@ -142,4 +144,4 @@ where
 
         Ok(())
     }
-} 
+}

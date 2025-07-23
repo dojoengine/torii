@@ -74,9 +74,7 @@ where
         )
         .await?;
 
-        ctx.cache
-            .update_balance_diff(&id, from, to, value)
-            .await;
+        ctx.cache.update_balance_diff(&id, from, to, value).await;
 
         ctx.storage
             .store_erc_transfer_event(
@@ -94,4 +92,4 @@ where
 
         Ok(())
     }
-} 
+}
