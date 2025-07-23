@@ -77,7 +77,7 @@ where
 
         // If the namespace is not in the list of namespaces to index, silently ignore it.
         // If our config is empty, we index all namespaces.
-        if !ctx.config.should_index(&namespace) {
+        if !ctx.config.should_index(&namespace, &name) {
             return Ok(());
         }
 

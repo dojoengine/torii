@@ -170,6 +170,14 @@ pub struct IndexingOptions {
     )]
     pub namespaces: Vec<String>,
 
+    /// Models to index
+    #[arg(
+        long = "indexing.models",
+        value_delimiter = ',',
+        help = "The models of the world that torii should index. If empty, all models will be indexed."
+    )]
+    pub models: Vec<String>,
+
     /// The block number to start indexing the world from.
     ///
     /// Warning: In the current implementation, this will break the indexing of tokens, if any.
@@ -220,6 +228,7 @@ impl Default for IndexingOptions {
             transactions: false,
             contracts: vec![],
             namespaces: vec![],
+            models: vec![],
             world_block: 0,
             controllers: false,
             strict_model_reader: false,

@@ -42,6 +42,7 @@ pub struct EventProcessorConfig {
     pub strict_model_reader: bool,
     pub historical_models: HashSet<Felt>,
     pub max_metadata_tasks: usize,
+    pub models: HashSet<String>,
 }
 
 impl Default for EventProcessorConfig {
@@ -51,13 +52,15 @@ impl Default for EventProcessorConfig {
             strict_model_reader: false,
             historical_models: HashSet::new(),
             max_metadata_tasks: 10,
+            models: HashSet::new(),
         }
     }
 }
 
 impl EventProcessorConfig {
-    pub fn should_index(&self, namespace: &str) -> bool {
-        self.namespaces.is_empty() || self.namespaces.contains(namespace)
+    pub fn should_index(&self, namespace: &str, name: &str) -> bool {
+        (self.namespaces.is_empty() || self.namespaces.contains(namespace))
+            && (self.models.is_empty() || self.models.contains(name))
     }
 
     pub fn is_historical(&self, selector: &Felt) -> bool {

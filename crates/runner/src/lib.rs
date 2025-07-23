@@ -311,6 +311,7 @@ impl Runner {
             .into_iter()
             .map(|tag| compute_selector_from_tag(&tag))
             .collect::<HashSet<_>>();
+
         let db = Sql::new_with_config(
             readonly_pool.clone(),
             sender.clone(),
@@ -371,6 +372,7 @@ impl Runner {
                     namespaces: self.args.indexing.namespaces.into_iter().collect(),
                     historical_models,
                     max_metadata_tasks: self.args.erc.max_metadata_tasks,
+                    models: self.args.indexing.models.clone().into_iter().collect(),
                 },
                 world_block: self.args.indexing.world_block,
             },
