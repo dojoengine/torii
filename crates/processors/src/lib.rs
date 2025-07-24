@@ -60,7 +60,9 @@ impl Default for EventProcessorConfig {
 impl EventProcessorConfig {
     pub fn should_index(&self, namespace: &str, name: &str) -> bool {
         (self.namespaces.is_empty() || self.namespaces.contains(namespace))
-            && (self.models.is_empty() || self.models.contains(name))
+            && (self.models.is_empty()
+                || self.models.contains(name)
+                || self.models.contains(&format!("{}-{}", namespace, name)))
     }
 
     pub fn is_historical(&self, selector: &Felt) -> bool {
