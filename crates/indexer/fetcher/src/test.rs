@@ -245,6 +245,9 @@ async fn test_fetch_pending_multiple_transactions(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
+    // Mine a block
+    sequencer.dev_client().generate_block().await.unwrap();
+
     let latest_block = provider.block_hash_and_number().await.unwrap();
     let current_block_number = latest_block.block_number;
 
@@ -368,6 +371,9 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
     TransactionWaiter::new(grant_writer_res.transaction_hash, &provider)
         .await
         .unwrap();
+
+    // Mine a block
+    sequencer.dev_client().generate_block().await.unwrap();
 
     let latest_block = provider.block_hash_and_number().await.unwrap();
     let current_block_number = latest_block.block_number;
@@ -509,6 +515,9 @@ async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
     TransactionWaiter::new(grant_writer_res.transaction_hash, &provider)
         .await
         .unwrap();
+
+    // Mine a block
+    sequencer.dev_client().generate_block().await.unwrap();
 
     let initial_block = provider.block_hash_and_number().await.unwrap();
     let initial_block_number = initial_block.block_number;
@@ -685,6 +694,9 @@ async fn test_fetch_pending_block_mined_during_fetch(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
+    // Mine a block
+    sequencer.dev_client().generate_block().await.unwrap();
+
     let latest_block = provider.block_hash_and_number().await.unwrap();
     let current_block_number = latest_block.block_number;
 
@@ -769,6 +781,9 @@ async fn test_fetch_pending_with_events_comprehensive(sequencer: &RunnerCtx) {
     TransactionWaiter::new(grant_writer_res.transaction_hash, &provider)
         .await
         .unwrap();
+
+    // Mine a block
+    sequencer.dev_client().generate_block().await.unwrap();
 
     let latest_block = provider.block_hash_and_number().await.unwrap();
     let current_block_number = latest_block.block_number;
@@ -874,6 +889,9 @@ async fn test_fetch_pending_filters_reverted_transactions(sequencer: &RunnerCtx)
         .await
         .unwrap();
 
+    // Mine a block
+    sequencer.dev_client().generate_block().await.unwrap();
+
     let latest_block = provider.block_hash_and_number().await.unwrap();
     let current_block_number = latest_block.block_number;
 
@@ -975,6 +993,9 @@ async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerC
     TransactionWaiter::new(grant_writer_res.transaction_hash, &provider)
         .await
         .unwrap();
+
+    // Mine a block
+    sequencer.dev_client().generate_block().await.unwrap();
 
     let latest_block = provider.block_hash_and_number().await.unwrap();
     let current_block_number = latest_block.block_number;
