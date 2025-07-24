@@ -812,6 +812,10 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
         .tcp_keepalive(Some(tcp_keepalive))
         .http2_keepalive_interval(Some(http2_keepalive_interval))
         .http2_keepalive_timeout(Some(http2_keepalive_timeout))
+        .initial_stream_window_size(Some(1024 * 1024))
+        .initial_connection_window_size(Some(1024 * 1024 * 10))
+        // Should be enabled by default.
+        .tcp_nodelay(true)
         .layer(
             CorsLayer::new()
                 .allow_origin(AllowOrigin::mirror_request())
