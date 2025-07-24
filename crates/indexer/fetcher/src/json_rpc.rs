@@ -343,22 +343,26 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                     continue;
                 }
 
+                cursor.last_pending_block_tx = Some(*tx_hash);
+                let events = t
+                    .receipt
+                    .events()
+                    .iter()
+                    .filter(|e| e.from_address == *contract_address)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if events.is_empty() {
+                    continue;
+                }
+
                 cursor_transactions
                     .entry(*contract_address)
                     .or_insert(HashSet::new())
                     .insert(*tx_hash);
 
                 transactions.entry(*tx_hash).and_modify(|tx| {
-                    tx.events.extend(
-                        t.receipt
-                            .events()
-                            .iter()
-                            .filter(|e| e.from_address == *contract_address)
-                            .cloned()
-                            .collect::<Vec<_>>(),
-                    );
+                    tx.events.extend(events);
                 });
-                cursor.last_pending_block_tx = Some(*tx_hash);
             }
         }
 
