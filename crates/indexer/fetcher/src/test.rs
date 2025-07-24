@@ -17,7 +17,7 @@ use starknet::macros::felt;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
 use starknet_crypto::Felt;
-use torii_storage::proto::{Contract, ContractCursor, ContractType};
+use torii_storage::proto::ContractCursor;
 use url::Url;
 
 use crate::{Fetcher, FetcherConfig, FetchingFlags};
@@ -177,9 +177,13 @@ async fn test_fetch_pending_basic(sequencer: &RunnerCtx) {
     assert_eq!(pending.block_number, current_block_number + 1);
 
     // Verify cursor was updated
-    assert!(pending.cursors[&world_address].last_pending_block_tx.is_some());
+    assert!(pending.cursors[&world_address]
+        .last_pending_block_tx
+        .is_some());
     assert_eq!(
-        pending.cursors[&world_address].last_pending_block_tx.unwrap(),
+        pending.cursors[&world_address]
+            .last_pending_block_tx
+            .unwrap(),
         tx.transaction_hash
     );
 }
@@ -283,7 +287,9 @@ async fn test_fetch_pending_multiple_transactions(sequencer: &RunnerCtx) {
 
     // Cursor should point to the last transaction
     assert_eq!(
-        pending.cursors[&world_address].last_pending_block_tx.unwrap(),
+        pending.cursors[&world_address]
+            .last_pending_block_tx
+            .unwrap(),
         tx3.transaction_hash
     );
 }
@@ -391,7 +397,9 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
 
     // Cursor should point to the last new transaction
     assert_eq!(
-        pending2.cursors[&world_address].last_pending_block_tx.unwrap(),
+        pending2.cursors[&world_address]
+            .last_pending_block_tx
+            .unwrap(),
         tx3.transaction_hash
     );
 }
@@ -467,7 +475,7 @@ async fn test_fetch_pending_block_mined_during_fetch(sequencer: &RunnerCtx) {
 
     // Fetch should return None for pending since the block was mined
     let result = fetcher.fetch(&cursors).await.unwrap();
-    
+
     // The pending block should be None because the parent hash doesn't match
     // (a new block was mined between getting latest block and fetching pending)
     assert!(result.pending.is_none());
@@ -546,12 +554,12 @@ async fn test_fetch_pending_with_events(sequencer: &RunnerCtx) {
 
     // Should have our transaction
     assert!(pending.transactions.contains_key(&tx.transaction_hash));
-    
+
     let transaction = &pending.transactions[&tx.transaction_hash];
-    
+
     // Transaction should have events (spawn creates model events)
     assert!(!transaction.events.is_empty());
-    
+
     // Verify events are from the world contract
     for event in &transaction.events {
         // Events should be related to the world contract operations
@@ -644,7 +652,7 @@ async fn test_fetch_pending_cursor_transactions(sequencer: &RunnerCtx) {
     // Verify cursor_transactions contains the transactions for the world contract
     assert!(pending.cursor_transactions.contains_key(&world_address));
     let world_transactions = &pending.cursor_transactions[&world_address];
-    
+
     assert!(world_transactions.contains(&tx1.transaction_hash));
     assert!(world_transactions.contains(&tx2.transaction_hash));
     assert_eq!(world_transactions.len(), 2);
@@ -851,8 +859,12 @@ async fn test_fetch_pending_multiple_contracts(sequencer: &RunnerCtx) {
     let pending = result.pending.unwrap();
 
     // Should have both transactions
-    assert!(pending.transactions.contains_key(&world_tx.transaction_hash));
-    assert!(pending.transactions.contains_key(&erc20_tx.transaction_hash));
+    assert!(pending
+        .transactions
+        .contains_key(&world_tx.transaction_hash));
+    assert!(pending
+        .transactions
+        .contains_key(&erc20_tx.transaction_hash));
 
     // Verify cursor_transactions are properly separated by contract
     assert!(pending.cursor_transactions.contains_key(&world_address));
