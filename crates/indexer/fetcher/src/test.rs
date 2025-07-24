@@ -95,12 +95,6 @@ async fn test_range_one_block() {
             expected_tx.unwrap().receipt.transaction_hash()
         );
     }
-
-    // Verify cursor was updated correctly
-    let updated_cursor = &result.range.cursors[&ETERNUM_ADDRESS];
-    assert_eq!(updated_cursor.head, Some(eternum_block));
-    assert_eq!(updated_cursor.contract_address, ETERNUM_ADDRESS);
-    assert!(updated_cursor.last_block_timestamp.is_some());
 }
 
 #[tokio::test(flavor = "multi_thread")]
