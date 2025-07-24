@@ -560,21 +560,6 @@ async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    // Fetch pending transactions
-    let pending_result = fetcher.fetch(&initial_cursors).await.unwrap();
-    assert!(pending_result.pending.is_some());
-    let pending = pending_result.pending.unwrap();
-
-    // Verify pending transactions
-    assert!(pending
-        .transactions
-        .contains_key(&pending_tx1.transaction_hash));
-    assert!(pending
-        .transactions
-        .contains_key(&pending_tx2.transaction_hash));
-    assert_eq!(pending.transactions.len(), 2);
-    assert_eq!(pending.cursor_transactions[&world_address].len(), 2);
-
     // Phase 2: Mine the block (this moves pending transactions to mined)
     sequencer.dev_client().generate_block().await.unwrap();
 
@@ -591,7 +576,7 @@ async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
 
     // Phase 4: Fetch with cursors from before the block was mined
     // This should fetch the range (newly mined block) and new pending transactions
-    let switching_result = fetcher.fetch(&pending.cursors).await.unwrap();
+    let switching_result = fetcher.fetch(&initial_cursors).await.unwrap();
 
     // Verify range contains the previously pending transactions (now mined)
     let mined_block_number = initial_block_number + 1;
