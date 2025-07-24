@@ -343,7 +343,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                     continue;
                 }
 
-                cursor.last_pending_block_tx = Some(*tx_hash);
                 let events = t
                     .receipt
                     .events()
@@ -363,6 +362,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
                 transactions.entry(*tx_hash).and_modify(|tx| {
                     tx.events.extend(events);
                 });
+                cursor.last_pending_block_tx = Some(*tx_hash);
             }
         }
 
