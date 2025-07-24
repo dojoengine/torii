@@ -136,6 +136,9 @@ async fn test_fetch_pending_basic(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
+    // Mine a block
+    sequencer.dev_client().generate_block().await.unwrap();
+
     // Get current block number after grant_writer is mined
     let latest_block = provider.block_hash_and_number().await.unwrap();
     let current_block_number = latest_block.block_number;
