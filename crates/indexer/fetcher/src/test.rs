@@ -442,7 +442,8 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
         .unwrap();
 
     // Use the updated cursors from first fetch
-    let result2 = fetcher.fetch(&pending1.cursors).await.unwrap();
+    let res = fetcher.fetch(&pending1.cursors).await.unwrap();
+    let result2 = fetcher.fetch(&res.range.cursors).await.unwrap();
     assert!(result2.pending.is_some());
     let pending2 = result2.pending.unwrap();
 
