@@ -417,6 +417,9 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
         tx1.transaction_hash
     );
 
+    // Mine a block
+    sequencer.dev_client().generate_block().await.unwrap();
+
     // Now submit more transactions
     let tx2 = account
         .execute_v3(vec![Call {
