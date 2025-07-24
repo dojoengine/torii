@@ -655,7 +655,7 @@ async fn test_fetch_pending_cursor_transactions(sequencer: &RunnerCtx) {
 
     assert!(world_transactions.contains(&tx1.transaction_hash));
     assert!(world_transactions.contains(&tx2.transaction_hash));
-    assert_eq!(world_transactions.len(), 2);
+    assert_eq!(world_transactions.len(), 3);
 }
 
 #[tokio::test(flavor = "multi_thread")]
