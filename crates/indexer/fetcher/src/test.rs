@@ -1101,3 +1101,181 @@ async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerC
 // TODO: Add tests for different transaction types (invoke, declare, deploy_account)
 // TODO: Add tests for event pagination and large event sets
 // TODO: Add tests for error handling scenarios
+
+#[tokio::test(flavor = "multi_thread")]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 30000)]
+async fn test_fetch_pending_cursor_isolation_per_contract(sequencer: &RunnerCtx) {
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
+    let config = setup.build_test_config("spawn-and-move", Profile::DEV);
+
+    let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
+
+    let account = sequencer.account(0);
+    let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
+
+    let world_local = ws.load_world_local().unwrap();
+    let world_address = world_local.deterministic_world_address().unwrap();
+    let actions_address = world_local
+        .get_contract_address_local(compute_selector_from_names("ns", "actions"))
+        .unwrap();
+
+    // Get ERC20 token address for testing multiple contracts
+    let wood_address = world_local
+        .external_contracts
+        .iter()
+        .find(|c| c.instance_name == "WoodToken")
+        .unwrap()
+        .address;
+
+    let world = WorldContract::new(world_address, &account);
+
+    let grant_writer_res = world
+        .grant_writer(
+            &compute_bytearray_hash("ns"),
+            &ContractAddress(actions_address),
+        )
+        .send_with_cfg(&TxnConfig::init_wait())
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(grant_writer_res.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Mine a block
+    sequencer.dev_client().generate_block().await.unwrap();
+
+    let initial_block = provider.block_hash_and_number().await.unwrap();
+    let initial_block_number = initial_block.block_number;
+
+    let fetcher = Fetcher::new(
+        provider.clone(),
+        FetcherConfig {
+            flags: FetchingFlags::PENDING_BLOCKS | FetchingFlags::TRANSACTIONS,
+            blocks_chunk_size: 10,
+            ..Default::default()
+        },
+    );
+
+    // Set up cursors for both world and ERC20 contracts
+    let cursors = HashMap::from([
+        (
+            world_address,
+            ContractCursor {
+                contract_address: world_address,
+                last_pending_block_tx: None,
+                head: Some(initial_block_number),
+                last_block_timestamp: None,
+                tps: None,
+            },
+        ),
+        (
+            wood_address,
+            ContractCursor {
+                contract_address: wood_address,
+                last_pending_block_tx: None,
+                head: Some(initial_block_number),
+                last_block_timestamp: None,
+                tps: None,
+            },
+        ),
+    ]);
+
+    // Submit 3 pending transactions in this order:
+    // 1. World transaction
+    // 2. World transaction  
+    // 3. ERC20 transaction (chronologically last)
+    let world_tx1 = account
+        .execute_v3(vec![Call {
+            to: actions_address,
+            selector: get_selector_from_name("spawn").unwrap(),
+            calldata: vec![],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    let world_tx2 = account
+        .execute_v3(vec![Call {
+            to: actions_address,
+            selector: get_selector_from_name("move").unwrap(),
+            calldata: vec![Felt::ONE],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    let erc20_tx = account
+        .execute_v3(vec![Call {
+            to: wood_address,
+            selector: get_selector_from_name("mint").unwrap(),
+            calldata: vec![Felt::from(100), Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    // Fetch pending data
+    let result = fetcher.fetch(&cursors).await.unwrap();
+
+    assert!(result.pending.is_some());
+    let pending = result.pending.unwrap();
+
+    // Verify all 3 transactions are present
+    assert!(pending.transactions.contains_key(&world_tx1.transaction_hash));
+    assert!(pending.transactions.contains_key(&world_tx2.transaction_hash));
+    assert!(pending.transactions.contains_key(&erc20_tx.transaction_hash));
+
+    // Critical test: Verify cursor isolation per contract
+    // The world cursor should point to the LAST WORLD transaction (world_tx2), 
+    // NOT the chronologically last transaction (erc20_tx)
+    let world_cursor = &pending.cursors[&world_address];
+    assert_eq!(
+        world_cursor.last_pending_block_tx.unwrap(),
+        world_tx2.transaction_hash,
+        "World cursor must point to last world transaction, not last chronological transaction"
+    );
+
+    // The ERC20 cursor should point to the ERC20 transaction
+    let erc20_cursor = &pending.cursors[&wood_address];
+    assert_eq!(
+        erc20_cursor.last_pending_block_tx.unwrap(),
+        erc20_tx.transaction_hash,
+        "ERC20 cursor must point to ERC20 transaction"
+    );
+
+    // Verify cursor_transactions are properly isolated
+    assert!(pending.cursor_transactions.contains_key(&world_address));
+    assert!(pending.cursor_transactions.contains_key(&wood_address));
+
+    let world_transactions = &pending.cursor_transactions[&world_address];
+    let erc20_transactions = &pending.cursor_transactions[&wood_address];
+
+    // World cursor should only track world transactions
+    assert!(world_transactions.contains(&world_tx1.transaction_hash));
+    assert!(world_transactions.contains(&world_tx2.transaction_hash));
+    assert!(!world_transactions.contains(&erc20_tx.transaction_hash), 
+        "World cursor must not track ERC20 transactions");
+    assert_eq!(world_transactions.len(), 2);
+
+    // ERC20 cursor should only track ERC20 transactions
+    assert!(erc20_transactions.contains(&erc20_tx.transaction_hash));
+    assert!(!erc20_transactions.contains(&world_tx1.transaction_hash), 
+        "ERC20 cursor must not track world transactions");
+    assert!(!erc20_transactions.contains(&world_tx2.transaction_hash), 
+        "ERC20 cursor must not track world transactions");
+    assert_eq!(erc20_transactions.len(), 1);
+
+    // Verify both cursors have the same head (current block) and timestamp
+    assert_eq!(world_cursor.head, Some(initial_block_number));
+    assert_eq!(erc20_cursor.head, Some(initial_block_number));
+    assert!(world_cursor.last_block_timestamp.is_some());
+    assert!(erc20_cursor.last_block_timestamp.is_some());
+
+    // Verify transaction content integrity
+    for tx_hash in [world_tx1.transaction_hash, world_tx2.transaction_hash, erc20_tx.transaction_hash] {
+        let transaction = &pending.transactions[&tx_hash];
+        assert!(transaction.transaction.is_some());
+        assert!(!transaction.events.is_empty());
+    }
+}
