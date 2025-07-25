@@ -1183,7 +1183,7 @@ async fn test_fetch_pending_cursor_isolation_per_contract(sequencer: &RunnerCtx)
 
     // Submit 3 pending transactions in this order:
     // 1. World transaction
-    // 2. World transaction  
+    // 2. World transaction
     // 3. ERC20 transaction (chronologically last)
     let world_tx1 = account
         .execute_v3(vec![Call {
@@ -1222,12 +1222,18 @@ async fn test_fetch_pending_cursor_isolation_per_contract(sequencer: &RunnerCtx)
     let pending = result.pending.unwrap();
 
     // Verify all 3 transactions are present
-    assert!(pending.transactions.contains_key(&world_tx1.transaction_hash));
-    assert!(pending.transactions.contains_key(&world_tx2.transaction_hash));
-    assert!(pending.transactions.contains_key(&erc20_tx.transaction_hash));
+    assert!(pending
+        .transactions
+        .contains_key(&world_tx1.transaction_hash));
+    assert!(pending
+        .transactions
+        .contains_key(&world_tx2.transaction_hash));
+    assert!(pending
+        .transactions
+        .contains_key(&erc20_tx.transaction_hash));
 
     // Critical test: Verify cursor isolation per contract
-    // The world cursor should point to the LAST WORLD transaction (world_tx2), 
+    // The world cursor should point to the LAST WORLD transaction (world_tx2),
     // NOT the chronologically last transaction (erc20_tx)
     let world_cursor = &pending.cursors[&world_address];
     assert_eq!(
@@ -1254,16 +1260,22 @@ async fn test_fetch_pending_cursor_isolation_per_contract(sequencer: &RunnerCtx)
     // World cursor should only track world transactions
     assert!(world_transactions.contains(&world_tx1.transaction_hash));
     assert!(world_transactions.contains(&world_tx2.transaction_hash));
-    assert!(!world_transactions.contains(&erc20_tx.transaction_hash), 
-        "World cursor must not track ERC20 transactions");
+    assert!(
+        !world_transactions.contains(&erc20_tx.transaction_hash),
+        "World cursor must not track ERC20 transactions"
+    );
     assert_eq!(world_transactions.len(), 2);
 
     // ERC20 cursor should only track ERC20 transactions
     assert!(erc20_transactions.contains(&erc20_tx.transaction_hash));
-    assert!(!erc20_transactions.contains(&world_tx1.transaction_hash), 
-        "ERC20 cursor must not track world transactions");
-    assert!(!erc20_transactions.contains(&world_tx2.transaction_hash), 
-        "ERC20 cursor must not track world transactions");
+    assert!(
+        !erc20_transactions.contains(&world_tx1.transaction_hash),
+        "ERC20 cursor must not track world transactions"
+    );
+    assert!(
+        !erc20_transactions.contains(&world_tx2.transaction_hash),
+        "ERC20 cursor must not track world transactions"
+    );
     assert_eq!(erc20_transactions.len(), 1);
 
     // Verify both cursors have the same head (current block) and timestamp
@@ -1273,7 +1285,11 @@ async fn test_fetch_pending_cursor_isolation_per_contract(sequencer: &RunnerCtx)
     assert!(erc20_cursor.last_block_timestamp.is_some());
 
     // Verify transaction content integrity
-    for tx_hash in [world_tx1.transaction_hash, world_tx2.transaction_hash, erc20_tx.transaction_hash] {
+    for tx_hash in [
+        world_tx1.transaction_hash,
+        world_tx2.transaction_hash,
+        erc20_tx.transaction_hash,
+    ] {
         let transaction = &pending.transactions[&tx_hash];
         assert!(transaction.transaction.is_some());
         assert!(!transaction.events.is_empty());
