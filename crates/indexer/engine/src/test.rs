@@ -35,7 +35,7 @@ use torii_processors::processors::Processors;
 pub async fn bootstrap_engine<P>(
     db: Sql,
     cache: Arc<dyn Cache>,
-    provider: Arc<P>,
+    provider: P,
     contracts: &[Contract],
 ) -> Result<Engine<P>, Box<dyn std::error::Error>>
 where

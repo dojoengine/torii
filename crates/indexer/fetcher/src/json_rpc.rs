@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Debug;
-use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::future::try_join_all;
@@ -29,13 +28,13 @@ use crate::{
 pub(crate) const LOG_TARGET: &str = "torii::indexer::fetcher";
 
 #[derive(Debug)]
-pub struct Fetcher<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
-    pub provider: Arc<P>,
+pub struct Fetcher<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> {
+    pub provider: P,
     pub config: FetcherConfig,
 }
 
-impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Fetcher<P> {
-    pub fn new(provider: Arc<P>, config: FetcherConfig) -> Self {
+impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
+    pub fn new(provider: P, config: FetcherConfig) -> Self {
         Self { config, provider }
     }
 

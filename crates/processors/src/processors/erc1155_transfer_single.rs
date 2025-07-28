@@ -19,7 +19,7 @@ pub struct Erc1155TransferSingleProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for Erc1155TransferSingleProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug + 'static,
+    P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "TransferSingle".to_string()

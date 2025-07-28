@@ -20,7 +20,7 @@ pub struct Erc4906BatchMetadataUpdateProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for Erc4906BatchMetadataUpdateProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug + 'static,
+    P: Provider + Send + Sync + std::fmt::Debug + Clone + 'static,
 {
     fn event_key(&self) -> String {
         "BatchMetadataUpdate".to_string()

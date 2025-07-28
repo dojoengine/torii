@@ -23,7 +23,7 @@ pub struct RegisterModelProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for RegisterModelProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug + 'static,
+    P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "ModelRegistered".to_string()

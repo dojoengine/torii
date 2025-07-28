@@ -57,14 +57,14 @@ type EventKey = Felt;
 type EventProcessorMap<P> = HashMap<EventKey, Vec<Box<dyn EventProcessor<P>>>>;
 
 #[allow(missing_debug_implementations)]
-pub struct Processors<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
+pub struct Processors<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> {
     pub block: Vec<Box<dyn BlockProcessor<P>>>,
     pub transaction: Vec<Box<dyn TransactionProcessor<P>>>,
     pub catch_all_event: Box<dyn EventProcessor<P>>,
     pub event_processors: HashMap<ContractType, EventProcessorMap<P>>,
 }
 
-impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Default for Processors<P> {
+impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Default for Processors<P> {
     fn default() -> Self {
         Self {
             block: vec![],
@@ -77,7 +77,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Default for Processo
     }
 }
 
-impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Processors<P> {
+impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Processors<P> {
     pub fn initialize_event_processors() -> HashMap<ContractType, EventProcessorMap<P>> {
         let mut event_processors_map = HashMap::<ContractType, EventProcessorMap<P>>::new();
 

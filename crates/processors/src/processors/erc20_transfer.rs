@@ -18,7 +18,7 @@ pub struct Erc20TransferProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for Erc20TransferProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug + 'static,
+    P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "Transfer".to_string()

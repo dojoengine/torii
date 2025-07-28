@@ -36,21 +36,21 @@ struct TaskData {
 }
 
 #[allow(missing_debug_implementations)]
-pub struct TaskManager {
+pub struct TaskManager<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> {
     storage: Arc<dyn Storage>,
     cache: Arc<dyn Cache>,
-    provider: Provider,
+    provider: P,
     task_network: TaskNetwork<TaskId, TaskData>,
     processors: Arc<Processors<P>>,
     event_processor_config: EventProcessorConfig,
     nft_metadata_semaphore: Arc<Semaphore>,
 }
 
-impl<P: Provider + Send + Sync + std::fmt::Debug> TaskManager<P> {
+impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<P> {
     pub fn new(
         storage: Arc<dyn Storage>,
         cache: Arc<dyn Cache>,
-        provider: Arc<P>,
+        provider: P,
         processors: Arc<Processors<P>>,
         max_concurrent_tasks: usize,
         event_processor_config: EventProcessorConfig,
