@@ -145,7 +145,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
             .process_tasks(move |task_id, task_data| {
                 let storage = storage.clone();
                 let processors = processors.clone();
-                let provider= provider.clone();
+                let provider = provider.clone();
                 let event_processor_config = event_processor_config.clone();
                 let cache = cache.clone();
                 let nft_metadata_semaphore = nft_metadata_semaphore.clone();

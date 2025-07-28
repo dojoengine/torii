@@ -83,8 +83,7 @@ where
                     .map_err(TokenMetadataError::AcquireError)?;
 
                 let metadata =
-                    fetch_token_metadata(token_address_clone, current_token_id, &provider)
-                        .await?;
+                    fetch_token_metadata(token_address_clone, current_token_id, &provider).await?;
                 storage
                     .update_nft_metadata(token_address_clone, current_token_id, metadata)
                     .await?;

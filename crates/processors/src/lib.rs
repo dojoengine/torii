@@ -138,7 +138,9 @@ pub struct TransactionProcessorContext<P: Provider + Sync + Send + Clone + std::
 }
 
 #[async_trait]
-pub trait TransactionProcessor<P: Provider + Sync + Send + Clone + std::fmt::Debug>: Send + Sync {
+pub trait TransactionProcessor<P: Provider + Sync + Send + Clone + std::fmt::Debug>:
+    Send + Sync
+{
     #[allow(clippy::too_many_arguments)]
     async fn process(&self, ctx: &TransactionProcessorContext<P>) -> Result<()>;
 }
