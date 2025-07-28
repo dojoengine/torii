@@ -76,7 +76,7 @@ static SUBSCRIPTION_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|
 #[derive(Debug)]
 pub struct DojoWorld<P: Provider + Sync> {
     storage: Arc<dyn Storage>,
-    provider: Arc<P>,
+    provider: P,
     world_address: Felt,
     cross_messaging_tx: Option<UnboundedSender<Message>>,
     entity_manager: Arc<EntityManager>,
@@ -92,7 +92,7 @@ pub struct DojoWorld<P: Provider + Sync> {
 impl<P: Provider + Sync> DojoWorld<P> {
     pub fn new(
         storage: Arc<dyn Storage>,
-        provider: Arc<P>,
+        provider: P,
         world_address: Felt,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
         config: GrpcConfig,
@@ -770,7 +770,7 @@ impl Default for GrpcConfig {
 pub async fn new<P: Provider + Sync + Send + 'static>(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     storage: Arc<dyn Storage>,
-    provider: Arc<P>,
+    provider: P,
     world_address: Felt,
     cross_messaging_tx: UnboundedSender<Message>,
     config: GrpcConfig,
