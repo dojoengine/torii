@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
