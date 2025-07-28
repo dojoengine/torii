@@ -12,7 +12,7 @@ use dojo_utils::{TransactionExt, TransactionWaiter, TxnConfig};
 use dojo_world::contracts::abigen::model::Layout;
 use dojo_world::contracts::abigen::world::Resource;
 use dojo_world::contracts::naming::{compute_bytearray_hash, compute_selector_from_tag};
-use dojo_world::contracts::{WorldContract, WorldContractReader};
+use dojo_world::contracts::WorldContract;
 use katana_runner::{KatanaRunner, KatanaRunnerConfig};
 use scarb::compiler::Profile;
 use serde::Deserialize;
@@ -379,8 +379,6 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
 
     TransactionWaiter::new(transaction_hash, &provider).await?;
 
-    let world = WorldContractReader::new(world_address, Arc::clone(&provider));
-
     let (shutdown_tx, _) = broadcast::channel(1);
     let (mut executor, sender) =
         Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
@@ -408,13 +406,12 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         r#type: ContractType::WORLD,
     }];
     let mut engine = Engine::new(
-        world,
         Arc::new(db.clone()),
         cache.clone(),
         Arc::clone(&provider),
-        Processors {
+        Arc::new(Processors {
             ..Processors::default()
-        },
+        }),
         EngineConfig::default(),
         shutdown_tx,
         contracts,
