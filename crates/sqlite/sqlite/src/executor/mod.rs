@@ -156,7 +156,7 @@ impl std::fmt::Display for QueryType {
 }
 
 #[derive(Debug)]
-pub struct Executor<'c, P: Provider + Sync + Send + 'static> {
+pub struct Executor<'c, P: Provider + Sync + Send + Clone + 'static> {
     // Queries should use `transaction` instead of `pool`
     // This `pool` is only used to create a new `transaction`
     pool: Pool<Sqlite>,
@@ -165,7 +165,7 @@ pub struct Executor<'c, P: Provider + Sync + Send + 'static> {
     rx: UnboundedReceiver<QueryMessage>,
     shutdown_rx: Receiver<()>,
     // It is used to make RPC calls to fetch erc contracts
-    provider: Arc<P>,
+    provider: P,
 }
 
 #[derive(Debug)]
@@ -236,11 +236,11 @@ impl QueryMessage {
     }
 }
 
-impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
+impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
     pub async fn new(
         pool: Pool<Sqlite>,
         shutdown_tx: Sender<()>,
-        provider: Arc<P>,
+        provider: P,
     ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
         let (tx, rx) = unbounded_channel();
         let transaction = pool.begin().await?;
