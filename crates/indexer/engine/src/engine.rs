@@ -90,7 +90,6 @@ struct UnprocessedEvent {
 impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        world: WorldContractReader<P>,
         storage: Arc<dyn Storage>,
         cache: Arc<dyn Cache>,
         provider: P,
@@ -100,7 +99,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         contracts: &[Contract],
     ) -> Self {
         Self::new_with_controllers(
-            world,
             storage,
             cache,
             provider,
@@ -114,7 +112,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
 
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_controllers(
-        world: WorldContractReader<P>,
         storage: Arc<dyn Storage>,
         cache: Arc<dyn Cache>,
         provider: P,
@@ -130,7 +127,6 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
                 .map(|contract| (contract.address, contract.r#type))
                 .collect(),
         );
-        let world = Arc::new(world);
         let processors = Arc::new(processors);
         let max_concurrent_tasks = config.max_concurrent_tasks;
         let event_processor_config = config.event_processor_config.clone();

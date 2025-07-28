@@ -136,10 +136,7 @@ impl Runner {
             return Err(anyhow::anyhow!("Please specify a world address."));
         };
 
-        self.args.indexing.contracts.push(Contract {
-            address: world_address,
-            r#type: ContractType::WORLD,
-        });
+        
 
         // Setup cancellation for graceful shutdown
         let (shutdown_tx, _) = broadcast::channel(1);
