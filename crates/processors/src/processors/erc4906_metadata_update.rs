@@ -18,7 +18,7 @@ pub struct Erc4906MetadataUpdateProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for Erc4906MetadataUpdateProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug + 'static,
+    P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "MetadataUpdate".to_string()
@@ -67,7 +67,7 @@ where
             .await
             .map_err(TokenMetadataError::AcquireError)?;
 
-        let metadata = fetch_token_metadata(token_address, token_id, ctx.world.provider()).await?;
+        let metadata = fetch_token_metadata(token_address, token_id, &ctx.provider).await?;
 
         ctx.storage
             .update_nft_metadata(token_address, token_id, metadata)

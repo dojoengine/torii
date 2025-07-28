@@ -88,7 +88,7 @@ impl StoreTransactionProcessor {
         }
     }
 
-    async fn parse_execute_call<P: Provider + Send + Sync + std::fmt::Debug>(
+    async fn parse_execute_call<P: Provider + Send + Sync + Clone + std::fmt::Debug>(
         contract_class_cache: &ContractClassCache<P>,
         call: &ExecuteCall,
         caller_address: Felt,
@@ -110,7 +110,7 @@ impl StoreTransactionProcessor {
         })
     }
 
-    async fn parse_legacy_execute_call<P: Provider + Send + Sync + std::fmt::Debug>(
+    async fn parse_legacy_execute_call<P: Provider + Send + Sync + Clone + std::fmt::Debug>(
         contract_class_cache: &ContractClassCache<P>,
         call: &LegacyExecuteCall,
         full_calldata: &[Felt],
@@ -133,7 +133,7 @@ impl StoreTransactionProcessor {
         })
     }
 
-    async fn parse_outside_call<P: Provider + Send + Sync + std::fmt::Debug>(
+    async fn parse_outside_call<P: Provider + Send + Sync + Clone + std::fmt::Debug>(
         contract_class_cache: &ContractClassCache<P>,
         calldata: &[Felt],
         base_offset: usize,
@@ -168,7 +168,7 @@ impl StoreTransactionProcessor {
         ))
     }
 
-    async fn process_outside_calls<P: Provider + Send + Sync + std::fmt::Debug>(
+    async fn process_outside_calls<P: Provider + Send + Sync + Clone + std::fmt::Debug>(
         contract_class_cache: &ContractClassCache<P>,
         call: &TransactionCall,
     ) -> Result<Vec<TransactionCall>, Error> {
@@ -213,7 +213,7 @@ impl StoreTransactionProcessor {
         Ok(outside_calls)
     }
 
-    async fn parse_execute<P: Provider + Send + Sync + std::fmt::Debug>(
+    async fn parse_execute<P: Provider + Send + Sync + Clone + std::fmt::Debug>(
         execute: Execute,
         sender_address: Felt,
         contract_class_cache: &ContractClassCache<P>,
@@ -261,7 +261,7 @@ impl StoreTransactionProcessor {
 }
 
 #[async_trait]
-impl<P: Provider + Send + Sync + std::fmt::Debug> TransactionProcessor<P>
+impl<P: Provider + Send + Sync + Clone + std::fmt::Debug> TransactionProcessor<P>
     for StoreTransactionProcessor
 {
     async fn process(&self, ctx: &TransactionProcessorContext<P>) -> Result<(), Error> {

@@ -5,6 +5,7 @@ use dojo_types::naming::compute_selector_from_names;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
+use dojo_world::contracts::WorldContractReader;
 use starknet::core::types::{BlockId, Event};
 use starknet::providers::Provider;
 use torii_proto::Model;
@@ -22,7 +23,7 @@ pub struct RegisterModelProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for RegisterModelProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug + 'static,
+    P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "ModelRegistered".to_string()
@@ -83,12 +84,13 @@ where
             return Ok(());
         }
 
+        let world = WorldContractReader::new(ctx.event.from_address, &ctx.provider);
         let mut model = ModelRPCReader::new(
             &namespace,
             &name,
             event.address.0,
             event.class_hash.0,
-            &ctx.world,
+            &world,
         )
         .await;
         if ctx.config.strict_model_reader {

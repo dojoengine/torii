@@ -20,7 +20,7 @@ pub struct Erc4906BatchMetadataUpdateProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for Erc4906BatchMetadataUpdateProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug + 'static,
+    P: Provider + Send + Sync + std::fmt::Debug + Clone + 'static,
 {
     fn event_key(&self) -> String {
         "BatchMetadataUpdate".to_string()
@@ -72,7 +72,7 @@ where
         while token_id <= to_token_id {
             let storage = ctx.storage.clone();
             let nft_metadata_semaphore = ctx.nft_metadata_semaphore.clone();
-            let world = ctx.world.clone();
+            let provider = ctx.provider.clone();
             let token_address_clone = token_address;
             let current_token_id = token_id;
 
@@ -83,8 +83,7 @@ where
                     .map_err(TokenMetadataError::AcquireError)?;
 
                 let metadata =
-                    fetch_token_metadata(token_address_clone, current_token_id, world.provider())
-                        .await?;
+                    fetch_token_metadata(token_address_clone, current_token_id, &provider).await?;
                 storage
                     .update_nft_metadata(token_address_clone, current_token_id, metadata)
                     .await?;

@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, TransactionContent};
 use starknet::providers::Provider;
 use tokio::sync::Semaphore;
@@ -24,10 +23,10 @@ pub use processors::Processors;
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
-pub struct EventProcessorContext<P: Provider + Sync> {
-    pub world: Arc<WorldContractReader<P>>,
+pub struct EventProcessorContext<P: Provider + Sync + Send + 'static> {
     pub storage: Arc<dyn Storage>,
     pub cache: Arc<dyn Cache>,
+    pub provider: P,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub event_id: String,
@@ -81,7 +80,7 @@ pub enum IndexingMode {
 #[async_trait]
 pub trait EventProcessor<P>: Send + Sync
 where
-    P: Provider + Sync + Send,
+    P: Provider + Sync + Send + Clone,
 {
     fn event_key(&self) -> String;
 
@@ -111,24 +110,24 @@ where
 }
 
 #[derive(Debug)]
-pub struct BlockProcessorContext<P: Provider + Sync> {
+pub struct BlockProcessorContext<P: Provider + Sync + Send + Clone> {
     pub storage: Arc<dyn Storage>,
-    pub provider: Arc<P>,
+    pub provider: P,
     pub block_number: u64,
     pub block_timestamp: u64,
 }
 
 #[async_trait]
-pub trait BlockProcessor<P: Provider + Sync>: Send + Sync {
+pub trait BlockProcessor<P: Provider + Sync + Send + Clone>: Send + Sync {
     fn get_block_number(&self) -> String;
     async fn process(&self, ctx: &BlockProcessorContext<P>) -> Result<()>;
 }
 
 #[derive(Debug)]
-pub struct TransactionProcessorContext<P: Provider + Sync + std::fmt::Debug> {
+pub struct TransactionProcessorContext<P: Provider + Sync + Send + Clone + std::fmt::Debug> {
     pub storage: Arc<dyn Storage>,
     pub cache: Arc<ContractClassCache<P>>,
-    pub provider: Arc<P>,
+    pub provider: P,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub transaction_hash: Felt,
@@ -139,7 +138,9 @@ pub struct TransactionProcessorContext<P: Provider + Sync + std::fmt::Debug> {
 }
 
 #[async_trait]
-pub trait TransactionProcessor<P: Provider + Sync + std::fmt::Debug>: Send + Sync {
+pub trait TransactionProcessor<P: Provider + Sync + Send + Clone + std::fmt::Debug>:
+    Send + Sync
+{
     #[allow(clippy::too_many_arguments)]
     async fn process(&self, ctx: &TransactionProcessorContext<P>) -> Result<()>;
 }

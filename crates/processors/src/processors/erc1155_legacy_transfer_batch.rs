@@ -20,7 +20,7 @@ pub struct Erc1155LegacyTransferBatchProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for Erc1155LegacyTransferBatchProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug + 'static,
+    P: Provider + Send + Sync + std::fmt::Debug + Clone + 'static,
 {
     fn event_key(&self) -> String {
         "TransferBatch".to_string()
@@ -84,7 +84,7 @@ where
 
             let storage = ctx.storage.clone();
             let cache = ctx.cache.clone();
-            let world = ctx.world.clone();
+            let provider = ctx.provider.clone();
             let nft_metadata_semaphore = ctx.nft_metadata_semaphore.clone();
             let from_clone = from;
             let to_clone = to;
@@ -103,7 +103,7 @@ where
                     &id,
                     token_address,
                     token_id_clone,
-                    world.provider(),
+                    &provider,
                     cache.clone(),
                     storage.clone(),
                     nft_metadata_semaphore,

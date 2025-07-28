@@ -22,7 +22,6 @@ use std::time::Duration;
 use camino::Utf8PathBuf;
 use dojo_metrics::exporters::prometheus::PrometheusRecorder;
 use dojo_types::naming::compute_selector_from_tag;
-use dojo_world::contracts::world::WorldContractReader;
 use futures::future::join_all;
 use sqlx::sqlite::{
     SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
@@ -51,7 +50,8 @@ use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::{Sql, SqlConfig};
-use torii_storage::proto::{Contract, ContractType};
+use torii_storage::proto::Contract;
+use torii_storage::proto::ContractType;
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
@@ -130,16 +130,13 @@ impl Runner {
             std::fs::write(dump_config, config)?;
         }
 
-        let world_address = if let Some(world_address) = self.args.world_address {
-            world_address
-        } else {
-            return Err(anyhow::anyhow!("Please specify a world address."));
-        };
-
-        self.args.indexing.contracts.push(Contract {
-            address: world_address,
-            r#type: ContractType::WORLD,
-        });
+        // Add world to list of generic contracts if it is provided
+        if let Some(world_address) = self.args.world_address {
+            self.args.indexing.contracts.push(Contract {
+                address: world_address,
+                r#type: ContractType::WORLD,
+            });
+        }
 
         // Setup cancellation for graceful shutdown
         let (shutdown_tx, _) = broadcast::channel(1);
@@ -289,9 +286,6 @@ impl Runner {
         }
         drop(migrate_handle);
 
-        // Get world address
-        let world = WorldContractReader::new(world_address, provider.clone());
-
         let (mut executor, sender) =
             Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
@@ -327,7 +321,7 @@ impl Runner {
         let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
         let db = db.with_cache(cache.clone());
 
-        let processors = Processors::default();
+        let processors = Arc::new(Processors::default());
 
         let mut indexing_flags = IndexingFlags::empty();
         if self.args.events.raw {
@@ -351,11 +345,10 @@ impl Runner {
         };
 
         let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new_with_controllers(
-            world,
             storage.clone(),
             cache.clone(),
             provider.clone(),
-            processors,
+            processors.clone(),
             EngineConfig {
                 max_concurrent_tasks: self.args.indexing.max_concurrent_tasks,
                 fetcher_config: FetcherConfig {
@@ -415,7 +408,7 @@ impl Runner {
             shutdown_rx,
             storage.clone(),
             provider.clone(),
-            world_address,
+            self.args.world_address.unwrap_or_default(),
             cross_messaging_tx,
             GrpcConfig {
                 subscription_buffer_size: self.args.grpc.subscription_buffer_size,

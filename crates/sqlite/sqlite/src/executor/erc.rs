@@ -1,5 +1,4 @@
 use std::str::FromStr;
-use std::sync::Arc;
 
 use cainome::cairo_serde::CairoSerde;
 use starknet::core::types::{BlockId, BlockTag, FunctionCall, U256};
@@ -39,11 +38,11 @@ pub struct RegisterErc20TokenQuery {
     pub decimals: u8,
 }
 
-impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
+impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
     pub async fn apply_balance_diff(
         &mut self,
         apply_balance_diff: ApplyBalanceDiffQuery,
-        provider: Arc<P>,
+        provider: P,
     ) -> Result<(), Error> {
         let balances_diff = apply_balance_diff.balances_diff;
         for (id_str, balance) in balances_diff.iter() {
@@ -73,7 +72,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         token_id,
                         balance,
                         block_id,
-                        Arc::clone(&provider),
+                        provider.clone(),
                     )
                     .await?;
                 }
@@ -100,7 +99,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
                         token_id,
                         balance,
                         block_id,
-                        Arc::clone(&provider),
+                        provider.clone(),
                     )
                     .await?;
                 }
@@ -120,7 +119,7 @@ impl<P: Provider + Sync + Send + 'static> Executor<'_, P> {
         token_id: &str,
         balance_diff: &I256,
         block_id: BlockId,
-        provider: Arc<P>,
+        provider: P,
     ) -> Result<(), Error> {
         let tx = self.transaction.as_mut().unwrap();
         let balance: Option<(String,)> = sqlx::query_as(&format!(

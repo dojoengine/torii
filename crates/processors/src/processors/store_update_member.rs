@@ -21,7 +21,7 @@ pub struct StoreUpdateMemberProcessor;
 #[async_trait]
 impl<P> EventProcessor<P> for StoreUpdateMemberProcessor
 where
-    P: Provider + Send + Sync + std::fmt::Debug + 'static,
+    P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static,
 {
     fn event_key(&self) -> String {
         "StoreUpdateMember".to_string()

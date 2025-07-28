@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use dojo_world::contracts::WorldContractReader;
 use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
@@ -37,21 +36,21 @@ struct TaskData {
 }
 
 #[allow(missing_debug_implementations)]
-pub struct TaskManager<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
+pub struct TaskManager<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> {
     storage: Arc<dyn Storage>,
     cache: Arc<dyn Cache>,
-    world: Arc<WorldContractReader<P>>,
+    provider: P,
     task_network: TaskNetwork<TaskId, TaskData>,
     processors: Arc<Processors<P>>,
     event_processor_config: EventProcessorConfig,
     nft_metadata_semaphore: Arc<Semaphore>,
 }
 
-impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
+impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<P> {
     pub fn new(
         storage: Arc<dyn Storage>,
         cache: Arc<dyn Cache>,
-        world: Arc<WorldContractReader<P>>,
+        provider: P,
         processors: Arc<Processors<P>>,
         max_concurrent_tasks: usize,
         event_processor_config: EventProcessorConfig,
@@ -59,7 +58,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         Self {
             storage,
             cache,
-            world,
+            provider,
             task_network: TaskNetwork::new(max_concurrent_tasks),
             processors,
             nft_metadata_semaphore: Arc::new(Semaphore::new(
@@ -136,8 +135,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         }
 
         let storage = self.storage.clone();
-        let world = self.world.clone();
         let processors = self.processors.clone();
+        let provider = self.provider.clone();
         let event_processor_config = self.event_processor_config.clone();
         let cache = self.cache.clone();
         let nft_metadata_semaphore = self.nft_metadata_semaphore.clone();
@@ -145,8 +144,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
         self.task_network
             .process_tasks(move |task_id, task_data| {
                 let storage = storage.clone();
-                let world = world.clone();
                 let processors = processors.clone();
+                let provider = provider.clone();
                 let event_processor_config = event_processor_config.clone();
                 let cache = cache.clone();
                 let nft_metadata_semaphore = nft_metadata_semaphore.clone();
@@ -184,12 +183,12 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> TaskManager<P> {
                             let ctx = EventProcessorContext {
                                 storage: storage.clone(),
                                 cache: cache.clone(),
+                                provider: provider.clone(),
                                 block_number: *block_number,
                                 block_timestamp: *block_timestamp,
                                 event_id: event_id.clone(),
                                 event: event.clone(),
                                 config: event_processor_config.clone(),
-                                world: world.clone(),
                                 nft_metadata_semaphore: nft_metadata_semaphore.clone(),
                             };
 

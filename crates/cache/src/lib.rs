@@ -285,13 +285,13 @@ pub enum ClassAbi {
 }
 
 #[derive(Debug)]
-pub struct ContractClassCache<P: Provider + Sync + std::fmt::Debug> {
+pub struct ContractClassCache<P: Provider + Sync + Send + Clone + std::fmt::Debug> {
     pub classes: RwLock<HashMap<Felt, (Felt, ClassAbi)>>,
-    pub provider: Arc<P>,
+    pub provider: P,
 }
 
-impl<P: Provider + Sync + std::fmt::Debug> ContractClassCache<P> {
-    pub fn new(provider: Arc<P>) -> Self {
+impl<P: Provider + Sync + Send + Clone + std::fmt::Debug> ContractClassCache<P> {
+    pub fn new(provider: P) -> Self {
         Self {
             classes: RwLock::new(HashMap::new()),
             provider,
