@@ -53,7 +53,7 @@ where
             &id,
             token_address,
             token_id,
-            ctx.world.provider(),
+            &ctx.provider,
             ctx.cache.clone(),
             ctx.storage.clone(),
             ctx.nft_metadata_semaphore.clone(),

@@ -67,7 +67,7 @@ where
             .await
             .map_err(TokenMetadataError::AcquireError)?;
 
-        let metadata = fetch_token_metadata(token_address, token_id, ctx.world.provider()).await?;
+        let metadata = fetch_token_metadata(token_address, token_id, &ctx.provider).await?;
 
         ctx.storage
             .update_nft_metadata(token_address, token_id, metadata)

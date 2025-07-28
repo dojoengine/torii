@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use dojo_world::contracts::world::WorldContractReader;
 use starknet::core::types::{Event, Felt, TransactionContent};
 use starknet::providers::Provider;
 use tokio::sync::Semaphore;
@@ -25,9 +24,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub struct EventProcessorContext<P: Provider + Sync> {
-    pub world: Arc<WorldContractReader<P>>,
     pub storage: Arc<dyn Storage>,
     pub cache: Arc<dyn Cache>,
+    pub provider: Arc<P>,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub event_id: String,

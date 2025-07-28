@@ -64,7 +64,7 @@ where
         // are applied before the cache diff is applied
         try_register_erc20_token(
             token_address,
-            ctx.world.provider(),
+            &ctx.provider,
             ctx.storage.clone(),
             ctx.cache.clone(),
         )

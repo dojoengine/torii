@@ -118,7 +118,7 @@ impl Runner {
         Self { args, version_spec }
     }
 
-    pub async fn run(mut self) -> anyhow::Result<()> {
+    pub async fn run(self) -> anyhow::Result<()> {
         // dump the config to the given path if it is provided
         if let Some(dump_config) = &self.args.dump_config {
             let mut dump = self.args.clone();
@@ -324,7 +324,7 @@ impl Runner {
         let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
         let db = db.with_cache(cache.clone());
 
-        let processors = Processors::default();
+        let processors = Arc::new(Processors::default());
 
         let mut indexing_flags = IndexingFlags::empty();
         if self.args.events.raw {
@@ -348,11 +348,10 @@ impl Runner {
         };
 
         let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new_with_controllers(
-            world,
             storage.clone(),
             cache.clone(),
             provider.clone(),
-            processors,
+            processors.clone(),
             EngineConfig {
                 max_concurrent_tasks: self.args.indexing.max_concurrent_tasks,
                 fetcher_config: FetcherConfig {

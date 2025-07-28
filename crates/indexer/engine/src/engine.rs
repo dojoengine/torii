@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
-use dojo_world::contracts::world::WorldContractReader;
 use metrics::{counter, gauge, histogram};
 use starknet::core::types::{Event, TransactionContent};
 use starknet::macros::selector;
@@ -53,16 +52,15 @@ pub struct EngineConfig {
 }
 
 #[allow(missing_debug_implementations)]
-pub struct Engine<P: Provider + Send + Sync + std::fmt::Debug + 'static> {
-    world: Arc<WorldContractReader<P>>,
+pub struct Engine<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> {
     cache: Arc<dyn Cache>,
     storage: Arc<dyn Storage>,
-    provider: Arc<P>,
+    provider: P,
     processors: Arc<Processors<P>>,
     config: EngineConfig,
     shutdown_tx: Sender<()>,
     task_manager: TaskManager<P>,
-    contracts: Arc<HashMap<Felt, ContractType>>,
+    contracts: HashMap<Felt, ContractType>,
     contract_class_cache: Arc<ContractClassCache<P>>,
     controllers: Option<Arc<ControllersSync>>,
     fetcher: Fetcher<P>,
@@ -87,13 +85,13 @@ struct UnprocessedEvent {
     data: Vec<String>,
 }
 
-impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
+impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         storage: Arc<dyn Storage>,
         cache: Arc<dyn Cache>,
         provider: P,
-        processors: Processors<P>,
+        processors: Arc<Processors<P>>,
         config: EngineConfig,
         shutdown_tx: Sender<()>,
         contracts: &[Contract],
@@ -115,28 +113,23 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
         storage: Arc<dyn Storage>,
         cache: Arc<dyn Cache>,
         provider: P,
-        processors: Processors<P>,
+        processors: Arc<Processors<P>>,
         config: EngineConfig,
         shutdown_tx: Sender<()>,
         contracts: &[Contract],
         controllers: Option<Arc<ControllersSync>>,
     ) -> Self {
-        let contracts = Arc::new(
-            contracts
-                .iter()
-                .map(|contract| (contract.address, contract.r#type))
-                .collect(),
-        );
-        let processors = Arc::new(processors);
+        let contracts = contracts
+            .iter()
+            .map(|contract| (contract.address, contract.r#type))
+            .collect();
         let max_concurrent_tasks = config.max_concurrent_tasks;
         let event_processor_config = config.event_processor_config.clone();
         let fetcher_config = config.fetcher_config.clone();
-        let provider = Arc::new(provider);
         let nft_metadata_semaphore =
             Arc::new(Semaphore::new(event_processor_config.max_metadata_tasks));
 
         Self {
-            world: world.clone(),
             storage: storage.clone(),
             cache: cache.clone(),
             provider: provider.clone(),
@@ -147,7 +140,7 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             task_manager: TaskManager::new(
                 storage,
                 cache,
-                world,
+                provider.clone(),
                 processors,
                 max_concurrent_tasks,
                 event_processor_config,
@@ -540,8 +533,8 @@ impl<P: Provider + Send + Sync + std::fmt::Debug + 'static> Engine<P> {
             // if we dont have a processor for this event, we try the catch all processor
             let ctx = EventProcessorContext {
                 storage: self.storage.clone(),
-                world: self.world.clone(),
                 cache: self.cache.clone(),
+                provider: self.provider.clone(),
                 config: self.config.event_processor_config.clone(),
                 block_number,
                 block_timestamp,

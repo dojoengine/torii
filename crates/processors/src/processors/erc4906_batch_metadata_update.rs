@@ -72,7 +72,7 @@ where
         while token_id <= to_token_id {
             let storage = ctx.storage.clone();
             let nft_metadata_semaphore = ctx.nft_metadata_semaphore.clone();
-            let world = ctx.world.clone();
+            let provider = ctx.provider.clone();
             let token_address_clone = token_address;
             let current_token_id = token_id;
 
@@ -83,7 +83,7 @@ where
                     .map_err(TokenMetadataError::AcquireError)?;
 
                 let metadata =
-                    fetch_token_metadata(token_address_clone, current_token_id, world.provider())
+                    fetch_token_metadata(token_address_clone, current_token_id, &provider)
                         .await?;
                 storage
                     .update_nft_metadata(token_address_clone, current_token_id, metadata)

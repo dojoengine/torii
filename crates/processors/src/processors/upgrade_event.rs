@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
+use dojo_world::contracts::WorldContractReader;
 use starknet::core::types::{BlockId, Event};
 use starknet::providers::Provider;
 use torii_proto::Model;
@@ -75,12 +76,13 @@ where
         let namespace = model.namespace;
         let prev_schema = model.schema;
 
+        let world = WorldContractReader::new(ctx.event.from_address, &ctx.provider);
         let mut model = ModelRPCReader::new(
             &namespace,
             &name,
             event.address.0,
             event.class_hash.0,
-            &ctx.world,
+            &world,
         )
         .await;
         if ctx.config.strict_model_reader {

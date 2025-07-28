@@ -78,7 +78,7 @@ where
 
             let storage = ctx.storage.clone();
             let cache = ctx.cache.clone();
-            let world = ctx.world.clone();
+            let provider = ctx.provider.clone();
             let nft_metadata_semaphore = ctx.nft_metadata_semaphore.clone();
             let from_clone = from;
             let to_clone = to;
@@ -97,7 +97,7 @@ where
                     &id,
                     token_address,
                     token_id_clone,
-                    world.provider(),
+                    &provider,
                     cache.clone(),
                     storage.clone(),
                     nft_metadata_semaphore,
