@@ -569,7 +569,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             .find(|p| p.validate(event))
             .unwrap_or_else(|| {
                 let event_name = processors
-                    .get(0)
+                    .first()
                     .map(|p| p.event_key())
                     .unwrap_or_else(|| format!("{:#x}", event_key));
                 error!(
