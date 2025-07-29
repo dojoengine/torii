@@ -110,7 +110,7 @@ pub async fn validate_and_set_entity<P: Provider + Sync>(
 
     if let Some(timestamp) = entity_timestamp {
         // We need to assert that the message has a timestamp & that it is greater than the entity timestamp
-        if message_timestamp.ok_or(MessagingError::TimestampNotFound)? < timestamp {
+        if message_timestamp.ok_or(MessagingError::TimestampNotFound)? <= timestamp {
             return Err(MessagingError::InvalidTimestamp);
         }
     }
