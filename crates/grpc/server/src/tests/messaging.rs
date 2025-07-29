@@ -865,7 +865,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
 
     typed_data.message.insert(
         "timestamp".to_string(),
-        torii_typed_data::typed_data::PrimitiveType::String(now.to_string()),
+        torii_typed_data::typed_data::PrimitiveType::Number(serde_json::Number::from(now)),
     );
 
     typed_data.message.insert(
@@ -895,7 +895,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
     // Test timestamp too far in future (should fail)
     typed_data.message.insert(
         "timestamp".to_string(),
-        torii_typed_data::typed_data::PrimitiveType::String((now + 120).to_string()),
+        torii_typed_data::typed_data::PrimitiveType::Number(serde_json::Number::from(now + 120)),
     );
 
     let message_hash = typed_data.encode(account_data.address).unwrap();
