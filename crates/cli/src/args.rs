@@ -85,6 +85,11 @@ pub struct ToriiArgs {
     #[command(flatten)]
     #[merge]
     pub grpc: GrpcOptions,
+
+    #[cfg(feature = "server")]
+    #[command(flatten)]
+    #[merge]
+    pub messaging: MessagingOptions,
 }
 
 impl Default for ToriiArgs {
@@ -109,6 +114,8 @@ impl Default for ToriiArgs {
             relay: RelayOptions::default(),
             #[cfg(feature = "server")]
             grpc: GrpcOptions::default(),
+            #[cfg(feature = "server")]
+            messaging: MessagingOptions::default(),
         }
     }
 }

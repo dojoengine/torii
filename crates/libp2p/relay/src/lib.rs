@@ -23,7 +23,7 @@ use starknet::providers::Provider;
 use starknet_core::types::TypedData;
 use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use torii_messaging::validate_and_set_entity;
+use torii_messaging::Messaging;
 use torii_proto::Message;
 use torii_storage::Storage;
 use tracing::{info, trace, warn};
@@ -51,7 +51,8 @@ pub struct Behaviour {
 pub struct Relay<P: Provider + Sync> {
     swarm: Swarm<Behaviour>,
     storage: Arc<dyn Storage>,
-    provider: Box<P>,
+    provider: P,
+    messaging: Arc<Messaging>,
     cross_messaging_rx: UnboundedReceiver<Message>,
 }
 
@@ -59,6 +60,7 @@ impl<P: Provider + Sync> Relay<P> {
     pub fn new(
         storage: Arc<dyn Storage>,
         provider: P,
+        messaging: Arc<Messaging>,
         port: u16,
         port_webrtc: u16,
         port_websocket: u16,
@@ -68,6 +70,7 @@ impl<P: Provider + Sync> Relay<P> {
         Self::new_with_peers(
             storage,
             provider,
+            messaging,
             port,
             port_webrtc,
             port_websocket,
@@ -81,6 +84,7 @@ impl<P: Provider + Sync> Relay<P> {
     pub fn new_with_peers(
         storage: Arc<dyn Storage>,
         provider: P,
+        messaging: Arc<Messaging>,
         port: u16,
         port_webrtc: u16,
         port_websocket: u16,
@@ -222,7 +226,8 @@ impl<P: Provider + Sync> Relay<P> {
             Self {
                 swarm,
                 storage,
-                provider: Box::new(provider),
+                provider,
+                messaging,
                 cross_messaging_rx: rx,
             },
             tx,
@@ -281,7 +286,7 @@ impl<P: Provider + Sync> Relay<P> {
 
                                 let typed_data =
                                     serde_json::from_str::<TypedData>(&data.message).unwrap();
-                                if let Err(e) = validate_and_set_entity(
+                                if let Err(e) = self.messaging.validate_and_set_entity(
                                     self.storage.clone(),
                                     &typed_data,
                                     &data.signature,

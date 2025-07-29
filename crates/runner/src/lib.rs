@@ -46,6 +46,7 @@ use torii_grpc_server::GrpcConfig;
 use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer::{FetcherConfig, FetchingFlags, IndexingFlags};
 use torii_libp2p_relay::Relay;
+use torii_messaging::{Messaging, MessagingConfig};
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
 use torii_sqlite::executor::Executor;
@@ -392,9 +393,18 @@ impl Runner {
         )
         .await?;
 
+        // Create messaging instance with configuration
+        let messaging_config = MessagingConfig {
+            max_age: self.args.messaging.max_age,
+            future_tolerance: self.args.messaging.future_tolerance,
+            require_timestamp: self.args.messaging.require_timestamp,
+        };
+        let messaging = Arc::new(Messaging::new(messaging_config));
+
         let (mut libp2p_relay_server, cross_messaging_tx) = Relay::new_with_peers(
             storage.clone(),
             provider.clone(),
+            messaging.clone(),
             self.args.relay.port,
             self.args.relay.webrtc_port,
             self.args.relay.websocket_port,
@@ -408,6 +418,7 @@ impl Runner {
             shutdown_rx,
             storage.clone(),
             provider.clone(),
+            messaging.clone(),
             self.args.world_address.unwrap_or_default(),
             cross_messaging_tx,
             GrpcConfig {

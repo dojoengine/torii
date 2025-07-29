@@ -32,7 +32,7 @@ use tonic::codec::CompressionEncoding;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
-use torii_messaging::validate_and_set_entity;
+use torii_messaging::Messaging;
 use torii_proto::error::ProtoError;
 use torii_storage::Storage;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -77,6 +77,7 @@ static SUBSCRIPTION_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|
 pub struct DojoWorld<P: Provider + Sync> {
     storage: Arc<dyn Storage>,
     provider: P,
+    messaging: Arc<Messaging>,
     world_address: Felt,
     cross_messaging_tx: Option<UnboundedSender<Message>>,
     entity_manager: Arc<EntityManager>,
@@ -93,6 +94,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
     pub fn new(
         storage: Arc<dyn Storage>,
         provider: P,
+        messaging: Arc<Messaging>,
         world_address: Felt,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
         config: GrpcConfig,
@@ -138,6 +140,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         Self {
             storage,
             provider,
+            messaging,
             world_address,
             cross_messaging_tx,
             entity_manager,
@@ -675,14 +678,16 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .collect::<Vec<_>>();
         let typed_data = serde_json::from_str(&message)
             .map_err(|_| Status::invalid_argument("Invalid message"))?;
-        let entity_id = validate_and_set_entity(
-            self.storage.clone(),
-            &typed_data,
-            &signature,
-            &self.provider,
-        )
-        .await
-        .map_err(|e| Status::internal(e.to_string()))?;
+        let entity_id = self
+            .messaging
+            .validate_and_set_entity(
+                self.storage.clone(),
+                &typed_data,
+                &signature,
+                &self.provider,
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
 
         let message = Message { signature, message };
         if let Some(tx) = &self.cross_messaging_tx {
@@ -711,14 +716,16 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             let typed_data = serde_json::from_str(&message)
                 .map_err(|_| Status::invalid_argument("Invalid message"))?;
 
-            let entity_id = validate_and_set_entity(
-                self.storage.clone(),
-                &typed_data,
-                &signature,
-                &self.provider,
-            )
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            let entity_id = self
+                .messaging
+                .validate_and_set_entity(
+                    self.storage.clone(),
+                    &typed_data,
+                    &signature,
+                    &self.provider,
+                )
+                .await
+                .map_err(|e| Status::internal(e.to_string()))?;
             responses.push(PublishMessageResponse {
                 entity_id: entity_id.to_bytes_be().to_vec(),
             });
@@ -771,6 +778,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     storage: Arc<dyn Storage>,
     provider: P,
+    messaging: Arc<Messaging>,
     world_address: Felt,
     cross_messaging_tx: UnboundedSender<Message>,
     config: GrpcConfig,
@@ -797,6 +805,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     let world = DojoWorld::new(
         storage,
         provider,
+        messaging,
         world_address,
         Some(cross_messaging_tx),
         config,
