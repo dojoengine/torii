@@ -567,7 +567,19 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         let processor = processors
             .iter()
             .find(|p| p.validate(event))
-            .expect("Must find atleast one processor for the event");
+            .unwrap_or_else(|| {
+                let event_name = processors.get(0).map(|p| p.event_key()).unwrap_or_else(|| format!("{:#x}", event_key));
+                error!(
+                    target: LOG_TARGET,
+                    event = event_name,
+                    contract_type = contract_type.to_string(),
+                    contract_address = format!("{:#x}", event.from_address),
+                    event_keys = ?event.keys,
+                    event_data = ?event.data,
+                    "Failed to find a suitable processor."
+                );
+                panic!("Failed to find a suitable processor.");
+            });
 
         let task_identifier = processor.task_identifier(event);
         let dependencies = processor.task_dependencies(event);
