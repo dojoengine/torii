@@ -67,11 +67,11 @@ pub async fn validate_and_set_entity<P: Provider + Sync>(
     if let Some(timestamp) = message_timestamp {
         let now = Utc::now().timestamp() as u64;
         let max_age = 300; // 5 minutes
-        
+
         if timestamp > now + 60 {
             return Err(MessagingError::TimestampTooFuture);
         }
-        
+
         if now.saturating_sub(timestamp) > max_age {
             return Err(MessagingError::TimestampTooOld);
         }
