@@ -8,6 +8,7 @@ use dojo_world::contracts::abigen::model::Layout;
 use indexmap::IndexMap;
 use katana_runner::RunnerCtx;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::types::chrono::Utc;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::JsonRpcClient;
 use starknet::signers::SigningKey;
@@ -17,6 +18,7 @@ use tokio::sync::broadcast;
 use tokio::time::{sleep, Duration};
 use tonic::Request;
 use torii_libp2p_relay::Relay;
+use torii_messaging::{Messaging, MessagingConfig};
 use torii_proto::proto::world::PublishMessageRequest;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::Sql;
@@ -101,9 +103,11 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     db.execute().await.unwrap();
 
     // Create DojoWorld instance
+    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
     let grpc = DojoWorld::new(
         db.clone(),
         provider.clone(),
+        messaging,
         Felt::ZERO, // world_address
         None,
         GrpcConfig::default(),
@@ -376,10 +380,13 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         db.execute().await.unwrap();
     }
 
+    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
+
     // Create first relay server (will be the main server)
     let (mut relay_server1, cross_messaging_tx1) = Relay::new(
         db1.clone(),
         Arc::clone(&provider).as_ref().clone(),
+        messaging.clone(),
         9900,
         9901,
         9902,
@@ -392,6 +399,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     let (mut relay_server2, _cross_messaging_tx2) = Relay::new_with_peers(
         db2.clone(),
         Arc::clone(&provider).as_ref().clone(),
+        messaging.clone(),
         9903,
         9904,
         9905,
@@ -417,6 +425,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     let grpc = DojoWorld::new(
         db1,
         provider.clone(),
+        messaging,
         Felt::ZERO, // world_address
         Some(cross_messaging_tx1),
         GrpcConfig::default(),
@@ -604,9 +613,11 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
     db.execute().await.unwrap();
 
     // Create DojoWorld instance
+    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
     let grpc = DojoWorld::new(
         db.clone(),
         provider.clone(),
+        messaging,
         Felt::ZERO, // world_address
         None,
         GrpcConfig::default(),
@@ -706,4 +717,203 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
         entity_count, 0,
         "No entities should be created when signature verification fails"
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[katana_runner::test(accounts = 10)]
+async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
+    let tempfile = NamedTempFile::new().unwrap();
+    let path = tempfile.path().to_string_lossy();
+    let options = SqliteConnectOptions::from_str(&path)
+        .unwrap()
+        .create_if_missing(true)
+        .with_regexp();
+    let pool = SqlitePoolOptions::new()
+        .min_connections(1)
+        .idle_timeout(None)
+        .max_lifetime(None)
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+
+    let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
+    let account_data = sequencer.account_data(0);
+
+    let (shutdown_tx, _) = broadcast::channel(1);
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
+    tokio::spawn(async move {
+        executor.run().await.unwrap();
+    });
+
+    let db = Arc::new(
+        Sql::new(
+            pool.clone(),
+            sender,
+            &[Contract {
+                address: Felt::ZERO,
+                r#type: ContractType::WORLD,
+            }],
+        )
+        .await
+        .unwrap(),
+    );
+
+    // Register a model with timestamp support
+    db.register_model(
+        compute_selector_from_names("types_test", "TimestampedMessage"),
+        &Ty::Struct(Struct {
+            name: "types_test-TimestampedMessage".to_string(),
+            children: vec![
+                Member {
+                    name: "identity".to_string(),
+                    ty: Ty::Primitive(Primitive::ContractAddress(None)),
+                    key: true,
+                },
+                Member {
+                    name: "timestamp".to_string(),
+                    ty: Ty::Primitive(Primitive::U64(None)),
+                    key: false,
+                },
+                Member {
+                    name: "message".to_string(),
+                    ty: Ty::ByteArray("".to_string()),
+                    key: false,
+                },
+            ],
+        }),
+        &Layout::Fixed(vec![]),
+        Felt::ZERO,
+        Felt::ZERO,
+        0,
+        0,
+        0,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    db.execute().await.unwrap();
+
+    let now = Utc::now().timestamp() as u64;
+
+    // Create DojoWorld instance with default messaging config
+    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
+    let grpc = DojoWorld::new(
+        db.clone(),
+        provider.clone(),
+        messaging,
+        Felt::ZERO,
+        None,
+        GrpcConfig::default(),
+    );
+
+    // Test valid timestamp
+    let mut typed_data = TypedData::new(
+        IndexMap::from_iter(vec![
+            (
+                "types_test-TimestampedMessage".to_string(),
+                vec![
+                    Field::SimpleType(SimpleField {
+                        name: "identity".to_string(),
+                        r#type: "ContractAddress".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "timestamp".to_string(),
+                        r#type: "u128".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "message".to_string(),
+                        r#type: "string".to_string(),
+                    }),
+                ],
+            ),
+            (
+                "StarknetDomain".to_string(),
+                vec![
+                    Field::SimpleType(SimpleField {
+                        name: "name".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "version".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "chainId".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "revision".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                ],
+            ),
+        ]),
+        "types_test-TimestampedMessage",
+        Domain::new("types_test-TimestampedMessage", "1", "0x0", Some("1")),
+        IndexMap::new(),
+    );
+
+    typed_data.message.insert(
+        "identity".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String(account_data.address.to_string()),
+    );
+
+    typed_data.message.insert(
+        "timestamp".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String(now.to_string()),
+    );
+
+    typed_data.message.insert(
+        "message".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String("valid timestamp test".to_string()),
+    );
+
+    // Sign and publish valid message
+    let message_hash = typed_data.encode(account_data.address).unwrap();
+    let signature =
+        SigningKey::from_secret_scalar(account_data.private_key.clone().unwrap().secret_scalar())
+            .sign(&message_hash)
+            .unwrap();
+
+    let request = Request::new(PublishMessageRequest {
+        message: serde_json::to_string(&typed_data).unwrap(),
+        signature: vec![
+            signature.r.to_bytes_be().to_vec(),
+            signature.s.to_bytes_be().to_vec(),
+        ],
+    });
+
+    use torii_proto::proto::world::world_server::World;
+    let response = grpc.publish_message(request).await.unwrap();
+    assert!(!response.into_inner().entity_id.is_empty());
+
+    // Test timestamp too far in future (should fail)
+    typed_data.message.insert(
+        "timestamp".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String((now + 120).to_string()),
+    );
+
+    let message_hash = typed_data.encode(account_data.address).unwrap();
+    let signature =
+        SigningKey::from_secret_scalar(account_data.private_key.clone().unwrap().secret_scalar())
+            .sign(&message_hash)
+            .unwrap();
+
+    let request = Request::new(PublishMessageRequest {
+        message: serde_json::to_string(&typed_data).unwrap(),
+        signature: vec![
+            signature.r.to_bytes_be().to_vec(),
+            signature.s.to_bytes_be().to_vec(),
+        ],
+    });
+
+    let result = grpc.publish_message(request).await;
+    assert!(result.is_err());
+
+    println!("All timestamp validation tests passed!");
 }
