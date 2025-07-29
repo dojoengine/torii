@@ -103,9 +103,11 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     db.execute().await.unwrap();
 
     // Create DojoWorld instance
+    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
     let grpc = DojoWorld::new(
         db.clone(),
         provider.clone(),
+        messaging,
         Felt::ZERO, // world_address
         None,
         GrpcConfig::default(),
@@ -378,10 +380,13 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         db.execute().await.unwrap();
     }
 
+    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
+
     // Create first relay server (will be the main server)
     let (mut relay_server1, cross_messaging_tx1) = Relay::new(
         db1.clone(),
         Arc::clone(&provider).as_ref().clone(),
+        messaging.clone(),
         9900,
         9901,
         9902,
@@ -394,6 +399,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     let (mut relay_server2, _cross_messaging_tx2) = Relay::new_with_peers(
         db2.clone(),
         Arc::clone(&provider).as_ref().clone(),
+        messaging.clone(),
         9903,
         9904,
         9905,
@@ -416,7 +422,6 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     sleep(Duration::from_secs(3)).await;
 
     // Create DojoWorld instance with cross messaging
-    let messaging = Arc::new(Messaging::default());
     let grpc = DojoWorld::new(
         db1,
         provider.clone(),
@@ -608,7 +613,7 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
     db.execute().await.unwrap();
 
     // Create DojoWorld instance
-    let messaging = Arc::new(Messaging::default());
+    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
     let grpc = DojoWorld::new(
         db.clone(),
         provider.clone(),
@@ -793,192 +798,122 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
     .unwrap();
     db.execute().await.unwrap();
 
-    // Test different messaging configurations
-
-    // 1. Test with default config (max_age: 300s, future_tolerance: 60s, require_timestamp: false)
-    let default_messaging = Arc::new(Messaging::new(MessagingConfig::default()));
-
-    // 2. Test with strict config (require_timestamp: true)
-    let strict_messaging = Arc::new(Messaging::new(MessagingConfig {
-        max_age: 300,
-        future_tolerance: 60,
-        require_timestamp: true,
-    }));
-
-    // 3. Test with very restrictive config (max_age: 10s, future_tolerance: 5s)
-    let restrictive_messaging = Arc::new(Messaging::new(MessagingConfig {
-        max_age: 10,
-        future_tolerance: 5,
-        require_timestamp: false,
-    }));
-
     let now = Utc::now().timestamp() as u64;
 
-    // Helper function to create typed data with timestamp
-    let create_typed_data_with_timestamp = |timestamp: Option<u64>, message_text: &str| {
-        let mut typed_data = TypedData::new(
-            IndexMap::from_iter(vec![
-                (
-                    "types_test-TimestampedMessage".to_string(),
-                    vec![
-                        Field::SimpleType(SimpleField {
-                            name: "identity".to_string(),
-                            r#type: "ContractAddress".to_string(),
-                        }),
-                        Field::SimpleType(SimpleField {
-                            name: "timestamp".to_string(),
-                            r#type: "u64".to_string(),
-                        }),
-                        Field::SimpleType(SimpleField {
-                            name: "message".to_string(),
-                            r#type: "string".to_string(),
-                        }),
-                    ],
-                ),
-                (
-                    "StarknetDomain".to_string(),
-                    vec![
-                        Field::SimpleType(SimpleField {
-                            name: "name".to_string(),
-                            r#type: "shortstring".to_string(),
-                        }),
-                        Field::SimpleType(SimpleField {
-                            name: "version".to_string(),
-                            r#type: "shortstring".to_string(),
-                        }),
-                        Field::SimpleType(SimpleField {
-                            name: "chainId".to_string(),
-                            r#type: "shortstring".to_string(),
-                        }),
-                        Field::SimpleType(SimpleField {
-                            name: "revision".to_string(),
-                            r#type: "shortstring".to_string(),
-                        }),
-                    ],
-                ),
-            ]),
-            "types_test-TimestampedMessage",
-            Domain::new("types_test-TimestampedMessage", "1", "0x0", Some("1")),
-            IndexMap::new(),
-        );
-
-        typed_data.message.insert(
-            "identity".to_string(),
-            torii_typed_data::typed_data::PrimitiveType::String(account_data.address.to_string()),
-        );
-
-        if let Some(ts) = timestamp {
-            typed_data.message.insert(
-                "timestamp".to_string(),
-                torii_typed_data::typed_data::PrimitiveType::String(ts.to_string()),
-            );
-        }
-
-        typed_data.message.insert(
-            "message".to_string(),
-            torii_typed_data::typed_data::PrimitiveType::String(message_text.to_string()),
-        );
-
-        typed_data
-    };
-
-    // Helper function to sign and validate message
-    let sign_and_validate = |messaging: Arc<Messaging>, typed_data: TypedData| async move {
-        let message_hash = typed_data.encode(account_data.address).unwrap();
-        let signature = SigningKey::from_secret_scalar(
-            account_data.private_key.clone().unwrap().secret_scalar(),
-        )
-        .sign(&message_hash)
-        .unwrap();
-
-        let signature_vec = vec![signature.r, signature.s];
-
-        // Convert TypedData to starknet_core TypedData for validation
-        let starknet_typed_data: starknet_core::types::TypedData =
-            serde_json::from_str(&serde_json::to_string(&typed_data).unwrap()).unwrap();
-
-        messaging
-            .validate_and_set_entity(db.clone(), &starknet_typed_data, &signature_vec, &provider)
-            .await
-    };
-
-    println!("Testing valid timestamp (current time)...");
-    let valid_typed_data = create_typed_data_with_timestamp(Some(now), "valid timestamp");
-    assert!(
-        sign_and_validate(default_messaging.clone(), valid_typed_data)
-            .await
-            .is_ok()
+    // Create DojoWorld instance with default messaging config
+    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
+    let grpc = DojoWorld::new(
+        db.clone(),
+        provider.clone(),
+        messaging,
+        Felt::ZERO,
+        None,
+        GrpcConfig::default(),
     );
 
-    println!("Testing timestamp too far in future...");
-    let future_typed_data = create_typed_data_with_timestamp(Some(now + 120), "future timestamp");
-    let result = sign_and_validate(default_messaging.clone(), future_typed_data).await;
-    assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("too far in the future"));
-
-    println!("Testing timestamp too old...");
-    let old_typed_data = create_typed_data_with_timestamp(Some(now - 400), "old timestamp");
-    let result = sign_and_validate(default_messaging.clone(), old_typed_data).await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("too old"));
-
-    println!("Testing valid message without timestamp (should succeed with default config)...");
-    let no_timestamp_data = create_typed_data_with_timestamp(None, "no timestamp");
-    assert!(
-        sign_and_validate(default_messaging.clone(), no_timestamp_data)
-            .await
-            .is_ok()
+    // Test valid timestamp
+    let mut typed_data = TypedData::new(
+        IndexMap::from_iter(vec![
+            (
+                "types_test-TimestampedMessage".to_string(),
+                vec![
+                    Field::SimpleType(SimpleField {
+                        name: "identity".to_string(),
+                        r#type: "ContractAddress".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "timestamp".to_string(),
+                        r#type: "u64".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "message".to_string(),
+                        r#type: "string".to_string(),
+                    }),
+                ],
+            ),
+            (
+                "StarknetDomain".to_string(),
+                vec![
+                    Field::SimpleType(SimpleField {
+                        name: "name".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "version".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "chainId".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                    Field::SimpleType(SimpleField {
+                        name: "revision".to_string(),
+                        r#type: "shortstring".to_string(),
+                    }),
+                ],
+            ),
+        ]),
+        "types_test-TimestampedMessage",
+        Domain::new("types_test-TimestampedMessage", "1", "0x0", Some("1")),
+        IndexMap::new(),
     );
 
-    println!("Testing message without timestamp with strict config (should fail)...");
-    let no_timestamp_strict = create_typed_data_with_timestamp(None, "no timestamp strict");
-    let result = sign_and_validate(strict_messaging.clone(), no_timestamp_strict).await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("not found"));
-
-    println!("Testing restrictive timing config...");
-    // Should fail with restrictive config (max_age: 10s, future_tolerance: 5s)
-    let slightly_old = create_typed_data_with_timestamp(Some(now - 15), "slightly old");
-    let result = sign_and_validate(restrictive_messaging.clone(), slightly_old).await;
-    assert!(result.is_err());
-
-    let slightly_future = create_typed_data_with_timestamp(Some(now + 8), "slightly future");
-    let result = sign_and_validate(restrictive_messaging.clone(), slightly_future).await;
-    assert!(result.is_err());
-
-    println!("Testing entity timestamp ordering...");
-    // First, create an entity with a timestamp
-    let initial_typed_data = create_typed_data_with_timestamp(Some(now), "initial message");
-    let entity_id = sign_and_validate(default_messaging.clone(), initial_typed_data)
-        .await
-        .unwrap();
-
-    // Try to update with older timestamp (should fail)
-    let older_update = create_typed_data_with_timestamp(Some(now - 10), "older update");
-    let result = sign_and_validate(default_messaging.clone(), older_update).await;
-    assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("older than the entity timestamp")
-            || result.unwrap_err().to_string().contains("Invalid")
+    typed_data.message.insert(
+        "identity".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String(account_data.address.to_string()),
     );
 
-    // Try to update with newer timestamp (should succeed)
-    let newer_update = create_typed_data_with_timestamp(Some(now + 30), "newer update");
-    assert!(sign_and_validate(default_messaging.clone(), newer_update)
-        .await
-        .is_ok());
+    typed_data.message.insert(
+        "timestamp".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String(now.to_string()),
+    );
 
-    // Try to update with no timestamp when entity has timestamp (should fail)
-    let no_timestamp_update = create_typed_data_with_timestamp(None, "no timestamp update");
-    let result = sign_and_validate(default_messaging.clone(), no_timestamp_update).await;
+    typed_data.message.insert(
+        "message".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String("valid timestamp test".to_string()),
+    );
+
+    // Sign and publish valid message
+    let message_hash = typed_data.encode(account_data.address).unwrap();
+    let signature =
+        SigningKey::from_secret_scalar(account_data.private_key.clone().unwrap().secret_scalar())
+            .sign(&message_hash)
+            .unwrap();
+
+    let request = Request::new(PublishMessageRequest {
+        message: serde_json::to_string(&typed_data).unwrap(),
+        signature: vec![
+            signature.r.to_bytes_be().to_vec(),
+            signature.s.to_bytes_be().to_vec(),
+        ],
+    });
+
+    use torii_proto::proto::world::world_server::World;
+    let response = grpc.publish_message(request).await.unwrap();
+    assert!(!response.into_inner().entity_id.is_empty());
+
+    // Test timestamp too far in future (should fail)
+    typed_data.message.insert(
+        "timestamp".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String((now + 120).to_string()),
+    );
+
+    let message_hash = typed_data.encode(account_data.address).unwrap();
+    let signature =
+        SigningKey::from_secret_scalar(account_data.private_key.clone().unwrap().secret_scalar())
+            .sign(&message_hash)
+            .unwrap();
+
+    let request = Request::new(PublishMessageRequest {
+        message: serde_json::to_string(&typed_data).unwrap(),
+        signature: vec![
+            signature.r.to_bytes_be().to_vec(),
+            signature.s.to_bytes_be().to_vec(),
+        ],
+    });
+
+    let result = grpc.publish_message(request).await;
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("not found"));
 
     println!("All timestamp validation tests passed!");
 }

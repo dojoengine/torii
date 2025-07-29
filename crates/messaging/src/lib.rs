@@ -111,7 +111,7 @@ impl Messaging {
 
         let entity_model = storage.entity_model(entity_id, model_id).await?;
         let entity_identity = match &entity_model {
-            Some(entity_model) => match get_identity_from_ty(&entity_model) {
+            Some(entity_model) => match get_identity_from_ty(entity_model) {
                 Ok(identity) => identity,
                 Err(e) => {
                     warn!(
@@ -136,7 +136,7 @@ impl Messaging {
         };
 
         let entity_timestamp = match &entity_model {
-            Some(entity_model) => get_timestamp_from_ty(&entity_model),
+            Some(entity_model) => get_timestamp_from_ty(entity_model),
             None => None,
         };
 

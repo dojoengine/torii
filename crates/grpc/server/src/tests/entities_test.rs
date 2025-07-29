@@ -25,6 +25,7 @@ use tonic::Request;
 use torii_cache::InMemoryCache;
 use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
+use torii_messaging::{Messaging, MessagingConfig};
 use torii_processors::processors::Processors;
 use torii_proto::proto::world::world_server::World;
 use torii_proto::proto::world::RetrieveEntitiesRequest;
@@ -153,9 +154,11 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
 
     db.execute().await.unwrap();
 
+    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
     let grpc = DojoWorld::new(
         Arc::new(db),
         provider.clone(),
+        messaging.clone(),
         world_address,
         None,
         GrpcConfig::default(),

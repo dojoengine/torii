@@ -57,6 +57,7 @@ pub struct Relay<P: Provider + Sync> {
 }
 
 impl<P: Provider + Sync> Relay<P> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         storage: Arc<dyn Storage>,
         provider: P,
