@@ -51,6 +51,13 @@ pub fn get_identity_from_ty(ty: &Ty) -> Result<Felt, MessagingError> {
     Ok(identity)
 }
 
+pub fn get_timestamp_from_ty(ty: &Ty) -> Option<u64> {
+    ty.as_struct()?
+        .get("timestamp")?
+        .as_primitive()?
+        .as_u64()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn set_entity(
     db: Arc<dyn Storage>,

@@ -49,4 +49,16 @@ pub enum MessagingError {
 
     #[error("Invalid signature")]
     InvalidSignature,
+
+    #[error("Message timestamp is too far in the future")]
+    TimestampTooFuture,
+
+    #[error("Message timestamp is too old")]
+    TimestampTooOld,
+
+    #[error("Message timestamp is not found")]
+    TimestampNotFound,
+
+    #[error("Timestamp is older than the entity timestamp")]
+    InvalidTimestamp,
 }
