@@ -568,7 +568,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             .iter()
             .find(|p| p.validate(event))
             .unwrap_or_else(|| {
-                let event_name = processors.get(0).map(|p| p.event_key()).unwrap_or_else(|| format!("{:#x}", event_key));
+                let event_name = processors
+                    .get(0)
+                    .map(|p| p.event_key())
+                    .unwrap_or_else(|| format!("{:#x}", event_key));
                 error!(
                     target: LOG_TARGET,
                     event = event_name,
