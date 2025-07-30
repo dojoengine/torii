@@ -98,7 +98,7 @@ async fn test_range_one_block() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 30000)]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_basic(sequencer: &RunnerCtx) {
     let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
@@ -208,7 +208,7 @@ async fn test_fetch_pending_basic(sequencer: &RunnerCtx) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 30000)]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_multiple_transactions(sequencer: &RunnerCtx) {
     let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
@@ -335,7 +335,7 @@ async fn test_fetch_pending_multiple_transactions(sequencer: &RunnerCtx) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 30000)]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
     let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
@@ -483,7 +483,7 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 30000)]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
     let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
