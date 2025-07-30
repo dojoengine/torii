@@ -646,7 +646,7 @@ async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 30000)]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_block_mined_during_fetch(sequencer: &RunnerCtx) {
     let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
@@ -734,7 +734,7 @@ async fn test_fetch_pending_block_mined_during_fetch(sequencer: &RunnerCtx) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 30000)]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_with_events_comprehensive(sequencer: &RunnerCtx) {
     let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
@@ -841,7 +841,7 @@ async fn test_fetch_pending_with_events_comprehensive(sequencer: &RunnerCtx) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 30000)]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_filters_reverted_transactions(sequencer: &RunnerCtx) {
     let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
@@ -938,7 +938,7 @@ async fn test_fetch_pending_filters_reverted_transactions(sequencer: &RunnerCtx)
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 30000)]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerCtx) {
     let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
@@ -1099,7 +1099,7 @@ async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerC
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 30000)]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_and_ordering_validation(
     sequencer: &RunnerCtx,
 ) {
