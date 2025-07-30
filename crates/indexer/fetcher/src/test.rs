@@ -1163,12 +1163,6 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
         .await
         .unwrap();
 
-    // Mine a block to establish initial state
-    sequencer.dev_client().generate_block().await.unwrap();
-
-    let initial_block = provider.block_hash_and_number().await.unwrap();
-    let initial_block_number = initial_block.block_number;
-
     // Get additional contracts for unrelated transactions (these will NOT be indexed)
     let rewards_address = world_local
         .external_contracts
@@ -1190,6 +1184,12 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     TransactionWaiter::new(grant_rewards_res.transaction_hash, &provider)
         .await
         .unwrap();
+
+    // Mine a block to establish initial state AFTER all grant_writer transactions
+    sequencer.dev_client().generate_block().await.unwrap();
+
+    let initial_block = provider.block_hash_and_number().await.unwrap();
+    let initial_block_number = initial_block.block_number;
 
     // Create fetcher that indexes world, ERC20, and ERC721 contracts (but NOT rewards)
     let fetcher = Fetcher::new(
