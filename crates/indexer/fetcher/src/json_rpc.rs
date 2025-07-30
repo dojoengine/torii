@@ -298,19 +298,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         let block_number = latest_block.block_number + 1;
         let timestamp = pending_block.timestamp;
 
-        let mut transactions: LinkedHashMap<Felt, FetchTransaction> = pending_block
-            .transactions
-            .iter()
-            .map(|t| {
-                (
-                    *t.receipt.transaction_hash(),
-                    FetchTransaction {
-                        transaction: Some(t.transaction.clone()),
-                        events: vec![],
-                    },
-                )
-            })
-            .collect();
+        let mut transactions = LinkedHashMap::new();
         let mut cursor_transactions = HashMap::new();
 
         for (contract_address, cursor) in &mut new_cursors {
@@ -358,9 +346,14 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     .or_insert(HashSet::new())
                     .insert(*tx_hash);
 
-                transactions.entry(*tx_hash).and_modify(|tx| {
-                    tx.events.extend(events);
-                });
+                transactions
+                    .entry(*tx_hash)
+                    .or_insert_with(|| FetchTransaction {
+                        transaction: Some(t.transaction.clone()),
+                        events: vec![],
+                    })
+                    .events
+                    .extend(events);
                 cursor.last_pending_block_tx = Some(*tx_hash);
             }
         }
