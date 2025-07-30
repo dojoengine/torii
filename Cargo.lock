@@ -12083,6 +12083,7 @@ dependencies = [
  "torii-grpc-server",
  "torii-indexer",
  "torii-libp2p-relay",
+ "torii-messaging",
  "torii-processors",
  "torii-server",
  "torii-sqlite",
