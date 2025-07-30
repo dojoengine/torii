@@ -55,12 +55,13 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         debug!(target: LOG_TARGET, duration = ?range_start.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
         let pending = if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
-            && cursors
+            && range
+                .cursors
                 .values()
                 .any(|c| c.head == Some(latest_block_number))
         {
             let pending_start = Instant::now();
-            let pending_result = self.fetch_pending(latest_block, cursors).await?;
+            let pending_result = self.fetch_pending(latest_block, &range.cursors).await?;
             histogram!("torii_fetcher_pending_duration_seconds")
                 .record(pending_start.elapsed().as_secs_f64());
             pending_result
@@ -191,16 +192,18 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             let block_number = event.block_number.unwrap();
 
             let block = blocks.get_mut(&block_number).expect("Block not found");
-            block
+            let tx = block
                 .transactions
                 .entry(event.transaction_hash)
-                .and_modify(|tx| {
-                    tx.events.push(Event {
-                        from_address: event.from_address,
-                        keys: event.keys.clone(),
-                        data: event.data.clone(),
-                    })
+                .or_insert_with(|| FetchTransaction {
+                    transaction: None,
+                    events: vec![],
                 });
+            tx.events.push(Event {
+                from_address: event.from_address,
+                keys: event.keys.clone(),
+                data: event.data.clone(),
+            });
 
             // Add transaction to cursor transactions
             cursor_transactions
