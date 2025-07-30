@@ -1219,9 +1219,9 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
 
         // Move transaction - updates Position and Moves, emits Moved event
         let move_direction = match i % 4 {
-            0 => Felt::ONE,   // Left
-            1 => Felt::TWO,   // Right  
-            2 => Felt::THREE, // Up
+            0 => Felt::ONE,     // Left
+            1 => Felt::TWO,     // Right
+            2 => Felt::THREE,   // Up
             _ => Felt::from(4), // Down
         };
 
@@ -1304,15 +1304,17 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
     for erc721_tx in &erc721_txs {
         assert!(
             !pending_data.transactions.contains_key(erc721_tx),
-            "ERC721 transaction {:?} should NOT be present in pending data", 
+            "ERC721 transaction {:?} should NOT be present in pending data",
             erc721_tx
         );
     }
 
     // Verify cursor tracking for world contract
-    assert!(pending_data.cursor_transactions.contains_key(&world_address));
+    assert!(pending_data
+        .cursor_transactions
+        .contains_key(&world_address));
     let world_cursor_txs = &pending_data.cursor_transactions[&world_address];
-    
+
     for world_tx in &world_txs {
         assert!(
             world_cursor_txs.contains(world_tx),
@@ -1336,8 +1338,11 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
     for world_tx in &world_txs {
         let transaction = &pending_data.transactions[world_tx];
         assert!(transaction.transaction.is_some());
-        assert!(!transaction.events.is_empty(), "World transactions should have events");
-        
+        assert!(
+            !transaction.events.is_empty(),
+            "World transactions should have events"
+        );
+
         // Verify events have proper structure
         for event in &transaction.events {
             assert!(!event.keys.is_empty());
@@ -1390,9 +1395,12 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
 
     // Should get both mined transactions (in range) and new pending transactions
     let mined_block_number = initial_block_number + 1;
-    
+
     // Verify range contains the previously pending transactions (now mined)
-    assert!(continuation_result.range.blocks.contains_key(&mined_block_number));
+    assert!(continuation_result
+        .range
+        .blocks
+        .contains_key(&mined_block_number));
     let mined_block = &continuation_result.range.blocks[&mined_block_number];
 
     // All original world transactions should now be in the mined block
@@ -1488,7 +1496,7 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
 
     // Phase 8: Verify no transaction loss or duplication
     let mut all_processed_txs = std::collections::HashSet::new();
-    
+
     // Add range transactions
     for tx_hash in range_world_txs {
         assert!(
@@ -1519,8 +1527,7 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
     }
 
     assert_eq!(
-        all_processed_txs,
-        expected_txs,
+        all_processed_txs, expected_txs,
         "Processed transactions should exactly match expected world transactions"
     );
 
@@ -1539,7 +1546,10 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
     }
 
     // We should have found events from our transactions
-    assert!(moved_events_found > 0, "Should have found move-related events");
+    assert!(
+        moved_events_found > 0,
+        "Should have found move-related events"
+    );
 
     println!(
         "Test completed successfully! Processed {} world transactions, {} ERC20 transactions ignored, {} ERC721 transactions ignored",
@@ -1549,7 +1559,6 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
     );
     println!(
         "Cursor validation passed: Range transactions: {}, Pending transactions: {}",
-        range_tx_count,
-        pending_tx_count
+        range_tx_count, pending_tx_count
     );
 }
