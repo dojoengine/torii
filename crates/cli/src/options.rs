@@ -157,7 +157,7 @@ pub struct IndexingOptions {
         long = "indexing.contracts",
         value_delimiter = ',',
         value_parser = parse_erc_contract,
-        help = "ERC contract addresses to index. You may only specify ERC20 or ERC721 contracts."
+        help = "The list of contracts to index, in the following format: contract_type:address. Supported contract types include ERC20, ERC721, ERC1155, WORLD, UDC."
     )]
     #[serde(deserialize_with = "deserialize_contracts")]
     #[serde(serialize_with = "serialize_contracts")]
@@ -708,17 +708,11 @@ fn parse_hook(part: &str) -> anyhow::Result<Hook> {
 }
 
 // Parses clap cli argument which is expected to be in the format:
-// - erc_type:address:start_block
-// - address:start_block (erc_type defaults to ERC20)
+// - contract_type:address
 fn parse_erc_contract(part: &str) -> anyhow::Result<Contract> {
     match part.split(':').collect::<Vec<&str>>().as_slice() {
         [r#type, address] => {
             let r#type = r#type.parse::<ContractType>()?;
-            if r#type == ContractType::WORLD {
-                return Err(anyhow::anyhow!(
-                    "World address cannot be specified as an ERC contract"
-                ));
-            }
 
             let address = Felt::from_str(address)
                 .with_context(|| format!("Expected address, found {}", address))?;
