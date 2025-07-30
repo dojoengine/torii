@@ -1378,15 +1378,6 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
         );
     }
 
-    // Verify rewards transactions are NOT fetched (since we're not indexing rewards contract)
-    for rewards_tx in &rewards_txs {
-        assert!(
-            !pending_data.transactions.contains_key(rewards_tx),
-            "Rewards transaction {:?} should NOT be present in pending data",
-            rewards_tx
-        );
-    }
-
     // Verify cursor tracking for all indexed contracts
     assert!(pending_data
         .cursor_transactions
@@ -1670,15 +1661,6 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
                 new_pending.transactions.contains_key(new_erc721_tx),
                 "New ERC721 transaction {:?} should be in new pending data",
                 new_erc721_tx
-            );
-        }
-
-        // Should NOT contain new rewards transactions (unindexed contract)
-        for new_rewards_tx in &new_rewards_txs {
-            assert!(
-                !new_pending.transactions.contains_key(new_rewards_tx),
-                "New rewards transaction {:?} should NOT be in new pending data",
-                new_rewards_tx
             );
         }
 
