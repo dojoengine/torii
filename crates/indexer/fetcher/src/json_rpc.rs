@@ -49,31 +49,36 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
         let range_start = Instant::now();
         // Fetch all events from 'from' to our blocks chunk size
-        let (range, mut cursors) = self.fetch_range(cursors, latest_block.clone()).await?;
+        let (range, cursors) = self.fetch_range(cursors, latest_block.clone()).await?;
         histogram!("torii_fetcher_range_duration_seconds")
             .record(range_start.elapsed().as_secs_f64());
         debug!(target: LOG_TARGET, duration = ?range_start.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
-        let pending = if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
-            && cursors.cursors
+        let (pending, cursors) = if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
+            && cursors
+                .cursors
                 .values()
                 .any(|c| c.head == Some(latest_block_number))
         {
             let pending_start = Instant::now();
-            let pending_result = self.fetch_pending(latest_block, &cursors.cursors).await?;
+            let pending_result = self.fetch_pending(latest_block, &cursors).await?;
             histogram!("torii_fetcher_pending_duration_seconds")
                 .record(pending_start.elapsed().as_secs_f64());
 
             pending_result
         } else {
-            None
+            (None, cursors)
         };
 
         histogram!("torii_fetcher_total_duration_seconds")
             .record(fetch_start.elapsed().as_secs_f64());
         counter!("torii_fetcher_fetch_total", "status" => "success").increment(1);
 
-        Ok(FetchResult { range, pending, cursors })
+        Ok(FetchResult {
+            range,
+            pending,
+            cursors,
+        })
     }
 
     pub async fn fetch_range(
@@ -277,8 +282,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
     async fn fetch_pending(
         &self,
         latest_block: BlockHashAndNumber,
-        cursors: &HashMap<Felt, ContractCursor>,
-    ) -> Result<Option<(FetchPendingResult, Cursors)>, Error> {
+        cursors: &Cursors,
+    ) -> Result<(Option<FetchPendingResult>, Cursors), Error> {
         let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
             .provider
             .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
@@ -287,7 +292,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             // if the parent hash is not the hash of the latest block that we fetched, then it means
             // a new block got mined just after we fetched the latest block information
             if latest_block.block_hash != pending.parent_hash {
-                return Ok(None);
+                return Ok((None, cursors.clone()));
             }
 
             pending
@@ -295,7 +300,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             // TODO: change this to unreachable once katana is updated to return PendingBlockWithTxs
             // when BlockTag is Pending unreachable!("We requested pending block, so it
             // must be pending");
-            return Ok(None);
+            return Ok((None, cursors.clone()));
         };
 
         // Skip transactions that have been processed already
@@ -321,7 +326,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             .collect();
         let mut cursor_transactions = HashMap::new();
 
-        for (contract_address, cursor) in &mut new_cursors {
+        for (contract_address, cursor) in &mut new_cursors.cursors {
             if cursor.head != Some(latest_block.block_number) {
                 continue;
             }
@@ -381,17 +386,14 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Filter out transactions that don't have any events (not relevant to indexed contracts)
         transactions.retain(|_, tx| !tx.events.is_empty());
 
-        Ok(Some((
-            FetchPendingResult {
+        Ok((
+            Some(FetchPendingResult {
                 timestamp,
                 transactions,
                 block_number,
-            },
-            Cursors {
-                cursors: new_cursors,
-                cursor_transactions,
-            },
-        )))
+            }),
+            new_cursors,
+        ))
     }
 
     async fn fetch_events(
