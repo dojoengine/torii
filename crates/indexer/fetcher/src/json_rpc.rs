@@ -298,7 +298,19 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         let block_number = latest_block.block_number + 1;
         let timestamp = pending_block.timestamp;
 
-        let mut transactions = LinkedHashMap::new();
+        let mut transactions: LinkedHashMap<Felt, FetchTransaction> = pending_block
+            .transactions
+            .iter()
+            .map(|t| {
+                (
+                    *t.receipt.transaction_hash(),
+                    FetchTransaction {
+                        transaction: Some(t.transaction.clone()),
+                        events: vec![],
+                    },
+                )
+            })
+            .collect();
         let mut cursor_transactions = HashMap::new();
 
         for (contract_address, cursor) in &mut new_cursors {
@@ -357,6 +369,9 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 cursor.last_pending_block_tx = Some(*tx_hash);
             }
         }
+
+        // Filter out transactions that don't have any events (not relevant to indexed contracts)
+        transactions.retain(|_, tx| !tx.events.is_empty());
 
         Ok(Some(FetchPendingResult {
             timestamp,
