@@ -21,7 +21,7 @@ use tracing::{debug, error, trace, warn};
 
 use crate::error::Error;
 use crate::{
-    FetchPendingResult, FetchRangeBlock, FetchRangeResult, FetchResult, FetchTransaction,
+    Cursors, FetchPendingResult, FetchRangeBlock, FetchRangeResult, FetchResult, FetchTransaction,
     FetcherConfig, FetchingFlags,
 };
 
@@ -49,21 +49,21 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
         let range_start = Instant::now();
         // Fetch all events from 'from' to our blocks chunk size
-        let range = self.fetch_range(cursors, latest_block.clone()).await?;
+        let (range, mut cursors) = self.fetch_range(cursors, latest_block.clone()).await?;
         histogram!("torii_fetcher_range_duration_seconds")
             .record(range_start.elapsed().as_secs_f64());
         debug!(target: LOG_TARGET, duration = ?range_start.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
         let pending = if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
-            && range
-                .cursors
+            && cursors.cursors
                 .values()
                 .any(|c| c.head == Some(latest_block_number))
         {
             let pending_start = Instant::now();
-            let pending_result = self.fetch_pending(latest_block, &range.cursors).await?;
+            let pending_result = self.fetch_pending(latest_block, &cursors.cursors).await?;
             histogram!("torii_fetcher_pending_duration_seconds")
                 .record(pending_start.elapsed().as_secs_f64());
+
             pending_result
         } else {
             None
@@ -73,14 +73,14 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             .record(fetch_start.elapsed().as_secs_f64());
         counter!("torii_fetcher_fetch_total", "status" => "success").increment(1);
 
-        Ok(FetchResult { range, pending })
+        Ok(FetchResult { range, pending, cursors })
     }
 
     pub async fn fetch_range(
         &self,
         cursors: &HashMap<Felt, ContractCursor>,
         latest_block: BlockHashAndNumber,
-    ) -> Result<FetchRangeResult, Error> {
+    ) -> Result<(FetchRangeResult, Cursors), Error> {
         let mut events = vec![];
         let mut cursors = cursors.clone();
         let mut blocks = BTreeMap::new();
@@ -265,18 +265,20 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
         trace!(target: LOG_TARGET, "Blocks: {}", blocks.len());
 
-        Ok(FetchRangeResult {
-            blocks,
-            cursor_transactions,
-            cursors,
-        })
+        Ok((
+            FetchRangeResult { blocks },
+            Cursors {
+                cursor_transactions,
+                cursors,
+            },
+        ))
     }
 
     async fn fetch_pending(
         &self,
         latest_block: BlockHashAndNumber,
         cursors: &HashMap<Felt, ContractCursor>,
-    ) -> Result<Option<FetchPendingResult>, Error> {
+    ) -> Result<Option<(FetchPendingResult, Cursors)>, Error> {
         let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
             .provider
             .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
@@ -379,13 +381,17 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Filter out transactions that don't have any events (not relevant to indexed contracts)
         transactions.retain(|_, tx| !tx.events.is_empty());
 
-        Ok(Some(FetchPendingResult {
-            timestamp,
-            transactions,
-            block_number,
-            cursors: new_cursors,
-            cursor_transactions,
-        }))
+        Ok(Some((
+            FetchPendingResult {
+                timestamp,
+                transactions,
+                block_number,
+            },
+            Cursors {
+                cursors: new_cursors,
+                cursor_transactions,
+            },
+        )))
     }
 
     async fn fetch_events(

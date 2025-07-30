@@ -65,6 +65,17 @@ pub struct FetchTransaction {
 pub struct FetchRangeResult {
     // block_number -> block and transactions
     pub blocks: BTreeMap<u64, FetchRangeBlock>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FetchPendingResult {
+    pub block_number: u64,
+    pub timestamp: u64,
+    pub transactions: LinkedHashMap<Felt, FetchTransaction>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Cursors {
     // contract_address -> transaction count
     pub cursor_transactions: HashMap<Felt, HashSet<Felt>>,
     // new updated cursors
@@ -72,16 +83,8 @@ pub struct FetchRangeResult {
 }
 
 #[derive(Debug, Clone)]
-pub struct FetchPendingResult {
-    pub block_number: u64,
-    pub timestamp: u64,
-    pub cursors: HashMap<Felt, ContractCursor>,
-    pub transactions: LinkedHashMap<Felt, FetchTransaction>,
-    pub cursor_transactions: HashMap<Felt, HashSet<Felt>>,
-}
-
-#[derive(Debug, Clone)]
 pub struct FetchResult {
     pub range: FetchRangeResult,
     pub pending: Option<FetchPendingResult>,
+    pub cursors: Cursors,
 }
