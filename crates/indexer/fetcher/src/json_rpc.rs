@@ -191,24 +191,27 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             let block_number = event.block_number.unwrap();
 
             let block = blocks.get_mut(&block_number).expect("Block not found");
-            let tx = block
+            block
                 .transactions
                 .entry(event.transaction_hash)
-                .or_insert_with(|| FetchTransaction {
-                    transaction: None,
-                    events: vec![],
+                .and_modify(|tx| {
+                    tx.events.push(Event {
+                        from_address: event.from_address,
+                        keys: event.keys.clone(),
+                        data: event.data.clone(),
+                    })
                 });
-            tx.events.push(Event {
-                from_address: event.from_address,
-                keys: event.keys.clone(),
-                data: event.data.clone(),
-            });
 
             // Add transaction to cursor transactions
             cursor_transactions
                 .entry(event.from_address)
                 .or_insert(HashSet::new())
                 .insert(event.transaction_hash);
+        }
+
+        // Step 7: Filter out transactions that don't have any events (not relevant to indexed contracts)
+        for (_, block) in blocks.iter_mut() {
+            block.transactions.retain(|_, tx| !tx.events.is_empty());
         }
 
         // Step 7: Fetch transaction details if enabled
