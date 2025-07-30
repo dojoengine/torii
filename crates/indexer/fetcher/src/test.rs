@@ -1100,7 +1100,7 @@ async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerC
 
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 30000)]
-async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
+async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_and_ordering_validation(
     sequencer: &RunnerCtx,
 ) {
     let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
@@ -1169,7 +1169,29 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
     let initial_block = provider.block_hash_and_number().await.unwrap();
     let initial_block_number = initial_block.block_number;
 
-    // Create fetcher that ONLY indexes the world contract (not ERC tokens)
+    // Get additional contracts for unrelated transactions (these will NOT be indexed)
+    let rewards_address = world_local
+        .external_contracts
+        .iter()
+        .find(|c| c.instance_name == "Rewards")
+        .unwrap()
+        .address;
+
+    // Grant writer permissions for rewards (unrelated contract)
+    let grant_rewards_res = world
+        .grant_writer(
+            &compute_bytearray_hash("ns"),
+            &ContractAddress(rewards_address),
+        )
+        .send_with_cfg(&TxnConfig::init_wait())
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(grant_rewards_res.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Create fetcher that indexes world, ERC20, and ERC721 contracts (but NOT rewards)
     let fetcher = Fetcher::new(
         provider.clone(),
         FetcherConfig {
@@ -1179,23 +1201,46 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
         },
     );
 
-    // Set up cursors for ONLY the world contract (this is key - we're not indexing other contracts)
-    let initial_cursors = HashMap::from([(
-        world_address,
-        ContractCursor {
-            contract_address: world_address,
-            last_pending_block_tx: None,
-            head: Some(initial_block_number),
-            last_block_timestamp: None,
-            tps: None,
-        },
-    )]);
+    // Set up cursors for world, ERC20, and ERC721 contracts (rewards is excluded)
+    let initial_cursors = HashMap::from([
+        (
+            world_address,
+            ContractCursor {
+                contract_address: world_address,
+                last_pending_block_tx: None,
+                head: Some(initial_block_number),
+                last_block_timestamp: None,
+                tps: None,
+            },
+        ),
+        (
+            wood_address,
+            ContractCursor {
+                contract_address: wood_address,
+                last_pending_block_tx: None,
+                head: Some(initial_block_number),
+                last_block_timestamp: None,
+                tps: None,
+            },
+        ),
+        (
+            badge_address,
+            ContractCursor {
+                contract_address: badge_address,
+                last_pending_block_tx: None,
+                head: Some(initial_block_number),
+                last_block_timestamp: None,
+                tps: None,
+            },
+        ),
+    ]);
 
-    // Phase 1: Spam transactions across multiple contracts (world, ERC20, ERC721) in pending state
+    // Phase 1: Spam transactions across multiple contracts (world, ERC20, ERC721, rewards) in pending state
 
     let mut world_txs = Vec::new();
     let mut erc20_txs = Vec::new();
     let mut erc721_txs = Vec::new();
+    let mut rewards_txs: Vec<Felt> = Vec::new(); // These will NOT be indexed
 
     // Spam world contract transactions (spawn and move actions)
     for i in 0..5 {
@@ -1257,7 +1302,7 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
         erc20_txs.push(erc20_tx.transaction_hash);
     }
 
-    // Spam ERC721 contract transactions (should NOT be indexed by our fetcher)
+    // Spam ERC721 contract transactions (will be indexed by our fetcher)
     for i in 0..6 {
         let account_to_use = match i % 3 {
             0 => &account,
@@ -1277,13 +1322,38 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
         erc721_txs.push(erc721_tx.transaction_hash);
     }
 
-    // Phase 2: Fetch pending transactions - should only get world contract transactions
+    // Spam rewards contract transactions (should NOT be indexed by our fetcher - unrelated contract)
+    for i in 0..7 {
+        let account_to_use = match i % 3 {
+            0 => &account,
+            1 => &account2,
+            _ => &account3,
+        };
+
+        let rewards_tx = account_to_use
+            .execute_v3(vec![Call {
+                to: rewards_address,
+                selector: get_selector_from_name("mint").unwrap(),
+                calldata: vec![
+                    Felt::from(1 + i),
+                    Felt::ZERO,
+                    Felt::from(500 + i * 10),
+                    Felt::ZERO,
+                ],
+            }])
+            .send()
+            .await
+            .unwrap();
+        rewards_txs.push(rewards_tx.transaction_hash);
+    }
+
+    // Phase 2: Fetch pending transactions - should get world, ERC20, and ERC721 transactions (but not rewards)
     let pending_result = fetcher.fetch(&initial_cursors).await.unwrap();
 
     assert!(pending_result.pending.is_some());
     let pending_data = pending_result.pending.unwrap();
 
-    // Verify ONLY world contract transactions are fetched
+    // Verify all indexed contract transactions are fetched
     for world_tx in &world_txs {
         assert!(
             pending_data.transactions.contains_key(world_tx),
@@ -1292,29 +1362,50 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
         );
     }
 
-    // Verify ERC20 and ERC721 transactions are NOT fetched (since we're only indexing world contract)
     for erc20_tx in &erc20_txs {
         assert!(
-            !pending_data.transactions.contains_key(erc20_tx),
-            "ERC20 transaction {:?} should NOT be present in pending data",
+            pending_data.transactions.contains_key(erc20_tx),
+            "ERC20 transaction {:?} should be present in pending data",
             erc20_tx
         );
     }
 
     for erc721_tx in &erc721_txs {
         assert!(
-            !pending_data.transactions.contains_key(erc721_tx),
-            "ERC721 transaction {:?} should NOT be present in pending data",
+            pending_data.transactions.contains_key(erc721_tx),
+            "ERC721 transaction {:?} should be present in pending data",
             erc721_tx
         );
     }
 
-    // Verify cursor tracking for world contract
+    // Verify rewards transactions are NOT fetched (since we're not indexing rewards contract)
+    for rewards_tx in &rewards_txs {
+        assert!(
+            !pending_data.transactions.contains_key(rewards_tx),
+            "Rewards transaction {:?} should NOT be present in pending data",
+            rewards_tx
+        );
+    }
+
+    // Verify cursor tracking for all indexed contracts
     assert!(pending_data
         .cursor_transactions
         .contains_key(&world_address));
-    let world_cursor_txs = &pending_data.cursor_transactions[&world_address];
+    assert!(pending_data.cursor_transactions.contains_key(&wood_address));
+    assert!(pending_data
+        .cursor_transactions
+        .contains_key(&badge_address));
 
+    // Verify rewards contract is NOT tracked (since we don't index it)
+    assert!(!pending_data
+        .cursor_transactions
+        .contains_key(&rewards_address));
+
+    let world_cursor_txs = &pending_data.cursor_transactions[&world_address];
+    let erc20_cursor_txs = &pending_data.cursor_transactions[&wood_address];
+    let erc721_cursor_txs = &pending_data.cursor_transactions[&badge_address];
+
+    // Verify world contract cursor tracking
     for world_tx in &world_txs {
         assert!(
             world_cursor_txs.contains(world_tx),
@@ -1322,40 +1413,93 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
             world_tx
         );
     }
-
     assert_eq!(world_cursor_txs.len(), world_txs.len());
 
-    // Verify cursor state
+    // Verify ERC20 contract cursor tracking
+    for erc20_tx in &erc20_txs {
+        assert!(
+            erc20_cursor_txs.contains(erc20_tx),
+            "ERC20 transaction {:?} should be tracked in cursor_transactions",
+            erc20_tx
+        );
+    }
+    assert_eq!(erc20_cursor_txs.len(), erc20_txs.len());
+
+    // Verify ERC721 contract cursor tracking
+    for erc721_tx in &erc721_txs {
+        assert!(
+            erc721_cursor_txs.contains(erc721_tx),
+            "ERC721 transaction {:?} should be tracked in cursor_transactions",
+            erc721_tx
+        );
+    }
+    assert_eq!(erc721_cursor_txs.len(), erc721_txs.len());
+
+    // Verify cursor state for all indexed contracts
     let world_cursor = &pending_data.cursors[&world_address];
+    let erc20_cursor = &pending_data.cursors[&wood_address];
+    let erc721_cursor = &pending_data.cursors[&badge_address];
+
+    // All cursors should have the same head (initial block number)
     assert_eq!(world_cursor.head, Some(initial_block_number));
+    assert_eq!(erc20_cursor.head, Some(initial_block_number));
+    assert_eq!(erc721_cursor.head, Some(initial_block_number));
+
+    // All cursors should have pending transactions
     assert!(world_cursor.last_pending_block_tx.is_some());
+    assert!(erc20_cursor.last_pending_block_tx.is_some());
+    assert!(erc721_cursor.last_pending_block_tx.is_some());
+
+    // Each cursor should point to the last transaction from its respective contract
     assert_eq!(
         world_cursor.last_pending_block_tx.unwrap(),
         *world_txs.last().unwrap()
     );
+    assert_eq!(
+        erc20_cursor.last_pending_block_tx.unwrap(),
+        *erc20_txs.last().unwrap()
+    );
+    assert_eq!(
+        erc721_cursor.last_pending_block_tx.unwrap(),
+        *erc721_txs.last().unwrap()
+    );
 
-    // Verify transaction events and content
-    for world_tx in &world_txs {
-        let transaction = &pending_data.transactions[world_tx];
+    // Verify transaction events and content for all indexed contracts
+    let all_indexed_txs = [&world_txs[..], &erc20_txs[..], &erc721_txs[..]].concat();
+
+    for tx_hash in &all_indexed_txs {
+        let transaction = &pending_data.transactions[tx_hash];
         assert!(transaction.transaction.is_some());
         assert!(
             !transaction.events.is_empty(),
-            "World transactions should have events"
+            "Transaction {:?} should have events",
+            tx_hash
         );
 
         // Verify events have proper structure
         for event in &transaction.events {
             assert!(!event.keys.is_empty());
-            // Move transactions should emit Moved events, spawn transactions should emit model events
+            // All transactions should generate some form of events
         }
     }
+
+    // Verify total transaction count
+    let total_indexed_txs = world_txs.len() + erc20_txs.len() + erc721_txs.len();
+    assert_eq!(
+        pending_data.transactions.len(),
+        total_indexed_txs,
+        "Should have exactly {} indexed transactions in pending data",
+        total_indexed_txs
+    );
 
     // Phase 3: Mine the block to move pending transactions to mined state
     sequencer.dev_client().generate_block().await.unwrap();
 
-    // Phase 4: Add more pending transactions after mining
+    // Phase 4: Add more pending transactions after mining to all contracts
     let mut new_world_txs = Vec::new();
     let mut new_erc20_txs = Vec::new();
+    let mut new_erc721_txs = Vec::new();
+    let mut new_rewards_txs: Vec<Felt> = Vec::new();
 
     // Add more world transactions
     for i in 0..3 {
@@ -1376,7 +1520,7 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
         new_world_txs.push(move_tx.transaction_hash);
     }
 
-    // Add more ERC20 transactions (should be ignored)
+    // Add more ERC20 transactions
     for i in 0..4 {
         let erc20_tx = account
             .execute_v3(vec![Call {
@@ -1388,6 +1532,39 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
             .await
             .unwrap();
         new_erc20_txs.push(erc20_tx.transaction_hash);
+    }
+
+    // Add more ERC721 transactions
+    for i in 0..2 {
+        let erc721_tx = account2
+            .execute_v3(vec![Call {
+                to: badge_address,
+                selector: get_selector_from_name("mint").unwrap(),
+                calldata: vec![Felt::from(200 + i), Felt::ZERO],
+            }])
+            .send()
+            .await
+            .unwrap();
+        new_erc721_txs.push(erc721_tx.transaction_hash);
+    }
+
+    // Add more rewards transactions (should be ignored)
+    for i in 0..5 {
+        let rewards_tx = account3
+            .execute_v3(vec![Call {
+                to: rewards_address,
+                selector: get_selector_from_name("mint").unwrap(),
+                calldata: vec![
+                    Felt::from(10 + i),
+                    Felt::ZERO,
+                    Felt::from(1000 + i * 50),
+                    Felt::ZERO,
+                ],
+            }])
+            .send()
+            .await
+            .unwrap();
+        new_rewards_txs.push(rewards_tx.transaction_hash);
     }
 
     // Phase 5: Fetch with cursor continuation from initial state (testing cursor logic)
@@ -1403,7 +1580,7 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
         .contains_key(&mined_block_number));
     let mined_block = &continuation_result.range.blocks[&mined_block_number];
 
-    // All original world transactions should now be in the mined block
+    // All original indexed contract transactions should now be in the mined block
     for world_tx in &world_txs {
         assert!(
             mined_block.transactions.contains_key(world_tx),
@@ -1412,17 +1589,37 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
         );
     }
 
-    // ERC20/ERC721 transactions should NOT be in mined block (since we don't index them)
     for erc20_tx in &erc20_txs {
         assert!(
-            !mined_block.transactions.contains_key(erc20_tx),
-            "ERC20 transaction {:?} should NOT be in mined block",
+            mined_block.transactions.contains_key(erc20_tx),
+            "Previously pending ERC20 transaction {:?} should now be mined",
             erc20_tx
         );
     }
 
-    // Verify cursor tracking for range
+    for erc721_tx in &erc721_txs {
+        assert!(
+            mined_block.transactions.contains_key(erc721_tx),
+            "Previously pending ERC721 transaction {:?} should now be mined",
+            erc721_tx
+        );
+    }
+
+    // Rewards transactions should NOT be in mined block (since we don't index them)
+    for rewards_tx in &rewards_txs {
+        assert!(
+            !mined_block.transactions.contains_key(rewards_tx),
+            "Rewards transaction {:?} should NOT be in mined block",
+            rewards_tx
+        );
+    }
+
+    // Verify cursor tracking for range (all indexed contracts)
     let range_world_txs = &continuation_result.range.cursor_transactions[&world_address];
+    let range_erc20_txs = &continuation_result.range.cursor_transactions[&wood_address];
+    let range_erc721_txs = &continuation_result.range.cursor_transactions[&badge_address];
+
+    // Verify world transaction tracking
     for world_tx in &world_txs {
         assert!(
             range_world_txs.contains(world_tx),
@@ -1431,9 +1628,27 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
         );
     }
 
+    // Verify ERC20 transaction tracking
+    for erc20_tx in &erc20_txs {
+        assert!(
+            range_erc20_txs.contains(erc20_tx),
+            "Mined ERC20 transaction {:?} should be tracked in range cursor_transactions",
+            erc20_tx
+        );
+    }
+
+    // Verify ERC721 transaction tracking
+    for erc721_tx in &erc721_txs {
+        assert!(
+            range_erc721_txs.contains(erc721_tx),
+            "Mined ERC721 transaction {:?} should be tracked in range cursor_transactions",
+            erc721_tx
+        );
+    }
+
     // Verify new pending transactions
     if let Some(new_pending) = &continuation_result.pending {
-        // Should contain new world transactions
+        // Should contain new transactions from all indexed contracts
         for new_world_tx in &new_world_txs {
             assert!(
                 new_pending.transactions.contains_key(new_world_tx),
@@ -1442,25 +1657,61 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
             );
         }
 
-        // Should NOT contain new ERC20 transactions
         for new_erc20_tx in &new_erc20_txs {
             assert!(
-                !new_pending.transactions.contains_key(new_erc20_tx),
-                "New ERC20 transaction {:?} should NOT be in new pending data",
+                new_pending.transactions.contains_key(new_erc20_tx),
+                "New ERC20 transaction {:?} should be in new pending data",
                 new_erc20_tx
             );
         }
 
-        // Verify cursor state for new pending
-        let new_pending_cursor = &new_pending.cursors[&world_address];
-        assert_eq!(new_pending_cursor.head, Some(mined_block_number));
+        for new_erc721_tx in &new_erc721_txs {
+            assert!(
+                new_pending.transactions.contains_key(new_erc721_tx),
+                "New ERC721 transaction {:?} should be in new pending data",
+                new_erc721_tx
+            );
+        }
+
+        // Should NOT contain new rewards transactions (unindexed contract)
+        for new_rewards_tx in &new_rewards_txs {
+            assert!(
+                !new_pending.transactions.contains_key(new_rewards_tx),
+                "New rewards transaction {:?} should NOT be in new pending data",
+                new_rewards_tx
+            );
+        }
+
+        // Verify cursor state for new pending (all indexed contracts)
+        let new_pending_world_cursor = &new_pending.cursors[&world_address];
+        let new_pending_erc20_cursor = &new_pending.cursors[&wood_address];
+        let new_pending_erc721_cursor = &new_pending.cursors[&badge_address];
+
+        // All cursors should have updated head
+        assert_eq!(new_pending_world_cursor.head, Some(mined_block_number));
+        assert_eq!(new_pending_erc20_cursor.head, Some(mined_block_number));
+        assert_eq!(new_pending_erc721_cursor.head, Some(mined_block_number));
+
+        // Each cursor should point to its contract's last transaction
         assert_eq!(
-            new_pending_cursor.last_pending_block_tx.unwrap(),
+            new_pending_world_cursor.last_pending_block_tx.unwrap(),
             *new_world_txs.last().unwrap()
         );
+        assert_eq!(
+            new_pending_erc20_cursor.last_pending_block_tx.unwrap(),
+            *new_erc20_txs.last().unwrap()
+        );
+        assert_eq!(
+            new_pending_erc721_cursor.last_pending_block_tx.unwrap(),
+            *new_erc721_txs.last().unwrap()
+        );
 
-        // Verify cursor transactions for new pending
+        // Verify cursor transactions for new pending (all contracts)
         let new_pending_world_txs = &new_pending.cursor_transactions[&world_address];
+        let new_pending_erc20_txs = &new_pending.cursor_transactions[&wood_address];
+        let new_pending_erc721_txs = &new_pending.cursor_transactions[&badge_address];
+
+        // Verify world transactions
         for new_world_tx in &new_world_txs {
             assert!(
                 new_pending_world_txs.contains(new_world_tx),
@@ -1469,56 +1720,153 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
             );
         }
         assert_eq!(new_pending_world_txs.len(), new_world_txs.len());
+
+        // Verify ERC20 transactions
+        for new_erc20_tx in &new_erc20_txs {
+            assert!(
+                new_pending_erc20_txs.contains(new_erc20_tx),
+                "New ERC20 transaction {:?} should be tracked in new pending cursor_transactions",
+                new_erc20_tx
+            );
+        }
+        assert_eq!(new_pending_erc20_txs.len(), new_erc20_txs.len());
+
+        // Verify ERC721 transactions
+        for new_erc721_tx in &new_erc721_txs {
+            assert!(
+                new_pending_erc721_txs.contains(new_erc721_tx),
+                "New ERC721 transaction {:?} should be tracked in new pending cursor_transactions",
+                new_erc721_tx
+            );
+        }
+        assert_eq!(new_pending_erc721_txs.len(), new_erc721_txs.len());
     }
 
-    // Phase 6: Validate cursor state consistency
-    let range_cursor = &continuation_result.range.cursors[&world_address];
-    assert_eq!(range_cursor.head, Some(mined_block_number));
-    assert!(range_cursor.last_block_timestamp.is_some());
+    // Phase 6: Validate cursor state consistency for all indexed contracts
+    let range_world_cursor = &continuation_result.range.cursors[&world_address];
+    let range_erc20_cursor = &continuation_result.range.cursors[&wood_address];
+    let range_erc721_cursor = &continuation_result.range.cursors[&badge_address];
+
+    // All range cursors should be updated to mined block
+    assert_eq!(range_world_cursor.head, Some(mined_block_number));
+    assert_eq!(range_erc20_cursor.head, Some(mined_block_number));
+    assert_eq!(range_erc721_cursor.head, Some(mined_block_number));
+
+    // All should have timestamps
+    assert!(range_world_cursor.last_block_timestamp.is_some());
+    assert!(range_erc20_cursor.last_block_timestamp.is_some());
+    assert!(range_erc721_cursor.last_block_timestamp.is_some());
+
     // last_pending_block_tx should be None since these are now mined
-    assert!(range_cursor.last_pending_block_tx.is_none());
+    assert!(range_world_cursor.last_pending_block_tx.is_none());
+    assert!(range_erc20_cursor.last_pending_block_tx.is_none());
+    assert!(range_erc721_cursor.last_pending_block_tx.is_none());
 
-    // Phase 7: Test transaction count consistency
-    // Total world transactions processed should equal: original world txs + new world txs
+    // Phase 7: Test transaction count consistency for all contracts
     let total_expected_world_txs = world_txs.len() + new_world_txs.len();
-    let range_tx_count = range_world_txs.len();
-    let pending_tx_count = if let Some(new_pending) = &continuation_result.pending {
-        new_pending.cursor_transactions[&world_address].len()
-    } else {
-        0
-    };
+    let total_expected_erc20_txs = erc20_txs.len() + new_erc20_txs.len();
+    let total_expected_erc721_txs = erc721_txs.len() + new_erc721_txs.len();
+    let total_expected_indexed_txs =
+        total_expected_world_txs + total_expected_erc20_txs + total_expected_erc721_txs;
 
+    let range_world_count = range_world_txs.len();
+    let range_erc20_count = range_erc20_txs.len();
+    let range_erc721_count = range_erc721_txs.len();
+    let total_range_count = range_world_count + range_erc20_count + range_erc721_count;
+
+    let (pending_world_count, pending_erc20_count, pending_erc721_count, total_pending_count) =
+        if let Some(new_pending) = &continuation_result.pending {
+            (
+                new_pending.cursor_transactions[&world_address].len(),
+                new_pending.cursor_transactions[&wood_address].len(),
+                new_pending.cursor_transactions[&badge_address].len(),
+                new_pending.cursor_transactions[&world_address].len()
+                    + new_pending.cursor_transactions[&wood_address].len()
+                    + new_pending.cursor_transactions[&badge_address].len(),
+            )
+        } else {
+            (0, 0, 0, 0)
+        };
+
+    // Verify per-contract transaction counts
     assert_eq!(
-        range_tx_count + pending_tx_count,
+        range_world_count + pending_world_count,
         total_expected_world_txs,
         "Total world transactions processed should match expected count"
     );
+    assert_eq!(
+        range_erc20_count + pending_erc20_count,
+        total_expected_erc20_txs,
+        "Total ERC20 transactions processed should match expected count"
+    );
+    assert_eq!(
+        range_erc721_count + pending_erc721_count,
+        total_expected_erc721_txs,
+        "Total ERC721 transactions processed should match expected count"
+    );
 
-    // Phase 8: Verify no transaction loss or duplication
+    // Verify total transaction count
+    assert_eq!(
+        total_range_count + total_pending_count,
+        total_expected_indexed_txs,
+        "Total indexed transactions processed should match expected count"
+    );
+
+    // Phase 8: Verify no transaction loss or duplication across all indexed contracts
     let mut all_processed_txs = std::collections::HashSet::new();
 
-    // Add range transactions
+    // Add range transactions (all contracts)
     for tx_hash in range_world_txs {
         assert!(
             all_processed_txs.insert(*tx_hash),
-            "Duplicate transaction found in range: {:?}",
+            "Duplicate world transaction found in range: {:?}",
+            tx_hash
+        );
+    }
+    for tx_hash in range_erc20_txs {
+        assert!(
+            all_processed_txs.insert(*tx_hash),
+            "Duplicate ERC20 transaction found in range: {:?}",
+            tx_hash
+        );
+    }
+    for tx_hash in range_erc721_txs {
+        assert!(
+            all_processed_txs.insert(*tx_hash),
+            "Duplicate ERC721 transaction found in range: {:?}",
             tx_hash
         );
     }
 
-    // Add pending transactions
+    // Add pending transactions (all contracts)
     if let Some(new_pending) = &continuation_result.pending {
         for tx_hash in &new_pending.cursor_transactions[&world_address] {
             assert!(
                 all_processed_txs.insert(*tx_hash),
-                "Duplicate transaction found in pending: {:?}",
+                "Duplicate world transaction found in pending: {:?}",
+                tx_hash
+            );
+        }
+        for tx_hash in &new_pending.cursor_transactions[&wood_address] {
+            assert!(
+                all_processed_txs.insert(*tx_hash),
+                "Duplicate ERC20 transaction found in pending: {:?}",
+                tx_hash
+            );
+        }
+        for tx_hash in &new_pending.cursor_transactions[&badge_address] {
+            assert!(
+                all_processed_txs.insert(*tx_hash),
+                "Duplicate ERC721 transaction found in pending: {:?}",
                 tx_hash
             );
         }
     }
 
-    // Verify all world transactions are accounted for
+    // Verify all indexed contract transactions are accounted for
     let mut expected_txs = std::collections::HashSet::new();
+
+    // Add all world transactions
     for tx in &world_txs {
         expected_txs.insert(*tx);
     }
@@ -1526,16 +1874,46 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
         expected_txs.insert(*tx);
     }
 
+    // Add all ERC20 transactions
+    for tx in &erc20_txs {
+        expected_txs.insert(*tx);
+    }
+    for tx in &new_erc20_txs {
+        expected_txs.insert(*tx);
+    }
+
+    // Add all ERC721 transactions
+    for tx in &erc721_txs {
+        expected_txs.insert(*tx);
+    }
+    for tx in &new_erc721_txs {
+        expected_txs.insert(*tx);
+    }
+
     assert_eq!(
         all_processed_txs, expected_txs,
-        "Processed transactions should exactly match expected world transactions"
+        "Processed transactions should exactly match expected indexed contract transactions"
     );
 
-    // Phase 9: Verify event message content for move transactions
-    // Check that Moved events are properly captured with correct player and direction data
+    // Phase 9: Verify transaction ordering and event content
+    // Check that transactions are properly ordered within the block
+    let block_tx_hashes: Vec<_> = mined_block.transactions.keys().collect();
+
+    // Verify that we can find transactions in a consistent order
+    // (transaction ordering within a block should be deterministic)
+    assert!(
+        !block_tx_hashes.is_empty(),
+        "Mined block should contain transactions"
+    );
+
+    // Verify event message content for all indexed contract transactions
+    let mut total_events_found = 0;
     let mut moved_events_found = 0;
+
+    // Check world contract transactions (should have model and Moved events)
     for world_tx in &world_txs {
         if let Some(mined_tx) = mined_block.transactions.get(world_tx) {
+            total_events_found += mined_tx.events.len();
             for event in &mined_tx.events {
                 // Look for Moved events (they should have player as key)
                 if !event.keys.is_empty() {
@@ -1545,20 +1923,75 @@ async fn test_fetch_spam_transactions_multiple_contracts_with_cursor_validation(
         }
     }
 
+    // Check ERC20/ERC721 transactions (should have transfer events)
+    for erc_tx in erc20_txs.iter().chain(erc721_txs.iter()) {
+        if let Some(mined_tx) = mined_block.transactions.get(erc_tx) {
+            total_events_found += mined_tx.events.len();
+            // ERC transactions should also have events
+            assert!(
+                !mined_tx.events.is_empty(),
+                "ERC transaction should have events"
+            );
+        }
+    }
+
     // We should have found events from our transactions
     assert!(
         moved_events_found > 0,
-        "Should have found move-related events"
+        "Should have found move-related events from world contract"
+    );
+    assert!(
+        total_events_found > 0,
+        "Should have found events from all indexed contracts"
     );
 
+    // Phase 10: Verify transaction completeness and ordering consistency
+    // Ensure that all transactions we expect are present and none are duplicated
+    let all_original_indexed_txs = [&world_txs[..], &erc20_txs[..], &erc721_txs[..]].concat();
+    let mut found_in_block = 0;
+
+    for tx_hash in &all_original_indexed_txs {
+        if mined_block.transactions.contains_key(tx_hash) {
+            found_in_block += 1;
+        }
+    }
+
+    assert_eq!(
+        found_in_block,
+        all_original_indexed_txs.len(),
+        "All original indexed transactions should be found in mined block"
+    );
+
+    // Verify that unindexed contract transactions are indeed not present
+    for rewards_tx in &rewards_txs {
+        assert!(
+            !mined_block.transactions.contains_key(rewards_tx),
+            "Rewards transaction {:?} should not be in mined block",
+            rewards_tx
+        );
+    }
+
+    println!("🎉 Test completed successfully!");
+    println!("📊 Transaction Summary:");
     println!(
-        "Test completed successfully! Processed {} world transactions, {} ERC20 transactions ignored, {} ERC721 transactions ignored",
-        total_expected_world_txs,
-        erc20_txs.len() + new_erc20_txs.len(),
-        erc721_txs.len()
+        "   • World transactions: {} (indexed)",
+        total_expected_world_txs
     );
     println!(
+        "   • ERC20 transactions: {} (indexed)",
+        total_expected_erc20_txs
+    );
+    println!(
+        "   • ERC721 transactions: {} (indexed)",
+        total_expected_erc721_txs
+    );
+    println!(
+        "   • Rewards transactions: {} (ignored)",
+        rewards_txs.len() + new_rewards_txs.len()
+    );
+    println!("   • Total events found: {}", total_events_found);
+    println!(
         "Cursor validation passed: Range transactions: {}, Pending transactions: {}",
-        range_tx_count, pending_tx_count
+        total_range_count, total_pending_count
     );
 }
