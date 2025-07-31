@@ -280,7 +280,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             range,
             pending,
             cursors,
-            cursor_transactions,
         } = fetch_result;
 
         self.process_range(range).await?;
@@ -288,11 +287,31 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             self.process_pending(pending).await?;
         }
 
+        // Process parallelized events
+        debug!(target: LOG_TARGET, "Processing parallelized events.");
+        let instant = Instant::now();
+        let task_count = self.task_manager.pending_tasks_count();
+        counter!("torii_indexer_parallelized_tasks_total").increment(task_count as u64);
+
+        self.task_manager.process_tasks().await?;
+        histogram!("torii_indexer_parallelized_tasks_duration_seconds")
+            .record(instant.elapsed().as_secs_f64());
+        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed parallelized events.");
+
+        // Apply ERC balances cache diff
+        debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
+        let instant = Instant::now();
+        self.storage
+            .apply_balances_diff(self.cache.balances_diff().await, cursors.cursors.clone())
+            .await?;
+        self.cache.clear_balances_diff().await;
+        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
+
         // Update cursors
         // The update cursors query should absolutely succeed, otherwise we will rollback.
-        debug!(target: LOG_TARGET, cursors = ?pending.cursors, "Updating cursors.");
+        debug!(target: LOG_TARGET, cursors = ?cursors, "Updating cursors.");
         self.storage
-            .update_cursors(cursors.clone(), cursor_transactions.clone())
+            .update_cursors(cursors.cursors.clone(), cursors.cursor_transactions.clone())
             .await?;
 
         Ok(())
@@ -327,30 +346,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             }
         }
 
-        // Process parallelized events
-        debug!(target: LOG_TARGET, "Processing parallelized events.");
-        let instant = Instant::now();
-        let task_count = self.task_manager.pending_tasks_count();
-        counter!("torii_indexer_parallelized_tasks_total").increment(task_count as u64);
-
-        self.task_manager
-            .process_tasks()
-            .await
-            .map_err(ProcessError::Processors)?;
-
-        histogram!("torii_indexer_parallelized_tasks_duration_seconds")
-            .record(instant.elapsed().as_secs_f64());
-        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed parallelized events.");
-
-        // Apply ERC balances cache diff
-        debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
-        let instant = Instant::now();
-        self.storage
-            .apply_balances_diff(self.cache.balances_diff().await, range.cursors.clone())
-            .await?;
-        self.cache.clear_balances_diff().await;
-        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
-
         Ok(())
     }
 
@@ -376,26 +371,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
 
             debug!(target: LOG_TARGET, transaction_hash = %format!("{:#x}", tx_hash), "Processed pending transaction.");
         }
-
-        // Process parallelized events
-        debug!(target: LOG_TARGET, "Processing parallelized events.");
-        let instant = Instant::now();
-        let task_count = self.task_manager.pending_tasks_count();
-        counter!("torii_indexer_parallelized_tasks_total").increment(task_count as u64);
-
-        self.task_manager.process_tasks().await?;
-        histogram!("torii_indexer_parallelized_tasks_duration_seconds")
-            .record(instant.elapsed().as_secs_f64());
-        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed parallelized events.");
-
-        // Apply ERC balances cache diff
-        debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
-        let instant = Instant::now();
-        self.storage
-            .apply_balances_diff(self.cache.balances_diff().await, data.cursors.clone())
-            .await?;
-        self.cache.clear_balances_diff().await;
-        debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
 
         Ok(())
     }

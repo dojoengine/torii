@@ -184,7 +184,7 @@ async fn test_fetch_pending_basic(sequencer: &RunnerCtx) {
     assert_eq!(pending.block_number, current_block_number + 1);
 
     // Verify cursor was updated correctly
-    let updated_cursor = &pending.cursors[&world_address];
+    let updated_cursor = &result.cursors.cursors[&world_address];
     assert!(updated_cursor.last_pending_block_tx.is_some());
     assert_eq!(
         updated_cursor.last_pending_block_tx.unwrap(),
@@ -194,8 +194,11 @@ async fn test_fetch_pending_basic(sequencer: &RunnerCtx) {
     assert!(updated_cursor.last_block_timestamp.is_some());
 
     // Verify cursor_transactions includes our transaction
-    assert!(pending.cursor_transactions.contains_key(&world_address));
-    let world_transactions = &pending.cursor_transactions[&world_address];
+    assert!(result
+        .cursors
+        .cursor_transactions
+        .contains_key(&world_address));
+    let world_transactions = &result.cursors.cursor_transactions[&world_address];
     assert!(world_transactions.contains(&spawn_tx.transaction_hash));
 
     // Should have the spawn transaction for the world contract
@@ -319,7 +322,7 @@ async fn test_fetch_pending_multiple_transactions(sequencer: &RunnerCtx) {
     }
 
     // Cursor should point to the last transaction
-    let updated_cursor = &pending.cursors[&world_address];
+    let updated_cursor = &result.cursors.cursors[&world_address];
     assert_eq!(
         updated_cursor.last_pending_block_tx.unwrap(),
         tx3.transaction_hash
@@ -327,7 +330,7 @@ async fn test_fetch_pending_multiple_transactions(sequencer: &RunnerCtx) {
     assert_eq!(updated_cursor.head, Some(current_block_number));
 
     // Verify cursor_transactions includes all our transactions
-    let world_transactions = &pending.cursor_transactions[&world_address];
+    let world_transactions = &result.cursors.cursor_transactions[&world_address];
     assert!(world_transactions.contains(&tx1.transaction_hash));
     assert!(world_transactions.contains(&tx2.transaction_hash));
     assert!(world_transactions.contains(&tx3.transaction_hash));
@@ -409,9 +412,9 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
 
     // Verify first fetch results
     assert!(pending1.transactions.contains_key(&tx1.transaction_hash));
-    assert_eq!(pending1.cursor_transactions[&world_address].len(), 1);
+    assert_eq!(result1.cursors.cursor_transactions[&world_address].len(), 1);
     assert_eq!(
-        pending1.cursors[&world_address]
+        result1.cursors.cursors[&world_address]
             .last_pending_block_tx
             .unwrap(),
         tx1.transaction_hash
@@ -442,8 +445,8 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
         .unwrap();
 
     // Use the updated cursors from first fetch
-    let res = fetcher.fetch(&pending1.cursors).await.unwrap();
-    let result2 = fetcher.fetch(&res.range.cursors).await.unwrap();
+    let res = fetcher.fetch(&result1.cursors.cursors).await.unwrap();
+    let result2 = fetcher.fetch(&res.cursors.cursors).await.unwrap();
     assert!(result2.pending.is_some());
     let pending2 = result2.pending.unwrap();
 
@@ -468,14 +471,14 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
 
     // Cursor should point to the last new transaction
     assert_eq!(
-        pending2.cursors[&world_address]
+        result2.cursors.cursors[&world_address]
             .last_pending_block_tx
             .unwrap(),
         tx3.transaction_hash
     );
 
     // Verify cursor_transactions only includes new transactions
-    let world_transactions = &pending2.cursor_transactions[&world_address];
+    let world_transactions = &result2.cursors.cursor_transactions[&world_address];
     assert!(!world_transactions.contains(&tx1.transaction_hash));
     assert!(world_transactions.contains(&tx2.transaction_hash));
     assert!(world_transactions.contains(&tx3.transaction_hash));
@@ -602,12 +605,12 @@ async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
     assert!(!mined_tx2.events.is_empty());
 
     // Verify cursor_transactions for range includes the mined transactions
-    let range_world_transactions = &switching_result.range.cursor_transactions[&world_address];
+    let range_world_transactions = &switching_result.cursors.cursor_transactions[&world_address];
     assert!(range_world_transactions.contains(&pending_tx1.transaction_hash));
     assert!(range_world_transactions.contains(&pending_tx2.transaction_hash));
 
     // Verify cursors are updated correctly for the range
-    let range_cursor = &switching_result.range.cursors[&world_address];
+    let range_cursor = &switching_result.cursors.cursors[&world_address];
     assert_eq!(range_cursor.head, Some(mined_block_number));
     assert!(range_cursor.last_block_timestamp.is_some());
     assert!(range_cursor.last_pending_block_tx.is_none()); // Reset since we moved to range
@@ -627,7 +630,7 @@ async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
             .contains_key(&pending_tx2.transaction_hash));
 
         // Verify cursor for new pending
-        let pending_cursor = &new_pending.cursors[&world_address];
+        let pending_cursor = &switching_result.cursors.cursors[&world_address];
         assert_eq!(
             pending_cursor.last_pending_block_tx.unwrap(),
             new_pending_tx.transaction_hash
@@ -640,9 +643,10 @@ async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
     // - Pending should have 1 transaction (the new one)
     // - No transactions should be lost or duplicated
     assert_eq!(range_world_transactions.len(), 2);
-    if let Some(new_pending) = &switching_result.pending {
-        assert_eq!(new_pending.cursor_transactions[&world_address].len(), 1);
-    }
+    assert_eq!(
+        switching_result.cursors.cursor_transactions[&world_address].len(),
+        1
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -738,12 +742,12 @@ async fn test_fetch_pending_with_events_comprehensive(sequencer: &RunnerCtx) {
     }
 
     // Verify cursor tracking
-    let world_transactions = &pending.cursor_transactions[&world_address];
+    let world_transactions = &result.cursors.cursor_transactions[&world_address];
     assert!(world_transactions.contains(&spawn_tx.transaction_hash));
     assert_eq!(world_transactions.len(), 1);
 
     // Verify cursor update
-    let cursor = &pending.cursors[&world_address];
+    let cursor = &result.cursors.cursors[&world_address];
     assert_eq!(
         cursor.last_pending_block_tx.unwrap(),
         spawn_tx.transaction_hash
@@ -835,14 +839,14 @@ async fn test_fetch_pending_filters_reverted_transactions(sequencer: &RunnerCtx)
     assert!(!good_transaction.events.is_empty());
 
     // Verify cursor tracking includes the good transaction
-    let world_transactions = &pending.cursor_transactions[&world_address];
+    let world_transactions = &result.cursors.cursor_transactions[&world_address];
     assert!(world_transactions.contains(&good_tx.transaction_hash));
 
     // Should only have the good transaction
     assert_eq!(world_transactions.len(), 1);
 
     // Verify cursor is updated to the good transaction
-    let cursor = &pending.cursors[&world_address];
+    let cursor = &result.cursors.cursors[&world_address];
     assert_eq!(
         cursor.last_pending_block_tx.unwrap(),
         good_tx.transaction_hash
@@ -973,11 +977,17 @@ async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerC
     assert!(!erc20_transaction.events.is_empty());
 
     // Verify cursor_transactions are properly separated by contract
-    assert!(pending.cursor_transactions.contains_key(&world_address));
-    assert!(pending.cursor_transactions.contains_key(&wood_address));
+    assert!(result
+        .cursors
+        .cursor_transactions
+        .contains_key(&world_address));
+    assert!(result
+        .cursors
+        .cursor_transactions
+        .contains_key(&wood_address));
 
-    let world_transactions = &pending.cursor_transactions[&world_address];
-    let wood_transactions = &pending.cursor_transactions[&wood_address];
+    let world_transactions = &result.cursors.cursor_transactions[&world_address];
+    let wood_transactions = &result.cursors.cursor_transactions[&wood_address];
 
     assert!(world_transactions.contains(&world_tx.transaction_hash));
     assert!(wood_transactions.contains(&erc20_tx.transaction_hash));
@@ -991,8 +1001,8 @@ async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerC
     assert_eq!(wood_transactions.len(), 1);
 
     // Verify cursors are updated correctly for both contracts
-    let world_cursor = &pending.cursors[&world_address];
-    let wood_cursor = &pending.cursors[&wood_address];
+    let world_cursor = &result.cursors.cursors[&world_address];
+    let wood_cursor = &result.cursors.cursors[&wood_address];
 
     assert_eq!(
         world_cursor.last_pending_block_tx.unwrap(),
@@ -1291,22 +1301,28 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     }
 
     // Verify cursor tracking for all indexed contracts
-    assert!(pending_data
+    assert!(pending_result
+        .cursors
         .cursor_transactions
         .contains_key(&world_address));
-    assert!(pending_data.cursor_transactions.contains_key(&wood_address));
-    assert!(pending_data
+    assert!(pending_result
+        .cursors
+        .cursor_transactions
+        .contains_key(&wood_address));
+    assert!(pending_result
+        .cursors
         .cursor_transactions
         .contains_key(&badge_address));
 
     // Verify rewards contract is NOT tracked (since we don't index it)
-    assert!(!pending_data
+    assert!(!pending_result
+        .cursors
         .cursor_transactions
         .contains_key(&rewards_address));
 
-    let world_cursor_txs = &pending_data.cursor_transactions[&world_address];
-    let erc20_cursor_txs = &pending_data.cursor_transactions[&wood_address];
-    let erc721_cursor_txs = &pending_data.cursor_transactions[&badge_address];
+    let world_cursor_txs = &pending_result.cursors.cursor_transactions[&world_address];
+    let erc20_cursor_txs = &pending_result.cursors.cursor_transactions[&wood_address];
+    let erc721_cursor_txs = &pending_result.cursors.cursor_transactions[&badge_address];
 
     // Verify world contract cursor tracking
     for world_tx in &world_txs {
@@ -1339,9 +1355,9 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     assert_eq!(erc721_cursor_txs.len(), erc721_txs.len());
 
     // Verify cursor state for all indexed contracts
-    let world_cursor = &pending_data.cursors[&world_address];
-    let erc20_cursor = &pending_data.cursors[&wood_address];
-    let erc721_cursor = &pending_data.cursors[&badge_address];
+    let world_cursor = &pending_result.cursors.cursors[&world_address];
+    let erc20_cursor = &pending_result.cursors.cursors[&wood_address];
+    let erc721_cursor = &pending_result.cursors.cursors[&badge_address];
 
     // All cursors should have the same head (initial block number)
     assert_eq!(world_cursor.head, Some(initial_block_number));
@@ -1518,9 +1534,9 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     }
 
     // Verify cursor tracking for range (all indexed contracts)
-    let range_world_txs = &continuation_result.range.cursor_transactions[&world_address];
-    let range_erc20_txs = &continuation_result.range.cursor_transactions[&wood_address];
-    let range_erc721_txs = &continuation_result.range.cursor_transactions[&badge_address];
+    let range_world_txs = &continuation_result.cursors.cursor_transactions[&world_address];
+    let range_erc20_txs = &continuation_result.cursors.cursor_transactions[&wood_address];
+    let range_erc721_txs = &continuation_result.cursors.cursor_transactions[&badge_address];
 
     // Verify world transaction tracking
     for world_tx in &world_txs {
@@ -1577,9 +1593,9 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
         }
 
         // Verify cursor state for new pending (all indexed contracts)
-        let new_pending_world_cursor = &new_pending.cursors[&world_address];
-        let new_pending_erc20_cursor = &new_pending.cursors[&wood_address];
-        let new_pending_erc721_cursor = &new_pending.cursors[&badge_address];
+        let new_pending_world_cursor = &continuation_result.cursors.cursors[&world_address];
+        let new_pending_erc20_cursor = &continuation_result.cursors.cursors[&wood_address];
+        let new_pending_erc721_cursor = &continuation_result.cursors.cursors[&badge_address];
 
         // All cursors should have updated head
         assert_eq!(new_pending_world_cursor.head, Some(mined_block_number));
@@ -1601,9 +1617,11 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
         );
 
         // Verify cursor transactions for new pending (all contracts)
-        let new_pending_world_txs = &new_pending.cursor_transactions[&world_address];
-        let new_pending_erc20_txs = &new_pending.cursor_transactions[&wood_address];
-        let new_pending_erc721_txs = &new_pending.cursor_transactions[&badge_address];
+        let new_pending_world_txs =
+            &continuation_result.cursors.cursor_transactions[&world_address];
+        let new_pending_erc20_txs = &continuation_result.cursors.cursor_transactions[&wood_address];
+        let new_pending_erc721_txs =
+            &continuation_result.cursors.cursor_transactions[&badge_address];
 
         // Verify world transactions
         for new_world_tx in &new_world_txs {
@@ -1637,9 +1655,9 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     }
 
     // Phase 6: Validate cursor state consistency for all indexed contracts
-    let range_world_cursor = &continuation_result.range.cursors[&world_address];
-    let range_erc20_cursor = &continuation_result.range.cursors[&wood_address];
-    let range_erc721_cursor = &continuation_result.range.cursors[&badge_address];
+    let range_world_cursor = &continuation_result.cursors.cursors[&world_address];
+    let range_erc20_cursor = &continuation_result.cursors.cursors[&wood_address];
+    let range_erc721_cursor = &continuation_result.cursors.cursors[&badge_address];
 
     // All range cursors should be updated to mined block
     assert_eq!(range_world_cursor.head, Some(mined_block_number));
@@ -1668,19 +1686,14 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     let range_erc721_count = range_erc721_txs.len();
     let total_range_count = range_world_count + range_erc20_count + range_erc721_count;
 
-    let (pending_world_count, pending_erc20_count, pending_erc721_count, total_pending_count) =
-        if let Some(new_pending) = &continuation_result.pending {
-            (
-                new_pending.cursor_transactions[&world_address].len(),
-                new_pending.cursor_transactions[&wood_address].len(),
-                new_pending.cursor_transactions[&badge_address].len(),
-                new_pending.cursor_transactions[&world_address].len()
-                    + new_pending.cursor_transactions[&wood_address].len()
-                    + new_pending.cursor_transactions[&badge_address].len(),
-            )
-        } else {
-            (0, 0, 0, 0)
-        };
+    let (pending_world_count, pending_erc20_count, pending_erc721_count, total_pending_count) = (
+        continuation_result.cursors.cursor_transactions[&world_address].len(),
+        continuation_result.cursors.cursor_transactions[&wood_address].len(),
+        continuation_result.cursors.cursor_transactions[&badge_address].len(),
+        continuation_result.cursors.cursor_transactions[&world_address].len()
+            + continuation_result.cursors.cursor_transactions[&wood_address].len()
+            + continuation_result.cursors.cursor_transactions[&badge_address].len(),
+    );
 
     // Verify per-contract transaction counts
     assert_eq!(
@@ -1732,29 +1745,26 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
         );
     }
 
-    // Add pending transactions (all contracts)
-    if let Some(new_pending) = &continuation_result.pending {
-        for tx_hash in &new_pending.cursor_transactions[&world_address] {
-            assert!(
-                all_processed_txs.insert(*tx_hash),
-                "Duplicate world transaction found in pending: {:?}",
-                tx_hash
-            );
-        }
-        for tx_hash in &new_pending.cursor_transactions[&wood_address] {
-            assert!(
-                all_processed_txs.insert(*tx_hash),
-                "Duplicate ERC20 transaction found in pending: {:?}",
-                tx_hash
-            );
-        }
-        for tx_hash in &new_pending.cursor_transactions[&badge_address] {
-            assert!(
-                all_processed_txs.insert(*tx_hash),
-                "Duplicate ERC721 transaction found in pending: {:?}",
-                tx_hash
-            );
-        }
+    for tx_hash in &continuation_result.cursors.cursor_transactions[&world_address] {
+        assert!(
+            all_processed_txs.insert(*tx_hash),
+            "Duplicate world transaction found in pending: {:?}",
+            tx_hash
+        );
+    }
+    for tx_hash in &continuation_result.cursors.cursor_transactions[&wood_address] {
+        assert!(
+            all_processed_txs.insert(*tx_hash),
+            "Duplicate ERC20 transaction found in pending: {:?}",
+            tx_hash
+        );
+    }
+    for tx_hash in &continuation_result.cursors.cursor_transactions[&badge_address] {
+        assert!(
+            all_processed_txs.insert(*tx_hash),
+            "Duplicate ERC721 transaction found in pending: {:?}",
+            tx_hash
+        );
     }
 
     // Verify all indexed contract transactions are accounted for
