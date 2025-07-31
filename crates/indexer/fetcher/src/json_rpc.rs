@@ -197,18 +197,18 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             let block_number = event.block_number.unwrap();
 
             let block = blocks.get_mut(&block_number).expect("Block not found");
-            let tx = block
+
+            // Push the event to the transaction
+            block
                 .transactions
-                .entry(event.transaction_hash)
-                .or_insert_with(|| FetchTransaction {
-                    transaction: None,
-                    events: vec![],
+                .get_mut(&event.transaction_hash)
+                .expect("Transaction should exist.")
+                .events
+                .push(Event {
+                    from_address: event.from_address,
+                    keys: event.keys.clone(),
+                    data: event.data.clone(),
                 });
-            tx.events.push(Event {
-                from_address: event.from_address,
-                keys: event.keys.clone(),
-                data: event.data.clone(),
-            });
 
             // Add transaction to cursor transactions
             cursor_transactions
