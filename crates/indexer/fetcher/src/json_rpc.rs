@@ -324,7 +324,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 )
             })
             .collect();
-        let mut cursor_transactions = HashMap::new();
 
         for (contract_address, cursor) in &mut new_cursors.cursors {
             if cursor.head != Some(latest_block.block_number) {
@@ -366,7 +365,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     continue;
                 }
 
-                cursor_transactions
+                new_cursors
+                    .cursor_transactions
                     .entry(*contract_address)
                     .or_insert(HashSet::new())
                     .insert(*tx_hash);
