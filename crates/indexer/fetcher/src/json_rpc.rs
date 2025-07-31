@@ -368,7 +368,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 new_cursors
                     .cursor_transactions
                     .entry(*contract_address)
-                    .or_insert(HashSet::new())
+                    .or_default()
                     .insert(*tx_hash);
 
                 transactions
