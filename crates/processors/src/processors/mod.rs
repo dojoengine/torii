@@ -27,6 +27,7 @@ use torii_proto::ContractType;
 use upgrade_event::UpgradeEventProcessor;
 use upgrade_model::UpgradeModelProcessor;
 
+use crate::processors::erc7572_contract_uri_updated::Erc7572ContractUriUpdatedProcessor;
 use crate::{BlockProcessor, EventProcessor, TransactionProcessor};
 
 pub(crate) mod controller;
@@ -40,6 +41,7 @@ mod erc4906_batch_metadata_update;
 mod erc4906_metadata_update;
 mod erc721_legacy_transfer;
 mod erc721_transfer;
+mod erc7572_contract_uri_updated;
 mod event_message;
 mod metadata_update;
 mod raw_event;
@@ -102,6 +104,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Processors<P
                 vec![
                     Box::new(Erc20TransferProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc20LegacyTransferProcessor) as Box<dyn EventProcessor<P>>,
+                    Box::new(Erc7572ContractUriUpdatedProcessor) as Box<dyn EventProcessor<P>>,
                 ],
             ),
             (
@@ -111,6 +114,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Processors<P
                     Box::new(Erc721LegacyTransferProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc4906MetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc4906BatchMetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
+                    Box::new(Erc7572ContractUriUpdatedProcessor) as Box<dyn EventProcessor<P>>,
                 ],
             ),
             (
@@ -122,6 +126,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Processors<P
                     Box::new(Erc1155LegacyTransferSingleProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc4906MetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc4906BatchMetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
+                    Box::new(Erc7572ContractUriUpdatedProcessor) as Box<dyn EventProcessor<P>>,
                 ],
             ),
             (

@@ -6,7 +6,9 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{felt_and_u256_to_sql_string, try_register_nft_token_metadata};
+use crate::erc::{
+    felt_and_u256_to_sql_string, try_register_nft_token_metadata, try_register_token_contract,
+};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
@@ -61,6 +63,18 @@ where
         let token_id = U256::from_words(token_id.low, token_id.high);
 
         let id = felt_and_u256_to_sql_string(&token_address, &token_id);
+
+        // Register the contract first
+        try_register_token_contract(
+            token_address,
+            &ctx.provider,
+            ctx.storage.clone(),
+            ctx.cache.clone(),
+            false,
+        )
+        .await?;
+
+        // Then register the specific NFT token
         try_register_nft_token_metadata(
             &id,
             token_address,

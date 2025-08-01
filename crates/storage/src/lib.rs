@@ -204,13 +204,14 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         timestamp: DateTime<Utc>,
     ) -> Result<(), StorageError>;
 
-    /// Registers an ERC20 token with the storage.
-    async fn register_erc20_token(
+    /// Registers an ERC token contract with the storage.
+    async fn register_token_contract(
         &self,
         contract_address: Felt,
         name: String,
         symbol: String,
         decimals: u8,
+        metadata: Option<String>,
     ) -> Result<(), StorageError>;
 
     /// Registers an NFT (ERC721/ERC1155) token with the storage.
@@ -235,10 +236,10 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     ) -> Result<(), StorageError>;
 
     /// Updates NFT metadata for a specific token.
-    async fn update_nft_metadata(
+    async fn update_token_metadata(
         &self,
         contract_address: Felt,
-        token_id: U256,
+        token_id: Option<U256>,
         metadata: String,
     ) -> Result<(), StorageError>;
 

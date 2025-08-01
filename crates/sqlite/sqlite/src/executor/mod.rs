@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
-use erc::UpdateNftMetadataQuery;
+use erc::UpdateTokenMetadataQuery;
 use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
@@ -33,7 +33,7 @@ use torii_broker::MemoryBroker;
 
 pub mod erc;
 pub mod error;
-pub use erc::{RegisterErc20TokenQuery, RegisterNftTokenQuery};
+pub use erc::{RegisterNftTokenQuery, RegisterTokenContractQuery};
 
 pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor";
 
@@ -120,10 +120,10 @@ pub enum QueryType {
     EventMessage(EventMessageQuery),
     ApplyBalanceDiff(ApplyBalanceDiffQuery),
     RegisterNftToken(RegisterNftTokenQuery),
-    RegisterErc20Token(RegisterErc20TokenQuery),
+    RegisterTokenContract(RegisterTokenContractQuery),
     RegisterModel,
     StoreEvent,
-    UpdateNftMetadata(UpdateNftMetadataQuery),
+    UpdateTokenMetadata(UpdateTokenMetadataQuery),
     Execute,
     Rollback,
     Other,
@@ -142,10 +142,10 @@ impl std::fmt::Display for QueryType {
                 QueryType::EventMessage(_) => "EventMessage",
                 QueryType::ApplyBalanceDiff(_) => "ApplyBalanceDiff",
                 QueryType::RegisterNftToken(_) => "RegisterNftToken",
-                QueryType::RegisterErc20Token(_) => "RegisterErc20Token",
+                QueryType::RegisterTokenContract(_) => "RegisterTokenContract",
                 QueryType::RegisterModel => "RegisterModel",
                 QueryType::StoreEvent => "StoreEvent",
-                QueryType::UpdateNftMetadata(_) => "UpdateNftMetadata",
+                QueryType::UpdateTokenMetadata(_) => "UpdateTokenMetadata",
                 QueryType::Execute => "Execute",
                 QueryType::Rollback => "Rollback",
                 QueryType::Other => "Other",
@@ -730,19 +730,20 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 info!(target: LOG_TARGET, name = %name, symbol = %symbol, contract_address = %token.contract_address, token_id = %register_nft_token.token_id, "NFT token registered.");
                 self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));
             }
-            QueryType::RegisterErc20Token(register_erc20_token) => {
+            QueryType::RegisterTokenContract(register_token_contract) => {
                 let query = sqlx::query_as::<_, torii_sqlite_types::Token>(
-                    "INSERT INTO tokens (id, contract_address, name, symbol, decimals) VALUES (?, \
-                     ?, ?, ?, ?) RETURNING *",
+                    "INSERT INTO tokens (id, contract_address, name, symbol, decimals, metadata) VALUES (?, \
+                     ?, ?, ?, ?, ?) RETURNING *",
                 )
-                .bind(felt_to_sql_string(&register_erc20_token.contract_address))
-                .bind(felt_to_sql_string(&register_erc20_token.contract_address))
-                .bind(&register_erc20_token.name)
-                .bind(&register_erc20_token.symbol)
-                .bind(register_erc20_token.decimals);
+                .bind(felt_to_sql_string(&register_token_contract.contract_address))
+                .bind(felt_to_sql_string(&register_token_contract.contract_address))
+                .bind(&register_token_contract.name)
+                .bind(&register_token_contract.symbol)
+                .bind(register_token_contract.decimals)
+                .bind(&register_token_contract.metadata);
 
                 let token = query.fetch_one(&mut **tx).await?;
-                info!(target: LOG_TARGET, name = %register_erc20_token.name, symbol = %register_erc20_token.symbol, contract_address = %token.contract_address, "Registered ERC20 token.");
+                info!(target: LOG_TARGET, name = %register_token_contract.name, symbol = %register_token_contract.symbol, contract_address = %token.contract_address, "Registered token contract.");
 
                 self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));
             }
@@ -758,17 +759,23 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 self.rollback().await?;
                 debug!(target: LOG_TARGET, "Rolled back the transaction.");
             }
-            QueryType::UpdateNftMetadata(update_metadata) => {
+            QueryType::UpdateTokenMetadata(update_metadata) => {
+                let id = if let Some(token_id) = update_metadata.token_id {
+                    felt_and_u256_to_sql_string(&update_metadata.contract_address, &token_id)
+                } else {
+                    felt_to_sql_string(&update_metadata.contract_address)
+                };
+
                 // Update metadata in database
                 let token = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "UPDATE tokens SET metadata = ? WHERE id = ? RETURNING *",
                 )
                 .bind(&update_metadata.metadata)
-                .bind(&update_metadata.id)
+                .bind(&id)
                 .fetch_one(&mut **tx)
                 .await?;
 
-                info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = %update_metadata.token_id, "NFT token metadata updated.");
+                info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = ?update_metadata.token_id, "Token metadata updated.");
                 self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));
             }
             QueryType::Other => {

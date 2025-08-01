@@ -79,11 +79,12 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
     Ok(())
 }
 
-pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
+pub(crate) async fn try_register_token_contract<P: Provider + Sync>(
     contract_address: Felt,
     provider: &P,
     storage: Arc<dyn Storage>,
     cache: Arc<dyn Cache + Send + Sync>,
+    is_erc20: bool,
 ) -> Result<(), Error> {
     let token_id = format!("{:#x}", contract_address);
     let _lock = match cache.get_token_registration_lock(&token_id).await {
@@ -95,9 +96,11 @@ pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
         return Ok(());
     }
 
-    let (name, symbol, decimals) = fetch_erc20_token_metadata(provider, contract_address).await?;
+    let (name, symbol, decimals, metadata) =
+        fetch_contract_metadata(provider, contract_address, is_erc20).await?;
+
     storage
-        .register_erc20_token(contract_address, name, symbol, decimals)
+        .register_token_contract(contract_address, name, symbol, decimals, metadata)
         .await?;
 
     cache.mark_token_registered(&token_id).await;
@@ -105,12 +108,34 @@ pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
     Ok(())
 }
 
-pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
+pub(crate) async fn update_contract_metadata<P: Provider + Sync>(
+    contract_address: Felt,
+    provider: &P,
+    storage: Arc<dyn Storage>,
+) -> Result<(), Error> {
+    let contract_uri = fetch_contract_uri(provider, contract_address).await?;
+    let metadata = if let Some(uri) = contract_uri {
+        serde_json::to_string(&fetch_metadata(&uri).await?)
+            .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))?
+    } else {
+        return Ok(());
+    };
+
+    // Update metadata for the contract-level token (token_id = 0)
+    storage
+        .update_token_metadata(contract_address, None, metadata)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn fetch_contract_metadata<P: Provider + Sync>(
     provider: &P,
     contract_address: Felt,
-) -> Result<(String, String, u8), TokenMetadataError> {
+    is_erc20: bool,
+) -> Result<(String, String, u8, Option<String>), TokenMetadataError> {
     let block_id = BlockId::Tag(BlockTag::Pending);
-    let requests = vec![
+    let mut requests = vec![
         ProviderRequestData::Call(CallRequest {
             request: FunctionCall {
                 contract_address,
@@ -127,52 +152,142 @@ pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
             },
             block_id,
         }),
-        ProviderRequestData::Call(CallRequest {
+    ];
+    // ERC20 metadata has decimals
+    if is_erc20 {
+        requests.push(ProviderRequestData::Call(CallRequest {
             request: FunctionCall {
                 contract_address,
                 entry_point_selector: selector!("decimals"),
                 calldata: vec![],
             },
             block_id,
-        }),
-    ];
+        }));
+    }
 
-    let results = provider.batch_requests(requests).await?;
+    let (name, symbol, decimals) = match provider.batch_requests(requests).await {
+        Ok(results) => {
+            // Parse name
+            let name = match &results[0] {
+                ProviderResponseData::Call(name) if name.len() == 1 => {
+                    parse_cairo_short_string(&name[0]).map_err(|e| {
+                        TokenMetadataError::Parse(ParseError::ParseCairoShortString(e))
+                    })?
+                }
+                ProviderResponseData::Call(name) => ByteArray::cairo_deserialize(name, 0)
+                    .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
+                    .to_string()
+                    .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
+                _ => return Err(TokenMetadataError::InvalidTokenName),
+            };
 
-    // Parse name
-    let name = match &results[0] {
-        ProviderResponseData::Call(name) if name.len() == 1 => {
-            parse_cairo_short_string(&name[0])
-                .map_err(|e| TokenMetadataError::Parse(ParseError::ParseCairoShortString(e)))?
+            // Parse symbol
+            let symbol = match &results[1] {
+                ProviderResponseData::Call(symbol) if symbol.len() == 1 => {
+                    parse_cairo_short_string(&symbol[0]).map_err(|e| {
+                        TokenMetadataError::Parse(ParseError::ParseCairoShortString(e))
+                    })?
+                }
+                ProviderResponseData::Call(symbol) => ByteArray::cairo_deserialize(symbol, 0)
+                    .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
+                    .to_string()
+                    .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
+                _ => return Err(TokenMetadataError::InvalidTokenSymbol),
+            };
+
+            // Parse decimals
+            let decimals = if is_erc20 {
+                match &results[2] {
+                    ProviderResponseData::Call(decimals) => u8::cairo_deserialize(decimals, 0)
+                        .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?,
+                    _ => return Err(TokenMetadataError::InvalidTokenDecimals),
+                }
+            } else {
+                0
+            };
+
+            (name, symbol, decimals)
         }
-        ProviderResponseData::Call(name) => ByteArray::cairo_deserialize(name, 0)
-            .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
+        Err(_) => (String::new(), String::new(), 0),
+    };
+
+    let metadata = if let Some(uri) = fetch_contract_uri(provider, contract_address).await? {
+        fetch_metadata(&uri)
+            .await
+            .ok()
+            .and_then(|metadata| serde_json::to_string(&metadata).ok())
+    } else {
+        None
+    };
+
+    Ok((name, symbol, decimals, metadata))
+}
+
+pub async fn fetch_contract_uri<P: Provider + Sync>(
+    provider: &P,
+    contract_address: Felt,
+) -> Result<Option<String>, TokenMetadataError> {
+    let contract_uri = if let Ok(contract_uri) = provider
+        .call(
+            FunctionCall {
+                contract_address,
+                entry_point_selector: selector!("contract_uri"),
+                calldata: vec![],
+            },
+            BlockId::Tag(BlockTag::Pending),
+        )
+        .await
+    {
+        contract_uri
+    } else if let Ok(contract_uri) = provider
+        .call(
+            FunctionCall {
+                contract_address,
+                entry_point_selector: selector!("contractURI"),
+                calldata: vec![],
+            },
+            BlockId::Tag(BlockTag::Pending),
+        )
+        .await
+    {
+        contract_uri
+    } else if let Ok(token_uri) = provider
+        .call(
+            FunctionCall {
+                contract_address,
+                entry_point_selector: selector!("uri"),
+                calldata: vec![],
+            },
+            BlockId::Tag(BlockTag::Pending),
+        )
+        .await
+    {
+        token_uri
+    } else {
+        return Ok(None);
+    };
+
+    let contract_uri = if let Ok(byte_array) = ByteArray::cairo_deserialize(&contract_uri, 0) {
+        byte_array
             .to_string()
-            .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
-        _ => return Err(TokenMetadataError::InvalidTokenName),
+            .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?
+    } else if let Ok(felt_array) = Vec::<Felt>::cairo_deserialize(&contract_uri, 0) {
+        felt_array
+            .iter()
+            .map(parse_cairo_short_string)
+            .collect::<Result<Vec<String>, _>>()
+            .map(|strings| strings.join(""))
+            .map_err(|e| TokenMetadataError::Parse(ParseError::ParseCairoShortString(e)))?
+    } else {
+        debug!(
+            contract_address = format!("{:#x}", contract_address),
+            contract_uri = %contract_uri.iter().map(|f| format!("{:#x}", f)).collect::<Vec<String>>().join(", "),
+            "contract_uri is neither ByteArray nor Array<Felt>"
+        );
+        return Ok(None);
     };
 
-    // Parse symbol
-    let symbol = match &results[1] {
-        ProviderResponseData::Call(symbol) if symbol.len() == 1 => {
-            parse_cairo_short_string(&symbol[0])
-                .map_err(|e| TokenMetadataError::Parse(ParseError::ParseCairoShortString(e)))?
-        }
-        ProviderResponseData::Call(symbol) => ByteArray::cairo_deserialize(symbol, 0)
-            .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
-            .to_string()
-            .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
-        _ => return Err(TokenMetadataError::InvalidTokenSymbol),
-    };
-
-    // Parse decimals
-    let decimals = match &results[2] {
-        ProviderResponseData::Call(decimals) => u8::cairo_deserialize(decimals, 0)
-            .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?,
-        _ => return Err(TokenMetadataError::InvalidTokenDecimals),
-    };
-
-    Ok((name, symbol, decimals))
+    Ok(Some(contract_uri))
 }
 
 pub async fn fetch_token_uri<P: Provider + Sync>(

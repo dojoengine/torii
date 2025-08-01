@@ -481,7 +481,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
     // Check if we indexed all tokens
     let tokens = sqlx::query_as::<_, Token>(
         format!(
-            "SELECT * from tokens where contract_address = '{:#x}' ORDER BY token_id",
+            "SELECT * from tokens where contract_address = '{:#x}' AND token_id IS NOT NULL ORDER BY token_id",
             badge_address
         )
         .as_str(),
@@ -679,7 +679,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
     // Check if we indexed all tokens
     let tokens = sqlx::query_as::<_, Token>(
         format!(
-            "SELECT * from tokens where contract_address = '{:#x}' ORDER BY token_id",
+            "SELECT * from tokens where contract_address = '{:#x}' AND token_id IS NOT NULL ORDER BY token_id",
             rewards_address
         )
         .as_str(),
@@ -1122,7 +1122,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
 
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
-async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
+async fn test_update_token_metadata_erc4906(sequencer: &RunnerCtx) {
     let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
     let config = setup.build_test_config("spawn-and-move", Profile::DEV);
 
@@ -1222,7 +1222,7 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
 
     let token = sqlx::query_as::<_, Token>(
         format!(
-            "SELECT * from tokens where contract_address = '{:#x}' ORDER BY token_id",
+            "SELECT * from tokens where contract_address = '{:#x}' AND token_id IS NOT NULL ORDER BY token_id",
             rewards_address
         )
         .as_str(),
@@ -1233,6 +1233,127 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
 
     assert!(token.metadata.contains(&format!(
         "https://api.dicebear.com/9.x/lorelei-neutral/png?seed={}",
+        block_number + 1
+    )));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
+async fn test_erc7572_contract_uri_updated(sequencer: &RunnerCtx) {
+    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
+    let config = setup.build_test_config("spawn-and-move", Profile::DEV);
+
+    let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
+
+    let account = sequencer.account(0);
+    let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
+
+    let world_local = ws.load_world_local().unwrap();
+    let world_address = world_local.deterministic_world_address().unwrap();
+
+    let rewards_address = world_local
+        .external_contracts
+        .iter()
+        .find(|c| c.instance_name == "Rewards")
+        .unwrap()
+        .address;
+
+    let world = WorldContract::new(world_address, &account);
+
+    let res = world
+        .grant_writer(
+            &compute_bytearray_hash("ns"),
+            &ContractAddress(rewards_address),
+        )
+        .send_with_cfg(&TxnConfig::init_wait())
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(res.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Mint a token first to ensure contract is registered
+    let tx = &account
+        .execute_v3(vec![Call {
+            to: rewards_address,
+            selector: get_selector_from_name("mint").unwrap(),
+            calldata: vec![Felt::from(1), Felt::ZERO, Felt::from(100), Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Update contract URI (ERC-7572)
+    let owner_account = sequencer.account(3);
+    let tx = &owner_account
+        .execute_v3(vec![Call {
+            to: rewards_address,
+            selector: get_selector_from_name("update_contract_uri").unwrap(),
+            calldata: vec![],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    let block_number = provider.block_number().await.unwrap();
+
+    let tempfile = NamedTempFile::new().unwrap();
+    let path = tempfile.path().to_string_lossy();
+    let options = SqliteConnectOptions::from_str(&path)
+        .unwrap()
+        .create_if_missing(true);
+    let pool = SqlitePoolOptions::new()
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+
+    let (shutdown_tx, _) = broadcast::channel(1);
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
+    tokio::spawn(async move {
+        executor.run().await.unwrap();
+    });
+
+    let contracts = vec![Contract {
+        address: rewards_address,
+        r#type: ContractType::ERC1155,
+    }];
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+
+    let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
+        .await
+        .unwrap();
+
+    // Check only the contract-level metadata (token_id = 0)
+    let contract_token = sqlx::query_as::<_, Token>(
+        format!(
+            "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND token_id IS NULL",
+            rewards_address,
+        )
+        .as_str(),
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // Verify the contract metadata contains the new seed from the ContractURIUpdated transaction block
+    assert!(contract_token.metadata.contains(&format!(
+        "https://api.dicebear.com/9.x/shapes/png?seed={}",
         block_number + 1
     )));
 }

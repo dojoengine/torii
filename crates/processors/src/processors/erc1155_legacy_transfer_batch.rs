@@ -7,7 +7,9 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{felt_and_u256_to_sql_string, try_register_nft_token_metadata};
+use crate::erc::{
+    felt_and_u256_to_sql_string, try_register_nft_token_metadata, try_register_token_contract,
+};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
@@ -73,6 +75,16 @@ where
         }
         let values_len = ctx.event.data[current_idx].try_into().unwrap_or(0u64) as usize;
         current_idx += 1;
+
+        // Register the contract first
+        try_register_token_contract(
+            token_address,
+            &ctx.provider,
+            ctx.storage.clone(),
+            ctx.cache.clone(),
+            false,
+        )
+        .await?;
 
         let mut tasks = Vec::new();
 
