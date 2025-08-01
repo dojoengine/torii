@@ -481,7 +481,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
     // Check if we indexed all tokens
     let tokens = sqlx::query_as::<_, Token>(
         format!(
-            "SELECT * from tokens where contract_address = '{:#x}' ORDER BY token_id",
+            "SELECT * from tokens where contract_address = '{:#x}' AND token_id IS NOT NULL ORDER BY token_id",
             badge_address
         )
         .as_str(),
@@ -679,7 +679,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
     // Check if we indexed all tokens
     let tokens = sqlx::query_as::<_, Token>(
         format!(
-            "SELECT * from tokens where contract_address = '{:#x}' ORDER BY token_id",
+            "SELECT * from tokens where contract_address = '{:#x}' AND token_id IS NOT NULL ORDER BY token_id",
             rewards_address
         )
         .as_str(),
@@ -1222,7 +1222,7 @@ async fn test_update_token_metadata_erc1155(sequencer: &RunnerCtx) {
 
     let token = sqlx::query_as::<_, Token>(
         format!(
-            "SELECT * from tokens where contract_address = '{:#x}' ORDER BY token_id",
+            "SELECT * from tokens where contract_address = '{:#x}' AND token_id IS NOT NULL ORDER BY token_id",
             rewards_address
         )
         .as_str(),
