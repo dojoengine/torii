@@ -4,10 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
-use erc::UpdateNftMetadataQuery;
+use erc::UpdateTokenMetadataQuery;
 use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
-use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
+use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
 use starknet::core::utils::parse_cairo_short_string;
 use starknet::macros::selector;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
@@ -123,7 +123,7 @@ pub enum QueryType {
     RegisterErc20Token(RegisterErc20TokenQuery),
     RegisterModel,
     StoreEvent,
-    UpdateNftMetadata(UpdateNftMetadataQuery),
+    UpdateTokenMetadata(UpdateTokenMetadataQuery),
     Execute,
     Rollback,
     Other,
@@ -145,7 +145,7 @@ impl std::fmt::Display for QueryType {
                 QueryType::RegisterErc20Token(_) => "RegisterErc20Token",
                 QueryType::RegisterModel => "RegisterModel",
                 QueryType::StoreEvent => "StoreEvent",
-                QueryType::UpdateNftMetadata(_) => "UpdateNftMetadata",
+                QueryType::UpdateTokenMetadata(_) => "UpdateTokenMetadata",
                 QueryType::Execute => "Execute",
                 QueryType::Rollback => "Rollback",
                 QueryType::Other => "Other",
@@ -710,14 +710,6 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     }
                 };
 
-                // Choose between token metadata and contract metadata based on token_id
-                // token_id = 0 is used for contract-level metadata (ERC-7572)
-                let metadata_to_use = if register_nft_token.token_id == U256::from(0u8) {
-                    &register_nft_token.contract_metadata
-                } else {
-                    &register_nft_token.metadata
-                };
-
                 let query = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "INSERT INTO tokens (id, contract_address, token_id, name, symbol, decimals, \
                      metadata) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
@@ -731,7 +723,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .bind(&name)
                 .bind(&symbol)
                 .bind(0)
-                .bind(metadata_to_use);
+                .bind(&register_nft_token.metadata);
 
                 let token = query.fetch_one(&mut **tx).await?;
 
@@ -767,17 +759,23 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 self.rollback().await?;
                 debug!(target: LOG_TARGET, "Rolled back the transaction.");
             }
-            QueryType::UpdateNftMetadata(update_metadata) => {
+            QueryType::UpdateTokenMetadata(update_metadata) => {
+                let id = if let Some(token_id) = update_metadata.token_id {
+                    felt_and_u256_to_sql_string(&update_metadata.contract_address, &token_id)
+                } else {
+                    felt_to_sql_string(&update_metadata.contract_address)
+                };
+
                 // Update metadata in database
                 let token = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "UPDATE tokens SET metadata = ? WHERE id = ? RETURNING *",
                 )
                 .bind(&update_metadata.metadata)
-                .bind(&update_metadata.id)
+                .bind(&id)
                 .fetch_one(&mut **tx)
                 .await?;
 
-                info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = %update_metadata.token_id, "NFT token metadata updated.");
+                info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = ?update_metadata.token_id, "NFT token metadata updated.");
                 self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));
             }
             QueryType::Other => {

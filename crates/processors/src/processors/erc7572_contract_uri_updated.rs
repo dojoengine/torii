@@ -42,12 +42,7 @@ where
         let contract_address = ctx.event.from_address;
 
         // Update the contract metadata for this contract
-        update_contract_metadata(
-            contract_address,
-            &ctx.provider,
-            ctx.storage.clone(),
-        )
-        .await?;
+        update_contract_metadata(contract_address, &ctx.provider, ctx.storage.clone()).await?;
 
         debug!(
             target: LOG_TARGET,

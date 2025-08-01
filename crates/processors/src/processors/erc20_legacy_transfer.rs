@@ -6,7 +6,7 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{felt_to_sql_string, try_register_erc20_token};
+use crate::erc::{felt_to_sql_string, try_register_token_contract};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
@@ -62,11 +62,13 @@ where
         // this cache is used while applying the cache diff
         // so we need to make sure that all RegisterErc*Token queries
         // are applied before the cache diff is applied
-        try_register_erc20_token(
+        // Register the contract first
+        try_register_token_contract(
             token_address,
             &ctx.provider,
             ctx.storage.clone(),
             ctx.cache.clone(),
+            true,
         )
         .await?;
 

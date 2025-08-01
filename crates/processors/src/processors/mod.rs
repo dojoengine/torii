@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use controller::ControllerProcessor;
-use contract_uri_updated::ContractUriUpdatedProcessor;
 use erc1155_legacy_transfer_batch::Erc1155LegacyTransferBatchProcessor;
 use erc1155_legacy_transfer_single::Erc1155LegacyTransferSingleProcessor;
 use erc1155_transfer_batch::Erc1155TransferBatchProcessor;
@@ -12,6 +11,7 @@ use erc4906_batch_metadata_update::Erc4906BatchMetadataUpdateProcessor;
 use erc4906_metadata_update::Erc4906MetadataUpdateProcessor;
 use erc721_legacy_transfer::Erc721LegacyTransferProcessor;
 use erc721_transfer::Erc721TransferProcessor;
+use erc7572_contract_uri_updated::ContractUriUpdatedProcessor;
 use event_message::EventMessageProcessor;
 use metadata_update::MetadataUpdateProcessor;
 use raw_event::RawEventProcessor;
@@ -31,7 +31,6 @@ use upgrade_model::UpgradeModelProcessor;
 use crate::{BlockProcessor, EventProcessor, TransactionProcessor};
 
 pub(crate) mod controller;
-mod contract_uri_updated;
 mod erc1155_legacy_transfer_batch;
 mod erc1155_legacy_transfer_single;
 mod erc1155_transfer_batch;
@@ -42,6 +41,7 @@ mod erc4906_batch_metadata_update;
 mod erc4906_metadata_update;
 mod erc721_legacy_transfer;
 mod erc721_transfer;
+mod erc7572_contract_uri_updated;
 mod event_message;
 mod metadata_update;
 mod raw_event;

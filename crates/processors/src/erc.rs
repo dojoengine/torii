@@ -71,11 +71,7 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
     let metadata = fetch_token_metadata(contract_address, actual_token_id, provider).await?;
 
     storage
-        .register_nft_token(
-            contract_address,
-            actual_token_id,
-            metadata,
-        )
+        .register_nft_token(contract_address, actual_token_id, metadata)
         .await?;
 
     cache.mark_token_registered(id).await;
@@ -119,17 +115,15 @@ pub(crate) async fn update_contract_metadata<P: Provider + Sync>(
 ) -> Result<(), Error> {
     let contract_uri = fetch_contract_uri(provider, contract_address).await?;
     let metadata = if let Some(uri) = contract_uri {
-        fetch_metadata(&uri)
-            .await
-            .ok()
-            .and_then(|metadata| serde_json::to_string(&metadata).ok())
+        serde_json::to_string(&fetch_metadata(&uri).await?)
+            .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e)))?
     } else {
-        None
+        return Ok(());
     };
 
     // Update metadata for the contract-level token (token_id = 0)
     storage
-        .update_metadata(contract_address, &contract_uri, metadata)
+        .update_token_metadata(contract_address, None, metadata)
         .await?;
 
     Ok(())

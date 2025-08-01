@@ -26,7 +26,7 @@ use crate::{
         ENTITIES_TABLE, EVENT_MESSAGES_ENTITY_RELATION_COLUMN, EVENT_MESSAGES_HISTORICAL_TABLE,
         EVENT_MESSAGES_MODEL_RELATION_TABLE, EVENT_MESSAGES_TABLE, TOKEN_TRANSFER_TABLE,
     },
-    executor::{RegisterErc20TokenQuery, RegisterNftTokenQuery},
+    executor::{erc::UpdateTokenMetadataQuery, RegisterErc20TokenQuery, RegisterNftTokenQuery},
     model::map_row_to_ty,
     query::{PaginationExecutor, QueryBuilder},
     utils::{build_keys_pattern, u256_to_sql_string},
@@ -34,9 +34,8 @@ use crate::{
 use crate::{
     error::{Error, ParseError},
     executor::{
-        erc::UpdateNftMetadataQuery, error::ExecutorQueryError, ApplyBalanceDiffQuery, Argument,
-        DeleteEntityQuery, EntityQuery, EventMessageQuery, QueryMessage, QueryType,
-        StoreTransactionQuery, UpdateCursorsQuery,
+        error::ExecutorQueryError, ApplyBalanceDiffQuery, Argument, DeleteEntityQuery, EntityQuery,
+        EventMessageQuery, QueryMessage, QueryType, StoreTransactionQuery, UpdateCursorsQuery,
     },
     utils::{
         felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string,
@@ -1177,7 +1176,7 @@ impl Storage for Sql {
                     name,
                     symbol,
                     decimals,
-                    metadata
+                    metadata,
                 }),
             ))
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
@@ -1190,7 +1189,6 @@ impl Storage for Sql {
         contract_address: Felt,
         token_id: U256,
         metadata: String,
-        contract_metadata: String,
     ) -> Result<(), StorageError> {
         self.executor
             .send(QueryMessage::new(
@@ -1200,7 +1198,6 @@ impl Storage for Sql {
                     contract_address,
                     token_id,
                     metadata,
-                    contract_metadata,
                 }),
             ))
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
@@ -1208,21 +1205,18 @@ impl Storage for Sql {
         Ok(())
     }
 
-    /// Updates NFT metadata for a specific token.
-    async fn update_nft_metadata(
+    /// Updates metadata for a token.
+    async fn update_token_metadata(
         &self,
         contract_address: Felt,
-        token_id: U256,
+        token_id: Option<U256>,
         metadata: String,
     ) -> Result<(), StorageError> {
-        let id = felt_and_u256_to_sql_string(&contract_address, &token_id);
-
         self.executor
             .send(QueryMessage::new(
                 "".to_string(),
                 vec![],
-                QueryType::UpdateNftMetadata(UpdateNftMetadataQuery {
-                    id,
+                QueryType::UpdateTokenMetadata(UpdateTokenMetadataQuery {
                     contract_address,
                     token_id,
                     metadata,
