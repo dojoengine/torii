@@ -8,7 +8,7 @@ use tracing::debug;
 use crate::erc::update_contract_metadata;
 use crate::error::Error;
 use crate::task_manager::TaskId;
-use crate::{EventProcessor, EventProcessorContext};
+use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::contract_uri_updated";
 
@@ -36,6 +36,13 @@ where
         // Hash the contract address since we're updating contract-level metadata
         event.from_address.hash(&mut hasher);
         hasher.finish()
+    }
+
+    // We can dedup contract uri updates. To only keep the latest one.
+    fn indexing_mode(&self, event: &Event, _config: &EventProcessorConfig) -> IndexingMode {
+        let mut hasher = DefaultHasher::new();
+        event.keys[0].hash(&mut hasher);
+        IndexingMode::Latest(hasher.finish())
     }
 
     async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
