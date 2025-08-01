@@ -30,12 +30,12 @@ pub struct UpdateTokenMetadataQuery {
 }
 
 #[derive(Debug, Clone)]
-pub struct RegisterErc20TokenQuery {
+pub struct RegisterTokenContractQuery {
     pub contract_address: Felt,
     pub name: String,
     pub symbol: String,
     pub decimals: u8,
-    pub metadata: String,
+    pub metadata: Option<String>,
 }
 
 impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {

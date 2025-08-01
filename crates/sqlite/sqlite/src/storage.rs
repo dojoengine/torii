@@ -26,7 +26,7 @@ use crate::{
         ENTITIES_TABLE, EVENT_MESSAGES_ENTITY_RELATION_COLUMN, EVENT_MESSAGES_HISTORICAL_TABLE,
         EVENT_MESSAGES_MODEL_RELATION_TABLE, EVENT_MESSAGES_TABLE, TOKEN_TRANSFER_TABLE,
     },
-    executor::{erc::UpdateTokenMetadataQuery, RegisterErc20TokenQuery, RegisterNftTokenQuery},
+    executor::{erc::UpdateTokenMetadataQuery, RegisterNftTokenQuery, RegisterTokenContractQuery},
     model::map_row_to_ty,
     query::{PaginationExecutor, QueryBuilder},
     utils::{build_keys_pattern, u256_to_sql_string},
@@ -1158,20 +1158,20 @@ impl Storage for Sql {
         Ok(())
     }
 
-    /// Registers an ERC20 token with the storage.
-    async fn register_erc20_token(
+    /// Registers a token contract with the storage.
+    async fn register_token_contract(
         &self,
         contract_address: Felt,
         name: String,
         symbol: String,
         decimals: u8,
-        metadata: String,
+        metadata: Option<String>,
     ) -> Result<(), StorageError> {
         self.executor
             .send(QueryMessage::new(
                 "".to_string(),
                 vec![],
-                QueryType::RegisterErc20Token(RegisterErc20TokenQuery {
+                QueryType::RegisterTokenContract(RegisterTokenContractQuery {
                     contract_address,
                     name,
                     symbol,
