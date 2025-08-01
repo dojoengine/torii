@@ -775,7 +775,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .fetch_one(&mut **tx)
                 .await?;
 
-                info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = ?update_metadata.token_id, "NFT token metadata updated.");
+                info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = ?update_metadata.token_id, "Token metadata updated.");
                 self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));
             }
             QueryType::Other => {
