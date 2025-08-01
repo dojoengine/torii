@@ -372,11 +372,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     .insert(*tx_hash);
 
                 transactions
-                    .entry(*tx_hash)
-                    .or_insert_with(|| FetchTransaction {
-                        transaction: Some(t.transaction.clone()),
-                        events: vec![],
-                    })
+                    .get_mut(tx_hash)
+                    .expect("Transaction should exist.")
                     .events
                     .extend(events);
                 cursor.last_pending_block_tx = Some(*tx_hash);
