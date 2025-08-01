@@ -20,6 +20,7 @@ pub struct RegisterNftTokenQuery {
     pub contract_address: Felt,
     pub token_id: U256,
     pub metadata: String,
+    pub contract_metadata: String,
 }
 
 #[derive(Debug, Clone)]
@@ -36,6 +37,7 @@ pub struct RegisterErc20TokenQuery {
     pub name: String,
     pub symbol: String,
     pub decimals: u8,
+    pub metadata: String,
 }
 
 impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {

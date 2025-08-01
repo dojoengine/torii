@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use controller::ControllerProcessor;
+use contract_uri_updated::ContractUriUpdatedProcessor;
 use erc1155_legacy_transfer_batch::Erc1155LegacyTransferBatchProcessor;
 use erc1155_legacy_transfer_single::Erc1155LegacyTransferSingleProcessor;
 use erc1155_transfer_batch::Erc1155TransferBatchProcessor;
@@ -30,6 +31,7 @@ use upgrade_model::UpgradeModelProcessor;
 use crate::{BlockProcessor, EventProcessor, TransactionProcessor};
 
 pub(crate) mod controller;
+mod contract_uri_updated;
 mod erc1155_legacy_transfer_batch;
 mod erc1155_legacy_transfer_single;
 mod erc1155_transfer_batch;
@@ -111,6 +113,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Processors<P
                     Box::new(Erc721LegacyTransferProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc4906MetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc4906BatchMetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
+                    Box::new(ContractUriUpdatedProcessor) as Box<dyn EventProcessor<P>>,
                 ],
             ),
             (
@@ -122,6 +125,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Processors<P
                     Box::new(Erc1155LegacyTransferSingleProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc4906MetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
                     Box::new(Erc4906BatchMetadataUpdateProcessor) as Box<dyn EventProcessor<P>>,
+                    Box::new(ContractUriUpdatedProcessor) as Box<dyn EventProcessor<P>>,
                 ],
             ),
             (

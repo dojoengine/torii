@@ -1166,6 +1166,7 @@ impl Storage for Sql {
         name: String,
         symbol: String,
         decimals: u8,
+        metadata: String,
     ) -> Result<(), StorageError> {
         self.executor
             .send(QueryMessage::new(
@@ -1176,6 +1177,7 @@ impl Storage for Sql {
                     name,
                     symbol,
                     decimals,
+                    metadata
                 }),
             ))
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
@@ -1188,6 +1190,7 @@ impl Storage for Sql {
         contract_address: Felt,
         token_id: U256,
         metadata: String,
+        contract_metadata: String,
     ) -> Result<(), StorageError> {
         self.executor
             .send(QueryMessage::new(
@@ -1197,6 +1200,7 @@ impl Storage for Sql {
                     contract_address,
                     token_id,
                     metadata,
+                    contract_metadata,
                 }),
             ))
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;

@@ -69,9 +69,10 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
         .await
         .map_err(|e| Error::TokenMetadataError(TokenMetadataError::AcquireError(e)))?;
     let metadata = fetch_token_metadata(contract_address, actual_token_id, provider).await?;
+    let contract_metadata = fetch_contract_metadata(contract_address, provider).await?;
 
     storage
-        .register_nft_token(contract_address, actual_token_id, metadata)
+        .register_nft_token(contract_address, actual_token_id, metadata, contract_metadata)
         .await?;
 
     cache.mark_token_registered(id).await;
@@ -96,8 +97,10 @@ pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
     }
 
     let (name, symbol, decimals) = fetch_erc20_token_metadata(provider, contract_address).await?;
+    let contract_metadata = fetch_contract_metadata(contract_address, provider).await?;
+
     storage
-        .register_erc20_token(contract_address, name, symbol, decimals)
+        .register_erc20_token(contract_address, name, symbol, decimals, contract_metadata)
         .await?;
 
     cache.mark_token_registered(&token_id).await;
@@ -105,10 +108,54 @@ pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
     Ok(())
 }
 
+pub(crate) async fn try_register_nft_contract<P: Provider + Sync>(
+    contract_address: Felt,
+    provider: &P,
+    storage: Arc<dyn Storage>,
+    cache: Arc<dyn Cache + Send + Sync>,
+) -> Result<(), Error> {
+    let contract_id = format!("{:#x}", contract_address);
+    let _lock = match cache.get_token_registration_lock(&contract_id).await {
+        Some(lock) => lock,
+        None => return Ok(()), // Already registered by another thread
+    };
+    let _guard = _lock.lock().await;
+    if cache.is_token_registered(&contract_id).await {
+        return Ok(());
+    }
+
+    let contract_metadata = fetch_contract_metadata(contract_address, provider).await?;
+
+    // Register the contract as a token with token_id = 0 and empty metadata
+    // This represents the contract-level registration
+    storage
+        .register_nft_token(contract_address, U256::from(0u8), "".to_string(), contract_metadata)
+        .await?;
+
+    cache.mark_token_registered(&contract_id).await;
+
+    Ok(())
+}
+
+pub(crate) async fn update_contract_metadata<P: Provider + Sync>(
+    contract_address: Felt,
+    provider: &P,
+    storage: Arc<dyn Storage>,
+) -> Result<(), Error> {
+    let contract_metadata = fetch_contract_metadata(contract_address, provider).await?;
+
+    // Update metadata for the contract-level token (token_id = 0)
+    storage
+        .update_nft_metadata(contract_address, U256::from(0u8), contract_metadata)
+        .await?;
+
+    Ok(())
+}
+
 pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
     provider: &P,
     contract_address: Felt,
-) -> Result<(String, String, u8, String), TokenMetadataError> {
+) -> Result<(String, String, u8), TokenMetadataError> {
     let block_id = BlockId::Tag(BlockTag::Pending);
     let requests = vec![
         ProviderRequestData::Call(CallRequest {
@@ -136,7 +183,6 @@ pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
             block_id,
         }),
     ];
-    let contract_uri = 
 
     let results = provider.batch_requests(requests).await?;
 
@@ -323,6 +369,31 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
     token_uri = token_uri.replace("{id}", &token_id_hex);
 
     Ok(token_uri)
+}
+
+pub async fn fetch_contract_metadata<P: Provider + Sync>(
+    contract_address: Felt,
+    provider: &P,
+) -> Result<String, TokenMetadataError> {
+    let contract_uri = fetch_contract_uri(provider, contract_address).await?;
+
+    if contract_uri.is_empty() {
+        return Ok("".to_string());
+    }
+
+    let metadata = fetch_metadata(&contract_uri).await;
+    match metadata {
+        Ok(metadata) => serde_json::to_string(&metadata)
+            .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e))),
+        Err(_) => {
+            warn!(
+                contract_address = format!("{:#x}", contract_address),
+                contract_uri = %contract_uri,
+                "Error fetching metadata, empty metadata will be used instead.",
+            );
+            Ok("".to_string())
+        }
+    }
 }
 
 pub async fn fetch_token_metadata<P: Provider + Sync>(

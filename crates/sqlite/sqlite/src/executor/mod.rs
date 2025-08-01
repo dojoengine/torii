@@ -732,14 +732,15 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             }
             QueryType::RegisterErc20Token(register_erc20_token) => {
                 let query = sqlx::query_as::<_, torii_sqlite_types::Token>(
-                    "INSERT INTO tokens (id, contract_address, name, symbol, decimals) VALUES (?, \
-                     ?, ?, ?, ?) RETURNING *",
+                    "INSERT INTO tokens (id, contract_address, name, symbol, decimals, metadata) VALUES (?, \
+                     ?, ?, ?, ?, ?) RETURNING *",
                 )
                 .bind(felt_to_sql_string(&register_erc20_token.contract_address))
                 .bind(felt_to_sql_string(&register_erc20_token.contract_address))
                 .bind(&register_erc20_token.name)
                 .bind(&register_erc20_token.symbol)
-                .bind(register_erc20_token.decimals);
+                .bind(register_erc20_token.decimals)
+                .bind(&register_erc20_token.metadata);
 
                 let token = query.fetch_one(&mut **tx).await?;
                 info!(target: LOG_TARGET, name = %register_erc20_token.name, symbol = %register_erc20_token.symbol, contract_address = %token.contract_address, "Registered ERC20 token.");

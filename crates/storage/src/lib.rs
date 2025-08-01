@@ -211,6 +211,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         name: String,
         symbol: String,
         decimals: u8,
+        contract_metadata: String,
     ) -> Result<(), StorageError>;
 
     /// Registers an NFT (ERC721/ERC1155) token with the storage.
@@ -219,6 +220,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         contract_address: Felt,
         token_id: U256,
         metadata: String,
+        contract_metadata: String,
     ) -> Result<(), StorageError>;
 
     /// Stores a token transfer event with the storage.
