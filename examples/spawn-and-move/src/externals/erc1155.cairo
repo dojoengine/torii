@@ -49,6 +49,7 @@ mod ERC1155Token {
         OwnableEvent: OwnableComponent::Event,
         #[flat]
         ERC4906Event: ERC4906Component::Event,
+        ContractURIUpdated: ContractURIUpdated,
     }
 
     #[constructor]
@@ -66,6 +67,16 @@ mod ERC1155Token {
             let seed = starknet::get_execution_info().block_info.block_number;
             format!(
                 "data:application/json,{{ \"image\": \"https://api.dicebear.com/9.x/lorelei-neutral/png?seed={}\" }}",
+                seed,
+            )
+        }
+
+        /// ERC-7572: Contract-level metadata via contractURI()
+        #[external(v0)]
+        fn contract_uri(ref self: ContractState) -> ByteArray {
+            let seed = starknet::get_execution_info().block_info.block_number;
+            format!(
+                "data:application/json,{{ \"name\": \"Rewards Collection\", \"description\": \"A collection of reward tokens\", \"image\": \"https://api.dicebear.com/9.x/shapes/png?seed={}\" }}",
                 seed,
             )
         }
@@ -147,5 +158,19 @@ mod ERC1155Token {
                 i += 1;
             }
         }
+
+        /// ERC-7572: Update contract-level metadata
+        #[external(v0)]
+        fn update_contract_uri(ref self: ContractState) {
+            // Only owner can update contract metadata
+            self.ownable.assert_only_owner();
+
+            // Emit ContractURIUpdated event
+            self.emit(ContractURIUpdated {});
+        }
     }
+
+    /// ERC-7572: ContractURIUpdated event
+    #[derive(Drop, starknet::Event)]
+    struct ContractURIUpdated {}
 }
