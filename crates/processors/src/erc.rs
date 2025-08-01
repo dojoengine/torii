@@ -69,10 +69,13 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
         .await
         .map_err(|e| Error::TokenMetadataError(TokenMetadataError::AcquireError(e)))?;
     let metadata = fetch_token_metadata(contract_address, actual_token_id, provider).await?;
-    let contract_metadata = fetch_contract_metadata(contract_address, provider).await?;
 
     storage
-        .register_nft_token(contract_address, actual_token_id, metadata, contract_metadata)
+        .register_nft_token(
+            contract_address,
+            actual_token_id,
+            metadata,
+        )
         .await?;
 
     cache.mark_token_registered(id).await;
@@ -80,11 +83,12 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
     Ok(())
 }
 
-pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
+pub(crate) async fn try_register_token_contract<P: Provider + Sync>(
     contract_address: Felt,
     provider: &P,
     storage: Arc<dyn Storage>,
     cache: Arc<dyn Cache + Send + Sync>,
+    is_erc20: bool,
 ) -> Result<(), Error> {
     let token_id = format!("{:#x}", contract_address);
     let _lock = match cache.get_token_registration_lock(&token_id).await {
@@ -96,43 +100,14 @@ pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
         return Ok(());
     }
 
-    let (name, symbol, decimals) = fetch_erc20_token_metadata(provider, contract_address).await?;
-    let contract_metadata = fetch_contract_metadata(contract_address, provider).await?;
+    let (name, symbol, decimals, metadata) =
+        fetch_contract_metadata(provider, contract_address, is_erc20).await?;
 
     storage
-        .register_erc20_token(contract_address, name, symbol, decimals, contract_metadata)
+        .register_token_contract(contract_address, name, symbol, decimals, metadata)
         .await?;
 
     cache.mark_token_registered(&token_id).await;
-
-    Ok(())
-}
-
-pub(crate) async fn try_register_nft_contract<P: Provider + Sync>(
-    contract_address: Felt,
-    provider: &P,
-    storage: Arc<dyn Storage>,
-    cache: Arc<dyn Cache + Send + Sync>,
-) -> Result<(), Error> {
-    let contract_id = format!("{:#x}", contract_address);
-    let _lock = match cache.get_token_registration_lock(&contract_id).await {
-        Some(lock) => lock,
-        None => return Ok(()), // Already registered by another thread
-    };
-    let _guard = _lock.lock().await;
-    if cache.is_token_registered(&contract_id).await {
-        return Ok(());
-    }
-
-    let contract_metadata = fetch_contract_metadata(contract_address, provider).await?;
-
-    // Register the contract as a token with token_id = 0 and empty metadata
-    // This represents the contract-level registration
-    storage
-        .register_nft_token(contract_address, U256::from(0u8), "".to_string(), contract_metadata)
-        .await?;
-
-    cache.mark_token_registered(&contract_id).await;
 
     Ok(())
 }
@@ -142,22 +117,31 @@ pub(crate) async fn update_contract_metadata<P: Provider + Sync>(
     provider: &P,
     storage: Arc<dyn Storage>,
 ) -> Result<(), Error> {
-    let contract_metadata = fetch_contract_metadata(contract_address, provider).await?;
+    let contract_uri = fetch_contract_uri(provider, contract_address).await?;
+    let metadata = if let Some(uri) = contract_uri {
+        fetch_metadata(&uri)
+            .await
+            .ok()
+            .and_then(|metadata| serde_json::to_string(&metadata).ok())
+    } else {
+        None
+    };
 
     // Update metadata for the contract-level token (token_id = 0)
     storage
-        .update_nft_metadata(contract_address, U256::from(0u8), contract_metadata)
+        .update_metadata(contract_address, &contract_uri, metadata)
         .await?;
 
     Ok(())
 }
 
-pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
+pub async fn fetch_contract_metadata<P: Provider + Sync>(
     provider: &P,
     contract_address: Felt,
-) -> Result<(String, String, u8), TokenMetadataError> {
+    is_erc20: bool,
+) -> Result<(String, String, u8, Option<String>), TokenMetadataError> {
     let block_id = BlockId::Tag(BlockTag::Pending);
-    let requests = vec![
+    let mut requests = vec![
         ProviderRequestData::Call(CallRequest {
             request: FunctionCall {
                 contract_address,
@@ -174,58 +158,81 @@ pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
             },
             block_id,
         }),
-        ProviderRequestData::Call(CallRequest {
+    ];
+    // ERC20 metadata has decimals
+    if is_erc20 {
+        requests.push(ProviderRequestData::Call(CallRequest {
             request: FunctionCall {
                 contract_address,
                 entry_point_selector: selector!("decimals"),
                 calldata: vec![],
             },
             block_id,
-        }),
-    ];
+        }));
+    }
 
-    let results = provider.batch_requests(requests).await?;
+    let (name, symbol, decimals) = match provider.batch_requests(requests).await {
+        Ok(results) => {
+            // Parse name
+            let name = match &results[0] {
+                ProviderResponseData::Call(name) if name.len() == 1 => {
+                    parse_cairo_short_string(&name[0]).map_err(|e| {
+                        TokenMetadataError::Parse(ParseError::ParseCairoShortString(e))
+                    })?
+                }
+                ProviderResponseData::Call(name) => ByteArray::cairo_deserialize(name, 0)
+                    .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
+                    .to_string()
+                    .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
+                _ => return Err(TokenMetadataError::InvalidTokenName),
+            };
 
-    // Parse name
-    let name = match &results[0] {
-        ProviderResponseData::Call(name) if name.len() == 1 => {
-            parse_cairo_short_string(&name[0])
-                .map_err(|e| TokenMetadataError::Parse(ParseError::ParseCairoShortString(e)))?
+            // Parse symbol
+            let symbol = match &results[1] {
+                ProviderResponseData::Call(symbol) if symbol.len() == 1 => {
+                    parse_cairo_short_string(&symbol[0]).map_err(|e| {
+                        TokenMetadataError::Parse(ParseError::ParseCairoShortString(e))
+                    })?
+                }
+                ProviderResponseData::Call(symbol) => ByteArray::cairo_deserialize(symbol, 0)
+                    .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
+                    .to_string()
+                    .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
+                _ => return Err(TokenMetadataError::InvalidTokenSymbol),
+            };
+
+            // Parse decimals
+            let decimals = if is_erc20 {
+                match &results[2] {
+                    ProviderResponseData::Call(decimals) => u8::cairo_deserialize(decimals, 0)
+                        .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?,
+                    _ => return Err(TokenMetadataError::InvalidTokenDecimals),
+                }
+            } else {
+                0
+            };
+
+            (name, symbol, decimals)
         }
-        ProviderResponseData::Call(name) => ByteArray::cairo_deserialize(name, 0)
-            .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
-            .to_string()
-            .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
-        _ => return Err(TokenMetadataError::InvalidTokenName),
+        Err(_) => (String::new(), String::new(), 0),
     };
 
-    // Parse symbol
-    let symbol = match &results[1] {
-        ProviderResponseData::Call(symbol) if symbol.len() == 1 => {
-            parse_cairo_short_string(&symbol[0])
-                .map_err(|e| TokenMetadataError::Parse(ParseError::ParseCairoShortString(e)))?
-        }
-        ProviderResponseData::Call(symbol) => ByteArray::cairo_deserialize(symbol, 0)
-            .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
-            .to_string()
-            .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
-        _ => return Err(TokenMetadataError::InvalidTokenSymbol),
+    let metadata = if let Some(uri) = fetch_contract_uri(provider, contract_address).await? {
+        fetch_metadata(&uri)
+            .await
+            .ok()
+            .and_then(|metadata| serde_json::to_string(&metadata).ok())
+    } else {
+        None
     };
 
-    // Parse decimals
-    let decimals = match &results[2] {
-        ProviderResponseData::Call(decimals) => u8::cairo_deserialize(decimals, 0)
-            .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?,
-        _ => return Err(TokenMetadataError::InvalidTokenDecimals),
-    };
-
-    Ok((name, symbol, decimals))
+    Ok((name, symbol, decimals, metadata))
 }
 
 pub async fn fetch_contract_uri<P: Provider + Sync>(
     provider: &P,
     contract_address: Felt,
-) -> Result<String, TokenMetadataError> {
+) -> Result<Option<String>, TokenMetadataError> {
     let contract_uri = if let Ok(contract_uri) = provider
         .call(
             FunctionCall {
@@ -263,11 +270,7 @@ pub async fn fetch_contract_uri<P: Provider + Sync>(
     {
         token_uri
     } else {
-        warn!(
-            contract_address = format!("{:#x}", contract_address),
-            "Error fetching token URI, empty metadata will be used instead.",
-        );
-        return Ok("".to_string());
+        return Ok(None);
     };
 
     let contract_uri = if let Ok(byte_array) = ByteArray::cairo_deserialize(&contract_uri, 0) {
@@ -287,10 +290,10 @@ pub async fn fetch_contract_uri<P: Provider + Sync>(
             contract_uri = %contract_uri.iter().map(|f| format!("{:#x}", f)).collect::<Vec<String>>().join(", "),
             "contract_uri is neither ByteArray nor Array<Felt>"
         );
-        "".to_string()
+        return Ok(None);
     };
 
-    Ok(contract_uri)
+    Ok(Some(contract_uri))
 }
 
 pub async fn fetch_token_uri<P: Provider + Sync>(
@@ -369,31 +372,6 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
     token_uri = token_uri.replace("{id}", &token_id_hex);
 
     Ok(token_uri)
-}
-
-pub async fn fetch_contract_metadata<P: Provider + Sync>(
-    contract_address: Felt,
-    provider: &P,
-) -> Result<String, TokenMetadataError> {
-    let contract_uri = fetch_contract_uri(provider, contract_address).await?;
-
-    if contract_uri.is_empty() {
-        return Ok("".to_string());
-    }
-
-    let metadata = fetch_metadata(&contract_uri).await;
-    match metadata {
-        Ok(metadata) => serde_json::to_string(&metadata)
-            .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e))),
-        Err(_) => {
-            warn!(
-                contract_address = format!("{:#x}", contract_address),
-                contract_uri = %contract_uri,
-                "Error fetching metadata, empty metadata will be used instead.",
-            );
-            Ok("".to_string())
-        }
-    }
 }
 
 pub async fn fetch_token_metadata<P: Provider + Sync>(

@@ -7,7 +7,7 @@ use dojo_types::schema::{Struct, Ty};
 use erc::UpdateNftMetadataQuery;
 use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
-use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
+use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
 use starknet::core::utils::parse_cairo_short_string;
 use starknet::macros::selector;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
@@ -710,6 +710,14 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     }
                 };
 
+                // Choose between token metadata and contract metadata based on token_id
+                // token_id = 0 is used for contract-level metadata (ERC-7572)
+                let metadata_to_use = if register_nft_token.token_id == U256::from(0u8) {
+                    &register_nft_token.contract_metadata
+                } else {
+                    &register_nft_token.metadata
+                };
+
                 let query = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "INSERT INTO tokens (id, contract_address, token_id, name, symbol, decimals, \
                      metadata) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
@@ -723,7 +731,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .bind(&name)
                 .bind(&symbol)
                 .bind(0)
-                .bind(&register_nft_token.metadata);
+                .bind(metadata_to_use);
 
                 let token = query.fetch_one(&mut **tx).await?;
 
