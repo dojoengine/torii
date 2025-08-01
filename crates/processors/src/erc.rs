@@ -108,7 +108,7 @@ pub(crate) async fn try_register_erc20_token<P: Provider + Sync>(
 pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
     provider: &P,
     contract_address: Felt,
-) -> Result<(String, String, u8), TokenMetadataError> {
+) -> Result<(String, String, u8, String), TokenMetadataError> {
     let block_id = BlockId::Tag(BlockTag::Pending);
     let requests = vec![
         ProviderRequestData::Call(CallRequest {
@@ -136,6 +136,7 @@ pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
             block_id,
         }),
     ];
+    let contract_uri = 
 
     let results = provider.batch_requests(requests).await?;
 
@@ -173,6 +174,77 @@ pub async fn fetch_erc20_token_metadata<P: Provider + Sync>(
     };
 
     Ok((name, symbol, decimals))
+}
+
+pub async fn fetch_contract_uri<P: Provider + Sync>(
+    provider: &P,
+    contract_address: Felt,
+) -> Result<String, TokenMetadataError> {
+    let contract_uri = if let Ok(contract_uri) = provider
+        .call(
+            FunctionCall {
+                contract_address,
+                entry_point_selector: selector!("contract_uri"),
+                calldata: vec![],
+            },
+            BlockId::Tag(BlockTag::Pending),
+        )
+        .await
+    {
+        contract_uri
+    } else if let Ok(contract_uri) = provider
+        .call(
+            FunctionCall {
+                contract_address,
+                entry_point_selector: selector!("contractURI"),
+                calldata: vec![],
+            },
+            BlockId::Tag(BlockTag::Pending),
+        )
+        .await
+    {
+        contract_uri
+    } else if let Ok(token_uri) = provider
+        .call(
+            FunctionCall {
+                contract_address,
+                entry_point_selector: selector!("uri"),
+                calldata: vec![],
+            },
+            BlockId::Tag(BlockTag::Pending),
+        )
+        .await
+    {
+        token_uri
+    } else {
+        warn!(
+            contract_address = format!("{:#x}", contract_address),
+            "Error fetching token URI, empty metadata will be used instead.",
+        );
+        return Ok("".to_string());
+    };
+
+    let contract_uri = if let Ok(byte_array) = ByteArray::cairo_deserialize(&contract_uri, 0) {
+        byte_array
+            .to_string()
+            .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?
+    } else if let Ok(felt_array) = Vec::<Felt>::cairo_deserialize(&contract_uri, 0) {
+        felt_array
+            .iter()
+            .map(parse_cairo_short_string)
+            .collect::<Result<Vec<String>, _>>()
+            .map(|strings| strings.join(""))
+            .map_err(|e| TokenMetadataError::Parse(ParseError::ParseCairoShortString(e)))?
+    } else {
+        debug!(
+            contract_address = format!("{:#x}", contract_address),
+            contract_uri = %contract_uri.iter().map(|f| format!("{:#x}", f)).collect::<Vec<String>>().join(", "),
+            "contract_uri is neither ByteArray nor Array<Felt>"
+        );
+        "".to_string()
+    };
+
+    Ok(contract_uri)
 }
 
 pub async fn fetch_token_uri<P: Provider + Sync>(
