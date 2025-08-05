@@ -21,7 +21,7 @@ use starknet::core::types::Felt;
 
 use super::error::{self, Error};
 use crate::constants::SQL_MAX_JOINS;
-use crate::error::{ParseError, QueryError};
+use crate::error::ParseError;
 use crate::utils::build_keys_pattern;
 use crate::Sql;
 
@@ -533,22 +533,9 @@ impl Sql {
         where_clause: &str,
         having_clause: &str,
         bind_values: Vec<String>,
-        mut pagination: Pagination,
+        pagination: Pagination,
     ) -> Result<Page<torii_proto::schema::Entity>, Error> {
         use crate::query::{PaginationExecutor, QueryBuilder};
-
-        if !pagination.order_by.is_empty() {
-            return Err(QueryError::UnsupportedQuery(
-                "Order by is not supported for historical entities".to_string(),
-            )
-            .into());
-        }
-
-        // Set default ordering for historical entities
-        pagination.order_by.push(OrderBy {
-            field: "event_id".to_string(),
-            direction: OrderDirection::Asc,
-        });
 
         let mut query_builder = QueryBuilder::new(table)
             .select(&[
@@ -585,7 +572,10 @@ impl Sql {
         // Execute paginated query
         let executor = PaginationExecutor::new(self.pool.clone());
         let page = executor
-            .execute_paginated_query(query_builder, &pagination)
+            .execute_paginated_query(query_builder, &pagination, &OrderBy {
+                field: "event_id".to_string(),
+                direction: OrderDirection::Asc,
+            })
             .await?;
 
         // Process the results to create Entity objects
@@ -635,15 +625,10 @@ impl Sql {
         entity_relation_column: &str,
         where_clause: Option<&str>,
         having_clause: Option<&str>,
-        mut pagination: Pagination,
+        pagination: Pagination,
         bind_values: Vec<String>,
     ) -> Result<Page<SqliteRow>, Error> {
         use crate::query::{PaginationExecutor, QueryBuilder};
-
-        pagination.order_by.push(OrderBy {
-            field: "event_id".to_string(),
-            direction: OrderDirection::Desc,
-        });
 
         // Helper function to collect columns
         fn collect_columns(table_prefix: &str, path: &str, ty: &Ty, selections: &mut Vec<String>) {
@@ -745,7 +730,10 @@ impl Sql {
 
             // Execute paginated query
             let page = executor
-                .execute_paginated_query(query_builder, &pagination)
+                .execute_paginated_query(query_builder, &pagination, &OrderBy {
+                    field: "event_id".to_string(),
+                    direction: OrderDirection::Desc,
+                })
                 .await?;
 
             let has_more = page.next_cursor.is_some();

@@ -1,10 +1,10 @@
 use sqlx::{sqlite::SqliteRow, Pool, Sqlite};
-use torii_proto::{OrderDirection, Page, Pagination, PaginationDirection};
+use torii_proto::{OrderBy, OrderDirection, Page, Pagination, PaginationDirection};
 
 use crate::{
     constants::SQL_DEFAULT_LIMIT,
-    cursor::{build_cursor_conditions, build_cursor_values, decode_cursor, encode_cursor},
-    error::{Error, QueryError},
+    cursor::{build_cursor_conditions, build_cursor_values, decode_cursor_values, encode_cursor_values},
+    error::Error,
 };
 
 #[derive(Debug)]
@@ -145,22 +145,22 @@ impl PaginationExecutor {
         &self,
         mut query_builder: QueryBuilder,
         pagination: &Pagination,
+        default_order_by: &OrderBy,
     ) -> Result<Page<SqliteRow>, Error> {
+        let mut pagination = pagination.clone();
+        pagination.order_by.push(default_order_by.clone());
+
         let original_limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
         let fetch_limit = original_limit + 1;
 
         let cursor_values: Option<Vec<String>> = pagination
             .cursor
             .as_ref()
-            .map(|cursor_str| {
-                let decompressed_str = decode_cursor(cursor_str)?;
-                Ok(decompressed_str.split('/').map(|s| s.to_string()).collect())
-            })
-            .transpose()
-            .map_err(|e: Error| Error::Query(QueryError::InvalidCursor(e.to_string())))?;
+            .map(|cursor_str| decode_cursor_values(cursor_str))
+            .transpose()?;
 
         let (cursor_conditions, cursor_binds) =
-            build_cursor_conditions(pagination, cursor_values.as_deref())?;
+            build_cursor_conditions(&pagination, cursor_values.as_deref())?;
 
         for condition in cursor_conditions {
             query_builder = query_builder.where_clause(&condition);
@@ -203,8 +203,8 @@ impl PaginationExecutor {
         if has_more {
             rows.truncate(original_limit as usize);
             if let Some(last_row) = rows.last() {
-                let cursor_values_str = build_cursor_values(pagination, last_row)?.join("/");
-                next_cursor = Some(encode_cursor(&cursor_values_str)?);
+                let cursor_values = build_cursor_values(&pagination, last_row)?;
+                next_cursor = Some(encode_cursor_values(&cursor_values)?);
             }
         }
 
