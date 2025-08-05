@@ -124,10 +124,14 @@ pub fn encode_cursor_values(values: &[String]) -> Result<String, Error> {
 /// Decodes cursor values from a cursor string, splitting by the safe delimiter
 pub fn decode_cursor_values(cursor_str: &str) -> Result<Vec<String>, Error> {
     let decompressed_str = decode_cursor(cursor_str)?;
-    Ok(decompressed_str
-        .split(CURSOR_DELIMITER)
-        .map(|s| s.to_string())
-        .collect())
+    if decompressed_str.is_empty() {
+        Ok(Vec::new())
+    } else {
+        Ok(decompressed_str
+            .split(CURSOR_DELIMITER)
+            .map(|s| s.to_string())
+            .collect())
+    }
 }
 
 #[cfg(test)]
