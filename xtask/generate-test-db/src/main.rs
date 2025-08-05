@@ -10,9 +10,9 @@ use dojo_world::contracts::WorldContract;
 use dojo_world::diff::{Manifest, WorldDiff};
 use katana_runner::{KatanaRunner, KatanaRunnerConfig};
 use scarb::compiler::Profile;
+use scarb_metadata_ext::MetadataDojoExt;
 use sozo_ops::migrate::Migration;
 use sozo_ops::migration_ui::MigrationUi;
-use sozo_scarbext::WorkspaceExt;
 use starknet::core::types::Felt;
 
 async fn migrate_spawn_and_move(db_path: &Path) -> Result<Manifest> {

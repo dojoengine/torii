@@ -35,11 +35,11 @@ cainome = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
 cainome-cairo-serde = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
 cainome-cairo-serde-derive = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
 
-dojo-utils = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
-dojo-types = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
-dojo-world = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
-dojo-test-utils = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
-dojo-metrics = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
+dojo-utils = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
+dojo-types = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
+dojo-world = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
+dojo-test-utils = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
+dojo-metrics = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
 
 # torii
 torii-broker = { path = "crates/broker" }
@@ -117,10 +117,10 @@ url = { version = "2.4.0", features = [ "serde" ] }
 ipfs-api-backend-hyper = { git = "https://github.com/ferristseng/rust-ipfs-api", rev = "af2c17f7b19ef5b9898f458d97a90055c3605633", features = [ "with-hyper-rustls", "with-send-sync" ] }
 mime_guess = "2.0"
 
-sozo-scarbext = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
+scarb-metadata-ext = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
 scarb = { git = "https://github.com/dojoengine/scarb", rev = "38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6" }
-sozo-ops = { git = "https://github.com/dojoengine/dojo", rev = "054623b" }
-katana-runner = { git = "https://github.com/dojoengine/katana", rev = "f472095" }
+sozo-ops = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
+katana-runner = { git = "https://github.com/dojoengine/katana", branch = "rpc/v0.9" }
 
 
 # server
@@ -141,8 +141,8 @@ wasm-tonic = { version = "0.12", default-features = false, features = [ "codegen
 wasm-tonic-build = { version = "0.12", default-features = false, features = [ "prost" ], package = "tonic-build" }
 
 starknet-core = "0.12.3"
-starknet = "0.14.0"
-starknet-crypto = "0.7.1"
+starknet = "0.17.0-rc.2"
+starknet-crypto = "0.7"
 
 dashmap = "6.1.0"
 
