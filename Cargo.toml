@@ -31,9 +31,9 @@ debug = true
 inherits = "release"
 
 [workspace.dependencies]
-cainome = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
-cainome-cairo-serde = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
-cainome-cairo-serde-derive = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
+cainome = { git = "https://github.com/kariy/cainome", branch = "feat/rpc0.9" }
+cainome-cairo-serde = { git = "https://github.com/kariy/cainome", branch = "feat/rpc0.9" }
+cainome-cairo-serde-derive = { git = "https://github.com/kariy/cainome", branch = "feat/rpc0.9" }
 
 dojo-utils = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
 dojo-types = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
@@ -118,7 +118,7 @@ ipfs-api-backend-hyper = { git = "https://github.com/ferristseng/rust-ipfs-api",
 mime_guess = "2.0"
 
 scarb-metadata-ext = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
-scarb = { git = "https://github.com/dojoengine/scarb", rev = "38f13cb6f9f33836a61b231f7e00c5c4dc5cafd6" }
+scarb-interop = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
 sozo-ops = { git = "https://github.com/dojoengine/dojo", branch = "feat/rpc0.9" }
 katana-runner = { git = "https://github.com/dojoengine/katana", branch = "rpc/v0.9" }
 
@@ -146,7 +146,7 @@ starknet-crypto = "0.7"
 
 dashmap = "6.1.0"
 
-[patch.crates-io]
-cainome = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
-cainome-cairo-serde = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
-cainome-cairo-serde-derive = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
+# [patch.crates-io]
+# cainome = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
+# cainome-cairo-serde = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }
+# cainome-cairo-serde-derive = { git = "https://github.com/Larkooo/cainome", branch = "patch-1" }

@@ -4,12 +4,12 @@ use std::process::Command;
 use std::str::FromStr;
 
 use anyhow::Result;
-use dojo_test_utils::compiler::CompilerTestSetup;
+use dojo_test_utils::setup::TestSetup;
 use dojo_utils::TxnConfig;
 use dojo_world::contracts::WorldContract;
 use dojo_world::diff::{Manifest, WorldDiff};
 use katana_runner::{KatanaRunner, KatanaRunnerConfig};
-use scarb::compiler::Profile;
+use scarb_interop::Profile;
 use scarb_metadata_ext::MetadataDojoExt;
 use sozo_ops::migrate::Migration;
 use sozo_ops::migration_ui::MigrationUi;
@@ -26,16 +26,15 @@ async fn migrate_spawn_and_move(db_path: &Path) -> Result<Manifest> {
     let runner = KatanaRunner::new_with_config(cfg)?;
 
     // setup scarb workspace
-    let setup = CompilerTestSetup::from_examples("/tmp", "examples/");
-    let cfg = setup.build_test_config("spawn-and-move", Profile::DEV);
-    let ws = scarb::ops::read_workspace(cfg.manifest_path(), &cfg)?;
+    let setup = TestSetup::from_examples("crates/dojo/core", "examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let mut txn_config: TxnConfig = TxnConfig::init_wait();
     txn_config.wait = true;
 
-    let profile_config = ws.load_profile_config()?;
+    let profile_config = metadata.load_dojo_profile_config()?;
 
-    let world_local = ws.load_world_local()?;
+    let world_local = metadata.load_dojo_world_local()?;
 
     // In the case of testing, if the addresses are different it means that the example hasn't been
     // migrated correctly.
@@ -100,17 +99,16 @@ async fn migrate_types_test(db_path: &Path) -> Result<Manifest> {
     let runner = KatanaRunner::new_with_config(cfg)?;
 
     // setup scarb workspace
-    let setup = CompilerTestSetup::from_paths("/tmp", &["crates/types-test"]);
-    let cfg = setup.build_test_config("types-test", Profile::DEV);
-    let ws = scarb::ops::read_workspace(cfg.manifest_path(), &cfg)?;
+    let setup = TestSetup::from_paths("/tmp".into(), &["crates/types-test".into()]);
+    let metadata = setup.load_metadata("types-test", Profile::DEV);
 
     let mut txn_config: TxnConfig = TxnConfig::init_wait();
     txn_config.wait = true;
 
-    let profile_config = ws.load_profile_config()?;
+    let profile_config = metadata.load_dojo_profile_config()?;
 
     // No world address in config, so it should always pick the deterministic one.
-    let world_local = ws.load_world_local()?;
+    let world_local = metadata.load_dojo_world_local()?;
     let world_address = if let Some(env) = &profile_config.env {
         env.world_address().map_or_else(
             || world_local.deterministic_world_address(),
@@ -151,47 +149,30 @@ async fn migrate_types_test(db_path: &Path) -> Result<Manifest> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let spawn_and_move_db_path = PathBuf::from("spawn-and-move-db");
-    let types_test_db_path = PathBuf::from("types-test-db");
 
     let spawn_and_move_compressed_path = "spawn-and-move-db.tar.gz";
-    let types_test_compressed_path = "types-test-db.tar.gz";
 
     let _ = fs::remove_dir_all(spawn_and_move_compressed_path);
-    let _ = fs::remove_dir_all(types_test_compressed_path);
 
     // Ensures the db-dir is clean before we start to not include old data.
     // `let _` is used to ignore the result of the remove_dir_all call as it may fail if the
     // directory does not exist.
     let _ = fs::remove_dir_all(&spawn_and_move_db_path);
     fs::create_dir_all(&spawn_and_move_db_path)?;
-    let _ = fs::remove_dir_all(&types_test_db_path);
-    fs::create_dir_all(&types_test_db_path)?;
 
-    let (_, _) = tokio::join!(
-        migrate_spawn_and_move(&spawn_and_move_db_path),
-        migrate_types_test(&types_test_db_path)
-    );
+    let _ = tokio::join!(migrate_spawn_and_move(&spawn_and_move_db_path),);
 
     // Ensure the test-db directory have been created.
     assert!(
         spawn_and_move_db_path.exists(),
         "spawn-and-move-db directory does not exist"
     );
-    assert!(
-        types_test_db_path.exists(),
-        "types-test-db directory does not exist"
-    );
 
     compress_db(&spawn_and_move_db_path, spawn_and_move_compressed_path);
-    compress_db(&types_test_db_path, types_test_compressed_path);
 
     assert!(
         PathBuf::from(spawn_and_move_compressed_path).exists(),
         "spawn-and-move-db.tar.gz does not exist"
-    );
-    assert!(
-        PathBuf::from(types_test_compressed_path).exists(),
-        "types-test-db.tar.gz does not exist"
     );
 
     Ok(())
