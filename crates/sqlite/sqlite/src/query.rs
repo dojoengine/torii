@@ -3,7 +3,9 @@ use torii_proto::{OrderBy, OrderDirection, Page, Pagination, PaginationDirection
 
 use crate::{
     constants::SQL_DEFAULT_LIMIT,
-    cursor::{build_cursor_conditions, build_cursor_values, decode_cursor_values, encode_cursor_values},
+    cursor::{
+        build_cursor_conditions, build_cursor_values, decode_cursor_values, encode_cursor_values,
+    },
     error::Error,
 };
 

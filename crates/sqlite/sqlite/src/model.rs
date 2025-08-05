@@ -572,10 +572,14 @@ impl Sql {
         // Execute paginated query
         let executor = PaginationExecutor::new(self.pool.clone());
         let page = executor
-            .execute_paginated_query(query_builder, &pagination, &OrderBy {
-                field: "event_id".to_string(),
-                direction: OrderDirection::Asc,
-            })
+            .execute_paginated_query(
+                query_builder,
+                &pagination,
+                &OrderBy {
+                    field: "event_id".to_string(),
+                    direction: OrderDirection::Asc,
+                },
+            )
             .await?;
 
         // Process the results to create Entity objects
@@ -730,10 +734,14 @@ impl Sql {
 
             // Execute paginated query
             let page = executor
-                .execute_paginated_query(query_builder, &pagination, &OrderBy {
-                    field: "event_id".to_string(),
-                    direction: OrderDirection::Desc,
-                })
+                .execute_paginated_query(
+                    query_builder,
+                    &pagination,
+                    &OrderBy {
+                        field: "event_id".to_string(),
+                        direction: OrderDirection::Desc,
+                    },
+                )
                 .await?;
 
             let has_more = page.next_cursor.is_some();

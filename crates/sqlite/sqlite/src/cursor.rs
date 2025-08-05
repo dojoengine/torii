@@ -124,7 +124,10 @@ pub fn encode_cursor_values(values: &[String]) -> Result<String, Error> {
 /// Decodes cursor values from a cursor string, splitting by the safe delimiter
 pub fn decode_cursor_values(cursor_str: &str) -> Result<Vec<String>, Error> {
     let decompressed_str = decode_cursor(cursor_str)?;
-    Ok(decompressed_str.split(CURSOR_DELIMITER).map(|s| s.to_string()).collect())
+    Ok(decompressed_str
+        .split(CURSOR_DELIMITER)
+        .map(|s| s.to_string())
+        .collect())
 }
 
 #[cfg(test)]
@@ -264,7 +267,11 @@ mod tests {
 
     #[test]
     fn test_encode_decode_cursor_values() {
-        let values = vec!["value1".to_string(), "value2".to_string(), "value3".to_string()];
+        let values = vec![
+            "value1".to_string(),
+            "value2".to_string(),
+            "value3".to_string(),
+        ];
         let encoded = encode_cursor_values(&values).unwrap();
         let decoded = decode_cursor_values(&encoded).unwrap();
         assert_eq!(values, decoded);
