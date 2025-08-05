@@ -10,7 +10,7 @@ use starknet::core::types::requests::{
 };
 use starknet::core::types::{
     BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
-    MaybePendingBlockWithReceipts, MaybePendingBlockWithTxHashes, ResultPageRequest,
+    MaybePreConfirmedBlockWithReceipts, MaybePreConfirmedBlockWithTxHashes, ResultPageRequest,
     TransactionExecutionStatus,
 };
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
@@ -161,7 +161,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 match result {
                     ProviderResponseData::GetBlockWithTxHashes(block) => {
                         let (timestamp, tx_hashes, block_hash) = match block {
-                            MaybePendingBlockWithTxHashes::Block(block) => {
+                            MaybePreConfirmedBlockWithTxHashes::Block(block) => {
                                 (block.timestamp, block.transactions, Some(block.block_hash))
                             }
                             _ => unreachable!(),
@@ -284,10 +284,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         latest_block: BlockHashAndNumber,
         cursors: &Cursors,
     ) -> Result<(Option<FetchPendingResult>, Cursors), Error> {
-        let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
-            .provider
-            .get_block_with_receipts(BlockId::Tag(BlockTag::PreConfirmed))
-            .await?
+        let pending_block = if let MaybePreConfirmedBlockWithReceipts::PreConfirmedBlock(pending) =
+            self.provider
+                .get_block_with_receipts(BlockId::Tag(BlockTag::PreConfirmed))
+                .await?
         {
             // if the parent hash is not the hash of the latest block that we fetched, then it means
             // a new block got mined just after we fetched the latest block information
