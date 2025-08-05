@@ -13,8 +13,9 @@ use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
     schema::Entity, CallType, Clause, CompositeClause, ContractCursor, Controller, ControllerQuery,
-    Event, EventQuery, LogicalOperator, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery,
-    TokenCollection, TokenQuery, Transaction, TransactionCall, TransactionQuery,
+    Event, EventQuery, LogicalOperator, Model, OrderBy, OrderDirection, Page, Query, Token,
+    TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall,
+    TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{ReadOnlyStorage, Storage, StorageError};
@@ -204,7 +205,14 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, &query.pagination)
+            .execute_paginated_query(
+                query_builder,
+                &query.pagination,
+                &OrderBy {
+                    field: "address".to_string(),
+                    direction: OrderDirection::Desc,
+                },
+            )
             .await?;
         let items: Vec<Controller> = page
             .items
@@ -246,7 +254,14 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, &query.pagination)
+            .execute_paginated_query(
+                query_builder,
+                &query.pagination,
+                &OrderBy {
+                    field: "id".to_string(),
+                    direction: OrderDirection::Desc,
+                },
+            )
             .await?;
         let items: Vec<Token> = page
             .items
@@ -299,7 +314,14 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, &query.pagination)
+            .execute_paginated_query(
+                query_builder,
+                &query.pagination,
+                &OrderBy {
+                    field: "id".to_string(),
+                    direction: OrderDirection::Desc,
+                },
+            )
             .await?;
         let items: Vec<TokenBalance> = page
             .items
@@ -326,6 +348,7 @@ impl ReadOnlyStorage for Sql {
         let mut query_builder = QueryBuilder::new("tokens")
             .alias("t")
             .select(&[
+                "t.id as id".to_string(),
                 "t.contract_address as contract_address".to_string(),
                 "t.name as name".to_string(),
                 "t.symbol as symbol".to_string(),
@@ -365,7 +388,14 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, &query.pagination)
+            .execute_paginated_query(
+                query_builder,
+                &query.pagination,
+                &OrderBy {
+                    field: "id".to_string(),
+                    direction: OrderDirection::Desc,
+                },
+            )
             .await?;
         let items: Vec<TokenCollection> = page
             .items
@@ -478,7 +508,14 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, &query.pagination)
+            .execute_paginated_query(
+                query_builder,
+                &query.pagination,
+                &OrderBy {
+                    field: "id".to_string(),
+                    direction: OrderDirection::Desc,
+                },
+            )
             .await?;
 
         let headers: Vec<torii_sqlite_types::Transaction> = page
@@ -545,7 +582,14 @@ impl ReadOnlyStorage for Sql {
         }
 
         let page = executor
-            .execute_paginated_query(query_builder, &query.pagination)
+            .execute_paginated_query(
+                query_builder,
+                &query.pagination,
+                &OrderBy {
+                    field: "id".to_string(),
+                    direction: OrderDirection::Desc,
+                },
+            )
             .await?;
         let items: Vec<Event> = page
             .items

@@ -10,6 +10,8 @@ use torii_proto::{OrderDirection, Pagination, PaginationDirection};
 
 use crate::error::{Error, QueryError};
 
+const CURSOR_DELIMITER: &str = "\x1F"; // ASCII Unit Separator (safe delimiter)
+
 /// Compresses a string using Deflate and then encodes it using Base64 (no padding).
 pub fn encode_cursor(value: &str) -> Result<String, Error> {
     let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
@@ -111,6 +113,25 @@ pub fn build_cursor_values(pagination: &Pagination, row: &SqliteRow) -> Result<V
         }
     }
     Ok(values)
+}
+
+/// Encodes cursor values into a single string using a safe delimiter
+pub fn encode_cursor_values(values: &[String]) -> Result<String, Error> {
+    let joined_values = values.join(CURSOR_DELIMITER);
+    encode_cursor(&joined_values)
+}
+
+/// Decodes cursor values from a cursor string, splitting by the safe delimiter
+pub fn decode_cursor_values(cursor_str: &str) -> Result<Vec<String>, Error> {
+    let decompressed_str = decode_cursor(cursor_str)?;
+    if decompressed_str.is_empty() {
+        Ok(Vec::new())
+    } else {
+        Ok(decompressed_str
+            .split(CURSOR_DELIMITER)
+            .map(|s| s.to_string())
+            .collect())
+    }
 }
 
 #[cfg(test)]
@@ -246,5 +267,58 @@ mod tests {
 
         assert_eq!(conditions.len(), 0);
         assert_eq!(binds.len(), 0);
+    }
+
+    #[test]
+    fn test_encode_decode_cursor_values() {
+        let values = vec![
+            "value1".to_string(),
+            "value2".to_string(),
+            "value3".to_string(),
+        ];
+        let encoded = encode_cursor_values(&values).unwrap();
+        let decoded = decode_cursor_values(&encoded).unwrap();
+        assert_eq!(values, decoded);
+    }
+
+    #[test]
+    fn test_encode_decode_cursor_values_with_slashes() {
+        let values = vec![
+            "path/to/file".to_string(),
+            "another/path/with/slashes".to_string(),
+            "value/with/multiple/slashes".to_string(),
+        ];
+        let encoded = encode_cursor_values(&values).unwrap();
+        let decoded = decode_cursor_values(&encoded).unwrap();
+        assert_eq!(values, decoded);
+    }
+
+    #[test]
+    fn test_encode_decode_cursor_values_empty() {
+        let values: Vec<String> = vec![];
+        let encoded = encode_cursor_values(&values).unwrap();
+        let decoded = decode_cursor_values(&encoded).unwrap();
+        assert_eq!(values, decoded);
+    }
+
+    #[test]
+    fn test_encode_decode_cursor_values_single() {
+        let values = vec!["single_value".to_string()];
+        let encoded = encode_cursor_values(&values).unwrap();
+        let decoded = decode_cursor_values(&encoded).unwrap();
+        assert_eq!(values, decoded);
+    }
+
+    #[test]
+    fn test_encode_decode_cursor_values_with_special_chars() {
+        let values = vec![
+            "value with spaces".to_string(),
+            "value|with|pipes".to_string(),
+            "value:with:colons".to_string(),
+            "value/with/slashes".to_string(),
+        ];
+        let encoded = encode_cursor_values(&values).unwrap();
+        let decoded = decode_cursor_values(&encoded).unwrap();
+        assert_eq!(values, decoded);
     }
 }
