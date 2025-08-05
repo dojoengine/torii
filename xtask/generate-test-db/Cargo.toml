@@ -15,5 +15,5 @@ reqwest = { workspace = true, features = [ "json" ] }
 starknet.workspace = true
 tokio.workspace = true
 scarb-metadata-ext.workspace = true
-scarb.workspace = true
+scarb-interop.workspace = true
 sozo-ops.workspace = true

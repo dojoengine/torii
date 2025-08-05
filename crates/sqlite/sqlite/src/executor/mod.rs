@@ -632,7 +632,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     }
                     Err(_) => {
                         // Prepare batch requests for name and symbol
-                        let block_id = BlockId::Tag(BlockTag::Pending);
+                        let block_id = BlockId::Tag(BlockTag::PreConfirmed);
                         let requests = vec![
                             ProviderRequestData::Call(CallRequest {
                                 request: FunctionCall {

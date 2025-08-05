@@ -286,7 +286,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
     ) -> Result<(Option<FetchPendingResult>, Cursors), Error> {
         let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
             .provider
-            .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
+            .get_block_with_receipts(BlockId::Tag(BlockTag::PreConfirmed))
             .await?
         {
             // if the parent hash is not the hash of the latest block that we fetched, then it means
