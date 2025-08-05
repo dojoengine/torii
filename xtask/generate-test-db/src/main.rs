@@ -99,7 +99,10 @@ async fn migrate_types_test(db_path: &Path) -> Result<Manifest> {
     let runner = KatanaRunner::new_with_config(cfg)?;
 
     // setup scarb workspace
-    let setup = TestSetup::from_paths("/tmp".into(), &["crates/types-test".into()]);
+    let setup = TestSetup::from_paths(
+        &FromStr::from_str("/tmp").unwrap(),
+        &[FromStr::from_str("crates/types-test").unwrap()],
+    );
     let metadata = setup.load_metadata("types-test", Profile::DEV);
 
     let mut txn_config: TxnConfig = TxnConfig::init_wait();
