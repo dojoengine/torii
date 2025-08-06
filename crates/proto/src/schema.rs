@@ -64,6 +64,7 @@ impl From<Ty> for proto::types::Ty {
                 children: array.into_iter().map(Into::into).collect::<Vec<_>>(),
             })),
             Ty::ByteArray(string) => Some(proto::types::ty::TyType::Bytearray(string)),
+            Ty::FixedSizeArray(_) => todo!(),
         };
 
         proto::types::Ty { ty_type }
