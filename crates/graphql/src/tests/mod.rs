@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_graphql::dynamic::Schema;
-use dojo_test_utils::compiler::CompilerTestSetup;
 use dojo_test_utils::migration::copy_types_test_db;
+use dojo_test_utils::setup::TestSetup;
 use dojo_types::naming::get_tag;
 use dojo_types::primitive::Primitive;
 use dojo_types::schema::{Enum, EnumOption, Member, Struct, Ty};
@@ -14,10 +14,10 @@ use dojo_world::contracts::abigen::world::Resource;
 use dojo_world::contracts::naming::{compute_bytearray_hash, compute_selector_from_tag};
 use dojo_world::contracts::WorldContract;
 use katana_runner::{KatanaRunner, KatanaRunnerConfig};
-use scarb::compiler::Profile;
+use scarb_interop::Profile;
+use scarb_metadata_ext::MetadataDojoExt;
 use serde::Deserialize;
 use serde_json::Value;
-use sozo_scarbext::WorkspaceExt;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use starknet::accounts::{Account, ConnectedAccount};
@@ -314,10 +314,11 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         .unwrap();
     sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
-    let setup = CompilerTestSetup::from_paths("../../dojo/core", &["../types-test"]);
-    let config = setup.build_test_config("types-test", Profile::DEV);
-
-    let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
+    let setup = TestSetup::from_paths(
+        &FromStr::from_str("../../dojo/core")?,
+        &[FromStr::from_str("../types-test")?],
+    );
+    let metadata = setup.load_metadata("types-test", Profile::DEV);
 
     let seq_config = KatanaRunnerConfig {
         n_accounts: 10,
@@ -330,7 +331,7 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
     let account = sequencer.account(0);
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
 
-    let world_local = ws.load_world_local().unwrap();
+    let world_local = metadata.load_dojo_world_local().unwrap();
     let world_address = world_local.deterministic_world_address().unwrap();
 
     let world = WorldContract::new(world_address, &account);
