@@ -997,11 +997,36 @@ source = "git+https://github.com/kariy/cainome?branch=feat%2Frpc0.9#ed2a72da2548
 dependencies = [
  "anyhow",
  "async-trait",
- "cainome-cairo-serde",
- "cainome-cairo-serde-derive",
- "cainome-parser",
- "cainome-rs",
+ "cainome-cairo-serde 0.3.0 (git+https://github.com/kariy/cainome?branch=feat%2Frpc0.9)",
+ "cainome-cairo-serde-derive 0.1.0 (git+https://github.com/kariy/cainome?branch=feat%2Frpc0.9)",
+ "cainome-parser 0.5.0",
+ "cainome-rs 0.4.0 (git+https://github.com/kariy/cainome?branch=feat%2Frpc0.9)",
  "cainome-rs-macro",
+ "camino",
+ "clap",
+ "clap_complete",
+ "convert_case 0.8.0",
+ "serde",
+ "serde_json",
+ "starknet",
+ "starknet-types-core",
+ "thiserror 2.0.11",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
+name = "cainome"
+version = "0.9.1"
+source = "git+https://github.com/cartridge-gg/cainome?rev=7d60de1#7d60de1780374b3644677f55cee053596e99f461"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "cainome-cairo-serde 0.3.0 (git+https://github.com/cartridge-gg/cainome?rev=7d60de1)",
+ "cainome-cairo-serde-derive 0.1.0 (git+https://github.com/cartridge-gg/cainome?rev=7d60de1)",
+ "cainome-parser 0.5.1",
+ "cainome-rs 0.4.0 (git+https://github.com/cartridge-gg/cainome?rev=7d60de1)",
  "camino",
  "clap",
  "clap_complete",
@@ -1029,9 +1054,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "cainome-cairo-serde"
+version = "0.3.0"
+source = "git+https://github.com/cartridge-gg/cainome?rev=7d60de1#7d60de1780374b3644677f55cee053596e99f461"
+dependencies = [
+ "num-bigint",
+ "serde",
+ "serde_with",
+ "starknet",
+ "thiserror 2.0.11",
+]
+
+[[package]]
 name = "cainome-cairo-serde-derive"
 version = "0.1.0"
 source = "git+https://github.com/kariy/cainome?branch=feat%2Frpc0.9#ed2a72da254852ba421a920da22724da434019d3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.90",
+ "unzip-n",
+]
+
+[[package]]
+name = "cainome-cairo-serde-derive"
+version = "0.1.0"
+source = "git+https://github.com/cartridge-gg/cainome?rev=7d60de1#7d60de1780374b3644677f55cee053596e99f461"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1053,13 +1101,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "cainome-parser"
+version = "0.5.1"
+source = "git+https://github.com/cartridge-gg/cainome?rev=7d60de1#7d60de1780374b3644677f55cee053596e99f461"
+dependencies = [
+ "convert_case 0.8.0",
+ "quote",
+ "serde_json",
+ "starknet",
+ "syn 2.0.90",
+ "thiserror 2.0.11",
+]
+
+[[package]]
 name = "cainome-rs"
 version = "0.4.0"
 source = "git+https://github.com/kariy/cainome?branch=feat%2Frpc0.9#ed2a72da254852ba421a920da22724da434019d3"
 dependencies = [
  "anyhow",
- "cainome-cairo-serde",
- "cainome-parser",
+ "cainome-cairo-serde 0.3.0 (git+https://github.com/kariy/cainome?branch=feat%2Frpc0.9)",
+ "cainome-parser 0.5.0",
+ "camino",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "starknet",
+ "syn 2.0.90",
+ "thiserror 2.0.11",
+]
+
+[[package]]
+name = "cainome-rs"
+version = "0.4.0"
+source = "git+https://github.com/cartridge-gg/cainome?rev=7d60de1#7d60de1780374b3644677f55cee053596e99f461"
+dependencies = [
+ "anyhow",
+ "cainome-cairo-serde 0.3.0 (git+https://github.com/cartridge-gg/cainome?rev=7d60de1)",
+ "cainome-parser 0.5.1",
  "camino",
  "prettyplease",
  "proc-macro2",
@@ -1076,9 +1155,9 @@ version = "0.4.0"
 source = "git+https://github.com/kariy/cainome?branch=feat%2Frpc0.9#ed2a72da254852ba421a920da22724da434019d3"
 dependencies = [
  "anyhow",
- "cainome-cairo-serde",
- "cainome-parser",
- "cainome-rs",
+ "cainome-cairo-serde 0.3.0 (git+https://github.com/kariy/cainome?branch=feat%2Frpc0.9)",
+ "cainome-parser 0.5.0",
+ "cainome-rs 0.4.0 (git+https://github.com/kariy/cainome?branch=feat%2Frpc0.9)",
  "proc-macro-error",
  "proc-macro2",
  "quote",
@@ -2037,7 +2116,7 @@ version = "1.6.0-alpha.2"
 source = "git+https://github.com/dojoengine/dojo?branch=feat%2Frpc0.9#5657ad8219f11edb55003291187d9cc408316573"
 dependencies = [
  "anyhow",
- "cainome",
+ "cainome 0.9.0",
  "crypto-bigint",
  "hex",
  "indexmap 2.7.1",
@@ -2077,7 +2156,7 @@ source = "git+https://github.com/dojoengine/dojo?branch=feat%2Frpc0.9#5657ad8219
 dependencies = [
  "anyhow",
  "async-trait",
- "cainome",
+ "cainome 0.9.0",
  "cairo-lang-starknet-classes",
  "dojo-types",
  "hex",
@@ -7640,7 +7719,7 @@ source = "git+https://github.com/dojoengine/dojo?branch=feat%2Frpc0.9#5657ad8219
 dependencies = [
  "anyhow",
  "async-trait",
- "cainome",
+ "cainome 0.9.0",
  "colored",
  "colored_json",
  "dojo-types",
@@ -9077,7 +9156,7 @@ version = "1.6.1-preview.2"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
- "cainome",
+ "cainome 0.9.1",
  "camino",
  "chrono",
  "crypto-bigint",
@@ -9140,8 +9219,8 @@ dependencies = [
  "async-trait",
  "base64 0.21.7",
  "bitflags 2.9.1",
- "cainome",
- "cainome-cairo-serde",
+ "cainome 0.9.1",
+ "cainome-cairo-serde 0.3.0 (git+https://github.com/cartridge-gg/cainome?rev=7d60de1)",
  "chrono",
  "crypto-bigint",
  "data-url",
@@ -9189,8 +9268,8 @@ dependencies = [
  "async-trait",
  "base64 0.21.7",
  "bitflags 2.9.1",
- "cainome",
- "cainome-cairo-serde",
+ "cainome 0.9.1",
+ "cainome-cairo-serde 0.3.0 (git+https://github.com/cartridge-gg/cainome?rev=7d60de1)",
  "chrono",
  "crypto-bigint",
  "data-url",
@@ -9302,9 +9381,9 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.21.7",
- "cainome",
- "cainome-cairo-serde",
- "cainome-cairo-serde-derive",
+ "cainome 0.9.1",
+ "cainome-cairo-serde 0.3.0 (git+https://github.com/cartridge-gg/cainome?rev=7d60de1)",
+ "cainome-cairo-serde-derive 0.1.0 (git+https://github.com/cartridge-gg/cainome?rev=7d60de1)",
  "chrono",
  "data-url",
  "dojo-types",
@@ -9459,7 +9538,7 @@ dependencies = [
  "async-trait",
  "base64 0.21.7",
  "bitflags 2.9.1",
- "cainome",
+ "cainome 0.9.1",
  "chrono",
  "crypto-bigint",
  "dashmap 6.1.0",
@@ -9546,7 +9625,7 @@ dependencies = [
 name = "torii-typed-data"
 version = "1.6.1-preview.2"
 dependencies = [
- "cainome",
+ "cainome 0.9.1",
  "crypto-bigint",
  "dojo-types",
  "indexmap 2.7.1",
