@@ -1,6 +1,6 @@
 use starknet::{ContractAddress, ClassHash};
 
-#[derive(Introspect, DojoStore, Drop, Serde)]
+#[derive(Drop, Serde)]
 #[dojo::model]
 pub struct Record {
     #[key]
@@ -29,7 +29,7 @@ pub struct Record {
     pub composite_u256: u256,
 }
 
-#[derive(Introspect, DojoStore, Drop, Serde)]
+#[derive(Drop, Serde)]
 #[dojo::model]
 pub struct RecordSibling {
     #[key]
@@ -60,7 +60,7 @@ pub struct NestedMost {
     pub type_string: felt252,
 }
 
-#[derive(Introspect, DojoStore, Copy, Drop, Serde)]
+#[derive(Copy, Drop, Serde)]
 #[dojo::model]
 pub struct Subrecord {
     #[key]
@@ -71,8 +71,9 @@ pub struct Subrecord {
     pub random_u8: u8,
 }
 
-#[derive(Serde, Copy, Drop, Introspect, DojoStore)]
+#[derive(Serde, Copy, Drop, Introspect, DojoStore, Default)]
 pub enum Depth {
+    #[default]
     Zero: (),
     One: (),
     Two: (),

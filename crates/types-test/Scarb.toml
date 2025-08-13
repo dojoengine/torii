@@ -8,6 +8,8 @@ version = "1.6.0-alpha.1"
 sierra-replace-ids = true
 
 [dependencies]
+starknet = "2.11.4"
+
 dojo = { git = "https://github.com/dojoengine/dojo", rev = "4476c33" }
 dojo_macros = { git = "https://github.com/dojoengine/dojo", rev = "4476c33" }
 
