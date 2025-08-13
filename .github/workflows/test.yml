@@ -62,7 +62,7 @@ jobs:
 
       - name: Setup for integration tests
         run: |
-          curl -L https://github.com/dojoengine/dojo/releases/download/v1.6.0-alpha.1/dojo_v1.6.0-alpha.1_linux_amd64.tar.gz -o dojo.tar.gz
+          curl -L https://github.com/dojoengine/dojo/releases/download/v1.7.0-alpha.0/dojo_v1.7.0-alpha.0_linux_amd64.tar.gz -o dojo.tar.gz
           tar -C /usr/local/bin -xzf dojo.tar.gz
           sozo build --manifest-path examples/spawn-and-move/Scarb.toml
           sozo build --manifest-path crates/types-test/Scarb.toml
