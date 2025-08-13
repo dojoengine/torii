@@ -26,7 +26,7 @@ async fn migrate_spawn_and_move(db_path: &Path) -> Result<Manifest> {
     let runner = KatanaRunner::new_with_config(cfg)?;
 
     // setup scarb workspace
-    let setup = TestSetup::from_examples("crates/dojo/core", "examples/");
+    let setup = TestSetup::from_examples("/tmp", "examples/");
     let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let mut txn_config: TxnConfig = TxnConfig::init_wait();

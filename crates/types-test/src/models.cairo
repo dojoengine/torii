@@ -1,6 +1,6 @@
 use starknet::{ContractAddress, ClassHash};
 
-#[derive(Introspect, Drop, Serde)]
+#[derive(Introspect, DojoStore, Drop, Serde)]
 #[dojo::model]
 pub struct Record {
     #[key]
@@ -29,7 +29,7 @@ pub struct Record {
     pub composite_u256: u256,
 }
 
-#[derive(Introspect, Copy, Drop, Serde)]
+#[derive(Introspect, DojoStore, Drop, Serde)]
 #[dojo::model]
 pub struct RecordSibling {
     #[key]
@@ -37,7 +37,7 @@ pub struct RecordSibling {
     pub random_u8: u8
 }
 
-#[derive(Copy, Drop, Serde, Introspect)]
+#[derive(Copy, Drop, Serde, Introspect, DojoStore)]
 pub struct Nested {
     pub depth: Depth,
     pub type_number: u8,
@@ -45,7 +45,7 @@ pub struct Nested {
     pub type_nested_more: NestedMore,
 }
 
-#[derive(Copy, Drop, Serde, Introspect)]
+#[derive(Copy, Drop, Serde, Introspect, DojoStore)]
 pub struct NestedMore {
     pub depth: Depth,
     pub type_number: u8,
@@ -53,14 +53,14 @@ pub struct NestedMore {
     pub type_nested_most: NestedMost,
 }
 
-#[derive(Copy, Drop, Serde, Introspect)]
+#[derive(Copy, Drop, Serde, Introspect, DojoStore)]
 pub struct NestedMost {
     pub depth: Depth,
     pub type_number: u8,
     pub type_string: felt252,
 }
 
-#[derive(Introspect, Copy, Drop, Serde)]
+#[derive(Introspect, DojoStore, Copy, Drop, Serde)]
 #[dojo::model]
 pub struct Subrecord {
     #[key]
@@ -71,7 +71,7 @@ pub struct Subrecord {
     pub random_u8: u8,
 }
 
-#[derive(Serde, Copy, Drop, Introspect)]
+#[derive(Serde, Copy, Drop, Introspect, DojoStore)]
 pub enum Depth {
     Zero: (),
     One: (),
@@ -352,5 +352,3 @@ impl DepthIntoFelt252 of Into<Depth, felt252> {
 //     a254: u256,
 //     a255: u256,
 // }
-
-

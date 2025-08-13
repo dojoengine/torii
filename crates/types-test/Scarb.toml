@@ -1,5 +1,5 @@
 [package]
-cairo-version = "=2.10.1"
+cairo-version = "=2.11.4"
 edition = "2024_07"
 name = "types_test"
 version = "1.6.0-alpha.1"
@@ -8,7 +8,8 @@ version = "1.6.0-alpha.1"
 sierra-replace-ids = true
 
 [dependencies]
-dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.6.0-alpha.1" }
+dojo = { git = "https://github.com/dojoengine/dojo", rev = "4476c33" }
+dojo_macros = { git = "https://github.com/dojoengine/dojo", rev = "4476c33" }
 
 [[target.starknet-contract]]
 build-external-contracts = ["dojo::world::world_contract::world"]
