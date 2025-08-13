@@ -152,30 +152,47 @@ async fn migrate_types_test(db_path: &Path) -> Result<Manifest> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let spawn_and_move_db_path = PathBuf::from("spawn-and-move-db");
+    let types_test_db_path = PathBuf::from("types-test-db");
 
     let spawn_and_move_compressed_path = "spawn-and-move-db.tar.gz";
+    let types_test_compressed_path = "types-test-db.tar.gz";
 
     let _ = fs::remove_dir_all(spawn_and_move_compressed_path);
+    let _ = fs::remove_dir_all(types_test_compressed_path);
 
     // Ensures the db-dir is clean before we start to not include old data.
     // `let _` is used to ignore the result of the remove_dir_all call as it may fail if the
     // directory does not exist.
     let _ = fs::remove_dir_all(&spawn_and_move_db_path);
     fs::create_dir_all(&spawn_and_move_db_path)?;
+    let _ = fs::remove_dir_all(&types_test_db_path);
+    fs::create_dir_all(&types_test_db_path)?;
 
-    let _ = tokio::join!(migrate_spawn_and_move(&spawn_and_move_db_path),);
+    let (_, _) = tokio::join!(
+        migrate_spawn_and_move(&spawn_and_move_db_path),
+        migrate_types_test(&types_test_db_path)
+    );
 
     // Ensure the test-db directory have been created.
     assert!(
         spawn_and_move_db_path.exists(),
         "spawn-and-move-db directory does not exist"
     );
+    assert!(
+        types_test_db_path.exists(),
+        "types-test-db directory does not exist"
+    );
 
     compress_db(&spawn_and_move_db_path, spawn_and_move_compressed_path);
+    compress_db(&types_test_db_path, types_test_compressed_path);
 
     assert!(
         PathBuf::from(spawn_and_move_compressed_path).exists(),
         "spawn-and-move-db.tar.gz does not exist"
+    );
+    assert!(
+        PathBuf::from(types_test_compressed_path).exists(),
+        "types-test-db.tar.gz does not exist"
     );
 
     Ok(())
