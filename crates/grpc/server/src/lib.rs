@@ -774,6 +774,7 @@ impl Default for GrpcConfig {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn new<P: Provider + Sync + Send + 'static>(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     storage: Arc<dyn Storage>,
@@ -782,6 +783,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     world_address: Felt,
     cross_messaging_tx: UnboundedSender<Message>,
     config: GrpcConfig,
+    bind_addr: Option<SocketAddr>,
 ) -> Result<
     (
         SocketAddr,
@@ -789,7 +791,8 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     ),
     std::io::Error,
 > {
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let bind_address = bind_addr.unwrap_or_else(|| SocketAddr::from(([127, 0, 0, 1], 0)));
+    let listener = TcpListener::bind(bind_address).await?;
     let addr = listener.local_addr()?;
 
     let reflection = tonic_reflection::server::Builder::configure()

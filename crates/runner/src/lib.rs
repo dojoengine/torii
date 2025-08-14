@@ -414,6 +414,7 @@ impl Runner {
         )
         .expect("Failed to start libp2p relay server");
 
+        let grpc_bind_addr = SocketAddr::new(self.args.grpc.grpc_addr, self.args.grpc.grpc_port);
         let (grpc_addr, grpc_server) = torii_grpc_server::new(
             shutdown_rx,
             storage.clone(),
@@ -432,6 +433,7 @@ impl Runner {
                     self.args.grpc.http2_keepalive_timeout,
                 ),
             },
+            Some(grpc_bind_addr),
         )
         .await?;
 
@@ -516,6 +518,7 @@ impl Runner {
         .collect();
         let explorer_url = format!("https://worlds.dev/torii?url={}", encoded);
         info!(target: LOG_TARGET, endpoint = %addr, protocol = %protocol, "Starting torii endpoint.");
+        info!(target: LOG_TARGET, endpoint = %grpc_addr, "Serving gRPC endpoint.");
         info!(target: LOG_TARGET, endpoint = %gql_endpoint, "Serving Graphql playground.");
         info!(target: LOG_TARGET, endpoint = %sql_endpoint, "Serving SQL playground.");
         info!(target: LOG_TARGET, endpoint = %mcp_endpoint, "Serving MCP endpoint.");
