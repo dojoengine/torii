@@ -24,6 +24,8 @@ pub const DEFAULT_MAX_CONCURRENT_TASKS: usize = 100;
 pub const DEFAULT_RELAY_PORT: u16 = 9090;
 pub const DEFAULT_RELAY_WEBRTC_PORT: u16 = 9091;
 pub const DEFAULT_RELAY_WEBSOCKET_PORT: u16 = 9092;
+pub const DEFAULT_GRPC_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+pub const DEFAULT_GRPC_PORT: u16 = 50051;
 pub const DEFAULT_GRPC_SUBSCRIPTION_BUFFER_SIZE: usize = 256;
 pub const DEFAULT_GRPC_TCP_KEEPALIVE_SECS: u64 = 60;
 pub const DEFAULT_GRPC_HTTP2_KEEPALIVE_INTERVAL_SECS: u64 = 30;
@@ -550,10 +552,20 @@ pub struct RunnerOptions {
     pub check_contracts: bool,
 }
 
-#[derive(Default, Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
+#[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "GRPC options")]
 pub struct GrpcOptions {
+    /// gRPC server listening interface.
+    #[arg(long = "grpc.addr", value_name = "ADDRESS")]
+    #[arg(default_value_t = DEFAULT_GRPC_ADDR)]
+    pub addr: IpAddr,
+
+    /// gRPC server listening port.
+    #[arg(long = "grpc.port", value_name = "PORT")]
+    #[arg(default_value_t = DEFAULT_GRPC_PORT)]
+    pub port: u16,
+
     /// The buffer size for the subscription channel.
     #[arg(
         long = "grpc.subscription_buffer_size",
@@ -620,6 +632,20 @@ impl GrpcOptions {
             None
         } else {
             Some(Duration::from_secs(self.http2_keepalive_timeout))
+        }
+    }
+}
+
+impl Default for GrpcOptions {
+    fn default() -> Self {
+        Self {
+            addr: DEFAULT_GRPC_ADDR,
+            port: DEFAULT_GRPC_PORT,
+            subscription_buffer_size: DEFAULT_GRPC_SUBSCRIPTION_BUFFER_SIZE,
+            optimistic: false,
+            tcp_keepalive_interval: DEFAULT_GRPC_TCP_KEEPALIVE_SECS,
+            http2_keepalive_interval: DEFAULT_GRPC_HTTP2_KEEPALIVE_INTERVAL_SECS,
+            http2_keepalive_timeout: DEFAULT_GRPC_HTTP2_KEEPALIVE_TIMEOUT_SECS,
         }
     }
 }
