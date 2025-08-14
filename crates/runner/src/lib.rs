@@ -414,7 +414,7 @@ impl Runner {
         )
         .expect("Failed to start libp2p relay server");
 
-        let grpc_bind_addr = SocketAddr::new(self.args.grpc.addr, self.args.grpc.port);
+        let grpc_bind_addr = SocketAddr::new(self.args.grpc.grpc_addr, self.args.grpc.grpc_port);
         let (grpc_addr, grpc_server) = torii_grpc_server::new(
             shutdown_rx,
             storage.clone(),

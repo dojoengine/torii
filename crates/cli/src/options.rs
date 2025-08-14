@@ -559,12 +559,12 @@ pub struct GrpcOptions {
     /// gRPC server listening interface.
     #[arg(long = "grpc.addr", value_name = "ADDRESS")]
     #[arg(default_value_t = DEFAULT_GRPC_ADDR)]
-    pub addr: IpAddr,
+    pub grpc_addr: IpAddr,
 
     /// gRPC server listening port.
     #[arg(long = "grpc.port", value_name = "PORT")]
     #[arg(default_value_t = DEFAULT_GRPC_PORT)]
-    pub port: u16,
+    pub grpc_port: u16,
 
     /// The buffer size for the subscription channel.
     #[arg(
@@ -639,8 +639,8 @@ impl GrpcOptions {
 impl Default for GrpcOptions {
     fn default() -> Self {
         Self {
-            addr: DEFAULT_GRPC_ADDR,
-            port: DEFAULT_GRPC_PORT,
+            grpc_addr: DEFAULT_GRPC_ADDR,
+            grpc_port: DEFAULT_GRPC_PORT,
             subscription_buffer_size: DEFAULT_GRPC_SUBSCRIPTION_BUFFER_SIZE,
             optimistic: false,
             tcp_keepalive_interval: DEFAULT_GRPC_TCP_KEEPALIVE_SECS,
