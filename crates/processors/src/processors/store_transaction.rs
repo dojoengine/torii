@@ -7,11 +7,14 @@ use starknet::core::types::{
 use starknet::providers::Provider;
 use torii_cache::{get_entrypoint_name_from_class, ContractClassCache};
 use torii_proto::{CallType, TransactionCall};
+use tracing::warn;
 
 use crate::error::Error;
 use crate::TransactionProcessorContext;
 
 use super::TransactionProcessor;
+
+const LOG_TARGET: &str = "torii::indexer::processors::store_transaction";
 
 #[derive(CairoSerde, Debug, Clone)]
 pub struct ExecuteCall {
@@ -93,9 +96,10 @@ impl StoreTransactionProcessor {
         call: &ExecuteCall,
         caller_address: Felt,
         call_type: CallType,
+        block_number: u64,
     ) -> Result<TransactionCall, Error> {
         let contract_class = contract_class_cache
-            .get(call.contract_address, BlockId::Tag(BlockTag::Pending))
+            .get(call.contract_address, BlockId::Number(block_number))
             .await?;
 
         let entrypoint = get_entrypoint_name_from_class(&contract_class, call.selector)
@@ -116,9 +120,10 @@ impl StoreTransactionProcessor {
         full_calldata: &[Felt],
         caller_address: Felt,
         call_type: CallType,
+        block_number: u64,
     ) -> Result<TransactionCall, Error> {
         let contract_class = contract_class_cache
-            .get(call.contract_address, BlockId::Tag(BlockTag::Pending))
+            .get(call.contract_address, BlockId::Number(block_number))
             .await?;
 
         let entrypoint = get_entrypoint_name_from_class(&contract_class, call.selector)
@@ -217,6 +222,7 @@ impl StoreTransactionProcessor {
         execute: Execute,
         sender_address: Felt,
         contract_class_cache: &ContractClassCache<P>,
+        block_number: u64,
     ) -> Result<Vec<TransactionCall>, Error> {
         let mut calls = Vec::new();
 
@@ -228,6 +234,7 @@ impl StoreTransactionProcessor {
                         &call,
                         sender_address,
                         CallType::Execute,
+                        block_number,
                     )
                     .await?;
                     calls.push(parsed_call);
@@ -241,6 +248,7 @@ impl StoreTransactionProcessor {
                         &execute.calldata,
                         sender_address,
                         CallType::Execute,
+                        block_number,
                     )
                     .await?;
                     calls.push(parsed_call);
@@ -282,7 +290,26 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug> TransactionProcessor<P
                 };
 
             if let Some(execute) = execute {
-                Self::parse_execute(execute, tx_info.sender_address, &ctx.cache).await?
+                match Self::parse_execute(
+                    execute,
+                    tx_info.sender_address,
+                    &ctx.cache,
+                    ctx.block_number,
+                )
+                .await
+                {
+                    Ok(calls) => calls,
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            transaction_hash = %ctx.transaction_hash,
+                            sender_address = %tx_info.sender_address,
+                            error = %e,
+                            "Failed to parse execute for transaction.",
+                        );
+                        vec![]
+                    }
+                }
             } else {
                 vec![]
             }
