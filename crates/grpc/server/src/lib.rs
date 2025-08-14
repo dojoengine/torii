@@ -774,6 +774,7 @@ impl Default for GrpcConfig {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn new<P: Provider + Sync + Send + 'static>(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
     storage: Arc<dyn Storage>,
