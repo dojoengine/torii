@@ -110,7 +110,7 @@ where
         }
 
         let mut values = event.values.to_vec();
-        entity.deserialize(&mut values)?;
+        entity.deserialize(&mut values, model.use_legacy_store)?;
 
         ctx.storage
             .set_entity(

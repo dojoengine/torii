@@ -104,6 +104,7 @@ where
             _ => unreachable!(),
         }
         let layout = model.layout().await?;
+        let use_legacy_store = model.use_legacy_storage().await?;
 
         // Events are never stored onchain, hence no packing or unpacking.
         let unpacked_size: u32 = 0;
@@ -140,6 +141,7 @@ where
                 ctx.block_timestamp,
                 None,
                 None,
+                use_legacy_store,
             )
             .await?;
 
@@ -156,6 +158,7 @@ where
                     unpacked_size,
                     layout,
                     schema,
+                    use_legacy_store,
                 },
             )
             .await;

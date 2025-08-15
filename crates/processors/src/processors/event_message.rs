@@ -94,7 +94,7 @@ where
         let mut keys_and_unpacked = [event.keys, event.values].concat();
 
         let mut entity = model.schema.clone();
-        entity.deserialize(&mut keys_and_unpacked)?;
+        entity.deserialize(&mut keys_and_unpacked, model.use_legacy_store)?;
 
         ctx.storage
             .set_event_message(entity, &ctx.event_id, ctx.block_timestamp)

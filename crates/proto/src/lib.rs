@@ -661,6 +661,7 @@ pub struct Model {
     pub unpacked_size: u32,
     pub layout: Layout,
     pub schema: Ty,
+    pub use_legacy_store: bool,
 }
 
 impl TryFrom<proto::types::Model> for Model {
@@ -676,6 +677,7 @@ impl TryFrom<proto::types::Model> for Model {
             namespace: value.namespace,
             packed_size: value.packed_size,
             unpacked_size: value.unpacked_size,
+            use_legacy_store: value.use_legacy_store,
             class_hash: Felt::from_bytes_be_slice(&value.class_hash),
             contract_address: Felt::from_bytes_be_slice(&value.contract_address),
         })
