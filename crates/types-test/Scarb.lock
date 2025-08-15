@@ -4,7 +4,7 @@ version = 1
 [[package]]
 name = "dojo"
 version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=57fe72958#57fe729580cbd9593d95c40dd75284348c1fe075"
+source = "git+https://github.com/dojoengine/dojo?rev=4cedf3f52#4cedf3f52d2ed1505cd66bfac5e5cf3225ebdf39"
 dependencies = [
  "dojo_macros",
 ]
@@ -12,7 +12,7 @@ dependencies = [
 [[package]]
 name = "dojo_macros"
 version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?rev=57fe72958#57fe729580cbd9593d95c40dd75284348c1fe075"
+source = "git+https://github.com/dojoengine/dojo?rev=4cedf3f52#4cedf3f52d2ed1505cd66bfac5e5cf3225ebdf39"
 
 [[package]]
 name = "types_test"

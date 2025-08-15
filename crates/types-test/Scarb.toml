@@ -10,8 +10,8 @@ sierra-replace-ids = true
 [dependencies]
 starknet = "2.11.4"
 
-dojo = { git = "https://github.com/dojoengine/dojo", rev = "57fe72958" }
-dojo_macros = { git = "https://github.com/dojoengine/dojo", rev = "57fe72958" }
+dojo = { git = "https://github.com/dojoengine/dojo", rev = "4cedf3f52" }
+dojo_macros = { git = "https://github.com/dojoengine/dojo", rev = "4cedf3f52" }
 
 [[target.starknet-contract]]
 build-external-contracts = ["dojo::world::world_contract::world"]
