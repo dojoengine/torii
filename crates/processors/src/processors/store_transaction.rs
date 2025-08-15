@@ -96,7 +96,7 @@ impl StoreTransactionProcessor {
         call: &ExecuteCall,
         caller_address: Felt,
         call_type: CallType,
-        block_number: u64,
+        _block_number: u64,
     ) -> Result<TransactionCall, Error> {
         let contract_class = contract_class_cache
             .get(call.contract_address, BlockId::Tag(BlockTag::PreConfirmed))
@@ -120,7 +120,7 @@ impl StoreTransactionProcessor {
         full_calldata: &[Felt],
         caller_address: Felt,
         call_type: CallType,
-        block_number: u64,
+        _block_number: u64,
     ) -> Result<TransactionCall, Error> {
         let contract_class = contract_class_cache
             .get(call.contract_address, BlockId::Tag(BlockTag::PreConfirmed))
