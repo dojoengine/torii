@@ -5,21 +5,21 @@ on:
     branches:
       - main
     paths:
-      - 'crates/**'
-      - 'examples/**'
-      - 'bin/**'
-      - 'xtask/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
+      - "crates/**"
+      - "examples/**"
+      - "bin/**"
+      - "xtask/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
 
   pull_request:
     paths:
-      - 'crates/**'
-      - 'examples/**'
-      - 'bin/**'
-      - 'xtask/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
+      - "crates/**"
+      - "examples/**"
+      - "bin/**"
+      - "xtask/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
 
 env:
   CARGO_TERM_COLOR: always
@@ -61,7 +61,7 @@ jobs:
       # This puts Katana in the path for integration tests.
       - name: Download Katana for integration tests
         run: |
-          curl -L https://github.com/dojoengine/katana/releases/download/v1.7.0-alpha.0/katana_v1.7.0-alpha.0_linux_amd64.tar.gz -o katana.tar.gz;
+          curl -L https://github.com/dojoengine/katana/releases/download/v1.7.0-alpha.1/katana_v1.7.0-alpha.1_linux_amd64.tar.gz -o katana.tar.gz;
           tar -C /usr/local/bin -xzf katana.tar.gz
 
       - name: Setup for integration tests
