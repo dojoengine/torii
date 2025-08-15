@@ -103,7 +103,7 @@ pub struct Model {
     pub unpacked_size: u32,
     pub executed_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
-    pub use_legacy_store: bool,
+    pub legacy_store: bool,
 }
 
 impl From<Model> for torii_proto::Model {
@@ -118,7 +118,7 @@ impl From<Model> for torii_proto::Model {
             schema: serde_json::from_str(&value.schema).unwrap(),
             packed_size: value.packed_size,
             unpacked_size: value.unpacked_size,
-            use_legacy_store: value.use_legacy_store,
+            use_legacy_store: value.legacy_store,
         }
     }
 }

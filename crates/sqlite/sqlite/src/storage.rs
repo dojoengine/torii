@@ -114,7 +114,7 @@ impl ReadOnlyStorage for Sql {
             class_hash: Felt::from_str(&model.class_hash)?,
             contract_address: Felt::from_str(&model.contract_address)?,
             layout,
-            use_legacy_store: model.use_legacy_store,
+            use_legacy_store: model.legacy_store,
         };
         Ok(model_metadata)
     }
@@ -165,7 +165,7 @@ impl ReadOnlyStorage for Sql {
                 class_hash: Felt::from_str(&model.class_hash)?,
                 contract_address: Felt::from_str(&model.contract_address)?,
                 layout,
-                use_legacy_store: model.use_legacy_store,
+                use_legacy_store: model.legacy_store,
             };
 
             models_metadata.push(model_metadata);
