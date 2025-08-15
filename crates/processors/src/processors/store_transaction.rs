@@ -96,10 +96,10 @@ impl StoreTransactionProcessor {
         call: &ExecuteCall,
         caller_address: Felt,
         call_type: CallType,
-        block_number: u64,
+        _block_number: u64,
     ) -> Result<TransactionCall, Error> {
         let contract_class = contract_class_cache
-            .get(call.contract_address, BlockId::Number(block_number))
+            .get(call.contract_address, BlockId::Tag(BlockTag::PreConfirmed))
             .await?;
 
         let entrypoint = get_entrypoint_name_from_class(&contract_class, call.selector)
@@ -120,10 +120,10 @@ impl StoreTransactionProcessor {
         full_calldata: &[Felt],
         caller_address: Felt,
         call_type: CallType,
-        block_number: u64,
+        _block_number: u64,
     ) -> Result<TransactionCall, Error> {
         let contract_class = contract_class_cache
-            .get(call.contract_address, BlockId::Number(block_number))
+            .get(call.contract_address, BlockId::Tag(BlockTag::PreConfirmed))
             .await?;
 
         let entrypoint = get_entrypoint_name_from_class(&contract_class, call.selector)
@@ -151,7 +151,7 @@ impl StoreTransactionProcessor {
         let contract_address = calldata[to_offset];
 
         let contract_class = contract_class_cache
-            .get(contract_address, BlockId::Tag(BlockTag::Pending))
+            .get(contract_address, BlockId::Tag(BlockTag::PreConfirmed))
             .await?;
 
         let entrypoint = get_entrypoint_name_from_class(&contract_class, calldata[selector_offset])

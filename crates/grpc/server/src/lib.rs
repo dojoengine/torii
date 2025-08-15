@@ -175,6 +175,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
                 unpacked_size: model.unpacked_size,
                 layout: serde_json::to_vec(&model.layout).unwrap(),
                 schema: serde_json::to_vec(&model.schema).unwrap(),
+                use_legacy_store: model.use_legacy_store,
             });
         }
 
@@ -208,6 +209,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             unpacked_size: model.unpacked_size,
             layout: serde_json::to_vec(&model.layout).unwrap(),
             schema: serde_json::to_vec(&model.schema).unwrap(),
+            use_legacy_store: model.use_legacy_store,
         })
     }
 }

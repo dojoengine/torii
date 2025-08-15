@@ -122,7 +122,7 @@ where
         );
 
         let mut values = event.values.to_vec();
-        member.ty.deserialize(&mut values)?;
+        member.ty.deserialize(&mut values, model.use_legacy_store)?;
 
         let wrapped_ty = Ty::Struct(Struct {
             name: schema.name(),

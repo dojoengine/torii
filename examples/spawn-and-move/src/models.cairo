@@ -1,7 +1,8 @@
 use starknet::ContractAddress;
 
-#[derive(Serde, Copy, Drop, Introspect, PartialEq, Debug)]
+#[derive(Serde, Copy, Drop, Introspect, DojoStore, PartialEq, Debug, Default)]
 pub enum Direction {
+    #[default]
     None,
     Left,
     Right,
@@ -50,7 +51,7 @@ pub struct MockToken {
     pub amount: u128,
 }
 
-#[derive(Copy, Drop, Serde, IntrospectPacked, Debug)]
+#[derive(Copy, Drop, Serde, IntrospectPacked, DojoStore, Debug)]
 pub struct Vec2 {
     pub x: u32,
     pub y: u32,
@@ -70,7 +71,7 @@ pub struct Position {
 
 // Every field inside a model must derive `Introspect` or `IntrospectPacked`.
 // `IntrospectPacked` can also be used into models that are only using `Introspect`.
-#[derive(Copy, Drop, Serde, Introspect, PartialEq)]
+#[derive(Copy, Drop, Serde, Introspect, DojoStore, PartialEq)]
 pub struct PlayerItem {
     pub item_id: u32,
     pub quantity: u32,
@@ -120,13 +121,13 @@ mod tests {
     use super::{Vec2, Vec2Trait};
 
     #[test]
-    #[available_gas(100000)]
+    #[available_gas(l2_gas: 100000)]
     fn test_vec_is_zero() {
         assert(Vec2Trait::is_zero(Vec2 { x: 0, y: 0 }), 'not zero');
     }
 
     #[test]
-    #[available_gas(100000)]
+    #[available_gas(l2_gas: 100000)]
     fn test_vec_is_equal() {
         let position = Vec2 { x: 420, y: 0 };
         assert(position.is_equal(Vec2 { x: 420, y: 0 }), 'not equal');

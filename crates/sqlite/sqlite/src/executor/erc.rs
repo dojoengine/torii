@@ -60,7 +60,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                         .get(&Felt::from_str(contract_address).unwrap())
                         .unwrap();
                     let block_id = if cursor.last_pending_block_tx.is_some() {
-                        BlockId::Tag(BlockTag::Pending)
+                        BlockId::Tag(BlockTag::PreConfirmed)
                     } else {
                         BlockId::Number(cursor.head.unwrap())
                     };
@@ -87,7 +87,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                         .get(&Felt::from_str(contract_address).unwrap())
                         .unwrap();
                     let block_id = if cursor.last_pending_block_tx.is_some() {
-                        BlockId::Tag(BlockTag::Pending)
+                        BlockId::Tag(BlockTag::PreConfirmed)
                     } else {
                         BlockId::Number(cursor.head.unwrap())
                     };

@@ -2,16 +2,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use cainome::cairo_serde::ContractAddress;
-use dojo_test_utils::compiler::CompilerTestSetup;
 use dojo_test_utils::migration::copy_spawn_and_move_db;
+use dojo_test_utils::setup::TestSetup;
 use dojo_utils::{TransactionExt, TransactionWaiter, TxnConfig};
 use dojo_world::contracts::naming::{compute_bytearray_hash, compute_selector_from_names};
 use dojo_world::contracts::world::WorldContract;
 use katana_runner::RunnerCtx;
-use scarb::compiler::Profile;
-use sozo_scarbext::WorkspaceExt;
+use scarb_interop::Profile;
+use scarb_metadata_ext::MetadataDojoExt;
 use starknet::accounts::Account;
-use starknet::core::types::{BlockId, BlockWithReceipts, Call, MaybePendingBlockWithReceipts};
+use starknet::core::types::{BlockId, BlockWithReceipts, Call, MaybePreConfirmedBlockWithReceipts};
 use starknet::core::utils::get_selector_from_name;
 use starknet::macros::felt;
 use starknet::providers::jsonrpc::HttpTransport;
@@ -39,7 +39,7 @@ async fn get_block_with_receipts<P: Provider + Send + Sync + std::fmt::Debug + '
         .await
         .unwrap()
     {
-        MaybePendingBlockWithReceipts::Block(block) => block,
+        MaybePreConfirmedBlockWithReceipts::Block(block) => block,
         _ => panic!("Expected a block, got a pending block"),
     }
 }
@@ -100,15 +100,13 @@ async fn test_range_one_block() {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_basic(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
-    let config = setup.build_test_config("spawn-and-move", Profile::DEV);
-
-    let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let account = sequencer.account(0);
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
 
-    let world_local = ws.load_world_local().unwrap();
+    let world_local = metadata.load_dojo_world_local().unwrap();
     let world_address = world_local.deterministic_world_address().unwrap();
     let actions_address = world_local
         .get_contract_address_local(compute_selector_from_names("ns", "actions"))
@@ -213,15 +211,13 @@ async fn test_fetch_pending_basic(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_multiple_transactions(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
-    let config = setup.build_test_config("spawn-and-move", Profile::DEV);
-
-    let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let account = sequencer.account(0);
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
 
-    let world_local = ws.load_world_local().unwrap();
+    let world_local = metadata.load_dojo_world_local().unwrap();
     let world_address = world_local.deterministic_world_address().unwrap();
     let actions_address = world_local
         .get_contract_address_local(compute_selector_from_names("ns", "actions"))
@@ -340,15 +336,13 @@ async fn test_fetch_pending_multiple_transactions(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
-    let config = setup.build_test_config("spawn-and-move", Profile::DEV);
-
-    let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let account = sequencer.account(0);
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
 
-    let world_local = ws.load_world_local().unwrap();
+    let world_local = metadata.load_dojo_world_local().unwrap();
     let world_address = world_local.deterministic_world_address().unwrap();
     let actions_address = world_local
         .get_contract_address_local(compute_selector_from_names("ns", "actions"))
@@ -487,15 +481,13 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
-    let config = setup.build_test_config("spawn-and-move", Profile::DEV);
-
-    let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let account = sequencer.account(0);
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
 
-    let world_local = ws.load_world_local().unwrap();
+    let world_local = metadata.load_dojo_world_local().unwrap();
     let world_address = world_local.deterministic_world_address().unwrap();
     let actions_address = world_local
         .get_contract_address_local(compute_selector_from_names("ns", "actions"))
@@ -640,15 +632,13 @@ async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_with_events_comprehensive(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
-    let config = setup.build_test_config("spawn-and-move", Profile::DEV);
-
-    let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let account = sequencer.account(0);
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
 
-    let world_local = ws.load_world_local().unwrap();
+    let world_local = metadata.load_dojo_world_local().unwrap();
     let world_address = world_local.deterministic_world_address().unwrap();
     let actions_address = world_local
         .get_contract_address_local(compute_selector_from_names("ns", "actions"))
@@ -747,15 +737,13 @@ async fn test_fetch_pending_with_events_comprehensive(sequencer: &RunnerCtx) {
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_filters_reverted_transactions(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
-    let config = setup.build_test_config("spawn-and-move", Profile::DEV);
-
-    let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let account = sequencer.account(0);
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
 
-    let world_local = ws.load_world_local().unwrap();
+    let world_local = metadata.load_dojo_world_local().unwrap();
     let world_address = world_local.deterministic_world_address().unwrap();
     let actions_address = world_local
         .get_contract_address_local(compute_selector_from_names("ns", "actions"))
@@ -844,25 +832,25 @@ async fn test_fetch_pending_filters_reverted_transactions(sequencer: &RunnerCtx)
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerCtx) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
-    let config = setup.build_test_config("spawn-and-move", Profile::DEV);
-
-    let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let account = sequencer.account(0);
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
 
-    let world_local = ws.load_world_local().unwrap();
+    let world_local = metadata.load_dojo_world_local().unwrap();
+    let manifest = metadata.read_dojo_manifest_profile().unwrap().unwrap();
+
     let world_address = world_local.deterministic_world_address().unwrap();
     let actions_address = world_local
         .get_contract_address_local(compute_selector_from_names("ns", "actions"))
         .unwrap();
 
     // Get ERC20 token address for testing multiple contracts
-    let wood_address = world_local
+    let wood_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.instance_name == "WoodToken")
+        .find(|c| c.contract_name == "WoodToken")
         .unwrap()
         .address;
 
@@ -1013,34 +1001,34 @@ async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerC
 async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_and_ordering_validation(
     sequencer: &RunnerCtx,
 ) {
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
-    let config = setup.build_test_config("spawn-and-move", Profile::DEV);
-
-    let ws = scarb::ops::read_workspace(config.manifest_path(), &config).unwrap();
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let account = sequencer.account(0);
     let account2 = sequencer.account(1);
     let account3 = sequencer.account(2);
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
 
-    let world_local = ws.load_world_local().unwrap();
+    let world_local = metadata.load_dojo_world_local().unwrap();
+    let manifest = metadata.read_dojo_manifest_profile().unwrap().unwrap();
+
     let world_address = world_local.deterministic_world_address().unwrap();
     let actions_address = world_local
         .get_contract_address_local(compute_selector_from_names("ns", "actions"))
         .unwrap();
 
     // Get ERC20 and ERC721 contract addresses for spamming other contracts
-    let wood_address = world_local
+    let wood_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.instance_name == "WoodToken")
+        .find(|c| c.contract_name == "WoodToken")
         .unwrap()
         .address;
 
-    let badge_address = world_local
+    let badge_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.instance_name == "Badge")
+        .find(|c| c.contract_name == "Badge")
         .unwrap()
         .address;
 
@@ -1074,10 +1062,10 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
         .unwrap();
 
     // Get additional contracts for unrelated transactions (these will NOT be indexed)
-    let rewards_address = world_local
+    let rewards_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.instance_name == "Rewards")
+        .find(|c| c.contract_name == "Rewards")
         .unwrap()
         .address;
 

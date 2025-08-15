@@ -97,6 +97,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
         0,
         None,
         None,
+        true,
     )
     .await
     .unwrap();
@@ -374,6 +375,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
             0,
             None,
             None,
+            true,
         )
         .await
         .unwrap();
@@ -607,6 +609,7 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
         0,
         None,
         None,
+        true,
     )
     .await
     .unwrap();
@@ -793,6 +796,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
         0,
         None,
         None,
+        true,
     )
     .await
     .unwrap();

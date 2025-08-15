@@ -14,6 +14,6 @@ katana-runner.workspace = true
 reqwest = { workspace = true, features = [ "json" ] }
 starknet.workspace = true
 tokio.workspace = true
-sozo-scarbext.workspace = true
-scarb.workspace = true
+scarb-metadata-ext.workspace = true
+scarb-interop.workspace = true
 sozo-ops.workspace = true

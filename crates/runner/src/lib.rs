@@ -605,7 +605,7 @@ async fn verify_contracts_deployed(
         let contract = *contract;
         async move {
             let result = provider
-                .get_class_at(BlockId::Tag(BlockTag::Pending), contract.address)
+                .get_class_at(BlockId::Tag(BlockTag::PreConfirmed), contract.address)
                 .await;
             (contract, result)
         }

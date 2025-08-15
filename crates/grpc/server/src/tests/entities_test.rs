@@ -2,16 +2,15 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use cainome::cairo_serde::ContractAddress;
-use dojo_test_utils::compiler::CompilerTestSetup;
 use dojo_test_utils::migration::copy_spawn_and_move_db;
+use dojo_test_utils::setup::TestSetup;
 use dojo_types::naming::compute_selector_from_names;
 use dojo_utils::{TransactionExt, TransactionWaiter, TxnConfig};
 use dojo_world::contracts::naming::compute_bytearray_hash;
 use dojo_world::contracts::WorldContract;
 use katana_runner::RunnerCtx;
-use scarb::compiler::Profile;
-use scarb::ops;
-use sozo_scarbext::WorkspaceExt;
+use scarb_interop::Profile;
+use scarb_metadata_ext::MetadataDojoExt;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use starknet::accounts::Account;
 use starknet::core::types::Call;
@@ -57,15 +56,12 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         .unwrap();
     sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
-    let setup = CompilerTestSetup::from_examples("/tmp", "../../../examples/");
-    let config = setup.build_test_config("spawn-and-move", Profile::DEV);
-
-    let ws = ops::read_workspace(config.manifest_path(), &config)
-        .unwrap_or_else(|op| panic!("Error building workspace: {op:?}"));
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let account = sequencer.account(0);
 
-    let world_local = ws.load_world_local().unwrap();
+    let world_local = metadata.load_dojo_world_local().unwrap();
     let world_address = world_local.deterministic_world_address().unwrap();
 
     let actions_address = world_local
@@ -671,6 +667,6 @@ async fn test_entity_broker_stress_test() {
         delivery_rate
     );
 
-    println!("🎉 Stress test completed successfully! {} subscribers handled {} updates each with {:.1}% success rate", 
+    println!("🎉 Stress test completed successfully! {} subscribers handled {} updates each with {:.1}% success rate",
              num_subscribers, num_updates, success_rate);
 }

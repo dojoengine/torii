@@ -102,6 +102,7 @@ where
 
         let schema_diff = schema_diff.unwrap();
         let layout = model.layout().await?;
+        let use_legacy_store = model.use_legacy_storage().await?;
 
         let unpacked_size: u32 = model.unpacked_size().await?;
         let packed_size: u32 = model.packed_size().await?;
@@ -139,6 +140,7 @@ where
                 // This will be Some if we have an "upgrade" diff. Which means
                 // if some columns have been modified.
                 prev_schema.diff(&new_schema).as_ref(),
+                use_legacy_store,
             )
             .await?;
 
@@ -155,6 +157,7 @@ where
                     unpacked_size,
                     layout,
                     schema: new_schema,
+                    use_legacy_store,
                 },
             )
             .await;
