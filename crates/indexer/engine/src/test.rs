@@ -1245,7 +1245,7 @@ async fn test_erc7572_contract_uri_updated(sequencer: &RunnerCtx) {
     let rewards_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.contract_name == "Rewards")
+        .find(|c| c.contract_name == "ERC1155Token")
         .unwrap()
         .address;
 
