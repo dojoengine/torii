@@ -709,7 +709,9 @@ impl Sql {
                         collect_columns(table_prefix, &variant_path, &option.ty, selections);
                     }
                 }
-                Ty::FixedSizeArray(_) | Ty::Array(_) | Ty::Primitive(_) | Ty::ByteArray(_) => {
+                // These are all simple fields. Which means their children, if present, are stored within the same column.
+                // Like for primitive types, and types like Array where they are serialized into a JSON object.
+                _ => {
                     selections.push(format!(
                         "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
                     ));
