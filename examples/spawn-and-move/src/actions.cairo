@@ -169,7 +169,6 @@ pub mod actions {
             let position: Position = world.read_model(player);
             let moves: Moves = world.read_model(player);
             let config: PlayerConfig = world.read_model(player);
-
             assert(moves.remaining == 0, 'bad remaining');
             assert(moves.last_direction == Direction::None, 'bad last direction');
 
@@ -177,7 +176,7 @@ pub mod actions {
             assert(position.vec.y == 0, 'bad y');
 
             assert(config.items.len() == 0, 'bad items');
-            assert(config.favorite_item == Option::Some(0), 'bad favorite item');
+            assert(config.favorite_item == None, 'bad favorite item');
             let empty_string: ByteArray = "";
             assert(config.name == empty_string, 'bad name');
         }
