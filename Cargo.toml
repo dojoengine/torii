@@ -40,14 +40,14 @@ cainome-cairo-serde = { git = "https://github.com/cartridge-gg/cainome", rev = "
 cainome-cairo-serde-derive = { git = "https://github.com/cartridge-gg/cainome", rev = "7d60de1" }
 
 # dojo
-dojo-utils = { git = "https://github.com/dojoengine/dojo", rev = "d11c5a7" }
-dojo-types = { git = "https://github.com/dojoengine/dojo", rev = "d11c5a7" }
-dojo-world = { git = "https://github.com/dojoengine/dojo", rev = "d11c5a7" }
-dojo-test-utils = { git = "https://github.com/dojoengine/dojo", rev = "d11c5a7" }
-dojo-metrics = { git = "https://github.com/dojoengine/dojo", rev = "d11c5a7" }
-scarb-metadata-ext = { git = "https://github.com/dojoengine/dojo", rev = "d11c5a7" }
-scarb-interop = { git = "https://github.com/dojoengine/dojo", rev = "d11c5a7" }
-sozo-ops = { git = "https://github.com/dojoengine/dojo", rev = "d11c5a7" }
+dojo-utils = { git = "https://github.com/dojoengine/dojo", rev = "89e31b7" }
+dojo-types = { git = "https://github.com/dojoengine/dojo", rev = "89e31b7" }
+dojo-world = { git = "https://github.com/dojoengine/dojo", rev = "89e31b7" }
+dojo-test-utils = { git = "https://github.com/dojoengine/dojo", rev = "89e31b7" }
+dojo-metrics = { git = "https://github.com/dojoengine/dojo", rev = "89e31b7" }
+scarb-metadata-ext = { git = "https://github.com/dojoengine/dojo", rev = "89e31b7" }
+scarb-interop = { git = "https://github.com/dojoengine/dojo", rev = "89e31b7" }
+sozo-ops = { git = "https://github.com/dojoengine/dojo", rev = "89e31b7" }
 
 # katana
 katana-runner = { git = "https://github.com/dojoengine/katana", rev = "266fb96" }

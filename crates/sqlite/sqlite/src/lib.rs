@@ -206,7 +206,6 @@ impl Sql {
                     columns.push(format!("\"{}\"", prefix));
                     arguments.push(Argument::String(b.clone()));
                 }
-                Ty::FixedSizeArray(_) => todo!(),
             }
             Ok(())
         }
@@ -584,7 +583,6 @@ impl Sql {
                     add_column(&column_name, p.to_sql_type().as_ref(), indices);
                 }
             }
-            Ty::FixedSizeArray(_) => todo!(),
         }
 
         Ok(())

@@ -783,7 +783,6 @@ pub fn map_ty_to_primitive(ty: &Ty) -> Result<PrimitiveType, Error> {
             }
         },
         Ty::ByteArray(s) => Ok(PrimitiveType::String(s.clone())),
-        Ty::FixedSizeArray(_) => todo!(),
     }
 }
 
@@ -923,7 +922,6 @@ fn map_ty_type(types: &mut IndexMap<String, Vec<Field>>, name: &str, ty: Ty) -> 
             name: name.to_string(),
             r#type: "string".to_string(),
         }),
-        Ty::FixedSizeArray(_) => todo!(),
     }
 }
 
