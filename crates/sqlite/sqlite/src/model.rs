@@ -306,11 +306,13 @@ pub fn map_row_to_ty(
             // see Sql::set_entity_model
             let value: serde_json::Value =
                 serde_json::from_str(&serialized_array).map_err(ParseError::FromJsonStr)?;
-            
-            let elems = value["elements"].as_array()
-                .ok_or_else(|| ParseError::InvalidFixedSizeArray("Missing 'elements' field".to_string()))?;
-            let serialized_size = value["size"].as_u64()
-                .ok_or_else(|| ParseError::InvalidFixedSizeArray("Missing 'size' field".to_string()))? as u32;
+
+            let elems = value["elements"].as_array().ok_or_else(|| {
+                ParseError::InvalidFixedSizeArray("Missing 'elements' field".to_string())
+            })?;
+            let serialized_size = value["size"].as_u64().ok_or_else(|| {
+                ParseError::InvalidFixedSizeArray("Missing 'size' field".to_string())
+            })? as u32;
 
             // sanity check
             debug_assert_eq!(*array_size, serialized_size);
