@@ -53,9 +53,9 @@ camino.workspace = true
 dojo-test-utils.workspace = true
 dojo-utils.workspace = true
 katana-runner.workspace = true
-scarb.workspace = true
+scarb-interop.workspace = true
 tempfile.workspace = true
-sozo-scarbext.workspace = true
+scarb-metadata-ext.workspace = true
 torii-indexer.workspace = true
 torii-indexer-fetcher.workspace = true
 torii-processors = { workspace = true }

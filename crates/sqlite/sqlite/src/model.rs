@@ -124,6 +124,10 @@ impl ModelReader<Error> for ModelSQLReader {
     async fn layout(&self) -> Result<Layout, Error> {
         Ok(self.layout.clone())
     }
+
+    async fn use_legacy_storage(&self) -> Result<bool, Error> {
+        todo!()
+    }
 }
 
 /// Populate the values of a Ty (schema) from SQLite row.
@@ -293,6 +297,7 @@ pub fn map_row_to_ty(
             let value = row.try_get::<String, &str>(column_name)?;
             *bytearray = value;
         }
+        Ty::FixedSizeArray(_) => todo!(),
     };
 
     Ok(())
@@ -677,6 +682,7 @@ impl Sql {
                         "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
                     ));
                 }
+                Ty::FixedSizeArray(_) => todo!(),
             }
         }
 

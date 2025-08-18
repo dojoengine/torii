@@ -160,6 +160,7 @@ pub(crate) fn match_entity(
                         // These types cannot be navigated further
                         return false;
                     }
+                    Ty::FixedSizeArray(_) => todo!(),
                 }
             }
 
@@ -255,6 +256,7 @@ pub(crate) fn match_entity(
                     // These types are not directly comparable to a MemberValue
                     false
                 }
+                Ty::FixedSizeArray(_) => todo!(),
             }
         }
         Clause::Composite(composite_clause) => match composite_clause.operator {

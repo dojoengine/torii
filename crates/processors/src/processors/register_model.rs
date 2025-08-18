@@ -103,6 +103,8 @@ where
             }
             _ => unreachable!(),
         }
+
+        let use_legacy_store = model.use_legacy_storage().await?;
         let layout = model.layout().await?;
 
         let unpacked_size: u32 = model.unpacked_size().await?;
@@ -139,6 +141,7 @@ where
                 ctx.block_timestamp,
                 None,
                 None,
+                use_legacy_store,
             )
             .await?;
 
@@ -155,6 +158,7 @@ where
                     unpacked_size,
                     layout,
                     schema,
+                    use_legacy_store,
                 },
             )
             .await;

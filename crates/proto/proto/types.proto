@@ -6,7 +6,7 @@ import "schema.proto";
 message World {
     // The hex-encoded address of the world.
     string world_address = 1;
-    // A list of metadata for all registered components in the world. 
+    // A list of metadata for all registered components in the world.
     repeated Model models = 2;
 }
 
@@ -29,6 +29,8 @@ message Model {
     bytes schema = 8;
     // felt bytes of the contract address of the component
     bytes contract_address = 9;
+
+    bool use_legacy_store = 10;
 }
 
 message Entity {

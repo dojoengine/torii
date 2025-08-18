@@ -319,7 +319,7 @@ impl<P: Provider + Sync + Send + Clone + std::fmt::Debug> ContractClassCache<P> 
             Err(e) => match e {
                 // if we got a block not found error, we probably are in a pending block.
                 ProviderError::StarknetError(StarknetError::BlockNotFound) => {
-                    block_id = BlockId::Tag(BlockTag::Pending);
+                    block_id = BlockId::Tag(BlockTag::PreConfirmed);
                     self.provider
                         .get_class_hash_at(block_id, contract_address)
                         .await?

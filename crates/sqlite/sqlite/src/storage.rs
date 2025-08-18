@@ -114,6 +114,7 @@ impl ReadOnlyStorage for Sql {
             class_hash: Felt::from_str(&model.class_hash)?,
             contract_address: Felt::from_str(&model.contract_address)?,
             layout,
+            use_legacy_store: model.legacy_store,
         };
         Ok(model_metadata)
     }
@@ -164,6 +165,7 @@ impl ReadOnlyStorage for Sql {
                 class_hash: Felt::from_str(&model.class_hash)?,
                 contract_address: Felt::from_str(&model.contract_address)?,
                 layout,
+                use_legacy_store: model.legacy_store,
             };
 
             models_metadata.push(model_metadata);
@@ -750,16 +752,17 @@ impl Storage for Sql {
         block_timestamp: u64,
         schema_diff: Option<&Ty>,
         upgrade_diff: Option<&Ty>,
+        legacy_store: bool,
     ) -> Result<(), StorageError> {
         let namespaced_name = model.name();
         let (namespace, name) = namespaced_name.split_once('-').unwrap();
 
         let insert_models =
             "INSERT INTO models (id, namespace, name, class_hash, contract_address, layout, \
-             schema, packed_size, unpacked_size, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, \
+             legacy_store, schema, packed_size, unpacked_size, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \
              ?) ON CONFLICT(id) DO UPDATE SET contract_address=EXCLUDED.contract_address, \
-             class_hash=EXCLUDED.class_hash, layout=EXCLUDED.layout, schema=EXCLUDED.schema, \
-             packed_size=EXCLUDED.packed_size, unpacked_size=EXCLUDED.unpacked_size, \
+             class_hash=EXCLUDED.class_hash, layout=EXCLUDED.layout, legacy_store=EXCLUDED.legacy_store, \
+             schema=EXCLUDED.schema, packed_size=EXCLUDED.packed_size, unpacked_size=EXCLUDED.unpacked_size, \
              executed_at=EXCLUDED.executed_at RETURNING *";
         let arguments = vec![
             Argument::FieldElement(selector),
@@ -771,6 +774,7 @@ impl Storage for Sql {
                 serde_json::to_string(&layout)
                     .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?,
             ),
+            Argument::Bool(legacy_store),
             Argument::String(
                 serde_json::to_string(&model)
                     .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?,
@@ -1370,8 +1374,8 @@ impl Sql {
         use crate::utils::sql_string_to_felts;
 
         let calls = sqlx::query(
-            "SELECT contract_address, entrypoint, calldata, call_type, caller_address 
-             FROM transaction_calls 
+            "SELECT contract_address, entrypoint, calldata, call_type, caller_address
+             FROM transaction_calls
              WHERE transaction_hash = ?",
         )
         .bind(transaction_hash)
