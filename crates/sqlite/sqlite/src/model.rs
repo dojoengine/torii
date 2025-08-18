@@ -301,6 +301,10 @@ pub fn map_row_to_ty(
                 return Ok(());
             }
 
+            // Fixed size array is stored as json array: [Vec<JsonValue>, u32], where the first element is the
+            // array elements and the second element is the array size
+            //
+            // see Sql::set_entity_model
             let value: (Vec<JsonValue>, u32) =
                 serde_json::from_str(&serialized_array).map_err(ParseError::FromJsonStr)?;
             let (elems, serialized_size) = value;
