@@ -293,6 +293,30 @@ pub fn map_row_to_ty(
                 })
                 .collect::<Result<Vec<Ty>, _>>()?;
         }
+        Ty::FixedSizeArray((ty, array_size)) => {
+            let schema = ty[0].clone();
+            let serialized_array = row.try_get::<String, &str>(column_name)?;
+            if serialized_array.is_empty() {
+                *ty = vec![];
+                return Ok(());
+            }
+
+            let value: (Vec<JsonValue>, u32) =
+                serde_json::from_str(&serialized_array).map_err(ParseError::FromJsonStr)?;
+            let (elems, serialized_size) = value;
+
+            // sanity check
+            debug_assert_eq!(*array_size, serialized_size);
+
+            *ty = elems
+                .iter()
+                .map(|v| {
+                    let mut ty = schema.clone();
+                    ty.from_json_value(v.clone())?;
+                    Result::<_, PrimitiveError>::Ok(ty)
+                })
+                .collect::<Result<Vec<Ty>, _>>()?;
+        }
         Ty::ByteArray(bytearray) => {
             let value = row.try_get::<String, &str>(column_name)?;
             *bytearray = value;
@@ -677,7 +701,7 @@ impl Sql {
                         collect_columns(table_prefix, &variant_path, &option.ty, selections);
                     }
                 }
-                Ty::Array(_) | Ty::Primitive(_) | Ty::ByteArray(_) => {
+                Ty::FixedSizeArray(_) | Ty::Array(_) | Ty::Primitive(_) | Ty::ByteArray(_) => {
                     selections.push(format!(
                         "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
                     ));
