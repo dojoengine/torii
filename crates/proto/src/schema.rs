@@ -299,6 +299,16 @@ impl TryFrom<proto::types::Ty> for Ty {
                     .map(TryInto::try_into)
                     .collect::<Result<Vec<_>, _>>()?,
             )),
+            proto::types::ty::TyType::FixedSizeArray(array) => {
+                let proto::types::FixedSizeArray { children, size } = array;
+
+                let elems = children
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                Ok(Ty::FixedSizeArray((elems, size)))
+            }
             proto::types::ty::TyType::Array(array) => Ok(Ty::Array(
                 array
                     .children

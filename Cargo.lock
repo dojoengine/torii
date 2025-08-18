@@ -1999,8 +1999,8 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "dojo-metrics"
-version = "1.7.0-alpha.0"
-source = "git+https://github.com/dojoengine/dojo?rev=d11c5a7#d11c5a78390795cefe853fdaa900e5207d960e35"
+version = "1.7.0-alpha.1"
+source = "git+https://github.com/dojoengine/dojo?rev=89e31b7#89e31b7f38f8b4454ab60c35b2d996de0abecb25"
 dependencies = [
  "bytes",
  "http-body-util",
@@ -2020,8 +2020,8 @@ dependencies = [
 
 [[package]]
 name = "dojo-test-utils"
-version = "1.7.0-alpha.0"
-source = "git+https://github.com/dojoengine/dojo?rev=d11c5a7#d11c5a78390795cefe853fdaa900e5207d960e35"
+version = "1.7.0-alpha.1"
+source = "git+https://github.com/dojoengine/dojo?rev=89e31b7#89e31b7f38f8b4454ab60c35b2d996de0abecb25"
 dependencies = [
  "assert_fs",
  "camino",
@@ -2033,8 +2033,8 @@ dependencies = [
 
 [[package]]
 name = "dojo-types"
-version = "1.7.0-alpha.0"
-source = "git+https://github.com/dojoengine/dojo?rev=d11c5a7#d11c5a78390795cefe853fdaa900e5207d960e35"
+version = "1.7.0-alpha.1"
+source = "git+https://github.com/dojoengine/dojo?rev=89e31b7#89e31b7f38f8b4454ab60c35b2d996de0abecb25"
 dependencies = [
  "anyhow",
  "cainome",
@@ -2055,8 +2055,8 @@ dependencies = [
 
 [[package]]
 name = "dojo-utils"
-version = "1.7.0-alpha.0"
-source = "git+https://github.com/dojoengine/dojo?rev=d11c5a7#d11c5a78390795cefe853fdaa900e5207d960e35"
+version = "1.7.0-alpha.1"
+source = "git+https://github.com/dojoengine/dojo?rev=89e31b7#89e31b7f38f8b4454ab60c35b2d996de0abecb25"
 dependencies = [
  "anyhow",
  "colored_json",
@@ -2072,8 +2072,8 @@ dependencies = [
 
 [[package]]
 name = "dojo-world"
-version = "1.7.0-alpha.0"
-source = "git+https://github.com/dojoengine/dojo?rev=d11c5a7#d11c5a78390795cefe853fdaa900e5207d960e35"
+version = "1.7.0-alpha.1"
+source = "git+https://github.com/dojoengine/dojo?rev=89e31b7#89e31b7f38f8b4454ab60c35b2d996de0abecb25"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7118,8 +7118,8 @@ dependencies = [
 
 [[package]]
 name = "scarb-interop"
-version = "1.7.0-alpha.0"
-source = "git+https://github.com/dojoengine/dojo?rev=d11c5a7#d11c5a78390795cefe853fdaa900e5207d960e35"
+version = "1.7.0-alpha.1"
+source = "git+https://github.com/dojoengine/dojo?rev=89e31b7#89e31b7f38f8b4454ab60c35b2d996de0abecb25"
 dependencies = [
  "anyhow",
  "camino",
@@ -7145,8 +7145,8 @@ dependencies = [
 
 [[package]]
 name = "scarb-metadata-ext"
-version = "1.7.0-alpha.0"
-source = "git+https://github.com/dojoengine/dojo?rev=d11c5a7#d11c5a78390795cefe853fdaa900e5207d960e35"
+version = "1.7.0-alpha.1"
+source = "git+https://github.com/dojoengine/dojo?rev=89e31b7#89e31b7f38f8b4454ab60c35b2d996de0abecb25"
 dependencies = [
  "anyhow",
  "camino",
@@ -7635,8 +7635,8 @@ dependencies = [
 
 [[package]]
 name = "sozo-ops"
-version = "1.7.0-alpha.0"
-source = "git+https://github.com/dojoengine/dojo?rev=d11c5a7#d11c5a78390795cefe853fdaa900e5207d960e35"
+version = "1.7.0-alpha.1"
+source = "git+https://github.com/dojoengine/dojo?rev=89e31b7#89e31b7f38f8b4454ab60c35b2d996de0abecb25"
 dependencies = [
  "anyhow",
  "async-trait",

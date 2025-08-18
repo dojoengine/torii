@@ -734,7 +734,7 @@ pub fn map_ty_to_primitive(ty: &Ty) -> Result<PrimitiveType, Error> {
             object.insert(option.name.clone(), map_ty_to_primitive(&option.ty)?);
             Ok(PrimitiveType::Object(object))
         }
-        Ty::Array(array) => {
+        Ty::Array(array) | Ty::FixedSizeArray((array, ..)) => {
             let values: Result<Vec<PrimitiveType>, Error> =
                 array.iter().map(map_ty_to_primitive).collect();
             Ok(PrimitiveType::Array(values?))
@@ -783,7 +783,6 @@ pub fn map_ty_to_primitive(ty: &Ty) -> Result<PrimitiveType, Error> {
             }
         },
         Ty::ByteArray(s) => Ok(PrimitiveType::String(s.clone())),
-        Ty::FixedSizeArray(_) => todo!(),
     }
 }
 
@@ -832,6 +831,28 @@ fn map_ty_type(types: &mut IndexMap<String, Vec<Field>>, name: &str, ty: Ty) -> 
                 r#type: "EthAddress".to_string(),
             }),
         },
+        Ty::FixedSizeArray((elems, ..)) => {
+            // if array is empty, we fallback to felt
+            let array_type = if let Some(inner) = elems.first() {
+                map_ty_type(types, "inner", inner.clone())
+            } else {
+                return Field::SimpleType(SimpleField {
+                    name: name.to_string(),
+                    r#type: "felt".to_string(),
+                });
+            };
+
+            Field::SimpleType(SimpleField {
+                name: name.to_string(),
+                r#type: format!(
+                    "{}*",
+                    match array_type {
+                        Field::SimpleType(simple_field) => simple_field.r#type,
+                        Field::ParentType(parent_field) => parent_field.r#type,
+                    }
+                ),
+            })
+        }
         Ty::Array(array) => {
             // if array is empty, we fallback to felt
             let array_type = if let Some(inner) = array.first() {
@@ -901,7 +922,6 @@ fn map_ty_type(types: &mut IndexMap<String, Vec<Field>>, name: &str, ty: Ty) -> 
             name: name.to_string(),
             r#type: "string".to_string(),
         }),
-        Ty::FixedSizeArray(_) => todo!(),
     }
 }
 

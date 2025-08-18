@@ -99,6 +99,15 @@ fn parse_nested_type(namespace: &str, schema: &Ty) -> TypeData {
                 )
             })
             .collect(),
+        Ty::FixedSizeArray((array, _size)) => {
+            let mut type_mapping = TypeMapping::new();
+            type_mapping.insert(
+                Name::new("elements"),
+                TypeData::List(Box::new(member_to_type_data(namespace, &array[0]))),
+            );
+            type_mapping.insert(Name::new("size"), TypeData::Simple(TypeRef::named("u32")));
+            type_mapping
+        }
         _ => return TypeData::Simple(TypeRef::named(schema.name())),
     };
 
@@ -106,7 +115,8 @@ fn parse_nested_type(namespace: &str, schema: &Ty) -> TypeData {
     // sanitizes the member type string
     // for eg. Position_Array<Vec2> -> Position_ArrayVec2
     // Position_(u8, Vec2) -> Position_u8Vec2
-    let re = Regex::new(r"[, ()<>-]").unwrap();
+    // Position_[u8; 5] -> Position_u85
+    let re = Regex::new(r"[, ()<>\[\];-]").unwrap();
     let sanitized_member_type_name = re.replace_all(&name, "");
     TypeData::Nested((TypeRef::named(sanitized_member_type_name), type_mapping))
 }
