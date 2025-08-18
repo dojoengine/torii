@@ -850,7 +850,7 @@ async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerC
     let wood_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.contract_name == "WoodToken")
+        .find(|c| c.tag == "ns-WoodToken")
         .unwrap()
         .address;
 
@@ -1021,14 +1021,14 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     let wood_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.contract_name == "WoodToken")
+        .find(|c| c.tag == "ns-WoodToken")
         .unwrap()
         .address;
 
     let badge_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.contract_name == "Badge")
+        .find(|c| c.tag == "ns-Badge")
         .unwrap()
         .address;
 
@@ -1065,7 +1065,7 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     let rewards_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.contract_name == "Rewards")
+        .find(|c| c.tag == "ns-Rewards")
         .unwrap()
         .address;
 
