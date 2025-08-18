@@ -407,7 +407,6 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         address: world_address,
         r#type: ContractType::WORLD,
     }];
-    println!("creating engine");
     let mut engine = Engine::new(
         Arc::new(db.clone()),
         cache.clone(),
@@ -425,14 +424,10 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
         .map(|c| (c.address, Default::default()))
         .collect();
 
-    println!("creating fetcher");
     let fetcher = Fetcher::new(Arc::new(provider.clone()), FetcherConfig::default());
 
-    println!("fetching");
     let data = fetcher.fetch(&cursors).await.unwrap();
-    println!("processing");
     engine.process(&data).await.unwrap();
-    println!("executing");
     db.execute().await.unwrap();
     Ok(pool)
 }

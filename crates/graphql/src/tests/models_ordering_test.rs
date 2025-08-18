@@ -51,18 +51,12 @@ mod tests {
     async fn models_ordering_test() -> Result<()> {
         let tempfile = NamedTempFile::new().unwrap();
         let path = tempfile.path().to_string_lossy();
-        println!("olala");
         let pool = spinup_types_test(&path).await?;
-        println!("bruh");
         let schema = build_schema(&pool).await.unwrap();
-
-        println!("ohayo");
 
         // default params, test entity relationship, test nested types
         let world_model = world_model_query(&schema, "").await;
         let connection: Connection<WorldModel> = serde_json::from_value(world_model).unwrap();
-
-        println!("ohayo 1");
 
         connection.edges.first().unwrap();
         connection.edges.get(1).unwrap();
@@ -75,18 +69,14 @@ mod tests {
 
         // *** ORDER TESTING ***
 
-        println!("ohayo 2");
-
         // order on name string ASC (number)
         let world_model =
             world_model_query(&schema, "(order: {field: NAME, direction: ASC})").await;
-        println!("ohayo 3");
         let connection: Connection<WorldModel> = serde_json::from_value(world_model).unwrap();
         let first_model = connection.edges.first().unwrap();
         let second_model = connection.edges.get(1).unwrap();
         let third_model = connection.edges.get(2).unwrap();
         let last_model = connection.edges.get(3).unwrap();
-        println!("ohayo 4");
         assert_eq!(&first_model.node.name, "Record");
         assert_eq!(&second_model.node.name, "RecordLogged");
         assert_eq!(&third_model.node.name, "RecordSibling");
