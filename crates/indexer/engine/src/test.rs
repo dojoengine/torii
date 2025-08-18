@@ -262,7 +262,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
     let token_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.contract_name == "WoodToken")
+        .find(|c| c.contract_name == "ERC20Token")
         .unwrap()
         .address;
 
@@ -385,7 +385,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
     let badge_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.contract_name == "Badge")
+        .find(|c| c.contract_name == "ERC721Token")
         .unwrap()
         .address;
 
@@ -570,7 +570,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
     let rewards_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.contract_name == "Rewards")
+        .find(|c| c.contract_name == "ERC1155Token")
         .unwrap()
         .address;
 
