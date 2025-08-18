@@ -130,10 +130,7 @@ impl ToriiArgs {
 
         // the CLI (self) takes precedence over the config file.
         self.merge(Some(&config));
-        self.db_dir = match self.db_dir {
-            Some(dir) => Some(dir.expand_path()),
-            None => None,
-        };
+        self.db_dir = self.db_dir.map(|dir| dir.expand_path());
 
         Ok(self)
     }
