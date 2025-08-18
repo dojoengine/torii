@@ -1128,7 +1128,7 @@ async fn test_update_token_metadata_erc4906(sequencer: &RunnerCtx) {
     let rewards_address = manifest
         .external_contracts
         .iter()
-        .find(|c| c.contract_name == "ns-Rewards")
+        .find(|c| c.tag == "ns-Rewards")
         .unwrap()
         .address;
 

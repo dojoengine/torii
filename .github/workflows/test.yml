@@ -74,4 +74,4 @@ jobs:
       - name: Run tests
         run: |
           bash scripts/extract_test_db.sh
-          cargo nextest run --all-features --workspace --build-jobs 20
+          cargo nextest run --all-features --workspace --build-jobs 20 -j 1
