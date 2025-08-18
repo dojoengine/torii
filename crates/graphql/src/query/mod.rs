@@ -105,10 +105,7 @@ fn parse_nested_type(namespace: &str, schema: &Ty) -> TypeData {
                 Name::new("elements"),
                 TypeData::List(Box::new(member_to_type_data(namespace, &array[0]))),
             );
-            type_mapping.insert(
-                Name::new("size"),
-                TypeData::Simple(TypeRef::named("u32")),
-            );
+            type_mapping.insert(Name::new("size"), TypeData::Simple(TypeRef::named("u32")));
             type_mapping
         }
         _ => return TypeData::Simple(TypeRef::named(schema.name())),

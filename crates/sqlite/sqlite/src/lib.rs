@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use dojo_types::primitive::SqlType;
 use dojo_types::schema::Ty;
-use serde_json::Value as JsonValue;
+use serde_json::json;
 use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
@@ -177,8 +177,10 @@ impl Sql {
                         .map(|v| v.to_json_value())
                         .collect::<Result<Vec<_>, _>>()?;
 
-                    // stored as json array: [Vec<JsonValue>, u32], where the first element is the array elements and the second element is the array size
-                    let value: (Vec<JsonValue>, u32) = (elements, *size);
+                    let value = json!({
+                        "elements": elements,
+                        "size": *size
+                    });
 
                     arguments.push(Argument::String(
                         serde_json::to_string(&value)
