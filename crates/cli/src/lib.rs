@@ -2,6 +2,7 @@
 
 pub mod args;
 pub mod options;
+pub mod utils;
 
 pub use args::ToriiArgs;
 pub use options::*;
