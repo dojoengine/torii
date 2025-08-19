@@ -193,15 +193,19 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                         Ok((fetch_result, controller_sync_handle)) => {
                             match fetch_result {
                                 Ok(fetch_result) => {
-                                    if fetching_erroring_out && self.cached_fetch.is_none() {
+                                    let is_from_cache = self.cached_fetch.is_some();
+
+                                    if fetching_erroring_out && !is_from_cache {
                                         fetching_erroring_out = false;
                                         fetching_backoff_delay = Duration::from_secs(1);
                                         gauge!("torii_indexer_backoff_delay_seconds", "operation" => "fetch").set(0.0);
                                         info!(target: LOG_TARGET, "Fetching reestablished.");
                                     }
 
-                                    // Cache the fetch result for retry
-                                    self.cached_fetch = Some(fetch_result.clone());
+                                    // Cache the fetch result for retry only if it's newly fetched
+                                    if !is_from_cache {
+                                        self.cached_fetch = Some(fetch_result.clone());
+                                    }
 
                                     let process_start = Instant::now();
                                     match self.process(&fetch_result).await {
@@ -216,7 +220,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                                                 gauge!("torii_indexer_backoff_delay_seconds", "operation" => "process").set(0.0);
                                                 info!(target: LOG_TARGET, "Processing reestablished.");
                                             }
-                                            // Reset the cached data
+                                            // Clear the cache after successful processing
                                             self.cached_fetch = None;
 
                                             // Wait for controller sync to complete before executing
