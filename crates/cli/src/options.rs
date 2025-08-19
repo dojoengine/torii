@@ -34,6 +34,9 @@ pub const DEFAULT_GRPC_HTTP2_KEEPALIVE_TIMEOUT_SECS: u64 = 10;
 pub const DEFAULT_ERC_MAX_METADATA_TASKS: usize = 100;
 pub const DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT: u64 = 10000;
 pub const DEFAULT_DATABASE_BUSY_TIMEOUT: u64 = 60_000;
+pub const DEFAULT_DATABASE_ACQUIRE_TIMEOUT: u64 = 30_000;
+pub const DEFAULT_DATABASE_IDLE_TIMEOUT: u64 = 600_000;
+pub const DEFAULT_DATABASE_MAX_CONNECTIONS: u32 = 100;
 pub const DEFAULT_MESSAGING_MAX_AGE: u64 = 300;
 pub const DEFAULT_MESSAGING_FUTURE_TOLERANCE: u64 = 60;
 
@@ -497,6 +500,33 @@ pub struct SqlOptions {
                 the database is locked for a long time."
     )]
     pub busy_timeout: u64,
+
+    /// The timeout when acquiring a connection from the pool.
+    #[arg(
+        long = "sql.acquire_timeout",
+        default_value_t = DEFAULT_DATABASE_ACQUIRE_TIMEOUT,
+        help = "The timeout in milliseconds when acquiring a connection from the pool. This \
+                prevents immediate failures when all connections are busy."
+    )]
+    pub acquire_timeout: u64,
+
+    /// The timeout before idle connections are closed.
+    #[arg(
+        long = "sql.idle_timeout",
+        default_value_t = DEFAULT_DATABASE_IDLE_TIMEOUT,
+        help = "The timeout in milliseconds before idle connections are closed and removed \
+                from the pool."
+    )]
+    pub idle_timeout: u64,
+
+    /// The maximum number of connections in the readonly pool.
+    #[arg(
+        long = "sql.max_connections",
+        default_value_t = DEFAULT_DATABASE_MAX_CONNECTIONS,
+        help = "The maximum number of connections in the readonly connection pool. This \
+                controls how many concurrent read operations can be performed."
+    )]
+    pub max_connections: u32,
 }
 
 impl Default for SqlOptions {
@@ -509,6 +539,9 @@ impl Default for SqlOptions {
             cache_size: DEFAULT_DATABASE_CACHE_SIZE,
             wal_autocheckpoint: DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT,
             busy_timeout: DEFAULT_DATABASE_BUSY_TIMEOUT,
+            acquire_timeout: DEFAULT_DATABASE_ACQUIRE_TIMEOUT,
+            idle_timeout: DEFAULT_DATABASE_IDLE_TIMEOUT,
+            max_connections: DEFAULT_DATABASE_MAX_CONNECTIONS,
             hooks: vec![],
             migrations: None,
         }
