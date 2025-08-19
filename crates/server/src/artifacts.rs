@@ -100,7 +100,10 @@ async fn serve_static_file(
 
                 Ok(Response::builder()
                     .header("content-type", mime)
-                    .header("cache-control", "public, max-age=3600, stale-while-revalidate=86400")
+                    .header(
+                        "cache-control",
+                        "public, max-age=3600, stale-while-revalidate=86400",
+                    )
                     .body(contents))
             } else {
                 Err(reject::not_found())
