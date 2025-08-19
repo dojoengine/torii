@@ -247,13 +247,17 @@ impl Runner {
         let write_pool = SqlitePoolOptions::new()
             .min_connections(1)
             .max_connections(1)
+            .acquire_timeout(Duration::from_millis(self.args.sql.acquire_timeout))
+            .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
             .connect_with(options.clone())
             .await?;
 
         let readonly_options = options.read_only(true);
         let readonly_pool = SqlitePoolOptions::new()
             .min_connections(1)
-            .max_connections(100)
+            .max_connections(self.args.sql.max_connections)
+            .acquire_timeout(Duration::from_millis(self.args.sql.acquire_timeout))
+            .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
             .connect_with(readonly_options)
             .await?;
 
