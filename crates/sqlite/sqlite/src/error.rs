@@ -56,6 +56,8 @@ pub enum ParseError {
     FromUtf8(#[from] std::string::FromUtf8Error),
     #[error("Entity is not a struct")]
     InvalidTyEntity,
+    #[error("Invalid FixedSizeArray format: {0}")]
+    InvalidFixedSizeArray(String),
 }
 
 #[derive(Debug, thiserror::Error)]

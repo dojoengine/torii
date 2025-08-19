@@ -64,6 +64,7 @@ impl From<Ty> for proto::types::Ty {
                 children: array.into_iter().map(Into::into).collect::<Vec<_>>(),
             })),
             Ty::ByteArray(string) => Some(proto::types::ty::TyType::Bytearray(string)),
+            Ty::FixedSizeArray(_) => todo!(),
         };
 
         proto::types::Ty { ty_type }
@@ -298,6 +299,16 @@ impl TryFrom<proto::types::Ty> for Ty {
                     .map(TryInto::try_into)
                     .collect::<Result<Vec<_>, _>>()?,
             )),
+            proto::types::ty::TyType::FixedSizeArray(array) => {
+                let proto::types::FixedSizeArray { children, size } = array;
+
+                let elems = children
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                Ok(Ty::FixedSizeArray((elems, size)))
+            }
             proto::types::ty::TyType::Array(array) => Ok(Ty::Array(
                 array
                     .children

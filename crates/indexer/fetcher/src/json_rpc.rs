@@ -10,7 +10,7 @@ use starknet::core::types::requests::{
 };
 use starknet::core::types::{
     BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
-    MaybePendingBlockWithReceipts, MaybePendingBlockWithTxHashes, ResultPageRequest,
+    MaybePreConfirmedBlockWithReceipts, MaybePreConfirmedBlockWithTxHashes, ResultPageRequest,
     TransactionExecutionStatus,
 };
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
@@ -161,7 +161,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 match result {
                     ProviderResponseData::GetBlockWithTxHashes(block) => {
                         let (timestamp, tx_hashes, block_hash) = match block {
-                            MaybePendingBlockWithTxHashes::Block(block) => {
+                            MaybePreConfirmedBlockWithTxHashes::Block(block) => {
                                 (block.timestamp, block.transactions, Some(block.block_hash))
                             }
                             _ => unreachable!(),
@@ -279,23 +279,24 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         ))
     }
 
+    // TODO(kariy): remove reference to the 'pending' status - rename to preconf
     async fn fetch_pending(
         &self,
         latest_block: BlockHashAndNumber,
         cursors: &Cursors,
     ) -> Result<(Option<FetchPendingResult>, Cursors), Error> {
-        let pending_block = if let MaybePendingBlockWithReceipts::PendingBlock(pending) = self
-            .provider
-            .get_block_with_receipts(BlockId::Tag(BlockTag::Pending))
-            .await?
+        let preconf_block = if let MaybePreConfirmedBlockWithReceipts::PreConfirmedBlock(preconf) =
+            self.provider
+                .get_block_with_receipts(BlockId::Tag(BlockTag::PreConfirmed))
+                .await?
         {
-            // if the parent hash is not the hash of the latest block that we fetched, then it means
+            // if the preconfirmed block number is not incremented by one of the latest block number that we fetched, then it means
             // a new block got mined just after we fetched the latest block information
-            if latest_block.block_hash != pending.parent_hash {
+            if latest_block.block_number.saturating_add(1) != preconf.block_number {
                 return Ok((None, cursors.clone()));
             }
 
-            pending
+            preconf
         } else {
             // TODO: change this to unreachable once katana is updated to return PendingBlockWithTxs
             // when BlockTag is Pending unreachable!("We requested pending block, so it
@@ -308,10 +309,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
         let mut new_cursors = cursors.clone();
 
-        let block_number = latest_block.block_number + 1;
-        let timestamp = pending_block.timestamp;
+        let block_number = preconf_block.block_number;
+        let timestamp = preconf_block.timestamp;
 
-        let mut transactions: LinkedHashMap<Felt, FetchTransaction> = pending_block
+        let mut transactions: LinkedHashMap<Felt, FetchTransaction> = preconf_block
             .transactions
             .iter()
             .map(|t| {
@@ -333,7 +334,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             cursor.last_block_timestamp = Some(timestamp);
 
             let mut last_pending_block_tx_tmp = cursor.last_pending_block_tx;
-            for t in &pending_block.transactions {
+            for t in &preconf_block.transactions {
                 let tx_hash = t.receipt.transaction_hash();
                 // Skip all transactions until we reach the last processed transaction
                 if let Some(tx) = last_pending_block_tx_tmp {

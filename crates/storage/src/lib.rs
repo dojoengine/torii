@@ -107,6 +107,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         block_timestamp: u64,
         schema_diff: Option<&Ty>,
         upgrade_diff: Option<&Ty>,
+        legacy_store: bool,
     ) -> Result<(), StorageError>;
 
     /// Sets an entity with the storage.

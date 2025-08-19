@@ -124,6 +124,10 @@ impl ModelReader<Error> for ModelSQLReader {
     async fn layout(&self) -> Result<Layout, Error> {
         Ok(self.layout.clone())
     }
+
+    async fn use_legacy_storage(&self) -> Result<bool, Error> {
+        todo!()
+    }
 }
 
 /// Populate the values of a Ty (schema) from SQLite row.
@@ -281,6 +285,39 @@ pub fn map_row_to_ty(
             let values: Vec<JsonValue> =
                 serde_json::from_str(&serialized_array).map_err(ParseError::FromJsonStr)?;
             *ty = values
+                .iter()
+                .map(|v| {
+                    let mut ty = schema.clone();
+                    ty.from_json_value(v.clone())?;
+                    Result::<_, PrimitiveError>::Ok(ty)
+                })
+                .collect::<Result<Vec<Ty>, _>>()?;
+        }
+        Ty::FixedSizeArray((ty, array_size)) => {
+            let schema = ty[0].clone();
+            let serialized_array = row.try_get::<String, &str>(column_name)?;
+            if serialized_array.is_empty() {
+                *ty = vec![];
+                return Ok(());
+            }
+
+            // Fixed size array is stored as json object: {"elements": Vec<JsonValue>, "size": u32}
+            //
+            // see Sql::set_entity_model
+            let value: serde_json::Value =
+                serde_json::from_str(&serialized_array).map_err(ParseError::FromJsonStr)?;
+
+            let elems = value["elements"].as_array().ok_or_else(|| {
+                ParseError::InvalidFixedSizeArray("Missing 'elements' field".to_string())
+            })?;
+            let serialized_size = value["size"].as_u64().ok_or_else(|| {
+                ParseError::InvalidFixedSizeArray("Missing 'size' field".to_string())
+            })? as u32;
+
+            // sanity check
+            debug_assert_eq!(*array_size, serialized_size);
+
+            *ty = elems
                 .iter()
                 .map(|v| {
                     let mut ty = schema.clone();
@@ -672,7 +709,9 @@ impl Sql {
                         collect_columns(table_prefix, &variant_path, &option.ty, selections);
                     }
                 }
-                Ty::Array(_) | Ty::Primitive(_) | Ty::ByteArray(_) => {
+                // These are all simple fields. Which means their children, if present, are stored within the same column.
+                // Like for primitive types, and types like Array where they are serialized into a JSON object.
+                _ => {
                     selections.push(format!(
                         "[{table_prefix}].[{path}] as \"{table_prefix}.{path}\"",
                     ));

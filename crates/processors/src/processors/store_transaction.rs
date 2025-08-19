@@ -151,7 +151,7 @@ impl StoreTransactionProcessor {
         let contract_address = calldata[to_offset];
 
         let contract_class = contract_class_cache
-            .get(contract_address, BlockId::Tag(BlockTag::Pending))
+            .get(contract_address, BlockId::Tag(BlockTag::PreConfirmed))
             .await?;
 
         let entrypoint = get_entrypoint_name_from_class(&contract_class, calldata[selector_offset])

@@ -134,7 +134,7 @@ pub async fn fetch_contract_metadata<P: Provider + Sync>(
     contract_address: Felt,
     is_erc20: bool,
 ) -> Result<(String, String, u8, Option<String>), TokenMetadataError> {
-    let block_id = BlockId::Tag(BlockTag::Pending);
+    let block_id = BlockId::Tag(BlockTag::PreConfirmed);
     let mut requests = vec![
         ProviderRequestData::Call(CallRequest {
             request: FunctionCall {
@@ -234,7 +234,7 @@ pub async fn fetch_contract_uri<P: Provider + Sync>(
                 entry_point_selector: selector!("contract_uri"),
                 calldata: vec![],
             },
-            BlockId::Tag(BlockTag::Pending),
+            BlockId::Tag(BlockTag::PreConfirmed),
         )
         .await
     {
@@ -246,7 +246,7 @@ pub async fn fetch_contract_uri<P: Provider + Sync>(
                 entry_point_selector: selector!("contractURI"),
                 calldata: vec![],
             },
-            BlockId::Tag(BlockTag::Pending),
+            BlockId::Tag(BlockTag::PreConfirmed),
         )
         .await
     {
@@ -258,7 +258,7 @@ pub async fn fetch_contract_uri<P: Provider + Sync>(
                 entry_point_selector: selector!("uri"),
                 calldata: vec![],
             },
-            BlockId::Tag(BlockTag::Pending),
+            BlockId::Tag(BlockTag::PreConfirmed),
         )
         .await
     {
@@ -302,7 +302,7 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
                 entry_point_selector: selector!("token_uri"),
                 calldata: vec![token_id.low().into(), token_id.high().into()],
             },
-            BlockId::Tag(BlockTag::Pending),
+            BlockId::Tag(BlockTag::PreConfirmed),
         )
         .await
     {
@@ -314,7 +314,7 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
                 entry_point_selector: selector!("tokenURI"),
                 calldata: vec![token_id.low().into(), token_id.high().into()],
             },
-            BlockId::Tag(BlockTag::Pending),
+            BlockId::Tag(BlockTag::PreConfirmed),
         )
         .await
     {
@@ -326,7 +326,7 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
                 entry_point_selector: selector!("uri"),
                 calldata: vec![token_id.low().into(), token_id.high().into()],
             },
-            BlockId::Tag(BlockTag::Pending),
+            BlockId::Tag(BlockTag::PreConfirmed),
         )
         .await
     {

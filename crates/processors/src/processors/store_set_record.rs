@@ -96,7 +96,7 @@ where
         let mut keys_and_unpacked = [event.keys.clone(), event.values].concat();
 
         let mut entity = model.schema;
-        entity.deserialize(&mut keys_and_unpacked)?;
+        entity.deserialize(&mut keys_and_unpacked, model.use_legacy_store)?;
 
         ctx.storage
             .set_entity(

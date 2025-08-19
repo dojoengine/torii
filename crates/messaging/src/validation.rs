@@ -30,7 +30,7 @@ pub async fn validate_signature<P: Provider + Sync>(
                 entry_point_selector: selector!("is_valid_signature"),
                 calldata,
             },
-            BlockId::Tag(BlockTag::Pending),
+            BlockId::Tag(BlockTag::PreConfirmed),
         )
         .await
         .map_err(MessagingError::ProviderError)
