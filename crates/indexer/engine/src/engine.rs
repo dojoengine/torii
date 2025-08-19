@@ -194,7 +194,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                             match fetch_result {
                                 Ok(fetch_result) => {
                                     let is_from_cache = self.cached_fetch.is_some();
-                                    
+
                                     if fetching_erroring_out && !is_from_cache {
                                         fetching_erroring_out = false;
                                         fetching_backoff_delay = Duration::from_secs(1);
