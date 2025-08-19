@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use super::options::*;
+use crate::utils::ExpandPath;
 use anyhow::Result;
 use clap::Parser;
 use dojo_utils::parse::parse_url;
@@ -7,8 +9,6 @@ use merge_options::MergeOptions;
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
 use url::Url;
-
-use super::options::*;
 
 pub const DEFAULT_RPC_URL: &str = "http://0.0.0.0:5050";
 
@@ -123,13 +123,14 @@ impl Default for ToriiArgs {
 impl ToriiArgs {
     pub fn with_config_file(mut self) -> Result<Self> {
         let config: Self = if let Some(path) = &self.config {
-            toml::from_str(&std::fs::read_to_string(path)?)?
+            toml::from_str(&std::fs::read_to_string(path.expand_path())?)?
         } else {
             return Ok(self);
         };
 
         // the CLI (self) takes precedence over the config file.
         self.merge(Some(&config));
+        self.db_dir = self.db_dir.map(|dir| dir.expand_path());
 
         Ok(self)
     }
