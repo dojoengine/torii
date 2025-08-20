@@ -353,7 +353,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         Ok(())
     }
 
-    pub async fn process_pending(&mut self, data: &FetchPreconfirmedBlockResult) -> Result<(), ProcessError> {
+    pub async fn process_pending(
+        &mut self,
+        data: &FetchPreconfirmedBlockResult,
+    ) -> Result<(), ProcessError> {
         for (tx_hash, tx) in &data.transactions {
             if tx.events.is_empty() {
                 continue;

@@ -21,8 +21,8 @@ use tracing::{debug, error, trace, warn};
 
 use crate::error::Error;
 use crate::{
-    Cursors, FetchPreconfirmedBlockResult, FetchRangeBlock, FetchRangeResult, FetchResult, FetchTransaction,
-    FetcherConfig, FetchingFlags,
+    Cursors, FetchPreconfirmedBlockResult, FetchRangeBlock, FetchRangeResult, FetchResult,
+    FetchTransaction, FetcherConfig, FetchingFlags,
 };
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::fetcher";
@@ -54,21 +54,24 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             .record(range_start.elapsed().as_secs_f64());
         debug!(target: LOG_TARGET, duration = ?range_start.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
-        let (preconfirmed_block, cursors) = if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
-            && cursors
-                .cursors
-                .values()
-                .any(|c| c.head == Some(latest_block_number))
-        {
-            let pending_start = Instant::now();
-            let pending_result = self.fetch_preconfirmed_block(latest_block_number, &cursors).await?;
-            histogram!("torii_fetcher_pending_duration_seconds")
-                .record(pending_start.elapsed().as_secs_f64());
+        let (preconfirmed_block, cursors) =
+            if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
+                && cursors
+                    .cursors
+                    .values()
+                    .any(|c| c.head == Some(latest_block_number))
+            {
+                let pending_start = Instant::now();
+                let pending_result = self
+                    .fetch_preconfirmed_block(latest_block_number, &cursors)
+                    .await?;
+                histogram!("torii_fetcher_pending_duration_seconds")
+                    .record(pending_start.elapsed().as_secs_f64());
 
-            pending_result
-        } else {
-            (None, cursors)
-        };
+                pending_result
+            } else {
+                (None, cursors)
+            };
 
         histogram!("torii_fetcher_total_duration_seconds")
             .record(fetch_start.elapsed().as_secs_f64());
