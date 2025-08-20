@@ -318,8 +318,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 continue;
             }
 
-            cursor.last_block_timestamp = Some(timestamp);
-
             let mut last_pending_block_tx_tmp = cursor.last_pending_block_tx;
             for t in &preconf_block.transactions {
                 let tx_hash = t.receipt.transaction_hash();
@@ -367,11 +365,9 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     },
                 );
                 cursor.last_pending_block_tx = Some(*tx_hash);
+                cursor.last_block_timestamp = Some(timestamp);
             }
         }
-
-        // Filter out transactions that don't have any events (not relevant to indexed contracts)
-        transactions.retain(|_, tx| !tx.events.is_empty());
 
         Ok((
             Some(FetchPendingResult {
