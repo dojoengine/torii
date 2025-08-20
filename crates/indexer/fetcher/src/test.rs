@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-use std::sync::Arc;
 use cainome::cairo_serde::ContractAddress;
 use dojo_test_utils::migration::copy_spawn_and_move_db;
 use dojo_test_utils::setup::TestSetup;
@@ -16,6 +14,8 @@ use starknet::macros::felt;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
 use starknet_crypto::Felt;
+use std::collections::HashMap;
+use std::sync::Arc;
 use torii_storage::proto::ContractCursor;
 use url::Url;
 
@@ -1870,7 +1870,7 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
 
     // Create several transactions that will generate events
     let mut transaction_hashes = Vec::new();
-    
+
     // Submit multiple spawn transactions to create events that need to be indexed
     for i in 0..3 {
         let spawn_tx = account
@@ -1930,9 +1930,12 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
     // Fetch the range - this should succeed even if there are temporary failures
     // The retry logic in chunked_batch_requests should handle any transient errors
     let fetch_result = fetcher.fetch_range(&cursors, target_block_number + 1).await;
-    
+
     // Verify the fetch succeeded
-    assert!(fetch_result.is_ok(), "Fetch should succeed despite potential retry scenarios");
+    assert!(
+        fetch_result.is_ok(),
+        "Fetch should succeed despite potential retry scenarios"
+    );
     let (range_result, updated_cursors) = fetch_result.unwrap();
 
     // Verify the target block was fetched
@@ -1973,7 +1976,9 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
 
     // Verify cursor tracking
     assert!(
-        updated_cursors.cursor_transactions.contains_key(&world_address),
+        updated_cursors
+            .cursor_transactions
+            .contains_key(&world_address),
         "World address should be tracked in cursor transactions"
     );
 
@@ -1999,7 +2004,11 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
     );
 
     println!("✅ Integration test passed!");
-    println!("📊 Successfully indexed block {} with {} transactions and {} events", 
-        target_block_number, transaction_hashes.len(), total_events);
+    println!(
+        "📊 Successfully indexed block {} with {} transactions and {} events",
+        target_block_number,
+        transaction_hashes.len(),
+        total_events
+    );
     println!("🔄 Retry logic handled any transient failures during block fetching");
 }
