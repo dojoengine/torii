@@ -2310,7 +2310,10 @@ async fn test_fetch_range_with_retry_logic(sequencer: &RunnerCtx) {
 
     // Mine the block to include our transactions
     sequencer.dev_client().generate_block().await.unwrap();
-    let target_block_number = current_block_number + 1;
+
+    // Get the actual latest block number after mining
+    let latest_block = real_provider.block_hash_and_number().await.unwrap();
+    let target_block_number = latest_block.block_number;
 
     println!(
         "✅ Step 1: Mined block {} with {} transactions",
@@ -2339,13 +2342,18 @@ async fn test_fetch_range_with_retry_logic(sequencer: &RunnerCtx) {
         ContractCursor {
             contract_address: world_address,
             last_pending_block_tx: None,
-            head: Some(current_block_number), // Start from before our transactions
+            head: Some(target_block_number - 1), // Start from before our target transactions
             last_block_timestamp: None,
             tps: None,
         },
     )]);
 
     println!("🔄 Step 3: Running fetch_range (expecting 2 failures then success)...");
+    println!(
+        "   Fetching from block {} to {}",
+        target_block_number - 1,
+        target_block_number + 1
+    );
     let fetch_result = fetcher.fetch_range(&cursors, target_block_number + 1).await;
 
     // Verify the fetch succeeded despite the initial failures
