@@ -9,7 +9,7 @@ use starknet::core::types::requests::{
     GetBlockWithTxHashesRequest, GetEventsRequest, GetTransactionByHashRequest,
 };
 use starknet::core::types::{
-    BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
+    BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
     MaybePreConfirmedBlockWithReceipts, MaybePreConfirmedBlockWithTxHashes, ResultPageRequest,
     TransactionExecutionStatus,
 };
@@ -21,8 +21,8 @@ use tracing::{debug, error, trace, warn};
 
 use crate::error::Error;
 use crate::{
-    Cursors, FetchPendingResult, FetchRangeBlock, FetchRangeResult, FetchResult, FetchTransaction,
-    FetcherConfig, FetchingFlags,
+    Cursors, FetchPreconfirmedBlockResult, FetchRangeBlock, FetchRangeResult, FetchResult,
+    FetchTransaction, FetcherConfig, FetchingFlags,
 };
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::fetcher";
@@ -44,31 +44,33 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
     ) -> Result<FetchResult, Error> {
         let fetch_start = Instant::now();
 
-        let latest_block = self.provider.block_hash_and_number().await?;
-        let latest_block_number = latest_block.block_number;
+        let latest_block_number = self.provider.block_hash_and_number().await?.block_number;
 
         let range_start = Instant::now();
         // Fetch all events from 'from' to our blocks chunk size
-        let (range, cursors) = self.fetch_range(cursors, latest_block.clone()).await?;
+        let (range, cursors) = self.fetch_range(cursors, latest_block_number).await?;
         histogram!("torii_fetcher_range_duration_seconds")
             .record(range_start.elapsed().as_secs_f64());
         debug!(target: LOG_TARGET, duration = ?range_start.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
-        let (pending, cursors) = if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
-            && cursors
-                .cursors
-                .values()
-                .any(|c| c.head == Some(latest_block_number))
-        {
-            let pending_start = Instant::now();
-            let pending_result = self.fetch_pending(latest_block, &cursors).await?;
-            histogram!("torii_fetcher_pending_duration_seconds")
-                .record(pending_start.elapsed().as_secs_f64());
+        let (preconfirmed_block, cursors) =
+            if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
+                && cursors
+                    .cursors
+                    .values()
+                    .any(|c| c.head == Some(latest_block_number))
+            {
+                let pending_start = Instant::now();
+                let pending_result = self
+                    .fetch_preconfirmed_block(latest_block_number, &cursors)
+                    .await?;
+                histogram!("torii_fetcher_pending_duration_seconds")
+                    .record(pending_start.elapsed().as_secs_f64());
 
-            pending_result
-        } else {
-            (None, cursors)
-        };
+                pending_result
+            } else {
+                (None, cursors)
+            };
 
         histogram!("torii_fetcher_total_duration_seconds")
             .record(fetch_start.elapsed().as_secs_f64());
@@ -76,7 +78,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
         Ok(FetchResult {
             range,
-            pending,
+            preconfirmed_block,
             cursors,
         })
     }
@@ -84,7 +86,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
     pub async fn fetch_range(
         &self,
         cursors: &HashMap<Felt, ContractCursor>,
-        latest_block: BlockHashAndNumber,
+        latest_block_number: u64,
     ) -> Result<(FetchRangeResult, Cursors), Error> {
         let mut events = vec![];
         let mut cursors = cursors.clone();
@@ -98,7 +100,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             let from = cursor
                 .head
                 .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
-            let to = (from + self.config.blocks_chunk_size).min(latest_block.block_number);
+            let to = (from + self.config.blocks_chunk_size).min(latest_block_number);
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
@@ -126,7 +128,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Step 2: Fetch all events recursively
         let events_start = Instant::now();
         let fetched_events = self
-            .fetch_events(event_requests, &mut cursors, latest_block.block_number)
+            .fetch_events(event_requests, &mut cursors, latest_block_number)
             .await?;
         histogram!("torii_fetcher_events_duration_seconds")
             .record(events_start.elapsed().as_secs_f64());
@@ -278,12 +280,11 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         ))
     }
 
-    // TODO(kariy): remove reference to the 'pending' status - rename to preconf
-    async fn fetch_pending(
+    async fn fetch_preconfirmed_block(
         &self,
-        latest_block: BlockHashAndNumber,
+        latest_block_number: u64,
         cursors: &Cursors,
-    ) -> Result<(Option<FetchPendingResult>, Cursors), Error> {
+    ) -> Result<(Option<FetchPreconfirmedBlockResult>, Cursors), Error> {
         let preconf_block = if let MaybePreConfirmedBlockWithReceipts::PreConfirmedBlock(preconf) =
             self.provider
                 .get_block_with_receipts(BlockId::Tag(BlockTag::PreConfirmed))
@@ -291,7 +292,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         {
             // if the preconfirmed block number is not incremented by one of the latest block number that we fetched, then it means
             // a new block got mined just after we fetched the latest block information
-            if latest_block.block_number.saturating_add(1) != preconf.block_number {
+            if latest_block_number.saturating_add(1) != preconf.block_number {
                 return Ok((None, cursors.clone()));
             }
 
@@ -314,7 +315,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         let mut transactions: IndexMap<Felt, FetchTransaction> = IndexMap::new();
 
         for (contract_address, cursor) in &mut new_cursors.cursors {
-            if cursor.head != Some(latest_block.block_number) {
+            if cursor.head != Some(latest_block_number) {
                 continue;
             }
 
@@ -370,7 +371,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         }
 
         Ok((
-            Some(FetchPendingResult {
+            Some(FetchPreconfirmedBlockResult {
                 timestamp,
                 transactions,
                 block_number,

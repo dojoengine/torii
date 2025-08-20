@@ -172,8 +172,8 @@ async fn test_fetch_pending_basic(sequencer: &RunnerCtx) {
     let result = fetcher.fetch(&cursors).await.unwrap();
 
     // Verify pending block was fetched
-    assert!(result.pending.is_some());
-    let pending = result.pending.unwrap();
+    assert!(result.preconfirmed_block.is_some());
+    let pending = result.preconfirmed_block.unwrap();
 
     // Should have our pending transaction
     assert!(pending
@@ -298,8 +298,8 @@ async fn test_fetch_pending_multiple_transactions(sequencer: &RunnerCtx) {
     // Fetch pending data
     let result = fetcher.fetch(&cursors).await.unwrap();
 
-    assert!(result.pending.is_some());
-    let pending = result.pending.unwrap();
+    assert!(result.preconfirmed_block.is_some());
+    let pending = result.preconfirmed_block.unwrap();
 
     // Should have all three pending transactions
     assert!(pending.transactions.contains_key(&tx1.transaction_hash));
@@ -401,8 +401,8 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
     )]);
 
     let result1 = fetcher.fetch(&cursors).await.unwrap();
-    assert!(result1.pending.is_some());
-    let pending1 = result1.pending.unwrap();
+    assert!(result1.preconfirmed_block.is_some());
+    let pending1 = result1.preconfirmed_block.unwrap();
 
     // Verify first fetch results
     assert!(pending1.transactions.contains_key(&tx1.transaction_hash));
@@ -440,8 +440,8 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
 
     // Use the updated cursors from first fetch
     let res = fetcher.fetch(&result1.cursors.cursors).await.unwrap();
-    assert!(res.pending.is_some());
-    let pending2 = res.pending.unwrap();
+    assert!(res.preconfirmed_block.is_some());
+    let pending2 = res.preconfirmed_block.unwrap();
 
     // Should not include tx1 (already processed), but should include tx2 and tx3
     assert!(!pending2.transactions.contains_key(&tx1.transaction_hash));
@@ -607,7 +607,7 @@ async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
     assert!(range_cursor.last_block_timestamp.is_some());
 
     // Verify new pending transactions
-    if let Some(new_pending) = &switching_result.pending {
+    if let Some(new_pending) = &switching_result.preconfirmed_block {
         assert!(new_pending
             .transactions
             .contains_key(&new_pending_tx.transaction_hash));
@@ -698,8 +698,8 @@ async fn test_fetch_pending_with_events_comprehensive(sequencer: &RunnerCtx) {
 
     let result = fetcher.fetch(&cursors).await.unwrap();
 
-    assert!(result.pending.is_some());
-    let pending = result.pending.unwrap();
+    assert!(result.preconfirmed_block.is_some());
+    let pending = result.preconfirmed_block.unwrap();
 
     // Should have our transaction
     assert!(pending
@@ -803,8 +803,8 @@ async fn test_fetch_pending_filters_reverted_transactions(sequencer: &RunnerCtx)
 
     let result = fetcher.fetch(&cursors).await.unwrap();
 
-    assert!(result.pending.is_some());
-    let pending = result.pending.unwrap();
+    assert!(result.preconfirmed_block.is_some());
+    let pending = result.preconfirmed_block.unwrap();
 
     // Should definitely have the good transaction
     assert!(pending.transactions.contains_key(&good_tx.transaction_hash));
@@ -932,8 +932,8 @@ async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerC
 
     let result = fetcher.fetch(&cursors).await.unwrap();
 
-    assert!(result.pending.is_some());
-    let pending = result.pending.unwrap();
+    assert!(result.preconfirmed_block.is_some());
+    let pending = result.preconfirmed_block.unwrap();
 
     // Should have both transactions
     assert!(pending
@@ -1248,8 +1248,8 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     // Phase 2: Fetch pending transactions - should get world, ERC20, and ERC721 transactions (but not rewards)
     let pending_result = fetcher.fetch(&initial_cursors).await.unwrap();
 
-    assert!(pending_result.pending.is_some());
-    let pending_data = pending_result.pending.unwrap();
+    assert!(pending_result.preconfirmed_block.is_some());
+    let pending_data = pending_result.preconfirmed_block.unwrap();
 
     // Verify all indexed contract transactions are fetched
     for world_tx in &world_txs {
@@ -1542,7 +1542,7 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     }
 
     // Verify new pending transactions
-    if let Some(new_pending) = &continuation_result.pending {
+    if let Some(new_pending) = &continuation_result.preconfirmed_block {
         // Should contain new transactions from all indexed contracts
         for new_world_tx in &new_world_txs {
             assert!(
