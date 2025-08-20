@@ -1832,7 +1832,7 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
 /// This test uses Katana to create a realistic scenario where block fetching might fail initially
 /// but eventually succeeds, ensuring all transactions are properly indexed.
 #[tokio::test(flavor = "multi_thread")]
-#[katana_runner::test(accounts = 3, db_dir = copy_spawn_and_move_db().as_str(), block_time = 1000)]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
 async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
     let setup = TestSetup::from_examples("/tmp", "../../../examples/");
     let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
@@ -1862,16 +1862,16 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
-    // Mine a block to establish initial state
+    // Mine a block
     sequencer.dev_client().generate_block().await.unwrap();
 
-    let initial_block = provider.block_hash_and_number().await.unwrap();
-    let initial_block_number = initial_block.block_number;
+    let latest_block = provider.block_hash_and_number().await.unwrap();
+    let current_block_number = latest_block.block_number;
 
     // Create several transactions that will generate events
     let mut transaction_hashes = Vec::new();
 
-    // Submit multiple spawn transactions to create events that need to be indexed
+    // Submit multiple spawn and move transactions to create events that need to be indexed
     for i in 0..3 {
         let spawn_tx = account
             .execute_v3(vec![Call {
@@ -1902,9 +1902,9 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
     }
     sequencer.dev_client().generate_block().await.unwrap();
 
-    let target_block_number = initial_block_number + 1;
+    let target_block_number = current_block_number + 1;
 
-    // Create fetcher with small batch size to increase chances of retry scenarios
+    // Create fetcher with small batch size to test retry scenarios more effectively
     let fetcher = Fetcher::new(
         provider.clone(),
         FetcherConfig {
@@ -1921,7 +1921,7 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
         ContractCursor {
             contract_address: world_address,
             last_pending_block_tx: None,
-            head: Some(initial_block_number), // Start from before our transactions
+            head: Some(current_block_number), // Start from before our transactions
             last_block_timestamp: None,
             tps: None,
         },
