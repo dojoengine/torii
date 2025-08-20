@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::time::Duration;
 
 use futures_util::future::try_join_all;
-use hashlink::LinkedHashMap;
+use indexmap::IndexMap;
 use metrics::{counter, histogram};
 use starknet::core::types::requests::{
     GetBlockWithTxHashesRequest, GetEventsRequest, GetTransactionByHashRequest,
@@ -167,16 +167,15 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                             _ => unreachable!(),
                         };
                         // Initialize block with transactions in the order provided by the block
-                        let transactions =
-                            LinkedHashMap::from_iter(tx_hashes.iter().map(|tx_hash| {
-                                (
-                                    *tx_hash,
-                                    FetchTransaction {
-                                        transaction: None,
-                                        events: vec![],
-                                    },
-                                )
-                            }));
+                        let transactions = IndexMap::from_iter(tx_hashes.iter().map(|tx_hash| {
+                            (
+                                *tx_hash,
+                                FetchTransaction {
+                                    transaction: None,
+                                    events: vec![],
+                                },
+                            )
+                        }));
 
                         blocks.insert(
                             *block_number,
@@ -312,26 +311,12 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         let block_number = preconf_block.block_number;
         let timestamp = preconf_block.timestamp;
 
-        let mut transactions: LinkedHashMap<Felt, FetchTransaction> = preconf_block
-            .transactions
-            .iter()
-            .map(|t| {
-                (
-                    *t.receipt.transaction_hash(),
-                    FetchTransaction {
-                        transaction: Some(t.transaction.clone()),
-                        events: vec![],
-                    },
-                )
-            })
-            .collect();
+        let mut transactions: IndexMap<Felt, FetchTransaction> = IndexMap::new();
 
         for (contract_address, cursor) in &mut new_cursors.cursors {
             if cursor.head != Some(latest_block.block_number) {
                 continue;
             }
-
-            cursor.last_block_timestamp = Some(timestamp);
 
             let mut last_pending_block_tx_tmp = cursor.last_pending_block_tx;
             for t in &preconf_block.transactions {
@@ -372,17 +357,17 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     .or_default()
                     .insert(*tx_hash);
 
-                transactions
-                    .get_mut(tx_hash)
-                    .expect("Transaction should exist.")
-                    .events
-                    .extend(events);
+                transactions.insert(
+                    *tx_hash,
+                    FetchTransaction {
+                        transaction: Some(t.transaction.clone()),
+                        events,
+                    },
+                );
                 cursor.last_pending_block_tx = Some(*tx_hash);
+                cursor.last_block_timestamp = Some(timestamp);
             }
         }
-
-        // Filter out transactions that don't have any events (not relevant to indexed contracts)
-        transactions.retain(|_, tx| !tx.events.is_empty());
 
         Ok((
             Some(FetchPendingResult {
