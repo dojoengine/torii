@@ -2,8 +2,8 @@
 mod test;
 
 pub mod error;
-use std::collections::{BTreeMap, HashMap, HashSet};
 use indexmap::IndexMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub use error::Error;
 
