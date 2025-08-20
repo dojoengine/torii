@@ -1896,10 +1896,7 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
         transaction_hashes.push(move_tx.transaction_hash);
     }
 
-    // Wait for transactions to be included and mine the block
-    for tx_hash in &transaction_hashes {
-        TransactionWaiter::new(*tx_hash, &provider).await.unwrap();
-    }
+    // Mine the block to include our transactions
     sequencer.dev_client().generate_block().await.unwrap();
 
     let target_block_number = current_block_number + 1;
