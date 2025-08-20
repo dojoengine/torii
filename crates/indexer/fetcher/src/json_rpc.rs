@@ -21,7 +21,7 @@ use tracing::{debug, error, trace, warn};
 
 use crate::error::Error;
 use crate::{
-    Cursors, FetchPendingResult, FetchRangeBlock, FetchRangeResult, FetchResult, FetchTransaction,
+    Cursors, FetchPreconfirmedBlockResult, FetchRangeBlock, FetchRangeResult, FetchResult, FetchTransaction,
     FetcherConfig, FetchingFlags,
 };
 
@@ -54,14 +54,14 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             .record(range_start.elapsed().as_secs_f64());
         debug!(target: LOG_TARGET, duration = ?range_start.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
-        let (pending, cursors) = if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
+        let (preconfirmed_block, cursors) = if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
             && cursors
                 .cursors
                 .values()
                 .any(|c| c.head == Some(latest_block_number))
         {
             let pending_start = Instant::now();
-            let pending_result = self.fetch_pending(latest_block, &cursors).await?;
+            let pending_result = self.fetch_preconfirmed_block(latest_block_number, &cursors).await?;
             histogram!("torii_fetcher_pending_duration_seconds")
                 .record(pending_start.elapsed().as_secs_f64());
 
@@ -76,7 +76,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
         Ok(FetchResult {
             range,
-            pending,
+            preconfirmed_block,
             cursors,
         })
     }
@@ -279,12 +279,11 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         ))
     }
 
-    // TODO(kariy): remove reference to the 'pending' status - rename to preconf
-    async fn fetch_pending(
+    async fn fetch_preconfirmed_block(
         &self,
-        latest_block: BlockHashAndNumber,
+        latest_block_number: u64,
         cursors: &Cursors,
-    ) -> Result<(Option<FetchPendingResult>, Cursors), Error> {
+    ) -> Result<(Option<FetchPreconfirmedBlockResult>, Cursors), Error> {
         let preconf_block = if let MaybePreConfirmedBlockWithReceipts::PreConfirmedBlock(preconf) =
             self.provider
                 .get_block_with_receipts(BlockId::Tag(BlockTag::PreConfirmed))
@@ -292,7 +291,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         {
             // if the preconfirmed block number is not incremented by one of the latest block number that we fetched, then it means
             // a new block got mined just after we fetched the latest block information
-            if latest_block.block_number.saturating_add(1) != preconf.block_number {
+            if latest_block_number.saturating_add(1) != preconf.block_number {
                 return Ok((None, cursors.clone()));
             }
 
@@ -327,7 +326,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             .collect();
 
         for (contract_address, cursor) in &mut new_cursors.cursors {
-            if cursor.head != Some(latest_block.block_number) {
+            if cursor.head != Some(latest_block_number) {
                 continue;
             }
 
@@ -385,7 +384,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         transactions.retain(|_, tx| !tx.events.is_empty());
 
         Ok((
-            Some(FetchPendingResult {
+            Some(FetchPreconfirmedBlockResult {
                 timestamp,
                 transactions,
                 block_number,

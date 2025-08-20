@@ -27,7 +27,7 @@ use crate::constants::LOG_TARGET;
 use crate::error::{Error, ProcessError};
 use crate::IndexingFlags;
 use torii_indexer_fetcher::{
-    FetchPendingResult, FetchRangeResult, FetchResult, Fetcher, FetcherConfig,
+    FetchPreconfirmedBlockResult, FetchRangeResult, FetchResult, Fetcher, FetcherConfig,
 };
 use torii_processors::task_manager::{ParallelizedEvent, TaskManager};
 
@@ -282,13 +282,13 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
     pub async fn process(&mut self, fetch_result: &FetchResult) -> Result<(), ProcessError> {
         let FetchResult {
             range,
-            pending,
+            preconfirmed_block,
             cursors,
         } = fetch_result;
 
         self.process_range(range).await?;
-        if let Some(pending) = pending {
-            self.process_pending(pending).await?;
+        if let Some(preconfirmed_block) = preconfirmed_block {
+            self.process_pending(preconfirmed_block).await?;
         }
 
         // Process parallelized events
@@ -353,7 +353,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         Ok(())
     }
 
-    pub async fn process_pending(&mut self, data: &FetchPendingResult) -> Result<(), ProcessError> {
+    pub async fn process_pending(&mut self, data: &FetchPreconfirmedBlockResult) -> Result<(), ProcessError> {
         for (tx_hash, tx) in &data.transactions {
             if tx.events.is_empty() {
                 continue;

@@ -68,7 +68,7 @@ pub struct FetchRangeResult {
 }
 
 #[derive(Debug, Clone)]
-pub struct FetchPendingResult {
+pub struct FetchPreconfirmedBlockResult {
     pub block_number: u64,
     pub timestamp: u64,
     pub transactions: LinkedHashMap<Felt, FetchTransaction>,
@@ -85,6 +85,6 @@ pub struct Cursors {
 #[derive(Debug, Clone)]
 pub struct FetchResult {
     pub range: FetchRangeResult,
-    pub pending: Option<FetchPendingResult>,
+    pub preconfirmed_block: Option<FetchPreconfirmedBlockResult>,
     pub cursors: Cursors,
 }
