@@ -125,67 +125,38 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
         // Step 2: Fetch all events recursively
         let events_start = Instant::now();
-        let fetched_events = match self
+        let fetched_events = self
             .fetch_events(event_requests, &mut cursors, latest_block.block_number)
-            .await
-        {
-            Ok(events) => events,
-            Err(e) => {
-                // If event fetching fails, don't update cursors
-                error!(target: LOG_TARGET, error = ?e, "Failed to fetch events, reverting cursor updates.");
-                return Err(e);
-            }
-        };
+            .await?;
         histogram!("torii_fetcher_events_duration_seconds")
             .record(events_start.elapsed().as_secs_f64());
         counter!("torii_fetcher_events_fetched_total").increment(fetched_events.len() as u64);
         events.extend(fetched_events);
 
-        // Step 3: Collect unique block numbers from events only (not from cursors to avoid BlockNotFound)
+        // Step 3: Collect unique block numbers from events and cursors
         for event in &events {
             block_numbers.insert(event.block_number.unwrap());
         }
-        // Only add cursor heads that correspond to events we actually fetched
         for (_, cursor) in cursors.iter() {
             if let Some(head) = cursor.head {
-                // Only include cursor head if we have events from that block or it's within our fetched range
-                if block_numbers.contains(&head) {
-                    block_numbers.insert(head);
-                }
+                block_numbers.insert(head);
             }
         }
 
         // Step 4: Fetch block data (timestamps and transaction hashes)
         let mut block_requests = Vec::new();
-        // Filter out block numbers that are beyond the latest block to avoid BlockNotFound errors
-        let valid_block_numbers: BTreeSet<u64> = block_numbers
-            .into_iter()
-            .filter(|&block_number| block_number <= latest_block.block_number)
-            .collect();
-            
-        counter!("torii_fetcher_blocks_to_fetch_total").increment(valid_block_numbers.len() as u64);
-        for block_number in &valid_block_numbers {
+        counter!("torii_fetcher_blocks_to_fetch_total").increment(block_numbers.len() as u64);
+        for block_number in &block_numbers {
             block_requests.push(ProviderRequestData::GetBlockWithTxHashes(
                 GetBlockWithTxHashesRequest {
                     block_id: BlockId::Number(*block_number),
                 },
             ));
         }
-        
-        // Update block_numbers to use the filtered set
-        let block_numbers = valid_block_numbers;
 
         // Step 5: Execute block requests in batch and initialize blocks with transaction order
         if !block_requests.is_empty() {
-            let block_results = match self.chunked_batch_requests(&block_requests).await {
-                Ok(results) => results,
-                Err(e) => {
-                    // If block fetching fails, revert cursor updates and return error
-                    error!(target: LOG_TARGET, error = ?e, "Failed to fetch block data, reverting cursor updates.");
-                    return Err(e);
-                }
-            };
-            
+            let block_results = self.chunked_batch_requests(&block_requests).await?;
             for (block_number, result) in block_numbers.iter().zip(block_results) {
                 match result {
                     ProviderResponseData::GetBlockWithTxHashes(block) => {
@@ -270,15 +241,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 }
             }
 
-            let transaction_results = match self.chunked_batch_requests(&transaction_requests).await {
-                Ok(results) => results,
-                Err(e) => {
-                    // If transaction fetching fails, revert cursor updates and return error
-                    error!(target: LOG_TARGET, error = ?e, "Failed to fetch transaction data, reverting cursor updates.");
-                    return Err(e);
-                }
-            };
-            
+            let transaction_results = self.chunked_batch_requests(&transaction_requests).await?;
             for (block_number, result) in block_numbers_for_tx.into_iter().zip(transaction_results)
             {
                 match result {
@@ -507,6 +470,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                             events.push(event);
                         }
 
+                        to = to.min(latest_block_number);
                         if new_cursor.head != Some(to) {
                             new_cursor.last_pending_block_tx = None;
                         }
@@ -591,7 +555,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                                     chunk_size = chunk.len(),
                                     batch_chunk_size = self.config.batch_chunk_size,
                                     first_request = ?chunk.first(),
-                                    "Chunk batch request failed after all retries. This could be due to the provider being overloaded, missing blocks, or network issues. You can try reducing the batch chunk size."
+                                    "Chunk batch request failed after all retries. This could be due to the provider being overloaded. You can try reducing the batch chunk size."
                                 );
                                 return Err(Error::BatchRequest(Box::new(e.into())));
                             }
