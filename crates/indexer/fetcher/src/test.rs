@@ -2264,16 +2264,16 @@ async fn test_fetch_range_with_retry_logic(sequencer: &RunnerCtx) {
 
     // Grant writer permissions to the actions contract
     let world = WorldContract::new(world_address, &account);
-    let tx_hash = world
+    let grant_writer_res = world
         .grant_writer(
-            &compute_bytearray_hash("dojo"),
+            &compute_bytearray_hash("ns"),
             &ContractAddress(actions_address),
         )
-        .send()
+        .send_with_cfg(&TxnConfig::init_wait())
         .await
-        .unwrap()
-        .transaction_hash;
-    TransactionWaiter::new(tx_hash, &real_provider)
+        .unwrap();
+
+    TransactionWaiter::new(grant_writer_res.transaction_hash, &real_provider)
         .await
         .unwrap();
 
