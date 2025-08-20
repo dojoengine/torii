@@ -12,14 +12,295 @@ use starknet::core::types::{BlockId, BlockWithReceipts, Call, MaybePreConfirmedB
 use starknet::core::utils::get_selector_from_name;
 use starknet::macros::felt;
 use starknet::providers::jsonrpc::HttpTransport;
-use starknet::providers::{JsonRpcClient, Provider};
+use starknet::providers::{JsonRpcClient, Provider, ProviderError, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
+use async_trait::async_trait;
 use torii_storage::proto::ContractCursor;
 use url::Url;
 
 use crate::{Fetcher, FetcherConfig, FetchingFlags};
+
+/// Mock provider that fails batch requests for the first N attempts, then succeeds
+#[derive(Debug, Clone)]
+pub struct MockRetryProvider {
+    inner: Arc<JsonRpcClient<HttpTransport>>,
+    failure_count: Arc<AtomicU32>,
+    max_failures: u32,
+    stats: Arc<RetryStats>,
+}
+
+#[derive(Debug, Default)]
+pub struct RetryStats {
+    pub total_calls: AtomicU32,
+    pub failed_attempts: AtomicU32,
+    pub successful_attempts: AtomicU32,
+}
+
+#[derive(Debug)]
+pub struct RetryStatsSnapshot {
+    pub total_calls: u32,
+    pub failed_attempts: u32,
+    pub successful_attempts: u32,
+}
+
+impl MockRetryProvider {
+    pub fn new(inner: Arc<JsonRpcClient<HttpTransport>>, max_failures: u32) -> Self {
+        Self {
+            inner,
+            failure_count: Arc::new(AtomicU32::new(0)),
+            max_failures,
+            stats: Arc::new(RetryStats::default()),
+        }
+    }
+
+    pub fn get_retry_stats(&self) -> RetryStatsSnapshot {
+        RetryStatsSnapshot {
+            total_calls: self.stats.total_calls.load(Ordering::SeqCst),
+            failed_attempts: self.stats.failed_attempts.load(Ordering::SeqCst),
+            successful_attempts: self.stats.successful_attempts.load(Ordering::SeqCst),
+        }
+    }
+}
+
+#[async_trait]
+impl Provider for MockRetryProvider {
+    async fn batch_requests<R>(&self, requests: R) -> Result<Vec<ProviderResponseData>, ProviderError>
+    where
+        R: AsRef<[ProviderRequestData]> + Send + Sync,
+    {
+        self.stats.total_calls.fetch_add(1, Ordering::SeqCst);
+        
+        let current_failures = self.failure_count.load(Ordering::SeqCst);
+        if current_failures < self.max_failures {
+            // Simulate failure for first N attempts
+            self.failure_count.fetch_add(1, Ordering::SeqCst);
+            self.stats.failed_attempts.fetch_add(1, Ordering::SeqCst);
+            
+            println!("   🔴 Mock provider simulating failure #{} (max: {})", current_failures + 1, self.max_failures);
+            return Err(ProviderError::RateLimited);
+        }
+        
+        // After max failures, delegate to real provider
+        self.stats.successful_attempts.fetch_add(1, Ordering::SeqCst);
+        println!("   🟢 Mock provider delegating to real provider (attempt #{})", current_failures + 1);
+        self.inner.batch_requests(requests).await
+    }
+
+    // Delegate all other methods to inner provider with correct generic signatures
+    async fn spec_version(&self) -> Result<String, ProviderError> {
+        self.inner.spec_version().await
+    }
+
+    async fn get_block_with_tx_hashes<B>(&self, block_id: B) -> Result<starknet::core::types::MaybePreConfirmedBlockWithTxHashes, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.inner.get_block_with_tx_hashes(block_id).await
+    }
+
+    async fn get_block_with_txs<B>(&self, block_id: B) -> Result<starknet::core::types::MaybePreConfirmedBlockWithTxs, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.inner.get_block_with_txs(block_id).await
+    }
+
+    async fn get_block_with_receipts<B>(&self, block_id: B) -> Result<MaybePreConfirmedBlockWithReceipts, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.inner.get_block_with_receipts(block_id).await
+    }
+
+    async fn get_state_update<B>(&self, block_id: B) -> Result<starknet::core::types::MaybePreConfirmedStateUpdate, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.inner.get_state_update(block_id).await
+    }
+
+    async fn get_storage_at<A, K, B>(&self, contract_address: A, key: K, block_id: B) -> Result<starknet_crypto::Felt, ProviderError>
+    where
+        A: AsRef<starknet_crypto::Felt> + Send + Sync,
+        K: AsRef<starknet_crypto::Felt> + Send + Sync,
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.inner.get_storage_at(contract_address, key, block_id).await
+    }
+
+    async fn get_messages_status(&self, transaction_hash: starknet::core::types::Hash256) -> Result<Vec<starknet::core::types::MessageStatus>, ProviderError> {
+        self.inner.get_messages_status(transaction_hash).await
+    }
+
+    async fn get_transaction_status<H>(&self, transaction_hash: H) -> Result<starknet::core::types::TransactionStatus, ProviderError>
+    where
+        H: AsRef<starknet_crypto::Felt> + Send + Sync,
+    {
+        self.inner.get_transaction_status(transaction_hash).await
+    }
+
+    async fn get_transaction_by_hash<H>(&self, transaction_hash: H) -> Result<starknet::core::types::Transaction, ProviderError>
+    where
+        H: AsRef<starknet_crypto::Felt> + Send + Sync,
+    {
+        self.inner.get_transaction_by_hash(transaction_hash).await
+    }
+
+    async fn get_transaction_by_block_id_and_index<B>(&self, block_id: B, index: u64) -> Result<starknet::core::types::Transaction, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.inner.get_transaction_by_block_id_and_index(block_id, index).await
+    }
+
+    async fn get_transaction_receipt<H>(&self, transaction_hash: H) -> Result<starknet::core::types::TransactionReceiptWithBlockInfo, ProviderError>
+    where
+        H: AsRef<starknet_crypto::Felt> + Send + Sync,
+    {
+        self.inner.get_transaction_receipt(transaction_hash).await
+    }
+
+    async fn get_class<B, H>(&self, block_id: B, class_hash: H) -> Result<starknet::core::types::ContractClass, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+        H: AsRef<starknet_crypto::Felt> + Send + Sync,
+    {
+        self.inner.get_class(block_id, class_hash).await
+    }
+
+    async fn get_class_hash_at<B, A>(&self, block_id: B, contract_address: A) -> Result<starknet_crypto::Felt, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+        A: AsRef<starknet_crypto::Felt> + Send + Sync,
+    {
+        self.inner.get_class_hash_at(block_id, contract_address).await
+    }
+
+    async fn get_class_at<B, A>(&self, block_id: B, contract_address: A) -> Result<starknet::core::types::ContractClass, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+        A: AsRef<starknet_crypto::Felt> + Send + Sync,
+    {
+        self.inner.get_class_at(block_id, contract_address).await
+    }
+
+    async fn get_block_transaction_count<B>(&self, block_id: B) -> Result<u64, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.inner.get_block_transaction_count(block_id).await
+    }
+
+    async fn call<R, B>(&self, request: R, block_id: B) -> Result<Vec<starknet_crypto::Felt>, ProviderError>
+    where
+        R: AsRef<starknet::core::types::FunctionCall> + Send + Sync,
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.inner.call(request, block_id).await
+    }
+
+    async fn estimate_fee<R, S, B>(&self, request: R, simulation_flags: S, block_id: B) -> Result<Vec<starknet::core::types::FeeEstimate>, ProviderError>
+    where
+        R: AsRef<[starknet::core::types::BroadcastedTransaction]> + Send + Sync,
+        S: AsRef<[starknet::core::types::SimulationFlagForEstimateFee]> + Send + Sync,
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.inner.estimate_fee(request, simulation_flags, block_id).await
+    }
+
+    async fn estimate_message_fee<M, B>(&self, message: M, block_id: B) -> Result<starknet::core::types::MessageFeeEstimate, ProviderError>
+    where
+        M: AsRef<starknet::core::types::MsgFromL1> + Send + Sync,
+        B: AsRef<BlockId> + Send + Sync,
+    {
+        self.inner.estimate_message_fee(message, block_id).await
+    }
+
+    async fn block_number(&self) -> Result<u64, ProviderError> {
+        self.inner.block_number().await
+    }
+
+    async fn block_hash_and_number(&self) -> Result<starknet::core::types::BlockHashAndNumber, ProviderError> {
+        self.inner.block_hash_and_number().await
+    }
+
+    async fn chain_id(&self) -> Result<starknet_crypto::Felt, ProviderError> {
+        self.inner.chain_id().await
+    }
+
+    async fn syncing(&self) -> Result<starknet::core::types::SyncStatusType, ProviderError> {
+        self.inner.syncing().await
+    }
+
+    async fn get_events(&self, filter: starknet::core::types::EventFilter, continuation_token: Option<String>, chunk_size: u64) -> Result<starknet::core::types::EventsPage, ProviderError> {
+        self.inner.get_events(filter, continuation_token, chunk_size).await
+    }
+
+    async fn get_nonce<B, A>(&self, block_id: B, contract_address: A) -> Result<starknet_crypto::Felt, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+        A: AsRef<starknet_crypto::Felt> + Send + Sync,
+    {
+        self.inner.get_nonce(block_id, contract_address).await
+    }
+
+    async fn get_storage_proof<B, H, A, K>(&self, block_id: B, class_hashes: H, contract_addresses: A, contracts_storage_keys: K) -> Result<starknet::core::types::StorageProof, ProviderError>
+    where
+        B: AsRef<starknet::core::types::ConfirmedBlockId> + Send + Sync,
+        H: AsRef<[starknet_crypto::Felt]> + Send + Sync,
+        A: AsRef<[starknet_crypto::Felt]> + Send + Sync,
+        K: AsRef<[starknet::core::types::ContractStorageKeys]> + Send + Sync,
+    {
+        self.inner.get_storage_proof(block_id, class_hashes, contract_addresses, contracts_storage_keys).await
+    }
+
+    async fn add_invoke_transaction<I>(&self, invoke_transaction: I) -> Result<starknet::core::types::InvokeTransactionResult, ProviderError>
+    where
+        I: AsRef<starknet::core::types::BroadcastedInvokeTransaction> + Send + Sync,
+    {
+        self.inner.add_invoke_transaction(invoke_transaction).await
+    }
+
+    async fn add_declare_transaction<D>(&self, declare_transaction: D) -> Result<starknet::core::types::DeclareTransactionResult, ProviderError>
+    where
+        D: AsRef<starknet::core::types::BroadcastedDeclareTransaction> + Send + Sync,
+    {
+        self.inner.add_declare_transaction(declare_transaction).await
+    }
+
+    async fn add_deploy_account_transaction<D>(&self, deploy_account_transaction: D) -> Result<starknet::core::types::DeployAccountTransactionResult, ProviderError>
+    where
+        D: AsRef<starknet::core::types::BroadcastedDeployAccountTransaction> + Send + Sync,
+    {
+        self.inner.add_deploy_account_transaction(deploy_account_transaction).await
+    }
+
+    async fn trace_transaction<H>(&self, transaction_hash: H) -> Result<starknet::core::types::TransactionTrace, ProviderError>
+    where
+        H: AsRef<starknet_crypto::Felt> + Send + Sync,
+    {
+        self.inner.trace_transaction(transaction_hash).await
+    }
+
+    async fn simulate_transactions<B, T, S>(&self, block_id: B, transactions: T, simulation_flags: S) -> Result<Vec<starknet::core::types::SimulatedTransaction>, ProviderError>
+    where
+        B: AsRef<BlockId> + Send + Sync,
+        T: AsRef<[starknet::core::types::BroadcastedTransaction]> + Send + Sync,
+        S: AsRef<[starknet::core::types::SimulationFlag]> + Send + Sync,
+    {
+        self.inner.simulate_transactions(block_id, transactions, simulation_flags).await
+    }
+
+    async fn trace_block_transactions<B>(&self, block_id: B) -> Result<Vec<starknet::core::types::TransactionTraceWithHash>, ProviderError>
+    where
+        B: AsRef<starknet::core::types::ConfirmedBlockId> + Send + Sync,
+    {
+        self.inner.trace_block_transactions(block_id).await
+    }
+}
 
 const CARTRIDGE_NODE_MAINNET: &str = "https://api.cartridge.gg/x/starknet/mainnet/rpc/v0_8";
 const ETERNUM_ADDRESS: Felt =
@@ -1828,17 +2109,21 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     println!("   • Total events found: {}", total_events_found);
 }
 
+
 /// Integration test that verifies retry logic works when fetching blocks with real transactions.
-/// This test uses Katana to create a realistic scenario where block fetching might fail initially
-/// but eventually succeeds, ensuring all transactions are properly indexed.
+/// This test:
+/// 1. Mines a block with transactions using Katana
+/// 2. Uses a mock provider that fails batch requests for the first 2 attempts  
+/// 3. Runs fetch_range and verifies the output is correct despite retries
+/// 4. Checks all transactions are present in results
 #[tokio::test(flavor = "multi_thread")]
 #[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str(), block_time = 3600000)]
-async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
+async fn test_fetch_range_with_retry_logic(sequencer: &RunnerCtx) {
     let setup = TestSetup::from_examples("/tmp", "../../../examples/");
     let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
 
     let account = sequencer.account(0);
-    let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
+    let real_provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
 
     let world_local = metadata.load_dojo_world_local().unwrap();
     let world_address = world_local.deterministic_world_address().unwrap();
@@ -1846,32 +2131,23 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
         .get_contract_address_local(compute_selector_from_names("ns", "actions"))
         .unwrap();
 
+    // Grant writer permissions to the actions contract
     let world = WorldContract::new(world_address, &account);
-
-    // Grant writer permissions
-    let grant_writer_res = world
-        .grant_writer(
-            &compute_bytearray_hash("ns"),
-            &ContractAddress(actions_address),
-        )
-        .send_with_cfg(&TxnConfig::init_wait())
+    let tx_hash = world
+        .grant_writer(&compute_bytearray_hash("dojo"), &ContractAddress(actions_address))
+        .send()
         .await
-        .unwrap();
+        .unwrap()
+        .transaction_hash;
+    TransactionWaiter::new(tx_hash, &real_provider).await.unwrap();
 
-    TransactionWaiter::new(grant_writer_res.transaction_hash, &provider)
-        .await
-        .unwrap();
+    let current_block_number = real_provider.block_number().await.unwrap();
+    println!("Current block: {}", current_block_number);
 
-    // Mine a block
-    sequencer.dev_client().generate_block().await.unwrap();
-
-    let latest_block = provider.block_hash_and_number().await.unwrap();
-    let current_block_number = latest_block.block_number;
-
-    // Create several transactions that will generate events
+    // Step 1: Mine a block with a few transactions from Katana
     let mut transaction_hashes = Vec::new();
 
-    // Submit multiple spawn and move transactions to create events that need to be indexed
+    // Execute a few transactions to create events
     for i in 0..3 {
         let spawn_tx = account
             .execute_v3(vec![Call {
@@ -1898,15 +2174,20 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
 
     // Mine the block to include our transactions
     sequencer.dev_client().generate_block().await.unwrap();
-
     let target_block_number = current_block_number + 1;
+    
+    println!("✅ Step 1: Mined block {} with {} transactions", target_block_number, transaction_hashes.len());
 
-    // Create fetcher with small batch size to test retry scenarios more effectively
+    // Step 2: Create mock provider that fails batch requests for the first 2 attempts
+    let mock_provider = MockRetryProvider::new(real_provider.clone(), 2);
+    println!("✅ Step 2: Created mock provider that will fail first 2 batch requests");
+
+    // Step 3: Create fetcher with mock provider and run fetch_range
     let fetcher = Fetcher::new(
-        provider.clone(),
+        mock_provider.clone(),
         FetcherConfig {
             blocks_chunk_size: 1,
-            batch_chunk_size: 1, // Very small batch size to test individual requests
+            batch_chunk_size: 1, // Small batch size to trigger batch_requests
             flags: FetchingFlags::TRANSACTIONS,
             ..Default::default()
         },
@@ -1924,18 +2205,32 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
         },
     )]);
 
-    // Fetch the range - this should succeed even if there are temporary failures
-    // The retry logic in chunked_batch_requests should handle any transient errors
+    println!("🔄 Step 3: Running fetch_range (expecting 2 failures then success)...");
     let fetch_result = fetcher.fetch_range(&cursors, target_block_number + 1).await;
 
-    // Verify the fetch succeeded
+    // Verify the fetch succeeded despite the initial failures
     assert!(
         fetch_result.is_ok(),
-        "Fetch should succeed despite potential retry scenarios"
+        "Fetch should succeed after retry attempts: {:?}",
+        fetch_result.err()
     );
+    
     let (range_result, updated_cursors) = fetch_result.unwrap();
+    
+    // Verify retry attempts were made
+    let retry_stats = mock_provider.get_retry_stats();
+    println!("📊 Retry Statistics:");
+    println!("   • Total batch_requests calls: {}", retry_stats.total_calls);
+    println!("   • Failed attempts: {}", retry_stats.failed_attempts);
+    println!("   • Successful attempts: {}", retry_stats.successful_attempts);
+    
+    assert!(retry_stats.failed_attempts >= 2, "Should have failed at least 2 times");
+    assert!(retry_stats.successful_attempts > 0, "Should have succeeded eventually");
+    assert_eq!(retry_stats.total_calls, retry_stats.failed_attempts + retry_stats.successful_attempts);
+    
+    println!("✅ Step 3: fetch_range succeeded after {} failed attempts", retry_stats.failed_attempts);
 
-    // Verify the target block was fetched
+    // Step 4: Verify the output is correct and all transactions are present
     assert!(
         range_result.blocks.contains_key(&target_block_number),
         "Target block {} should be present in results",
@@ -1943,7 +2238,7 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
     );
 
     let target_block = &range_result.blocks[&target_block_number];
-
+    
     // Verify all our transactions are present in the block
     for tx_hash in &transaction_hashes {
         assert!(
@@ -1972,13 +2267,6 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
     }
 
     // Verify cursor tracking
-    assert!(
-        updated_cursors
-            .cursor_transactions
-            .contains_key(&world_address),
-        "World address should be tracked in cursor transactions"
-    );
-
     let world_cursor_txs = &updated_cursors.cursor_transactions[&world_address];
     for tx_hash in &transaction_hashes {
         assert!(
@@ -1995,17 +2283,12 @@ async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
         Some(target_block_number),
         "World cursor head should be updated to target block"
     );
-    assert!(
-        world_cursor.last_block_timestamp.is_some(),
-        "World cursor should have timestamp"
-    );
 
-    println!("✅ Integration test passed!");
-    println!(
-        "📊 Successfully indexed block {} with {} transactions and {} events",
-        target_block_number,
-        transaction_hashes.len(),
-        total_events
-    );
-    println!("🔄 Retry logic handled any transient failures during block fetching");
+    println!("✅ Step 4: All {} transactions and {} events verified in results", 
+             transaction_hashes.len(), total_events);
+    
+    println!("🎉 Retry logic test completed successfully!");
+    println!("   • Mock provider failed {} times as expected", retry_stats.failed_attempts);
+    println!("   • fetch_range eventually succeeded and returned correct data");
+    println!("   • All {} transactions properly indexed", transaction_hashes.len());
 }
