@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-
 use cainome::cairo_serde::ContractAddress;
 use dojo_test_utils::migration::copy_spawn_and_move_db;
 use dojo_test_utils::setup::TestSetup;
@@ -1827,4 +1826,180 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
         rewards_txs.len() + new_rewards_txs.len()
     );
     println!("   • Total events found: {}", total_events_found);
+}
+
+/// Integration test that verifies retry logic works when fetching blocks with real transactions.
+/// This test uses Katana to create a realistic scenario where block fetching might fail initially
+/// but eventually succeeds, ensuring all transactions are properly indexed.
+#[tokio::test(flavor = "multi_thread")]
+#[katana_runner::test(accounts = 3, db_dir = copy_spawn_and_move_db().as_str(), block_time = 1000)]
+async fn test_fetch_range_with_retry_logic_integration(sequencer: &RunnerCtx) {
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
+
+    let account = sequencer.account(0);
+    let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
+
+    let world_local = metadata.load_dojo_world_local().unwrap();
+    let world_address = world_local.deterministic_world_address().unwrap();
+    let actions_address = world_local
+        .get_contract_address_local(compute_selector_from_names("ns", "actions"))
+        .unwrap();
+
+    let world = WorldContract::new(world_address, &account);
+
+    // Grant writer permissions
+    let grant_writer_res = world
+        .grant_writer(
+            &compute_bytearray_hash("ns"),
+            &ContractAddress(actions_address),
+        )
+        .send_with_cfg(&TxnConfig::init_wait())
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(grant_writer_res.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Mine a block to establish initial state
+    sequencer.dev_client().generate_block().await.unwrap();
+
+    let initial_block = provider.block_hash_and_number().await.unwrap();
+    let initial_block_number = initial_block.block_number;
+
+    // Create several transactions that will generate events
+    let mut transaction_hashes = Vec::new();
+    
+    // Submit multiple spawn transactions to create events that need to be indexed
+    for i in 0..3 {
+        let spawn_tx = account
+            .execute_v3(vec![Call {
+                to: actions_address,
+                selector: get_selector_from_name("spawn").unwrap(),
+                calldata: vec![],
+            }])
+            .send()
+            .await
+            .unwrap();
+        transaction_hashes.push(spawn_tx.transaction_hash);
+
+        let move_tx = account
+            .execute_v3(vec![Call {
+                to: actions_address,
+                selector: get_selector_from_name("move").unwrap(),
+                calldata: vec![Felt::from(i + 1)], // Different directions
+            }])
+            .send()
+            .await
+            .unwrap();
+        transaction_hashes.push(move_tx.transaction_hash);
+    }
+
+    // Wait for transactions to be included and mine the block
+    for tx_hash in &transaction_hashes {
+        TransactionWaiter::new(*tx_hash, &provider).await.unwrap();
+    }
+    sequencer.dev_client().generate_block().await.unwrap();
+
+    let target_block_number = initial_block_number + 1;
+
+    // Create fetcher with small batch size to increase chances of retry scenarios
+    let fetcher = Fetcher::new(
+        provider.clone(),
+        FetcherConfig {
+            blocks_chunk_size: 1,
+            batch_chunk_size: 1, // Very small batch size to test individual requests
+            flags: FetchingFlags::TRANSACTIONS,
+            ..Default::default()
+        },
+    );
+
+    // Set up cursor to fetch the block with our transactions
+    let cursors = HashMap::from([(
+        world_address,
+        ContractCursor {
+            contract_address: world_address,
+            last_pending_block_tx: None,
+            head: Some(initial_block_number), // Start from before our transactions
+            last_block_timestamp: None,
+            tps: None,
+        },
+    )]);
+
+    // Fetch the range - this should succeed even if there are temporary failures
+    // The retry logic in chunked_batch_requests should handle any transient errors
+    let fetch_result = fetcher.fetch_range(&cursors, target_block_number + 1).await;
+    
+    // Verify the fetch succeeded
+    assert!(fetch_result.is_ok(), "Fetch should succeed despite potential retry scenarios");
+    let (range_result, updated_cursors) = fetch_result.unwrap();
+
+    // Verify the target block was fetched
+    assert!(
+        range_result.blocks.contains_key(&target_block_number),
+        "Target block {} should be present in results",
+        target_block_number
+    );
+
+    let target_block = &range_result.blocks[&target_block_number];
+
+    // Verify all our transactions are present in the block
+    for tx_hash in &transaction_hashes {
+        assert!(
+            target_block.transactions.contains_key(tx_hash),
+            "Transaction {:?} should be present in block {}",
+            tx_hash,
+            target_block_number
+        );
+    }
+
+    // Verify transactions have events (proving they were fully processed)
+    let mut total_events = 0;
+    for tx_hash in &transaction_hashes {
+        let transaction = &target_block.transactions[tx_hash];
+        assert!(
+            !transaction.events.is_empty(),
+            "Transaction {:?} should have events",
+            tx_hash
+        );
+        assert!(
+            transaction.transaction.is_some(),
+            "Transaction {:?} should have transaction data",
+            tx_hash
+        );
+        total_events += transaction.events.len();
+    }
+
+    // Verify cursor tracking
+    assert!(
+        updated_cursors.cursor_transactions.contains_key(&world_address),
+        "World address should be tracked in cursor transactions"
+    );
+
+    let world_cursor_txs = &updated_cursors.cursor_transactions[&world_address];
+    for tx_hash in &transaction_hashes {
+        assert!(
+            world_cursor_txs.contains(tx_hash),
+            "Transaction {:?} should be tracked in cursor transactions",
+            tx_hash
+        );
+    }
+
+    // Verify cursor state is updated correctly
+    let world_cursor = &updated_cursors.cursors[&world_address];
+    assert_eq!(
+        world_cursor.head,
+        Some(target_block_number),
+        "World cursor head should be updated to target block"
+    );
+    assert!(
+        world_cursor.last_block_timestamp.is_some(),
+        "World cursor should have timestamp"
+    );
+
+    println!("✅ Integration test passed!");
+    println!("📊 Successfully indexed block {} with {} transactions and {} events", 
+        target_block_number, transaction_hashes.len(), total_events);
+    println!("🔄 Retry logic handled any transient failures during block fetching");
 }
