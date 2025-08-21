@@ -394,34 +394,71 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             let mut next_requests = Vec::new();
             let mut events = Vec::new();
 
+            // Log details about each request in the batch
+            for (contract_address, from, to, _) in &current_requests {
+                debug!(
+                    target: LOG_TARGET,
+                    contract = format!("{:#x}", contract_address),
+                    from_block = from,
+                    to_block = to,
+                    "Preparing to fetch events for contract"
+                );
+            }
+
             // Extract just the requests without the contract addresses
             let batch_requests: Vec<ProviderRequestData> = current_requests
                 .iter()
                 .map(|(_, _, _, req)| req.clone())
                 .collect();
 
-            debug!(target: LOG_TARGET, "Retrieving events for contracts.");
+            debug!(
+                target: LOG_TARGET,
+                batch_size = batch_requests.len(),
+                "Retrieving events for {} contracts",
+                batch_requests.len()
+            );
             let instant = Instant::now();
             histogram!("torii_fetcher_batch_size").record(batch_requests.len() as f64);
             let batch_results = self.chunked_batch_requests(&batch_requests).await?;
             histogram!("torii_fetcher_rpc_batch_duration_seconds")
                 .record(instant.elapsed().as_secs_f64());
             counter!("torii_fetcher_rpc_requests_total").increment(batch_requests.len() as u64);
-            debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Retrieved events for contracts.");
+            debug!(
+                target: LOG_TARGET,
+                duration = ?instant.elapsed(),
+                batch_size = batch_requests.len(),
+                "Retrieved events for {} contracts",
+                batch_requests.len()
+            );
 
             // Process results and prepare next batch of requests if needed
             for ((contract_address, mut from, mut to, original_request), result) in
                 current_requests.into_iter().zip(batch_results)
             {
-                debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), "Pre-processing events for contract.");
+                debug!(
+                    target: LOG_TARGET,
+                    contract = format!("{:#x}", contract_address),
+                    from_block = from,
+                    to_block = to,
+                    "Processing events for contract"
+                );
 
                 let old_cursor = old_cursors.get_mut(&contract_address).unwrap();
                 let new_cursor = cursors.get_mut(&contract_address).unwrap();
                 let mut last_pending_block_tx_tmp = old_cursor.last_pending_block_tx;
                 let mut done = false;
+                let mut contract_events_count = 0;
 
                 match result {
                     ProviderResponseData::GetEvents(events_page) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            contract = format!("{:#x}", contract_address),
+                            raw_events_count = events_page.events.len(),
+                            has_continuation = events_page.continuation_token.is_some(),
+                            "Received events page for contract"
+                        );
+
                         // Process events for this page, only including events up to our target
                         // block
                         for event in events_page.events.clone() {
@@ -454,7 +491,18 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                             }
 
                             events.push(event);
+                            contract_events_count += 1;
                         }
+
+                        debug!(
+                            target: LOG_TARGET,
+                            contract = format!("{:#x}", contract_address),
+                            processed_events = contract_events_count,
+                            from_block = from,
+                            to_block = to,
+                            "Processed {} events for contract from block {} to {}",
+                            contract_events_count, from, to
+                        );
 
                         if new_cursor.head != Some(to) {
                             new_cursor.last_pending_block_tx = None;
@@ -463,7 +511,13 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
                         // Add continuation request to next_requests instead of recursing
                         if events_page.continuation_token.is_some() && !done {
-                            debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), "Adding continuation request for contract.");
+                            debug!(
+                                target: LOG_TARGET,
+                                contract = format!("{:#x}", contract_address),
+                                from_block = from,
+                                to_block = to,
+                                "Adding continuation request for contract (more events available)"
+                            );
                             if let ProviderRequestData::GetEvents(mut next_request) =
                                 original_request
                             {
@@ -481,6 +535,17 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     _ => unreachable!(),
                 }
             }
+
+            debug!(
+                target: LOG_TARGET,
+                events_in_batch = events.len(),
+                total_events = all_events.len() + events.len(),
+                next_requests = next_requests.len(),
+                "Batch processing complete: {} events in this batch, {} total events, {} continuation requests",
+                events.len(),
+                all_events.len() + events.len(),
+                next_requests.len()
+            );
 
             all_events.extend(events);
             current_requests = next_requests;
