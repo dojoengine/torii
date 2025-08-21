@@ -159,7 +159,8 @@ impl Runner {
         let spec_version = provider.spec_version().await?;
         if !spec_version.starts_with(supported_spec) {
             return Err(anyhow::anyhow!(
-                "Provider spec version is not supported. Please use a provider that supports v{supported_spec}. Got: {spec_version}. You might need to add a `rpc/v{supported_spec}` to the end of the URL."
+                "Provider spec version is not supported. Please use a provider that supports v{supported_spec}. Got: {spec_version}. You might need to add a `rpc/v{}` to the end of the URL.",
+                supported_spec.replace('.', "_")
             ));
         }
 
