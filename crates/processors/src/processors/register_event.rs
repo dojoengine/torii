@@ -4,10 +4,10 @@ use async_trait::async_trait;
 use dojo_types::naming::compute_selector_from_names;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
-use dojo_world::contracts::model::{ModelError, ModelRPCReader, ModelReader};
+use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
 use dojo_world::contracts::WorldContractReader;
-use starknet::core::types::{BlockId, Event, StarknetError};
-use starknet::providers::{Provider, ProviderError};
+use starknet::core::types::{BlockId, Event};
+use starknet::providers::Provider;
 use torii_proto::Model;
 use tracing::{debug, info};
 
@@ -104,19 +104,6 @@ where
             _ => unreachable!(),
         }
         let layout = model.layout().await?;
-        let use_legacy_store = match model.use_legacy_storage().await {
-            Ok(use_legacy_store) => use_legacy_store,
-            Err(ModelError::ProviderError(ProviderError::StarknetError(
-                StarknetError::EntrypointNotFound,
-            ))) => {
-                debug!(target: LOG_TARGET, namespace = %namespace, name = %name, "Entrypoint not found, using legacy store.");
-                true
-            }
-            Err(e) => {
-                return Err(e.into());
-            }
-        };
-
         // Events are never stored onchain, hence no packing or unpacking.
         let unpacked_size: u32 = 0;
         let packed_size: u32 = 0;
@@ -152,7 +139,7 @@ where
                 ctx.block_timestamp,
                 None,
                 None,
-                use_legacy_store,
+                false,
             )
             .await?;
 
@@ -169,7 +156,7 @@ where
                     unpacked_size,
                     layout,
                     schema,
-                    use_legacy_store,
+                    use_legacy_store: false,
                 },
             )
             .await;
