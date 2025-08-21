@@ -9,7 +9,9 @@ use starknet::core::types::requests::{
     GetBlockWithTxHashesRequest, GetEventsRequest, GetTransactionByHashRequest,
 };
 use starknet::core::types::{
-    BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage, MaybePreConfirmedBlockWithReceipts, MaybePreConfirmedBlockWithTxHashes, ResultPageRequest, TransactionExecutionStatus
+    BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
+    MaybePreConfirmedBlockWithReceipts, MaybePreConfirmedBlockWithTxHashes, ResultPageRequest,
+    TransactionExecutionStatus,
 };
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
@@ -581,20 +583,17 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                             contract_events_count, from, to
                         );
 
-                        if let Some(event) = events.last() {
-                            if new_cursor.head != Some(to) {
-                                new_cursor.last_pending_block_tx = None;
-                            }
-                            let new_head = event.block_number.unwrap();
-                            new_cursor.head = Some(new_head);
-                            debug!(
-                                target: LOG_TARGET,
-                                contract = format!("{:#x}", contract_address),
-                                new_head = new_head,
-                                events_processed = contract_events_count,
-                                "Updated cursor head to last processed event block"
-                            );
+                        if new_cursor.head != Some(to) {
+                            new_cursor.last_pending_block_tx = None;
                         }
+                        new_cursor.head = Some(to);
+                        debug!(
+                            target: LOG_TARGET,
+                            contract = format!("{:#x}", contract_address),
+                            new_head = to,
+                            last_pending_block_tx = new_cursor.last_pending_block_tx.map(|tx| format!("{:#x}", tx)),
+                            "Updated cursor head."
+                        );
 
                         // Add continuation request to next_requests instead of recursing
                         if events_page.continuation_token.is_some() && !done {
