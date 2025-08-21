@@ -528,6 +528,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                                     error = ?e,
                                     chunk_size = chunk.len(),
                                     batch_chunk_size = self.config.batch_chunk_size,
+                                    first_request = ?chunk.first(),
                                     "Retrying failed batch request for chunk."
                                 );
                                 sleep(backoff).await;
@@ -538,6 +539,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                                     error = ?e,
                                     chunk_size = chunk.len(),
                                     batch_chunk_size = self.config.batch_chunk_size,
+                                    first_request = ?chunk.first(),
                                     "Chunk batch request failed after all retries. This could be due to the provider being overloaded. You can try reducing the batch chunk size."
                                 );
                                 return Err(Error::BatchRequest(Box::new(e.into())));
