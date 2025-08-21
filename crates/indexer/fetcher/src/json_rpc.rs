@@ -99,7 +99,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         for (contract_address, cursor) in cursors.iter() {
             let from = cursor
                 .head
-                .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
+                .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 })
+                .min(latest_block_number);
             let to = (from + self.config.blocks_chunk_size).min(latest_block_number);
 
             let events_filter = EventFilter {
