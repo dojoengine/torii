@@ -97,10 +97,13 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Step 1: Create initial batch requests for events from all contracts
         let mut event_requests = Vec::new();
         for (contract_address, cursor) in cursors.iter() {
+            if cursor.head == Some(latest_block_number) {
+                continue;
+            }
+
             let from = cursor
                 .head
-                .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 })
-                .min(latest_block_number);
+                .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
             let to = (from + self.config.blocks_chunk_size).min(latest_block_number);
 
             let events_filter = EventFilter {
@@ -371,7 +374,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
             for t in &preconf_block.transactions {
                 let tx_hash = t.receipt.transaction_hash();
-                
+
                 // Skip all transactions until we reach the last processed transaction
                 if let Some(tx) = last_pending_block_tx_tmp {
                     if tx_hash != &tx {
@@ -404,7 +407,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     .filter(|e| e.from_address == *contract_address)
                     .cloned()
                     .collect::<Vec<_>>();
-                
+
                 if events.is_empty() {
                     continue;
                 }
@@ -580,10 +583,20 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                             contract_events_count, from, to
                         );
 
-                        if new_cursor.head != Some(to) {
-                            new_cursor.last_pending_block_tx = None;
+                        if let Some(event) = events.last() {
+                            if new_cursor.head != Some(to) {
+                                new_cursor.last_pending_block_tx = None;
+                            }
+                            let new_head = event.block_number.unwrap();
+                            new_cursor.head = Some(new_head);
+                            debug!(
+                                target: LOG_TARGET,
+                                contract = format!("{:#x}", contract_address),
+                                new_head = new_head,
+                                events_processed = contract_events_count,
+                                "Updated cursor head to last processed event block"
+                            );
                         }
-                        new_cursor.head = Some(to);
 
                         // Add continuation request to next_requests instead of recursing
                         if events_page.continuation_token.is_some() && !done {
