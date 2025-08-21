@@ -106,7 +106,9 @@ where
 
         let use_legacy_store = match model.use_legacy_storage().await {
             Ok(use_legacy_store) => use_legacy_store,
-            Err(ModelError::ProviderError(ProviderError::StarknetError(StarknetError::EntrypointNotFound))) => {
+            Err(ModelError::ProviderError(ProviderError::StarknetError(
+                StarknetError::EntrypointNotFound,
+            ))) => {
                 debug!(target: LOG_TARGET, namespace = %namespace, name = %name, "Entrypoint not found, using legacy store.");
                 true
             }
