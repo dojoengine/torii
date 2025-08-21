@@ -3,10 +3,10 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use async_trait::async_trait;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
-use dojo_world::contracts::model::{ModelRPCReader, ModelReader};
+use dojo_world::contracts::model::{ModelError, ModelRPCReader, ModelReader};
 use dojo_world::contracts::WorldContractReader;
-use starknet::core::types::{BlockId, Event};
-use starknet::providers::Provider;
+use starknet::core::types::{BlockId, Event, StarknetError};
+use starknet::providers::{Provider, ProviderError};
 use torii_proto::Model;
 use tracing::{debug, info};
 
@@ -102,7 +102,16 @@ where
 
         let schema_diff = schema_diff.unwrap();
         let layout = model.layout().await?;
-        let use_legacy_store = model.use_legacy_storage().await?;
+        let use_legacy_store = match model.use_legacy_storage().await {
+            Ok(use_legacy_store) => use_legacy_store,
+            Err(ModelError::ProviderError(ProviderError::StarknetError(StarknetError::EntrypointNotFound))) => {
+                debug!(target: LOG_TARGET, namespace = %namespace, name = %name, "Entrypoint not found, using legacy store.");
+                true
+            }
+            Err(e) => {
+                return Err(e.into());
+            }
+        };
 
         let unpacked_size: u32 = model.unpacked_size().await?;
         let packed_size: u32 = model.packed_size().await?;
