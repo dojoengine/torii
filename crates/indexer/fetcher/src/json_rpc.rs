@@ -9,9 +9,7 @@ use starknet::core::types::requests::{
     GetBlockWithTxHashesRequest, GetEventsRequest, GetTransactionByHashRequest,
 };
 use starknet::core::types::{
-    BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage,
-    MaybePreConfirmedBlockWithReceipts, MaybePreConfirmedBlockWithTxHashes, ResultPageRequest,
-    TransactionExecutionStatus,
+    BlockHashAndNumber, BlockId, BlockTag, EmittedEvent, Event, EventFilter, EventFilterWithPage, MaybePreConfirmedBlockWithReceipts, MaybePreConfirmedBlockWithTxHashes, ResultPageRequest, TransactionExecutionStatus
 };
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
@@ -44,11 +42,11 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
     ) -> Result<FetchResult, Error> {
         let fetch_start = Instant::now();
 
-        let latest_block_number = self.provider.block_hash_and_number().await?.block_number;
+        let latest_block = self.provider.block_hash_and_number().await?;
 
         let range_start = Instant::now();
         // Fetch all events from 'from' to our blocks chunk size
-        let (range, cursors) = self.fetch_range(cursors, latest_block_number).await?;
+        let (range, cursors) = self.fetch_range(cursors, latest_block.clone()).await?;
         histogram!("torii_fetcher_range_duration_seconds")
             .record(range_start.elapsed().as_secs_f64());
         debug!(target: LOG_TARGET, duration = ?range_start.elapsed(), cursors = ?cursors, "Fetched data for range.");
@@ -58,11 +56,11 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 && cursors
                     .cursors
                     .values()
-                    .any(|c| c.head == Some(latest_block_number))
+                    .any(|c| c.head == Some(latest_block.block_number))
             {
                 let pending_start = Instant::now();
                 let pending_result = self
-                    .fetch_preconfirmed_block(latest_block_number, &cursors)
+                    .fetch_preconfirmed_block(latest_block.block_number, &cursors)
                     .await?;
                 histogram!("torii_fetcher_pending_duration_seconds")
                     .record(pending_start.elapsed().as_secs_f64());
@@ -86,7 +84,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
     pub async fn fetch_range(
         &self,
         cursors: &HashMap<Felt, ContractCursor>,
-        latest_block_number: u64,
+        latest_block: BlockHashAndNumber,
     ) -> Result<(FetchRangeResult, Cursors), Error> {
         let mut events = vec![];
         let mut cursors = cursors.clone();
@@ -97,18 +95,18 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Step 1: Create initial batch requests for events from all contracts
         let mut event_requests = Vec::new();
         for (contract_address, cursor) in cursors.iter() {
-            if cursor.head == Some(latest_block_number) {
+            if cursor.head == Some(latest_block.block_number) {
                 continue;
             }
 
             let from = cursor
                 .head
                 .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
-            let to = (from + self.config.blocks_chunk_size).min(latest_block_number);
+            let to = (from + self.config.blocks_chunk_size).min(latest_block.block_number);
 
             let events_filter = EventFilter {
                 from_block: Some(BlockId::Number(from)),
-                to_block: Some(BlockId::Tag(BlockTag::Latest)),
+                to_block: Some(BlockId::Hash(latest_block.block_hash)),
                 address: Some(*contract_address),
                 keys: None,
             };
@@ -132,7 +130,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Step 2: Fetch all events recursively
         let events_start = Instant::now();
         let fetched_events = self
-            .fetch_events(event_requests, &mut cursors, latest_block_number)
+            .fetch_events(event_requests, &mut cursors, latest_block.block_number)
             .await?;
         histogram!("torii_fetcher_events_duration_seconds")
             .record(events_start.elapsed().as_secs_f64());

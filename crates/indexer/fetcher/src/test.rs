@@ -2350,7 +2350,7 @@ async fn test_fetch_range_with_retry_logic(sequencer: &RunnerCtx) {
 
     println!("🔄 Step 3: Running fetch_range (expecting 2 failures then success)...");
     println!("   Fetching up to block {}", target_block_number);
-    let fetch_result = fetcher.fetch_range(&cursors, target_block_number).await;
+    let fetch_result = fetcher.fetch_range(&cursors, latest_block).await;
 
     // Verify the fetch succeeded despite the initial failures
     assert!(
