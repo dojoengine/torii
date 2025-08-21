@@ -104,7 +104,6 @@ where
 
         let schema_diff = schema_diff.unwrap();
         let layout = model.layout().await?;
-        let use_legacy_store = model.use_legacy_storage().await?;
 
         // Events are never stored onchain, hence no packing or unpacking.
         let unpacked_size: u32 = 0;
@@ -143,7 +142,7 @@ where
                 // This will be Some if we have an "upgrade" diff. Which means
                 // if some columns have been modified.
                 prev_schema.diff(&new_schema).as_ref(),
-                use_legacy_store,
+                false,
             )
             .await?;
 
@@ -160,7 +159,7 @@ where
                     unpacked_size,
                     layout,
                     schema: new_schema,
-                    use_legacy_store,
+                    use_legacy_store: false,
                 },
             )
             .await;
