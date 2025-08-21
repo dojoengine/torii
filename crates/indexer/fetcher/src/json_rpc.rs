@@ -97,6 +97,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Step 1: Create initial batch requests for events from all contracts
         let mut event_requests = Vec::new();
         for (contract_address, cursor) in cursors.iter() {
+            if cursor.head == Some(latest_block_number) {
+                continue;
+            }
+
             let from = cursor
                 .head
                 .map_or(self.config.world_block, |h| if h == 0 { h } else { h + 1 });
@@ -285,19 +289,43 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         latest_block_number: u64,
         cursors: &Cursors,
     ) -> Result<(Option<FetchPreconfirmedBlockResult>, Cursors), Error> {
+        debug!(
+            target: LOG_TARGET,
+            latest_block = latest_block_number,
+            "Fetching preconfirmed block"
+        );
+
         let preconf_block = if let MaybePreConfirmedBlockWithReceipts::PreConfirmedBlock(preconf) =
             self.provider
                 .get_block_with_receipts(BlockId::Tag(BlockTag::PreConfirmed))
                 .await?
         {
+            debug!(
+                target: LOG_TARGET,
+                preconf_block_number = preconf.block_number,
+                latest_block = latest_block_number,
+                expected_preconf = latest_block_number.saturating_add(1),
+                "Retrieved preconfirmed block"
+            );
+
             // if the preconfirmed block number is not incremented by one of the latest block number that we fetched, then it means
             // a new block got mined just after we fetched the latest block information
             if latest_block_number.saturating_add(1) != preconf.block_number {
+                debug!(
+                    target: LOG_TARGET,
+                    preconf_block_number = preconf.block_number,
+                    expected_block_number = latest_block_number.saturating_add(1),
+                    "Skipping preconfirmed block - block number mismatch (new block mined)"
+                );
                 return Ok((None, cursors.clone()));
             }
 
             preconf
         } else {
+            debug!(
+                target: LOG_TARGET,
+                "No preconfirmed block available"
+            );
             // TODO: change this to unreachable once katana is updated to return PendingBlockWithTxs
             // when BlockTag is Pending unreachable!("We requested pending block, so it
             // must be pending");
@@ -312,16 +340,41 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         let block_number = preconf_block.block_number;
         let timestamp = preconf_block.timestamp;
 
-        let mut transactions: IndexMap<Felt, FetchTransaction> = IndexMap::new();
+        debug!(
+            target: LOG_TARGET,
+            block_number = block_number,
+            timestamp = timestamp,
+            total_transactions = preconf_block.transactions.len(),
+            "Processing preconfirmed block transactions"
+        );
 
+        let mut transactions: IndexMap<Felt, FetchTransaction> = IndexMap::new();
         for (contract_address, cursor) in &mut new_cursors.cursors {
             if cursor.head != Some(latest_block_number) {
+                debug!(
+                    target: LOG_TARGET,
+                    contract = format!("{:#x}", contract_address),
+                    cursor_head = cursor.head,
+                    latest_block = latest_block_number,
+                    "Skipping contract - not up to date with latest block"
+                );
                 continue;
             }
 
+            debug!(
+                target: LOG_TARGET,
+                contract = format!("{:#x}", contract_address),
+                last_pending_tx = cursor.last_pending_block_tx.map(|tx| format!("{:#x}", tx)),
+                "Processing preconfirmed block for contract"
+            );
+
             let mut last_pending_block_tx_tmp = cursor.last_pending_block_tx;
+            let mut contract_events_count = 0;
+            let mut contract_transactions_processed = 0;
+
             for t in &preconf_block.transactions {
                 let tx_hash = t.receipt.transaction_hash();
+
                 // Skip all transactions until we reach the last processed transaction
                 if let Some(tx) = last_pending_block_tx_tmp {
                     if tx_hash != &tx {
@@ -338,6 +391,12 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 }
 
                 if t.receipt.execution_result().status() == TransactionExecutionStatus::Reverted {
+                    trace!(
+                        target: LOG_TARGET,
+                        contract = format!("{:#x}", contract_address),
+                        tx_hash = format!("{:#x}", tx_hash),
+                        "Skipping reverted transaction"
+                    );
                     continue;
                 }
 
@@ -348,9 +407,21 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     .filter(|e| e.from_address == *contract_address)
                     .cloned()
                     .collect::<Vec<_>>();
+
                 if events.is_empty() {
                     continue;
                 }
+
+                contract_events_count += events.len();
+                contract_transactions_processed += 1;
+
+                trace!(
+                    target: LOG_TARGET,
+                    contract = format!("{:#x}", contract_address),
+                    tx_hash = format!("{:#x}", tx_hash),
+                    events_count = events.len(),
+                    "Processing transaction with events"
+                );
 
                 new_cursors
                     .cursor_transactions
@@ -368,6 +439,14 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 cursor.last_pending_block_tx = Some(*tx_hash);
                 cursor.last_block_timestamp = Some(timestamp);
             }
+
+            debug!(
+                target: LOG_TARGET,
+                contract = format!("{:#x}", contract_address),
+                events_count = contract_events_count,
+                transactions_processed = contract_transactions_processed,
+                "Completed processing preconfirmed block for contract"
+            );
         }
 
         Ok((
@@ -394,34 +473,71 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             let mut next_requests = Vec::new();
             let mut events = Vec::new();
 
+            // Log details about each request in the batch
+            for (contract_address, from, to, _) in &current_requests {
+                debug!(
+                    target: LOG_TARGET,
+                    contract = format!("{:#x}", contract_address),
+                    from_block = from,
+                    to_block = to,
+                    "Preparing to fetch events for contract"
+                );
+            }
+
             // Extract just the requests without the contract addresses
             let batch_requests: Vec<ProviderRequestData> = current_requests
                 .iter()
                 .map(|(_, _, _, req)| req.clone())
                 .collect();
 
-            debug!(target: LOG_TARGET, "Retrieving events for contracts.");
+            debug!(
+                target: LOG_TARGET,
+                batch_size = batch_requests.len(),
+                "Retrieving events for {} contracts",
+                batch_requests.len()
+            );
             let instant = Instant::now();
             histogram!("torii_fetcher_batch_size").record(batch_requests.len() as f64);
             let batch_results = self.chunked_batch_requests(&batch_requests).await?;
             histogram!("torii_fetcher_rpc_batch_duration_seconds")
                 .record(instant.elapsed().as_secs_f64());
             counter!("torii_fetcher_rpc_requests_total").increment(batch_requests.len() as u64);
-            debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Retrieved events for contracts.");
+            debug!(
+                target: LOG_TARGET,
+                duration = ?instant.elapsed(),
+                batch_size = batch_requests.len(),
+                "Retrieved events for {} contracts",
+                batch_requests.len()
+            );
 
             // Process results and prepare next batch of requests if needed
             for ((contract_address, mut from, mut to, original_request), result) in
                 current_requests.into_iter().zip(batch_results)
             {
-                debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), "Pre-processing events for contract.");
+                debug!(
+                    target: LOG_TARGET,
+                    contract = format!("{:#x}", contract_address),
+                    from_block = from,
+                    to_block = to,
+                    "Processing events for contract"
+                );
 
                 let old_cursor = old_cursors.get_mut(&contract_address).unwrap();
                 let new_cursor = cursors.get_mut(&contract_address).unwrap();
                 let mut last_pending_block_tx_tmp = old_cursor.last_pending_block_tx;
                 let mut done = false;
+                let mut contract_events_count = 0;
 
                 match result {
                     ProviderResponseData::GetEvents(events_page) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            contract = format!("{:#x}", contract_address),
+                            raw_events_count = events_page.events.len(),
+                            has_continuation = events_page.continuation_token.is_some(),
+                            "Received events page for contract"
+                        );
+
                         // Process events for this page, only including events up to our target
                         // block
                         for event in events_page.events.clone() {
@@ -454,16 +570,43 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                             }
 
                             events.push(event);
+                            contract_events_count += 1;
                         }
 
-                        if new_cursor.head != Some(to) {
-                            new_cursor.last_pending_block_tx = None;
+                        debug!(
+                            target: LOG_TARGET,
+                            contract = format!("{:#x}", contract_address),
+                            processed_events = contract_events_count,
+                            from_block = from,
+                            to_block = to,
+                            "Processed {} events for contract from block {} to {}",
+                            contract_events_count, from, to
+                        );
+
+                        if let Some(event) = events.last() {
+                            if new_cursor.head != Some(to) {
+                                new_cursor.last_pending_block_tx = None;
+                            }
+                            let new_head = event.block_number.unwrap();
+                            new_cursor.head = Some(new_head);
+                            debug!(
+                                target: LOG_TARGET,
+                                contract = format!("{:#x}", contract_address),
+                                new_head = new_head,
+                                events_processed = contract_events_count,
+                                "Updated cursor head to last processed event block"
+                            );
                         }
-                        new_cursor.head = Some(to);
 
                         // Add continuation request to next_requests instead of recursing
                         if events_page.continuation_token.is_some() && !done {
-                            debug!(target: LOG_TARGET, address = format!("{:#x}", contract_address), "Adding continuation request for contract.");
+                            debug!(
+                                target: LOG_TARGET,
+                                contract = format!("{:#x}", contract_address),
+                                from_block = from,
+                                to_block = to,
+                                "Adding continuation request for contract (more events available)"
+                            );
                             if let ProviderRequestData::GetEvents(mut next_request) =
                                 original_request
                             {
@@ -481,6 +624,17 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     _ => unreachable!(),
                 }
             }
+
+            debug!(
+                target: LOG_TARGET,
+                events_in_batch = events.len(),
+                total_events = all_events.len() + events.len(),
+                next_requests = next_requests.len(),
+                "Batch processing complete: {} events in this batch, {} total events, {} continuation requests",
+                events.len(),
+                all_events.len() + events.len(),
+                next_requests.len()
+            );
 
             all_events.extend(events);
             current_requests = next_requests;
