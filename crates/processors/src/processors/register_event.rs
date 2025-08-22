@@ -127,6 +127,7 @@ where
             "Registered event content."
         );
 
+        // Event models, still use Serde for serialization. So we need to use the legacy store.
         ctx.storage
             .register_model(
                 selector,
@@ -139,7 +140,7 @@ where
                 ctx.block_timestamp,
                 None,
                 None,
-                false,
+                true,
             )
             .await?;
 
@@ -156,7 +157,8 @@ where
                     unpacked_size,
                     layout,
                     schema,
-                    use_legacy_store: false,
+                    // Event models, still use Serde for serialization. So we need to use the legacy store.
+                    use_legacy_store: true,
                 },
             )
             .await;
