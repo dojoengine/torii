@@ -142,7 +142,8 @@ where
                 // This will be Some if we have an "upgrade" diff. Which means
                 // if some columns have been modified.
                 prev_schema.diff(&new_schema).as_ref(),
-                false,
+                // Event models, still use Serde for serialization. So we need to use the legacy store.
+                true,
             )
             .await?;
 
@@ -159,7 +160,8 @@ where
                     unpacked_size,
                     layout,
                     schema: new_schema,
-                    use_legacy_store: false,
+                    // Event models, still use Serde for serialization. So we need to use the legacy store.
+                    use_legacy_store: true,
                 },
             )
             .await;

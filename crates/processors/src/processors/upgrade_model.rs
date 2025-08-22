@@ -1,6 +1,7 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use async_trait::async_trait;
+use cainome::cairo_serde::Error as CainomeError;
 use dojo_types::schema::Ty;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use dojo_world::contracts::model::{ModelError, ModelRPCReader, ModelReader};
@@ -104,7 +105,8 @@ where
         let layout = model.layout().await?;
         let use_legacy_store = match model.use_legacy_storage().await {
             Ok(use_legacy_store) => use_legacy_store,
-            Err(ModelError::ProviderError(ProviderError::StarknetError(
+            Err(ModelError::Cainome(CainomeError::Provider(
+                ProviderError::StarknetError(
                 StarknetError::EntrypointNotFound,
             ))) => {
                 debug!(target: LOG_TARGET, namespace = %namespace, name = %name, "Entrypoint not found, using legacy store.");
