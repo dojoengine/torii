@@ -13,18 +13,21 @@ use crate::query::filter::{parse_filter, Comparator, Filter, FilterValue};
 use crate::types::TypeData;
 
 /// Format a value using the same formatting as Primitive::to_sql_value().
-/// 
+///
 /// This function automatically stays in sync with any changes to the Primitive enum
 /// by leveraging the existing `from_json_value` and `to_sql_value` methods.
-/// 
+///
 /// # How it works
 /// 1. Parse the input value into the appropriate primitive type using `from_json_value`
 /// 2. Use `to_sql_value` to get the correctly formatted string
-/// 
+///
 /// This approach eliminates the need to manually maintain padding mappings.
-fn format_value_with_primitive_formatting(input_value: &str, mut primitive: Primitive) -> Result<String, ()> {
+fn format_value_with_primitive_formatting(
+    input_value: &str,
+    mut primitive: Primitive,
+) -> Result<String, ()> {
     use serde_json::Value as JsonValue;
-    
+
     // Try to parse the input as different JSON value types
     let json_value = if input_value.starts_with("0x") {
         // Hex string
@@ -39,10 +42,10 @@ fn format_value_with_primitive_formatting(input_value: &str, mut primitive: Prim
         // String
         JsonValue::String(input_value.to_string())
     };
-    
+
     // Use the primitive's own parsing logic
     primitive.from_json_value(json_value).map_err(|_| ())?;
-    
+
     // Get the correctly formatted SQL value
     Ok(primitive.to_sql_value())
 }
@@ -283,7 +286,7 @@ fn parse_string(
                     Ok(FilterValue::String(i.to_string()))
                 }
             }
-        },
+        }
         Err(_) => Err(GqlError::new(format!(
             "Expected string on field {}",
             type_name
@@ -301,10 +304,26 @@ mod tests {
         // Test that our automatic formatting matches Primitive::to_sql_value()
         let test_cases = vec![
             (Primitive::U64(None), "12345", "0x0000000000003039"),
-            (Primitive::I128(None), "12345", "0x00000000000000000000000000003039"),
-            (Primitive::U128(None), "12345", "0x00000000000000000000000000003039"),
-            (Primitive::EthAddress(None), "0x123", "0x0000000000000000000000000000000000000123"),
-            (Primitive::ContractAddress(None), "0x123", "0x0000000000000000000000000000000000000000000000000000000000000123"),
+            (
+                Primitive::I128(None),
+                "12345",
+                "0x00000000000000000000000000003039",
+            ),
+            (
+                Primitive::U128(None),
+                "12345",
+                "0x00000000000000000000000000003039",
+            ),
+            (
+                Primitive::EthAddress(None),
+                "0x123",
+                "0x0000000000000000000000000000000000000123",
+            ),
+            (
+                Primitive::ContractAddress(None),
+                "0x123",
+                "0x0000000000000000000000000000000000000000000000000000000000000123",
+            ),
         ];
 
         for (primitive, input, expected) in test_cases {
@@ -313,7 +332,7 @@ mod tests {
         }
     }
 
-    #[test] 
+    #[test]
     fn test_hex_input_formatting() {
         // Test hex inputs are properly formatted
         let primitive = Primitive::U256(None);
