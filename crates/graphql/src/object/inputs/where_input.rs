@@ -28,19 +28,45 @@ fn format_value_with_primitive_formatting(
 ) -> Result<String, ()> {
     use serde_json::Value as JsonValue;
 
-    // Try to parse the input as different JSON value types
-    let json_value = if input_value.starts_with("0x") {
-        // Hex string
-        JsonValue::String(input_value.to_string())
-    } else if let Ok(num) = input_value.parse::<i64>() {
-        // Integer
-        JsonValue::Number(serde_json::Number::from(num))
-    } else if let Ok(num) = input_value.parse::<u64>() {
-        // Unsigned integer
-        JsonValue::Number(serde_json::Number::from(num))
-    } else {
-        // String
-        JsonValue::String(input_value.to_string())
+    // Based on the Primitive::from_json_value implementation, we need to provide the right JSON type:
+    // - Small integers (I8-I32, U8-U32): Numbers
+    // - Large integers (I64, I128, U64, U128): Strings
+    // - Addresses and U256: Strings
+    // - Hex strings: Always strings
+    let json_value = match primitive {
+        // Small integers can accept numbers
+        Primitive::I8(_)
+        | Primitive::I16(_)
+        | Primitive::I32(_)
+        | Primitive::U8(_)
+        | Primitive::U16(_)
+        | Primitive::U32(_)
+        | Primitive::Bool(_) => {
+            if let Ok(num) = input_value.parse::<i64>() {
+                JsonValue::Number(serde_json::Number::from(num))
+            } else {
+                JsonValue::String(input_value.to_string())
+            }
+        }
+
+        // I64 can accept both numbers and strings
+        Primitive::I64(_) => {
+            if let Ok(num) = input_value.parse::<i64>() {
+                JsonValue::Number(serde_json::Number::from(num))
+            } else {
+                JsonValue::String(input_value.to_string())
+            }
+        }
+
+        // Large integers and addresses must be strings
+        Primitive::U64(_)
+        | Primitive::I128(_)
+        | Primitive::U128(_)
+        | Primitive::U256(_)
+        | Primitive::ContractAddress(_)
+        | Primitive::ClassHash(_)
+        | Primitive::Felt252(_)
+        | Primitive::EthAddress(_) => JsonValue::String(input_value.to_string()),
     };
 
     // Use the primitive's own parsing logic
@@ -303,44 +329,20 @@ mod tests {
     fn test_automatic_primitive_formatting() {
         // Test that our automatic formatting matches Primitive::to_sql_value()
 
-        // First, let's test with a simple case to see what's happening
-        let primitive = Primitive::U64(None);
-        let result = format_value_with_primitive_formatting("12345", primitive);
+        // Test U64 with decimal input
+        let result = format_value_with_primitive_formatting("12345", Primitive::U64(None));
+        assert!(result.is_ok(), "U64 formatting should work");
+        assert_eq!(result.unwrap(), "0x0000000000003039");
 
-        // Debug the error by checking what we get
-        match result {
-            Ok(value) => println!("Success: {}", value),
-            Err(_) => {
-                // Let's try a more direct approach - test what the actual Primitive does
-                let mut test_primitive = Primitive::U64(None);
-                let json_val = serde_json::Value::String("12345".to_string());
+        // Test U128 with decimal input
+        let result = format_value_with_primitive_formatting("12345", Primitive::U128(None));
+        assert!(result.is_ok(), "U128 formatting should work");
+        assert_eq!(result.unwrap(), "0x00000000000000000000000000003039");
 
-                match test_primitive.from_json_value(json_val) {
-                    Ok(_) => {
-                        let sql_value = test_primitive.to_sql_value();
-                        println!("Direct approach worked: {}", sql_value);
-                        // This should be "0x0000000000003039" for 12345 in hex
-                        assert_eq!(sql_value, "0x0000000000003039");
-                    }
-                    Err(e) => {
-                        println!("from_json_value failed: {:?}", e);
-                        // Let's try with a number instead
-                        let mut test_primitive2 = Primitive::U64(None);
-                        let json_num =
-                            serde_json::Value::Number(serde_json::Number::from(12345u64));
-
-                        match test_primitive2.from_json_value(json_num) {
-                            Ok(_) => {
-                                let sql_value = test_primitive2.to_sql_value();
-                                println!("Number approach worked: {}", sql_value);
-                                assert_eq!(sql_value, "0x0000000000003039");
-                            }
-                            Err(e2) => panic!("Both string and number failed: {:?}", e2),
-                        }
-                    }
-                }
-            }
-        }
+        // Test small integer (should work with numbers)
+        let result = format_value_with_primitive_formatting("255", Primitive::U32(None));
+        assert!(result.is_ok(), "U32 formatting should work");
+        assert_eq!(result.unwrap(), "255"); // U32 is stored as integer, not hex
     }
 
     #[test]
@@ -358,6 +360,7 @@ mod tests {
         // Test decimal inputs are converted to proper hex format
         let primitive = Primitive::U64(None);
         let result = format_value_with_primitive_formatting("255", primitive);
+        assert!(result.is_ok(), "U64 decimal formatting should work");
         assert_eq!(result.unwrap(), "0x00000000000000ff");
     }
 }
