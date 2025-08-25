@@ -25,7 +25,7 @@ use crate::types::TypeData;
 fn format_value_with_primitive_formatting(
     input_value: &str,
     mut primitive: Primitive,
-) -> Result<String, ()> {
+) -> Result<String, String> {
     use serde_json::Value as JsonValue;
 
     // Based on the Primitive::from_json_value implementation, we need to provide the right JSON type:
@@ -70,7 +70,9 @@ fn format_value_with_primitive_formatting(
     };
 
     // Use the primitive's own parsing logic
-    primitive.from_json_value(json_value).map_err(|_| ())?;
+    primitive
+        .from_json_value(json_value)
+        .map_err(|e| format!("from_json_value error: {:?}", e))?;
 
     // Get the correctly formatted SQL value
     Ok(primitive.to_sql_value())
@@ -307,8 +309,9 @@ fn parse_string(
             // Use the primitive's own formatting logic for consistency
             match format_value_with_primitive_formatting(i, primitive) {
                 Ok(formatted_value) => Ok(FilterValue::String(formatted_value)),
-                Err(_) => {
+                Err(err) => {
                     // If parsing fails, fallback to original string for backward compatibility
+                    eprintln!("Warning: primitive formatting failed for '{}': {}", i, err);
                     Ok(FilterValue::String(i.to_string()))
                 }
             }
@@ -331,17 +334,38 @@ mod tests {
 
         // Test U64 with decimal input
         let result = format_value_with_primitive_formatting("12345", Primitive::U64(None));
-        assert!(result.is_ok(), "U64 formatting should work");
+        if let Err(e) = &result {
+            println!("U64 decimal formatting failed: {}", e);
+        }
+        assert!(result.is_ok(), "U64 formatting should work: {:?}", result);
         assert_eq!(result.unwrap(), "0x0000000000003039");
+
+        // Test U64 with hex input (like in the failing test)
+        let result = format_value_with_primitive_formatting("0x5", Primitive::U64(None));
+        if let Err(e) = &result {
+            println!("U64 hex formatting failed: {}", e);
+        }
+        assert!(
+            result.is_ok(),
+            "U64 hex formatting should work: {:?}",
+            result
+        );
+        assert_eq!(result.unwrap(), "0x0000000000000005");
 
         // Test U128 with decimal input
         let result = format_value_with_primitive_formatting("12345", Primitive::U128(None));
-        assert!(result.is_ok(), "U128 formatting should work");
+        if let Err(e) = &result {
+            println!("U128 formatting failed: {}", e);
+        }
+        assert!(result.is_ok(), "U128 formatting should work: {:?}", result);
         assert_eq!(result.unwrap(), "0x00000000000000000000000000003039");
 
         // Test small integer (should work with numbers)
         let result = format_value_with_primitive_formatting("255", Primitive::U32(None));
-        assert!(result.is_ok(), "U32 formatting should work");
+        if let Err(e) = &result {
+            println!("U32 formatting failed: {}", e);
+        }
+        assert!(result.is_ok(), "U32 formatting should work: {:?}", result);
         assert_eq!(result.unwrap(), "255"); // U32 is stored as integer, not hex
     }
 
@@ -362,5 +386,25 @@ mod tests {
         let result = format_value_with_primitive_formatting("255", primitive);
         assert!(result.is_ok(), "U64 decimal formatting should work");
         assert_eq!(result.unwrap(), "0x00000000000000ff");
+    }
+
+    #[test]
+    fn test_exact_failing_case() {
+        // Test the exact case that's failing in the integration test
+        let primitive = Primitive::U64(None);
+        let result = format_value_with_primitive_formatting("0x5", primitive);
+        if let Err(e) = &result {
+            println!("Failed to format 0x5: {}", e);
+        }
+        assert!(result.is_ok(), "Should format 0x5 correctly: {:?}", result);
+        let formatted = result.unwrap();
+        println!("Formatted 0x5 as: {}", formatted);
+        assert_eq!(formatted, "0x0000000000000005");
+
+        // Also test that this matches what Primitive::to_sql_value produces directly
+        let direct_primitive = Primitive::U64(Some(5));
+        let direct_sql = direct_primitive.to_sql_value();
+        println!("Direct Primitive::to_sql_value for U64(5): {}", direct_sql);
+        assert_eq!(formatted, direct_sql);
     }
 }
