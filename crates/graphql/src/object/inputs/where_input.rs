@@ -12,6 +12,72 @@ use crate::object::TypeMapping;
 use crate::query::filter::{parse_filter, Comparator, Filter, FilterValue};
 use crate::types::TypeData;
 
+/// Format a value using the same formatting as Primitive::to_sql_value().
+///
+/// This function automatically stays in sync with any changes to the Primitive enum
+/// by leveraging the existing `from_json_value` and `to_sql_value` methods.
+///
+/// # How it works
+/// 1. Parse the input value into the appropriate primitive type using `from_json_value`
+/// 2. Use `to_sql_value` to get the correctly formatted string
+///
+/// This approach eliminates the need to manually maintain padding mappings.
+fn format_value_with_primitive_formatting(
+    input_value: &str,
+    mut primitive: Primitive,
+) -> Result<String, String> {
+    use serde_json::Value as JsonValue;
+
+    // Based on the Primitive::from_json_value implementation, we need to provide the right JSON type:
+    // - Small integers (I8-I32, U8-U32): Numbers
+    // - Large integers (I64, I128, U64, U128): Strings
+    // - Addresses and U256: Strings
+    // - Hex strings: Always strings
+    let json_value = match primitive {
+        // Small integers can accept numbers
+        Primitive::I8(_)
+        | Primitive::I16(_)
+        | Primitive::I32(_)
+        | Primitive::U8(_)
+        | Primitive::U16(_)
+        | Primitive::U32(_)
+        | Primitive::Bool(_) => {
+            if let Ok(num) = input_value.parse::<i64>() {
+                JsonValue::Number(serde_json::Number::from(num))
+            } else {
+                JsonValue::String(input_value.to_string())
+            }
+        }
+
+        // I64 can accept both numbers and strings
+        Primitive::I64(_) => {
+            if let Ok(num) = input_value.parse::<i64>() {
+                JsonValue::Number(serde_json::Number::from(num))
+            } else {
+                JsonValue::String(input_value.to_string())
+            }
+        }
+
+        // Large integers and addresses must be strings
+        Primitive::U64(_)
+        | Primitive::I128(_)
+        | Primitive::U128(_)
+        | Primitive::U256(_)
+        | Primitive::ContractAddress(_)
+        | Primitive::ClassHash(_)
+        | Primitive::Felt252(_)
+        | Primitive::EthAddress(_) => JsonValue::String(input_value.to_string()),
+    };
+
+    // Use the primitive's own parsing logic
+    primitive
+        .from_json_value(json_value)
+        .map_err(|e| format!("from_json_value error: {:?}", e))?;
+
+    // Get the correctly formatted SQL value
+    Ok(primitive.to_sql_value())
+}
+
 #[derive(Debug)]
 pub struct WhereInputObject {
     pub type_name: String,
@@ -239,27 +305,106 @@ fn parse_string(
     primitive: Primitive,
 ) -> Result<FilterValue> {
     match input.string() {
-        Ok(i) => match i.starts_with("0x") {
-            true => Ok(FilterValue::String(format!(
-                "0x{:0>64}",
-                i.strip_prefix("0x").unwrap()
-            ))), /* safe to unwrap since we know it starts with 0x */
-            false => match primitive {
-                // would overflow i128
-                Primitive::U128(_) => match i.parse::<u128>() {
-                    Ok(i) => Ok(FilterValue::String(format!("0x{:0>64x}", i))),
-                    Err(_) => Ok(FilterValue::String(i.to_string())),
-                },
-                // signed and unsigned integers
-                _ => match i.parse::<i128>() {
-                    Ok(i) => Ok(FilterValue::String(format!("0x{:0>64x}", i))),
-                    Err(_) => Ok(FilterValue::String(i.to_string())),
-                },
-            },
-        },
+        Ok(i) => {
+            // Use the primitive's own formatting logic for consistency
+            match format_value_with_primitive_formatting(i, primitive) {
+                Ok(formatted_value) => Ok(FilterValue::String(formatted_value)),
+                Err(err) => {
+                    // If parsing fails, fallback to original string for backward compatibility
+                    eprintln!("Warning: primitive formatting failed for '{}': {}", i, err);
+                    Ok(FilterValue::String(i.to_string()))
+                }
+            }
+        }
         Err(_) => Err(GqlError::new(format!(
             "Expected string on field {}",
             type_name
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dojo_types::primitive::Primitive;
+
+    #[test]
+    fn test_automatic_primitive_formatting() {
+        // Test that our automatic formatting matches Primitive::to_sql_value()
+
+        // Test U64 with decimal input
+        let result = format_value_with_primitive_formatting("12345", Primitive::U64(None));
+        if let Err(e) = &result {
+            println!("U64 decimal formatting failed: {}", e);
+        }
+        assert!(result.is_ok(), "U64 formatting should work: {:?}", result);
+        assert_eq!(result.unwrap(), "0x0000000000003039");
+
+        // Test U64 with hex input (like in the failing test)
+        let result = format_value_with_primitive_formatting("0x5", Primitive::U64(None));
+        if let Err(e) = &result {
+            println!("U64 hex formatting failed: {}", e);
+        }
+        assert!(
+            result.is_ok(),
+            "U64 hex formatting should work: {:?}",
+            result
+        );
+        assert_eq!(result.unwrap(), "0x0000000000000005");
+
+        // Test U128 with decimal input
+        let result = format_value_with_primitive_formatting("12345", Primitive::U128(None));
+        if let Err(e) = &result {
+            println!("U128 formatting failed: {}", e);
+        }
+        assert!(result.is_ok(), "U128 formatting should work: {:?}", result);
+        assert_eq!(result.unwrap(), "0x00000000000000000000000000003039");
+
+        // Test small integer (should work with numbers)
+        let result = format_value_with_primitive_formatting("255", Primitive::U32(None));
+        if let Err(e) = &result {
+            println!("U32 formatting failed: {}", e);
+        }
+        assert!(result.is_ok(), "U32 formatting should work: {:?}", result);
+        assert_eq!(result.unwrap(), "255"); // U32 is stored as integer, not hex
+    }
+
+    #[test]
+    fn test_hex_input_formatting() {
+        // Test hex inputs are properly formatted
+        let primitive = Primitive::U256(None);
+        let result = format_value_with_primitive_formatting("0x123abc", primitive).unwrap();
+        // Should be padded to 64 hex characters
+        assert!(result.starts_with("0x"));
+        assert_eq!(result.len(), 66); // "0x" + 64 chars
+    }
+
+    #[test]
+    fn test_decimal_input_formatting() {
+        // Test decimal inputs are converted to proper hex format
+        let primitive = Primitive::U64(None);
+        let result = format_value_with_primitive_formatting("255", primitive);
+        assert!(result.is_ok(), "U64 decimal formatting should work");
+        assert_eq!(result.unwrap(), "0x00000000000000ff");
+    }
+
+    #[test]
+    fn test_exact_failing_case() {
+        // Test the exact case that's failing in the integration test
+        let primitive = Primitive::U64(None);
+        let result = format_value_with_primitive_formatting("0x5", primitive);
+        if let Err(e) = &result {
+            println!("Failed to format 0x5: {}", e);
+        }
+        assert!(result.is_ok(), "Should format 0x5 correctly: {:?}", result);
+        let formatted = result.unwrap();
+        println!("Formatted 0x5 as: {}", formatted);
+        assert_eq!(formatted, "0x0000000000000005");
+
+        // Also test that this matches what Primitive::to_sql_value produces directly
+        let direct_primitive = Primitive::U64(Some(5));
+        let direct_sql = direct_primitive.to_sql_value();
+        println!("Direct Primitive::to_sql_value for U64(5): {}", direct_sql);
+        assert_eq!(formatted, direct_sql);
     }
 }
