@@ -93,7 +93,7 @@ impl Messaging {
         // Get the provided timestamp from the message, and validate it
         let message_timestamp = get_timestamp_from_ty(&ty);
         if let Some(timestamp) = message_timestamp {
-            let now = Utc::now().timestamp() as u64;
+            let now = Utc::now().timestamp_millis() as u64;
 
             if timestamp > now + self.config.future_tolerance {
                 return Err(MessagingError::TimestampTooFuture);
