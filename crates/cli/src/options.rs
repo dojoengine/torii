@@ -162,7 +162,7 @@ pub struct IndexingOptions {
         long = "indexing.contracts",
         value_delimiter = ',',
         value_parser = parse_erc_contract,
-        help = "The list of contracts to index, in the following format: contract_type:address. Supported contract types include ERC20, ERC721, ERC1155, WORLD, UDC."
+        help = "The list of contracts to index, in the following format: contract_type:address. Supported contract types include ERC20, ERC721, ERC1155, WORLD, UDC, OTHER."
     )]
     #[serde(deserialize_with = "deserialize_contracts")]
     #[serde(serialize_with = "serialize_contracts")]

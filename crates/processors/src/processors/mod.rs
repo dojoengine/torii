@@ -133,6 +133,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Processors<P
                 ContractType::UDC,
                 vec![Box::new(ControllerProcessor) as Box<dyn EventProcessor<P>>],
             ),
+            (
+                ContractType::OTHER,
+                vec![],
+            ),
         ];
 
         for (contract_type, processors) in event_processors {
