@@ -28,8 +28,8 @@ pub struct MessagingConfig {
 impl Default for MessagingConfig {
     fn default() -> Self {
         Self {
-            max_age: 300,         // 5 minutes
-            future_tolerance: 60, // 1 minute
+            max_age: 300_000,         // 5 minutes
+            future_tolerance: 60_000, // 1 minute
             require_timestamp: false,
         }
     }
@@ -93,7 +93,7 @@ impl Messaging {
         // Get the provided timestamp from the message, and validate it
         let message_timestamp = get_timestamp_from_ty(&ty);
         if let Some(timestamp) = message_timestamp {
-            let now = Utc::now().timestamp() as u64;
+            let now = Utc::now().timestamp_millis() as u64;
 
             if timestamp > now + self.config.future_tolerance {
                 return Err(MessagingError::TimestampTooFuture);

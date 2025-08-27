@@ -37,8 +37,8 @@ pub const DEFAULT_DATABASE_BUSY_TIMEOUT: u64 = 60_000;
 pub const DEFAULT_DATABASE_ACQUIRE_TIMEOUT: u64 = 30_000;
 pub const DEFAULT_DATABASE_IDLE_TIMEOUT: u64 = 600_000;
 pub const DEFAULT_DATABASE_MAX_CONNECTIONS: u32 = 100;
-pub const DEFAULT_MESSAGING_MAX_AGE: u64 = 300;
-pub const DEFAULT_MESSAGING_FUTURE_TOLERANCE: u64 = 60;
+pub const DEFAULT_MESSAGING_MAX_AGE: u64 = 300_000;
+pub const DEFAULT_MESSAGING_FUTURE_TOLERANCE: u64 = 60_000;
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
@@ -377,19 +377,19 @@ impl Default for ErcOptions {
 #[serde(default)]
 #[command(next_help_heading = "Messaging options")]
 pub struct MessagingOptions {
-    /// Maximum age in seconds for message timestamps to be considered valid
+    /// Maximum age in milliseconds for message timestamps to be considered valid
     #[arg(
         long = "messaging.max_age",
         default_value_t = DEFAULT_MESSAGING_MAX_AGE,
-        help = "Maximum age in seconds for message timestamps to be considered valid. Messages older than this will be rejected."
+        help = "Maximum age in milliseconds for message timestamps to be considered valid. Messages older than this will be rejected."
     )]
     pub max_age: u64,
 
-    /// Maximum seconds in the future that message timestamps are allowed
+    /// Maximum milliseconds in the future that message timestamps are allowed
     #[arg(
         long = "messaging.future_tolerance",
         default_value_t = DEFAULT_MESSAGING_FUTURE_TOLERANCE,
-        help = "Maximum seconds in the future that message timestamps are allowed. Helps prevent clock skew issues."
+        help = "Maximum milliseconds in the future that message timestamps are allowed. Helps prevent clock skew issues."
     )]
     pub future_tolerance: u64,
 
