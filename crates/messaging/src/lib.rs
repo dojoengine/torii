@@ -28,8 +28,8 @@ pub struct MessagingConfig {
 impl Default for MessagingConfig {
     fn default() -> Self {
         Self {
-            max_age: 300,         // 5 minutes
-            future_tolerance: 60, // 1 minute
+            max_age: 300_000,         // 5 minutes
+            future_tolerance: 60_000, // 1 minute
             require_timestamp: false,
         }
     }
