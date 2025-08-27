@@ -1,3 +1,4 @@
+use chrono::DateTime;
 use dojo_types::naming::compute_selector_from_tag;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::str::FromStr;
@@ -341,6 +342,9 @@ fn map_row_to_entity(
     dont_include_hashed_keys: bool,
 ) -> Result<Entity, Error> {
     let hashed_keys = Felt::from_str(&row.get::<String, _>("id")).map_err(ParseError::FromStr)?;
+    let created_at = row.get::<i64, _>("created_at");
+    let updated_at = row.get::<i64, _>("updated_at");
+    let executed_at = row.get::<i64, _>("executed_at");
     let model_ids = row
         .get::<String, _>("model_ids")
         .split(',')
@@ -364,6 +368,9 @@ fn map_row_to_entity(
             Felt::ZERO
         },
         models,
+        created_at: DateTime::from_timestamp(created_at as i64, 0).unwrap(),
+        updated_at: DateTime::from_timestamp(updated_at as i64, 0).unwrap(),
+        executed_at: DateTime::from_timestamp(executed_at as i64, 0).unwrap(),
     })
 }
 
@@ -580,6 +587,9 @@ impl Sql {
                 format!("{}.data", table),
                 format!("{}.model_id", table),
                 format!("{}.event_id", table),
+                format!("{}.created_at", table),
+                format!("{}.updated_at", table),
+                format!("{}.executed_at", table),
                 format!(
                     "group_concat({}.model_id) as model_ids",
                     model_relation_table
@@ -627,6 +637,9 @@ impl Sql {
                 let id: String = row.get("id");
                 let data: String = row.get("data");
                 let model_id: String = row.get("model_id");
+                let created_at: i64 = row.get("created_at");
+                let updated_at: i64 = row.get("updated_at");
+                let executed_at: i64 = row.get("executed_at");
 
                 let hashed_keys = Felt::from_str(&id).map_err(ParseError::FromStr)?;
                 let model = self
@@ -643,6 +656,9 @@ impl Sql {
                 Ok::<_, Error>(torii_proto::schema::Entity {
                     hashed_keys,
                     models: vec![schema.as_struct().unwrap().clone()],
+                    created_at: DateTime::from_timestamp(created_at as i64, 0).unwrap(),
+                    updated_at: DateTime::from_timestamp(updated_at as i64, 0).unwrap(),
+                    executed_at: DateTime::from_timestamp(executed_at as i64, 0).unwrap(),
                 })
             })
             .collect::<Vec<_>>();
@@ -733,6 +749,9 @@ impl Sql {
                 format!("{}.id", table_name),
                 format!("{}.keys", table_name),
                 format!("{}.event_id", table_name),
+                format!("{}.created_at", table_name),
+                format!("{}.updated_at", table_name),
+                format!("{}.executed_at", table_name),
                 format!(
                     "group_concat({}.model_id) as model_ids",
                     model_relation_table

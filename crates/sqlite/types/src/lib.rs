@@ -61,6 +61,9 @@ impl<const EVENT_MESSAGE: bool> From<Entity> for torii_proto::schema::Entity<EVE
         Self {
             hashed_keys: Felt::from_str(&value.id).unwrap(),
             models,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            executed_at: value.executed_at,
         }
     }
 }
@@ -80,9 +83,6 @@ impl<const EVENT_MESSAGE: bool> From<Entity> for EntityWithMetadata<EVENT_MESSAG
             .collect();
         Self {
             event_id: value.event_id.clone(),
-            created_at: value.created_at,
-            updated_at: value.updated_at,
-            executed_at: value.executed_at,
             entity: value.into(),
             keys,
         }
