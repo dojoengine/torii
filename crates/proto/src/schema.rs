@@ -13,15 +13,15 @@ pub struct EntityWithMetadata<const EVENT_MESSAGE: bool = false> {
     pub entity: Entity<EVENT_MESSAGE>,
     pub event_id: String,
     pub keys: Vec<Felt>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub executed_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Entity<const EVENT_MESSAGE: bool = false> {
     pub hashed_keys: Felt,
     pub models: Vec<Struct>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub executed_at: DateTime<Utc>,
 }
 
 impl<const EVENT_MESSAGE: bool> From<Entity<EVENT_MESSAGE>> for proto::types::Entity {
@@ -33,6 +33,9 @@ impl<const EVENT_MESSAGE: bool> From<Entity<EVENT_MESSAGE>> for proto::types::En
                 .into_iter()
                 .map(Into::into)
                 .collect::<Vec<_>>(),
+            created_at: entity.created_at.timestamp() as u64,
+            updated_at: entity.updated_at.timestamp() as u64,
+            executed_at: entity.executed_at.timestamp() as u64,
         }
     }
 }
@@ -47,6 +50,9 @@ impl<const EVENT_MESSAGE: bool> TryFrom<proto::types::Entity> for Entity<EVENT_M
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<_>, _>>()?,
+            created_at: DateTime::from_timestamp(entity.created_at as i64, 0).unwrap(),
+            updated_at: DateTime::from_timestamp(entity.updated_at as i64, 0).unwrap(),
+            executed_at: DateTime::from_timestamp(entity.executed_at as i64, 0).unwrap(),
         })
     }
 }
