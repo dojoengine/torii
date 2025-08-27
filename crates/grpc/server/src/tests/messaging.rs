@@ -802,7 +802,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
     .unwrap();
     db.execute().await.unwrap();
 
-    let now = Utc::now().timestamp() as u64;
+    let now = Utc::now().timestamp_millis() as u64;
 
     // Create DojoWorld instance with default messaging config
     let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
