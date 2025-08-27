@@ -458,3 +458,23 @@ pub static TOKEN_TYPE_MAPPING: LazyLock<TypeMapping> = LazyLock::new(|| {
         TypeData::Nested((TypeRef::named_nn(TOKEN_UNION_TYPE_NAME), IndexMap::new())),
     )])
 });
+
+pub static PUBLISH_MESSAGE_INPUT_MAPPING: LazyLock<TypeMapping> = LazyLock::new(|| {
+    IndexMap::from([
+        (
+            Name::new("signature"),
+            TypeData::Simple(TypeRef::named_nn_list(TypeRef::STRING)),
+        ),
+        (
+            Name::new("message"),
+            TypeData::Simple(TypeRef::named_nn(TypeRef::STRING)),
+        ),
+    ])
+});
+
+pub static PUBLISH_MESSAGE_RESPONSE_MAPPING: LazyLock<TypeMapping> = LazyLock::new(|| {
+    IndexMap::from([(
+        Name::new("entityId"),
+        TypeData::Simple(TypeRef::named_nn(TypeRef::STRING)),
+    )])
+});

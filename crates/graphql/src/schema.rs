@@ -1,5 +1,5 @@
 use anyhow::Result;
-use async_graphql::dynamic::{Object, Scalar, Schema, Subscription, Union};
+use async_graphql::dynamic::{Mutation, Object, Scalar, Schema, Subscription, Union};
 use dojo_types::schema::Ty;
 use sqlx::SqlitePool;
 use torii_sqlite::types::Model;
@@ -14,6 +14,7 @@ use crate::constants::{
     EMPTY_TYPE_NAME, ERC1155_TYPE_NAME, ERC20_TYPE_NAME, ERC721_TYPE_NAME, QUERY_TYPE_NAME,
     SUBSCRIPTION_TYPE_NAME, TOKEN_UNION_TYPE_NAME,
 };
+use crate::object::publish_message::PublishMessageObject;
 use crate::object::controller::ControllerObject;
 use crate::object::empty::EmptyObject;
 use crate::object::erc::erc_token::{
