@@ -14,7 +14,6 @@ use crate::constants::{
     EMPTY_TYPE_NAME, ERC1155_TYPE_NAME, ERC20_TYPE_NAME, ERC721_TYPE_NAME, MUTATION_TYPE_NAME,
     QUERY_TYPE_NAME, SUBSCRIPTION_TYPE_NAME, TOKEN_UNION_TYPE_NAME,
 };
-use crate::object::publish_message::PublishMessageObject;
 use crate::object::controller::ControllerObject;
 use crate::object::empty::EmptyObject;
 use crate::object::erc::erc_token::{
@@ -27,6 +26,7 @@ use crate::object::metadata::content::ContentObject;
 use crate::object::metadata::social::SocialObject;
 use crate::object::metadata::MetadataObject;
 use crate::object::model::ModelObject;
+use crate::object::publish_message::PublishMessageObject;
 use crate::object::transaction::{CallObject, TransactionObject};
 use crate::object::{BasicObject, ObjectVariant};
 use crate::query::build_type_mapping;
@@ -39,7 +39,11 @@ pub async fn build_schema(pool: &SqlitePool) -> Result<Schema> {
     // build world gql objects
     let (objects, unions) = build_objects(pool).await?;
 
-    let mut schema_builder = Schema::build(QUERY_TYPE_NAME, Some(MUTATION_TYPE_NAME), Some(SUBSCRIPTION_TYPE_NAME));
+    let mut schema_builder = Schema::build(
+        QUERY_TYPE_NAME,
+        Some(MUTATION_TYPE_NAME),
+        Some(SUBSCRIPTION_TYPE_NAME),
+    );
     //? why we need to provide QUERY_TYPE_NAME object here when its already passed to Schema?
     let mut query_root = Object::new(QUERY_TYPE_NAME);
     let mut mutation_root = Object::new(MUTATION_TYPE_NAME);

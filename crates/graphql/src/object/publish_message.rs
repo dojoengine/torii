@@ -60,11 +60,15 @@ impl PublishMessageObject {
                         .iter()
                         .map(|s| Felt::from_str(s))
                         .collect::<Result<Vec<_>, _>>()
-                        .map_err(|e| async_graphql::Error::new(format!("Invalid signature: {}", e)))?;
+                        .map_err(|e| {
+                            async_graphql::Error::new(format!("Invalid signature: {}", e))
+                        })?;
 
                     // Parse the message as JSON to validate it
-                    let typed_data: serde_json::Value = serde_json::from_str(&message)
-                        .map_err(|e| async_graphql::Error::new(format!("Invalid message JSON: {}", e)))?;
+                    let typed_data: serde_json::Value =
+                        serde_json::from_str(&message).map_err(|e| {
+                            async_graphql::Error::new(format!("Invalid message JSON: {}", e))
+                        })?;
 
                     // Get messaging and storage from context
                     let messaging = ctx.data::<Messaging>()?;
@@ -75,7 +79,9 @@ impl PublishMessageObject {
                     let entity_id = messaging
                         .validate_and_set_entity(storage.clone(), &typed_data, &signature, provider)
                         .await
-                        .map_err(|e| async_graphql::Error::new(format!("Failed to publish message: {}", e)))?;
+                        .map_err(|e| {
+                            async_graphql::Error::new(format!("Failed to publish message: {}", e))
+                        })?;
 
                     // Create response
                     let response = ValueMapping::from([(
@@ -91,6 +97,9 @@ impl PublishMessageObject {
             "signature",
             TypeRef::named_nn_list(TypeRef::STRING),
         ))
-        .argument(InputValue::new("message", TypeRef::named_nn(TypeRef::STRING)))
+        .argument(InputValue::new(
+            "message",
+            TypeRef::named_nn(TypeRef::STRING),
+        ))
     }
 }
