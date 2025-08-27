@@ -918,6 +918,35 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
 
     let result = grpc.publish_message(request).await;
     assert!(result.is_err());
+    // Check that it's specifically a TimestampTooFuture error
+    let error = result.unwrap_err();
+    assert!(error.message().contains("too far in the future"));
+
+    // Test timestamp too old (should fail)
+    typed_data.message.insert(
+        "timestamp".to_string(),
+        torii_typed_data::typed_data::PrimitiveType::String((now - 400_000).to_string()), // 400 seconds ago, exceeds max_age of 300 seconds
+    );
+
+    let message_hash = typed_data.encode(account_data.address).unwrap();
+    let signature =
+        SigningKey::from_secret_scalar(account_data.private_key.clone().unwrap().secret_scalar())
+            .sign(&message_hash)
+            .unwrap();
+
+    let request = Request::new(PublishMessageRequest {
+        message: serde_json::to_string(&typed_data).unwrap(),
+        signature: vec![
+            signature.r.to_bytes_be().to_vec(),
+            signature.s.to_bytes_be().to_vec(),
+        ],
+    });
+
+    let result = grpc.publish_message(request).await;
+    assert!(result.is_err());
+    // Check that it's specifically a TimestampTooOld error
+    let error = result.unwrap_err();
+    assert!(error.message().contains("too old"));
 
     println!("All timestamp validation tests passed!");
 }
