@@ -368,9 +368,9 @@ fn map_row_to_entity(
             Felt::ZERO
         },
         models,
-        created_at: DateTime::from_timestamp(created_at as i64, 0).unwrap(),
-        updated_at: DateTime::from_timestamp(updated_at as i64, 0).unwrap(),
-        executed_at: DateTime::from_timestamp(executed_at as i64, 0).unwrap(),
+        created_at: DateTime::from_timestamp(created_at, 0).unwrap(),
+        updated_at: DateTime::from_timestamp(updated_at, 0).unwrap(),
+        executed_at: DateTime::from_timestamp(executed_at, 0).unwrap(),
     })
 }
 
@@ -656,9 +656,9 @@ impl Sql {
                 Ok::<_, Error>(torii_proto::schema::Entity {
                     hashed_keys,
                     models: vec![schema.as_struct().unwrap().clone()],
-                    created_at: DateTime::from_timestamp(created_at as i64, 0).unwrap(),
-                    updated_at: DateTime::from_timestamp(updated_at as i64, 0).unwrap(),
-                    executed_at: DateTime::from_timestamp(executed_at as i64, 0).unwrap(),
+                    created_at: DateTime::from_timestamp(created_at, 0).unwrap(),
+                    updated_at: DateTime::from_timestamp(updated_at, 0).unwrap(),
+                    executed_at: DateTime::from_timestamp(executed_at, 0).unwrap(),
                 })
             })
             .collect::<Vec<_>>();
