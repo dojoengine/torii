@@ -53,6 +53,7 @@ use torii_sqlite::executor::Executor;
 use torii_sqlite::{Sql, SqlConfig};
 use torii_storage::proto::Contract;
 use torii_storage::proto::ContractType;
+use torii_storage::Storage;
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
@@ -405,7 +406,11 @@ impl Runner {
             future_tolerance: self.args.messaging.future_tolerance,
             require_timestamp: self.args.messaging.require_timestamp,
         };
-        let messaging = Arc::new(Messaging::new(messaging_config));
+        let messaging = Arc::new(Messaging::new(
+            messaging_config,
+            storage.clone(),
+            provider.clone(),
+        ));
 
         let (mut libp2p_relay_server, cross_messaging_tx) = Relay::new_with_peers(
             storage.clone(),
@@ -506,6 +511,8 @@ impl Runner {
             shutdown_tx.clone(),
             readonly_pool.into(),
             proxy_server.clone(),
+            messaging.clone(),
+            storage.clone(),
         );
 
         let protocol = if final_cert_path.is_some() && final_key_path.is_some() {
@@ -578,16 +585,20 @@ impl Runner {
     }
 }
 
-async fn spawn_rebuilding_graphql_server(
+async fn spawn_rebuilding_graphql_server<P: Provider + Sync + Send + Clone + 'static>(
     shutdown_tx: Sender<()>,
     pool: Arc<SqlitePool>,
     proxy_server: Arc<Proxy>,
+    messaging: Arc<Messaging<P>>,
+    storage: Arc<dyn Storage>,
 ) {
     let mut broker = MemoryBroker::<ModelUpdate>::subscribe();
 
     loop {
         let shutdown_rx = shutdown_tx.subscribe();
-        let (new_addr, new_server) = torii_graphql::server::new(shutdown_rx, &pool).await;
+        let (new_addr, new_server) =
+            torii_graphql::server::new(shutdown_rx, &pool, messaging.clone(), storage.clone())
+                .await;
 
         tokio::spawn(new_server);
 

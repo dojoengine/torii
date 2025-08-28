@@ -2,8 +2,7 @@ use async_graphql::dynamic::{Field, FieldFuture, InputValue, TypeRef};
 use async_graphql::{Name, Value};
 use starknet_crypto::Felt;
 use std::str::FromStr;
-use torii_messaging::Messaging;
-use torii_storage::Storage;
+use std::sync::Arc;
 
 use super::{BasicObject, TypeMapping, ValueMapping};
 use crate::constants::{PUBLISH_MESSAGE_RESPONSE_TYPE_NAME, PUBLISH_MESSAGE_TYPE_NAME};
@@ -64,20 +63,18 @@ impl PublishMessageObject {
                             async_graphql::Error::new(format!("Invalid signature: {}", e))
                         })?;
 
-                    // Parse the message as JSON to validate it
-                    let typed_data: serde_json::Value =
+                    // Parse the message as TypedData
+                    let typed_data: starknet_core::types::TypedData =
                         serde_json::from_str(&message).map_err(|e| {
                             async_graphql::Error::new(format!("Invalid message JSON: {}", e))
                         })?;
 
-                    // Get messaging and storage from context
-                    let messaging = ctx.data::<Messaging>()?;
-                    let storage = ctx.data::<Storage>()?;
-                    let provider = ctx.data::<starknet::providers::AnyProvider>()?;
+                    // Get messaging from context
+                    let messaging = ctx.data::<Arc<dyn torii_messaging::MessagingTrait>>()?;
 
                     // Validate and set entity
                     let entity_id = messaging
-                        .validate_and_set_entity(storage.clone(), &typed_data, &signature, provider)
+                        .validate_and_set_entity(&typed_data, &signature)
                         .await
                         .map_err(|e| {
                             async_graphql::Error::new(format!("Failed to publish message: {}", e))
