@@ -2000,7 +2000,7 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 [[package]]
 name = "dojo-metrics"
 version = "1.7.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#ddce772c4a5abf57b85847e6855bd02640186168"
+source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#154fa874c56e7610601e9176993df3ca917d8eec"
 dependencies = [
  "bytes",
  "http-body-util",
@@ -2021,7 +2021,7 @@ dependencies = [
 [[package]]
 name = "dojo-test-utils"
 version = "1.7.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#ddce772c4a5abf57b85847e6855bd02640186168"
+source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#154fa874c56e7610601e9176993df3ca917d8eec"
 dependencies = [
  "assert_fs",
  "camino",
@@ -2034,7 +2034,7 @@ dependencies = [
 [[package]]
 name = "dojo-types"
 version = "1.7.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#ddce772c4a5abf57b85847e6855bd02640186168"
+source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#154fa874c56e7610601e9176993df3ca917d8eec"
 dependencies = [
  "anyhow",
  "cainome",
@@ -2056,7 +2056,7 @@ dependencies = [
 [[package]]
 name = "dojo-utils"
 version = "1.7.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#ddce772c4a5abf57b85847e6855bd02640186168"
+source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#154fa874c56e7610601e9176993df3ca917d8eec"
 dependencies = [
  "anyhow",
  "colored_json",
@@ -2073,7 +2073,7 @@ dependencies = [
 [[package]]
 name = "dojo-world"
 version = "1.7.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#ddce772c4a5abf57b85847e6855bd02640186168"
+source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#154fa874c56e7610601e9176993df3ca917d8eec"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7119,7 +7119,7 @@ dependencies = [
 [[package]]
 name = "scarb-interop"
 version = "1.7.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#ddce772c4a5abf57b85847e6855bd02640186168"
+source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#154fa874c56e7610601e9176993df3ca917d8eec"
 dependencies = [
  "anyhow",
  "camino",
@@ -7146,7 +7146,7 @@ dependencies = [
 [[package]]
 name = "scarb-metadata-ext"
 version = "1.7.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#ddce772c4a5abf57b85847e6855bd02640186168"
+source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#154fa874c56e7610601e9176993df3ca917d8eec"
 dependencies = [
  "anyhow",
  "camino",
@@ -7645,7 +7645,7 @@ dependencies = [
 [[package]]
 name = "sozo-ops"
 version = "1.7.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#ddce772c4a5abf57b85847e6855bd02640186168"
+source = "git+https://github.com/dojoengine/dojo?branch=primitive-from-sql#154fa874c56e7610601e9176993df3ca917d8eec"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -9027,6 +9027,7 @@ dependencies = [
  "dojo-utils",
  "dojo-world",
  "handlebars 6.3.2",
+ "indexmap 2.7.1",
  "katana-runner",
  "regex",
  "scarb-interop",
@@ -9053,6 +9054,7 @@ dependencies = [
  "torii-processors",
  "torii-sqlite",
  "torii-storage",
+ "torii-typed-data",
  "tracing",
  "url",
  "warp",
