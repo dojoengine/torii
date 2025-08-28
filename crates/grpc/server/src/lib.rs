@@ -34,7 +34,7 @@ use tonic::{Request, Response, Status};
 use tonic_web::GrpcWebLayer;
 use torii_messaging::Messaging;
 use torii_proto::error::ProtoError;
-use torii_storage::Storage;
+use torii_storage::ReadOnlyStorage;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::subscriptions::transaction::TransactionManager;
@@ -75,9 +75,8 @@ static SUBSCRIPTION_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|
 
 #[derive(Debug)]
 pub struct DojoWorld<P: Provider + Sync> {
-    storage: Arc<dyn Storage>,
-    provider: P,
-    messaging: Arc<Messaging>,
+    storage: Arc<dyn ReadOnlyStorage>,
+    messaging: Arc<Messaging<P>>,
     world_address: Felt,
     cross_messaging_tx: Option<UnboundedSender<Message>>,
     entity_manager: Arc<EntityManager>,
@@ -92,9 +91,8 @@ pub struct DojoWorld<P: Provider + Sync> {
 
 impl<P: Provider + Sync> DojoWorld<P> {
     pub fn new(
-        storage: Arc<dyn Storage>,
-        provider: P,
-        messaging: Arc<Messaging>,
+        storage: Arc<dyn ReadOnlyStorage>,
+        messaging: Arc<Messaging<P>>,
         world_address: Felt,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
         config: GrpcConfig,
@@ -139,7 +137,6 @@ impl<P: Provider + Sync> DojoWorld<P> {
 
         Self {
             storage,
-            provider,
             messaging,
             world_address,
             cross_messaging_tx,
@@ -682,12 +679,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .map_err(|_| Status::invalid_argument("Invalid message"))?;
         let entity_id = self
             .messaging
-            .validate_and_set_entity(
-                self.storage.clone(),
-                &typed_data,
-                &signature,
-                &self.provider,
-            )
+            .validate_and_set_entity(&typed_data, &signature)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -720,12 +712,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
 
             let entity_id = self
                 .messaging
-                .validate_and_set_entity(
-                    self.storage.clone(),
-                    &typed_data,
-                    &signature,
-                    &self.provider,
-                )
+                .validate_and_set_entity(&typed_data, &signature)
                 .await
                 .map_err(|e| Status::internal(e.to_string()))?;
             responses.push(PublishMessageResponse {
@@ -779,9 +766,8 @@ impl Default for GrpcConfig {
 #[allow(clippy::too_many_arguments)]
 pub async fn new<P: Provider + Sync + Send + 'static>(
     mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
-    storage: Arc<dyn Storage>,
-    provider: P,
-    messaging: Arc<Messaging>,
+    storage: Arc<dyn ReadOnlyStorage>,
+    messaging: Arc<Messaging<P>>,
     world_address: Felt,
     cross_messaging_tx: UnboundedSender<Message>,
     config: GrpcConfig,
@@ -809,7 +795,6 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
 
     let world = DojoWorld::new(
         storage,
-        provider,
         messaging,
         world_address,
         Some(cross_messaging_tx),

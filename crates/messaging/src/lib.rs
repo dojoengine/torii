@@ -5,6 +5,7 @@ pub mod validation;
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 pub use entity::{get_identity_from_ty, get_timestamp_from_ty, set_entity, ty_keys, ty_model_id};
 pub use error::MessagingError;
 pub use parsing::parse_value_to_ty;
@@ -36,23 +37,47 @@ impl Default for MessagingConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct Messaging {
+pub struct Messaging<P: Provider + Sync> {
     config: MessagingConfig,
+    storage: Arc<dyn Storage>,
+    provider: P,
 }
 
-impl Messaging {
-    pub fn new(config: MessagingConfig) -> Self {
-        Self { config }
-    }
-
-    pub async fn validate_and_set_entity<P: Provider + Sync>(
+#[async_trait]
+pub trait MessagingTrait: Send + Sync {
+    async fn validate_and_set_entity(
         &self,
-        storage: Arc<dyn Storage>,
         message: &TypedData,
         signature: &[Felt],
-        provider: &P,
+    ) -> Result<Felt, MessagingError>;
+}
+
+#[async_trait]
+impl<P: Provider + Sync + Send> MessagingTrait for Messaging<P> {
+    async fn validate_and_set_entity(
+        &self,
+        message: &TypedData,
+        signature: &[Felt],
     ) -> Result<Felt, MessagingError> {
-        let ty = match validate_message(storage.clone(), message).await {
+        self.validate_and_set_entity(message, signature).await
+    }
+}
+
+impl<P: Provider + Sync> Messaging<P> {
+    pub fn new(config: MessagingConfig, storage: Arc<dyn Storage>, provider: P) -> Self {
+        Self {
+            config,
+            storage,
+            provider,
+        }
+    }
+
+    pub async fn validate_and_set_entity(
+        &self,
+        message: &TypedData,
+        signature: &[Felt],
+    ) -> Result<Felt, MessagingError> {
+        let ty = match validate_message(self.storage.clone(), message).await {
             Ok(parsed_message) => parsed_message,
             Err(e) => {
                 warn!(
@@ -109,7 +134,7 @@ impl Messaging {
             return Err(MessagingError::TimestampNotFound);
         }
 
-        let entity_model = storage.entity_model(entity_id, model_id).await?;
+        let entity_model = self.storage.entity_model(entity_id, model_id).await?;
         let entity_identity = match &entity_model {
             Some(entity_model) => match get_identity_from_ty(entity_model) {
                 Ok(identity) => identity,
@@ -148,7 +173,7 @@ impl Messaging {
         }
 
         // Verify the signature
-        if !match validate_signature(provider, entity_identity, message, signature).await {
+        if !match validate_signature(&self.provider, entity_identity, message, signature).await {
             Ok(res) => res,
             Err(e) => {
                 warn!(
@@ -169,7 +194,7 @@ impl Messaging {
         }
 
         if let Err(e) = set_entity(
-            storage.clone(),
+            self.storage.clone(),
             ty.clone(),
             message_timestamp.unwrap_or_else(|| Utc::now().timestamp() as u64), // Use client timestamp if available, otherwise server timestamp
             entity_id,

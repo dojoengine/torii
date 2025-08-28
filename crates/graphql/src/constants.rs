@@ -34,6 +34,7 @@ pub const PAGE_INFO_TYPE_NAME: &str = "World__PageInfo";
 pub const TRANSACTION_TYPE_NAME: &str = "World__Transaction";
 pub const CALL_TYPE_NAME: &str = "World__Call";
 pub const QUERY_TYPE_NAME: &str = "World__Query";
+pub const MUTATION_TYPE_NAME: &str = "World__Mutation";
 pub const SUBSCRIPTION_TYPE_NAME: &str = "World__Subscription";
 pub const MODEL_ORDER_TYPE_NAME: &str = "World__ModelOrder";
 pub const MODEL_ORDER_FIELD_TYPE_NAME: &str = "World__ModelOrderField";
@@ -74,3 +75,6 @@ pub const EMPTY_TYPE_NAME: &str = "World__Empty";
 pub const EMPTY_NAMES: (&str, &str) = ("empty", "");
 pub const CONTROLLER_TYPE_NAME: &str = "World__Controller";
 pub const CONTROLLER_NAMES: (&str, &str) = ("controller", "controllers");
+
+pub const PUBLISH_MESSAGE_TYPE_NAME: &str = "World__PublishMessage";
+pub const PUBLISH_MESSAGE_RESPONSE_TYPE_NAME: &str = "World__PublishMessageResponse";

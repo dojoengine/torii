@@ -2,7 +2,11 @@ use anyhow::Result;
 use async_graphql::dynamic::{Object, Scalar, Schema, Subscription, Union};
 use dojo_types::schema::Ty;
 use sqlx::SqlitePool;
+use starknet::providers::Provider;
+use std::sync::Arc;
+use torii_messaging::{Messaging, MessagingTrait};
 use torii_sqlite::types::Model;
+use torii_storage::ReadOnlyStorage;
 
 use super::object::connection::page_info::PageInfoObject;
 use super::object::entity::EntityObject;
@@ -11,8 +15,8 @@ use super::object::model_data::ModelDataObject;
 use super::types::ScalarType;
 use super::utils;
 use crate::constants::{
-    EMPTY_TYPE_NAME, ERC1155_TYPE_NAME, ERC20_TYPE_NAME, ERC721_TYPE_NAME, QUERY_TYPE_NAME,
-    SUBSCRIPTION_TYPE_NAME, TOKEN_UNION_TYPE_NAME,
+    EMPTY_TYPE_NAME, ERC1155_TYPE_NAME, ERC20_TYPE_NAME, ERC721_TYPE_NAME, MUTATION_TYPE_NAME,
+    QUERY_TYPE_NAME, SUBSCRIPTION_TYPE_NAME, TOKEN_UNION_TYPE_NAME,
 };
 use crate::object::controller::ControllerObject;
 use crate::object::empty::EmptyObject;
@@ -26,21 +30,31 @@ use crate::object::metadata::content::ContentObject;
 use crate::object::metadata::social::SocialObject;
 use crate::object::metadata::MetadataObject;
 use crate::object::model::ModelObject;
+use crate::object::publish_message::PublishMessageObject;
 use crate::object::transaction::{CallObject, TransactionObject};
-use crate::object::ObjectVariant;
+use crate::object::{BasicObject, ObjectVariant};
 use crate::query::build_type_mapping;
 
 // The graphql schema is built dynamically at runtime, this is because we won't know the schema of
 // the models until runtime. There are however, predefined objects such as entities and
 // events, their schema is known but we generate them dynamically as well because async-graphql
 // does not allow mixing of static and dynamic schemas.
-pub async fn build_schema(pool: &SqlitePool) -> Result<Schema> {
+pub async fn build_schema<P: Provider + Sync + Send + 'static>(
+    pool: &SqlitePool,
+    messaging: Arc<Messaging<P>>,
+    storage: Arc<dyn ReadOnlyStorage>,
+) -> Result<Schema> {
     // build world gql objects
     let (objects, unions) = build_objects(pool).await?;
 
-    let mut schema_builder = Schema::build(QUERY_TYPE_NAME, None, Some(SUBSCRIPTION_TYPE_NAME));
+    let mut schema_builder = Schema::build(
+        QUERY_TYPE_NAME,
+        Some(MUTATION_TYPE_NAME),
+        Some(SUBSCRIPTION_TYPE_NAME),
+    );
     //? why we need to provide QUERY_TYPE_NAME object here when its already passed to Schema?
     let mut query_root = Object::new(QUERY_TYPE_NAME);
+    let mut mutation_root = Object::new(MUTATION_TYPE_NAME);
     let mut subscription_root = Subscription::new(SUBSCRIPTION_TYPE_NAME);
 
     // register model data unions
@@ -104,10 +118,22 @@ pub async fn build_schema(pool: &SqlitePool) -> Result<Schema> {
         }
     }
 
+    // Add publish message mutation
+    mutation_root = mutation_root.field(PublishMessageObject::mutation_field());
+
+    // Register publish message objects
+    let publish_message_obj = PublishMessageObject;
+    for object in publish_message_obj.objects() {
+        schema_builder = schema_builder.register(object);
+    }
+
     schema_builder
         .register(query_root)
+        .register(mutation_root)
         .register(subscription_root)
         .data(pool.clone())
+        .data(messaging as Arc<dyn MessagingTrait>)
+        .data(storage)
         .finish()
         .map_err(|e| e.into())
 }

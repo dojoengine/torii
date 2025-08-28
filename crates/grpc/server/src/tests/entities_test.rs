@@ -150,10 +150,14 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
 
     db.execute().await.unwrap();
 
-    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
-    let grpc = DojoWorld::new(
-        Arc::new(db),
+    let storage = Arc::new(db);
+    let messaging = Arc::new(Messaging::new(
+        MessagingConfig::default(),
+        storage.clone(),
         provider.clone(),
+    ));
+    let grpc = DojoWorld::new(
+        storage,
         messaging.clone(),
         world_address,
         None,

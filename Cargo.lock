@@ -9036,6 +9036,7 @@ dependencies = [
  "serial_test",
  "sqlx",
  "starknet",
+ "starknet-core 0.12.3",
  "starknet-crypto",
  "strum 0.25.0",
  "strum_macros 0.25.3",
@@ -9048,6 +9049,7 @@ dependencies = [
  "torii-cache",
  "torii-indexer",
  "torii-indexer-fetcher",
+ "torii-messaging",
  "torii-processors",
  "torii-sqlite",
  "torii-storage",
@@ -9261,7 +9263,6 @@ dependencies = [
  "tokio",
  "torii-messaging",
  "torii-proto",
- "torii-storage",
  "tracing",
  "tracing-subscriber",
 ]
@@ -9289,6 +9290,7 @@ name = "torii-messaging"
 version = "1.7.0-alpha.2"
 dependencies = [
  "anyhow",
+ "async-trait",
  "crypto-bigint",
  "dojo-types",
  "dojo-world",

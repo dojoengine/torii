@@ -27,7 +27,6 @@ libp2p-webrtc = { git = "https://github.com/libp2p/rust-libp2p", features = [ "p
 torii-messaging = { workspace = true }
 crypto-bigint = { workspace = true }
 torii-proto = { workspace = true }
-torii-storage = { workspace = true }
 tokio.workspace = true
 
 [dev-dependencies]

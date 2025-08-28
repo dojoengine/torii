@@ -13,7 +13,7 @@ use tokio::sync::mpsc::{
 use torii_broker::types::ContractUpdate;
 use torii_broker::MemoryBroker;
 use torii_proto::ContractCursor;
-use torii_storage::Storage;
+use torii_storage::ReadOnlyStorage;
 use torii_storage::StorageError;
 use tracing::{error, trace};
 
@@ -47,7 +47,7 @@ impl IndexerManager {
 
     pub async fn add_subscriber(
         &self,
-        storage: Arc<dyn Storage>,
+        storage: Arc<dyn ReadOnlyStorage>,
         contract_address: Felt,
     ) -> Result<Receiver<Result<SubscribeIndexerResponse, tonic::Status>>, StorageError> {
         let id = rand::thread_rng().gen::<usize>();

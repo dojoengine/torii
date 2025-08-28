@@ -7,6 +7,7 @@ version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
 crypto-bigint.workspace = true
 dojo-types.workspace = true
 dojo-world.workspace = true

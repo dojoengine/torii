@@ -25,11 +25,13 @@ use starknet::core::types::{Call, Felt, InvokeTransactionResult};
 use starknet::macros::selector;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::JsonRpcClient;
+use starknet::providers::Provider;
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use torii_cache::InMemoryCache;
 use torii_indexer::engine::{Engine, EngineConfig};
 use torii_indexer_fetcher::{Fetcher, FetcherConfig};
+use torii_messaging::Messaging;
 use torii_processors::processors::Processors;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::Sql;
@@ -41,6 +43,7 @@ mod events_test;
 mod metadata_test;
 mod models_ordering_test;
 mod models_test;
+mod publish_message_test;
 mod subscription_test;
 
 use crate::schema::build_schema;
@@ -206,12 +209,19 @@ pub async fn run_graphql_query(schema: &Schema, query: &str) -> Value {
 }
 
 #[allow(dead_code)]
-pub async fn run_graphql_subscription(
-    pool: &SqlitePool,
+pub async fn run_graphql_subscription<P: Provider + Sync + Send + 'static>(
+    storage: &Sql,
+    provider: P,
     subscription: &str,
 ) -> async_graphql::Value {
-    // Build dynamic schema
-    let schema = build_schema(pool).await.unwrap();
+    let messaging = Arc::new(Messaging::new(
+        Default::default(),
+        Arc::new(storage.clone()),
+        provider,
+    ));
+    let schema = build_schema(&storage.pool, messaging, Arc::new(storage.clone()))
+        .await
+        .unwrap();
     schema
         .execute_stream(subscription)
         .next()
@@ -304,7 +314,9 @@ pub async fn model_fixtures(db: &Sql) {
     db.execute().await.unwrap();
 }
 
-pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
+pub async fn spinup_types_test(
+    path: &str,
+) -> Result<(SqlitePool, Arc<JsonRpcClient<HttpTransport>>)> {
     let options = SqliteConnectOptions::from_str(path)
         .unwrap()
         .create_if_missing(true)
@@ -429,5 +441,5 @@ pub async fn spinup_types_test(path: &str) -> Result<SqlitePool> {
     let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();
     db.execute().await.unwrap();
-    Ok(pool)
+    Ok((pool, provider))
 }
