@@ -43,6 +43,7 @@ mod events_test;
 mod metadata_test;
 mod models_ordering_test;
 mod models_test;
+mod publish_message_test;
 mod subscription_test;
 
 use crate::schema::build_schema;

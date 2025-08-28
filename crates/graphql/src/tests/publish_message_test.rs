@@ -9,7 +9,6 @@ mod tests {
     use dojo_world::contracts::abigen::model::Layout;
     use indexmap::IndexMap;
     use katana_runner::RunnerCtx;
-    use serde_json::Value;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
     use starknet::providers::jsonrpc::HttpTransport;
     use starknet::providers::JsonRpcClient;
@@ -21,6 +20,7 @@ mod tests {
     use torii_sqlite::executor::Executor;
     use torii_sqlite::Sql;
     use torii_storage::proto::{Contract, ContractType};
+    use torii_storage::Storage;
     use torii_typed_data::typed_data::{Domain, Field, SimpleField, TypedData};
 
     use crate::schema::build_schema;
@@ -42,7 +42,7 @@ mod tests {
             .connect_with(options)
             .await
             .unwrap();
-        sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+        sqlx::migrate!("../migrations").run(&pool).await.unwrap();
 
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
         let account_data = sequencer.account_data(0);
@@ -172,6 +172,12 @@ mod tests {
         .unwrap();
 
         // Create GraphQL mutation
+        let message_json = serde_json::to_string(&typed_data)
+            .unwrap()
+            .replace('"', "\\\"");
+        let signature_r = format!("0x{:064x}", signature.r);
+        let signature_s = format!("0x{:064x}", signature.s);
+
         let mutation = format!(
             r#"
             mutation {{
@@ -183,20 +189,18 @@ mod tests {
                 }}
             }}
             "#,
-            serde_json::to_string(&typed_data).unwrap().replace('"', "\\\""),
-            format!("0x{:064x}", signature.r),
-            format!("0x{:064x}", signature.s)
+            message_json, signature_r, signature_s
         );
 
         // Execute the mutation
         let result = run_graphql_query(&schema, &mutation).await;
-        
+
         // Verify the response
         let publish_result = result
             .get("publishMessage")
             .ok_or("publishMessage not found")
             .unwrap();
-        
+
         let entity_id = publish_result
             .get("entityId")
             .ok_or("entityId not found")

@@ -37,8 +37,9 @@ tracing.workspace = true
 url.workspace = true
 warp.workspace = true
 handlebars = "6.3.2"
-
 [dev-dependencies]
+indexmap.workspace = true
+torii-typed-data.workspace = true
 camino.workspace = true
 dojo-test-utils = { workspace = true, features = [ "build-examples" ] }
 dojo-utils.workspace = true
