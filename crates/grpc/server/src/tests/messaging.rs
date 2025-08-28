@@ -104,10 +104,13 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     db.execute().await.unwrap();
 
     // Create DojoWorld instance
-    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
-    let grpc = DojoWorld::new(
+    let messaging = Arc::new(Messaging::new(
+        MessagingConfig::default(),
         db.clone(),
         provider.clone(),
+    ));
+    let grpc = DojoWorld::new(
+        db.clone(),
         messaging,
         Felt::ZERO, // world_address
         None,
@@ -382,26 +385,24 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         db.execute().await.unwrap();
     }
 
-    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
+    let messaging1 = Arc::new(Messaging::new(
+        MessagingConfig::default(),
+        db1.clone(),
+        provider.clone(),
+    ));
+    let messaging2 = Arc::new(Messaging::new(
+        MessagingConfig::default(),
+        db2.clone(),
+        provider.clone(),
+    ));
 
     // Create first relay server (will be the main server)
-    let (mut relay_server1, cross_messaging_tx1) = Relay::new(
-        db1.clone(),
-        Arc::clone(&provider).as_ref().clone(),
-        messaging.clone(),
-        9900,
-        9901,
-        9902,
-        None,
-        None,
-    )
-    .unwrap();
+    let (mut relay_server1, cross_messaging_tx1) =
+        Relay::new(messaging1.clone(), 9900, 9901, 9902, None, None).unwrap();
 
     // Create second relay server (peer server) - connect to first server
     let (mut relay_server2, _cross_messaging_tx2) = Relay::new_with_peers(
-        db2.clone(),
-        Arc::clone(&provider).as_ref().clone(),
-        messaging.clone(),
+        messaging2.clone(),
         9903,
         9904,
         9905,
@@ -426,8 +427,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     // Create DojoWorld instance with cross messaging
     let grpc = DojoWorld::new(
         db1,
-        provider.clone(),
-        messaging,
+        messaging1,
         Felt::ZERO, // world_address
         Some(cross_messaging_tx1),
         GrpcConfig::default(),
@@ -616,10 +616,13 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
     db.execute().await.unwrap();
 
     // Create DojoWorld instance
-    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
-    let grpc = DojoWorld::new(
+    let messaging = Arc::new(Messaging::new(
+        MessagingConfig::default(),
         db.clone(),
         provider.clone(),
+    ));
+    let grpc = DojoWorld::new(
+        db.clone(),
         messaging,
         Felt::ZERO, // world_address
         None,
@@ -805,10 +808,13 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
     let now = Utc::now().timestamp_millis() as u64;
 
     // Create DojoWorld instance with default messaging config
-    let messaging = Arc::new(Messaging::new(MessagingConfig::default()));
-    let grpc = DojoWorld::new(
+    let messaging = Arc::new(Messaging::new(
+        MessagingConfig::default(),
         db.clone(),
         provider.clone(),
+    ));
+    let grpc = DojoWorld::new(
+        db.clone(),
         messaging,
         Felt::ZERO,
         None,

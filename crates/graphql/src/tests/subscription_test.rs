@@ -33,9 +33,10 @@ mod tests {
         // used to fetch token_uri data for erc721 tokens so pass dummy for the test
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) = Executor::new(pool.clone(), shutdown_tx.clone(), provider)
-            .await
-            .unwrap();
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider.clone())
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -83,6 +84,7 @@ mod tests {
         });
         let (tx, mut rx) = mpsc::channel(10);
 
+        let db_clone = db.clone();
         tokio::spawn(async move {
             // 1. Open process and sleep.Go to execute subscription
             tokio::time::sleep(Duration::from_secs(1)).await;
@@ -152,24 +154,26 @@ mod tests {
             let model_id = model_id_from_ty(&ty);
 
             // Set entity with one Record model
-            db.set_entity(
-                ty,
-                &format!("0x{:064x}:0x{:04x}:0x{:04x}", 0, 0, 0),
-                block_timestamp,
-                entity_id,
-                model_id,
-                Some(keys),
-            )
-            .await
-            .unwrap();
-            db.execute().await.unwrap();
+            db_clone
+                .set_entity(
+                    ty,
+                    &format!("0x{:064x}:0x{:04x}:0x{:04x}", 0, 0, 0),
+                    block_timestamp,
+                    entity_id,
+                    model_id,
+                    Some(keys),
+                )
+                .await
+                .unwrap();
+            db_clone.execute().await.unwrap();
 
             tx.send(()).await.unwrap();
         });
 
         // 2. The subscription is executed and it is listening, waiting for publish() to be executed
         let response_value = run_graphql_subscription(
-            &pool,
+            &db,
+            provider,
             r#"subscription {
                 entityUpdated {
                     id
@@ -205,9 +209,10 @@ mod tests {
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
 
-        let (mut executor, sender) = Executor::new(pool.clone(), shutdown_tx.clone(), provider)
-            .await
-            .unwrap();
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider.clone())
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -251,6 +256,7 @@ mod tests {
         });
         let (tx, mut rx) = mpsc::channel(10);
 
+        let db_clone = db.clone();
         tokio::spawn(async move {
             // 1. Open process and sleep.Go to execute subscription
             tokio::time::sleep(Duration::from_secs(1)).await;
@@ -306,24 +312,26 @@ mod tests {
             let model_id = model_id_from_ty(&ty);
 
             // Set entity with one Record model
-            db.set_entity(
-                ty,
-                &format!("0x{:064x}:0x{:04x}:0x{:04x}", 0, 0, 0),
-                block_timestamp,
-                entity_id,
-                model_id,
-                Some(keys),
-            )
-            .await
-            .unwrap();
-            db.execute().await.unwrap();
+            db_clone
+                .set_entity(
+                    ty,
+                    &format!("0x{:064x}:0x{:04x}:0x{:04x}", 0, 0, 0),
+                    block_timestamp,
+                    entity_id,
+                    model_id,
+                    Some(keys),
+                )
+                .await
+                .unwrap();
+            db_clone.execute().await.unwrap();
 
             tx.send(()).await.unwrap();
         });
 
         // 2. The subscription is executed and it is listening, waiting for publish() to be executed
         let response_value = run_graphql_subscription(
-            &pool,
+            &db,
+            provider,
             r#"subscription {
                 entityUpdated(id: "0x579e8877c7755365d5ec1ec7d3a94a457eff5d1f40482bbe9729c064cdead2") {
                     id
@@ -354,9 +362,10 @@ mod tests {
 
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) = Executor::new(pool.clone(), shutdown_tx.clone(), provider)
-            .await
-            .unwrap();
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider.clone())
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -386,6 +395,7 @@ mod tests {
 
         let (tx, mut rx) = mpsc::channel(7);
 
+        let db_clone = db.clone();
         tokio::spawn(async move {
             // 1. Open process and sleep.Go to execute subscription
             tokio::time::sleep(Duration::from_secs(1)).await;
@@ -398,22 +408,23 @@ mod tests {
                     ty: Ty::Primitive(Primitive::U32(None)),
                 }],
             });
-            db.register_model(
-                selector,
-                &model,
-                &Layout::Fixed(vec![]),
-                class_hash,
-                contract_address,
-                0,
-                0,
-                block_timestamp,
-                None,
-                None,
-                true,
-            )
-            .await
-            .unwrap();
-            db.execute().await.unwrap();
+            db_clone
+                .register_model(
+                    selector,
+                    &model,
+                    &Layout::Fixed(vec![]),
+                    class_hash,
+                    contract_address,
+                    0,
+                    0,
+                    block_timestamp,
+                    None,
+                    None,
+                    true,
+                )
+                .await
+                .unwrap();
+            db_clone.execute().await.unwrap();
 
             // 3. fn publish() is called from state.set_entity()
 
@@ -422,7 +433,8 @@ mod tests {
 
         // 2. The subscription is executed and it is listeing, waiting for publish() to be executed
         let response_value = run_graphql_subscription(
-            &pool,
+            &db,
+            provider,
             r#"
                 subscription {
                     modelRegistered {
@@ -444,9 +456,10 @@ mod tests {
 
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) = Executor::new(pool.clone(), shutdown_tx.clone(), provider)
-            .await
-            .unwrap();
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider.clone())
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -474,6 +487,7 @@ mod tests {
         });
         let (tx, mut rx) = mpsc::channel(7);
 
+        let db_clone = db.clone();
         tokio::spawn(async move {
             // 1. Open process and sleep.Go to execute subscription
             tokio::time::sleep(Duration::from_secs(1)).await;
@@ -486,22 +500,23 @@ mod tests {
                     ty: Ty::Primitive(Primitive::U8(None)),
                 }],
             });
-            db.register_model(
-                selector,
-                &model,
-                &Layout::Fixed(vec![]),
-                class_hash,
-                contract_address,
-                0,
-                0,
-                block_timestamp,
-                None,
-                None,
-                true,
-            )
-            .await
-            .unwrap();
-            db.execute().await.unwrap();
+            db_clone
+                .register_model(
+                    selector,
+                    &model,
+                    &Layout::Fixed(vec![]),
+                    class_hash,
+                    contract_address,
+                    0,
+                    0,
+                    block_timestamp,
+                    None,
+                    None,
+                    true,
+                )
+                .await
+                .unwrap();
+            db_clone.execute().await.unwrap();
             // 3. fn publish() is called from state.set_entity()
 
             tx.send(()).await.unwrap();
@@ -509,7 +524,8 @@ mod tests {
 
         // 2. The subscription is executed and it is listeing, waiting for publish() to be executed
         let response_value = run_graphql_subscription(
-            &pool,
+            &db,
+            provider,
             &format!(
                 r#"
             subscription {{
@@ -534,9 +550,10 @@ mod tests {
 
         let url: Url = "https://www.example.com".parse().unwrap();
         let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
-        let (mut executor, sender) = Executor::new(pool.clone(), shutdown_tx.clone(), provider)
-            .await
-            .unwrap();
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider.clone())
+                .await
+                .unwrap();
         tokio::spawn(async move {
             executor.run().await.unwrap();
         });
@@ -553,34 +570,37 @@ mod tests {
         .unwrap();
         let block_timestamp: u64 = 1710754478_u64;
         let (tx, mut rx) = mpsc::channel(7);
+        let db_clone = db.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(1)).await;
 
-            db.store_event(
-                "0x0",
-                &Event {
-                    from_address: Felt::ZERO,
-                    keys: vec![
-                        Felt::from_str("0xdead").unwrap(),
-                        Felt::from_str("0xbeef").unwrap(),
-                    ],
-                    data: vec![
-                        Felt::from_str("0xc0de").unwrap(),
-                        Felt::from_str("0xface").unwrap(),
-                    ],
-                },
-                Felt::ZERO,
-                block_timestamp,
-            )
-            .await
-            .unwrap();
-            db.execute().await.unwrap();
+            db_clone
+                .store_event(
+                    "0x0",
+                    &Event {
+                        from_address: Felt::ZERO,
+                        keys: vec![
+                            Felt::from_str("0xdead").unwrap(),
+                            Felt::from_str("0xbeef").unwrap(),
+                        ],
+                        data: vec![
+                            Felt::from_str("0xc0de").unwrap(),
+                            Felt::from_str("0xface").unwrap(),
+                        ],
+                    },
+                    Felt::ZERO,
+                    block_timestamp,
+                )
+                .await
+                .unwrap();
+            db_clone.execute().await.unwrap();
 
             tx.send(()).await.unwrap();
         });
 
         let response_value = run_graphql_subscription(
-            &pool,
+            &db,
+            provider,
             &format!(
                 r#"
                     subscription {{

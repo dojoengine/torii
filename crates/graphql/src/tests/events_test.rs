@@ -1,9 +1,20 @@
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use anyhow::Result;
     use async_graphql::dynamic::Schema;
     use serde_json::Value;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use starknet::core::types::Felt;
+    use starknet::providers::jsonrpc::HttpTransport;
+    use starknet::providers::JsonRpcClient;
+    use tokio::sync::broadcast;
+    use torii_messaging::{Messaging, MessagingConfig};
+    use torii_sqlite::executor::Executor;
+    use torii_sqlite::Sql;
+    use torii_storage::proto::{Contract, ContractType};
+    use url::Url;
 
     use crate::schema::build_schema;
     use crate::tests::{run_graphql_query, Connection, Event};
@@ -53,7 +64,39 @@ mod tests {
         connect_options = connect_options.with_regexp();
 
         let pool = options.connect_with(connect_options).await?;
-        let schema = build_schema(&pool).await?;
+
+        // Set up storage and messaging
+        let (shutdown_tx, _) = broadcast::channel(1);
+        let url: Url = "https://www.example.com".parse().unwrap();
+        let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(url)));
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider.clone())
+                .await
+                .unwrap();
+        tokio::spawn(async move {
+            executor.run().await.unwrap();
+        });
+
+        let storage = Arc::new(
+            Sql::new(
+                pool.clone(),
+                sender,
+                &[Contract {
+                    address: Felt::ZERO,
+                    r#type: ContractType::WORLD,
+                }],
+            )
+            .await
+            .unwrap(),
+        );
+
+        let messaging = Arc::new(Messaging::new(
+            MessagingConfig::default(),
+            storage.clone(),
+            provider.clone(),
+        ));
+
+        let schema = build_schema(&pool, messaging, storage).await?;
 
         let result = events_query(&schema, "(keys: [\"0x1\"])").await;
         let connection: Connection<Event> = serde_json::from_value(result.clone())?;

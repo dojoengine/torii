@@ -25,7 +25,6 @@ use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use torii_messaging::Messaging;
 use torii_proto::Message;
-use torii_storage::Storage;
 use tracing::{info, trace, warn};
 use webrtc::tokio::Certificate;
 
@@ -50,18 +49,14 @@ pub struct Behaviour {
 #[allow(missing_debug_implementations)]
 pub struct Relay<P: Provider + Sync> {
     swarm: Swarm<Behaviour>,
-    storage: Arc<dyn Storage>,
-    provider: P,
-    messaging: Arc<Messaging>,
+    messaging: Arc<Messaging<P>>,
     cross_messaging_rx: UnboundedReceiver<Message>,
 }
 
 impl<P: Provider + Sync> Relay<P> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        storage: Arc<dyn Storage>,
-        provider: P,
-        messaging: Arc<Messaging>,
+        messaging: Arc<Messaging<P>>,
         port: u16,
         port_webrtc: u16,
         port_websocket: u16,
@@ -69,8 +64,6 @@ impl<P: Provider + Sync> Relay<P> {
         cert_path: Option<String>,
     ) -> Result<(Self, UnboundedSender<Message>), Error> {
         Self::new_with_peers(
-            storage,
-            provider,
             messaging,
             port,
             port_webrtc,
@@ -83,9 +76,7 @@ impl<P: Provider + Sync> Relay<P> {
 
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_peers(
-        storage: Arc<dyn Storage>,
-        provider: P,
-        messaging: Arc<Messaging>,
+        messaging: Arc<Messaging<P>>,
         port: u16,
         port_webrtc: u16,
         port_websocket: u16,
@@ -226,8 +217,6 @@ impl<P: Provider + Sync> Relay<P> {
         Ok((
             Self {
                 swarm,
-                storage,
-                provider,
                 messaging,
                 cross_messaging_rx: rx,
             },
@@ -288,10 +277,8 @@ impl<P: Provider + Sync> Relay<P> {
                                 let typed_data =
                                     serde_json::from_str::<TypedData>(&data.message).unwrap();
                                 if let Err(e) = self.messaging.validate_and_set_entity(
-                                    self.storage.clone(),
                                     &typed_data,
                                     &data.signature,
-                                    &self.provider,
                                 )
                                 .await
                                 {

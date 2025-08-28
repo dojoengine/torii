@@ -3,6 +3,7 @@ use async_graphql::{Name, Value};
 use starknet_crypto::Felt;
 use std::str::FromStr;
 use std::sync::Arc;
+use torii_messaging::MessagingTrait;
 
 use super::{BasicObject, TypeMapping, ValueMapping};
 use crate::constants::{PUBLISH_MESSAGE_RESPONSE_TYPE_NAME, PUBLISH_MESSAGE_TYPE_NAME};
@@ -70,7 +71,7 @@ impl PublishMessageObject {
                         })?;
 
                     // Get messaging from context
-                    let messaging = ctx.data::<Arc<dyn torii_messaging::MessagingTrait>>()?;
+                    let messaging = ctx.data::<Arc<dyn MessagingTrait>>()?;
 
                     // Validate and set entity
                     let entity_id = messaging

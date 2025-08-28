@@ -6,7 +6,7 @@ use starknet::providers::Provider;
 use std::sync::Arc;
 use torii_messaging::{Messaging, MessagingTrait};
 use torii_sqlite::types::Model;
-use torii_storage::Storage;
+use torii_storage::ReadOnlyStorage;
 
 use super::object::connection::page_info::PageInfoObject;
 use super::object::entity::EntityObject;
@@ -39,10 +39,10 @@ use crate::query::build_type_mapping;
 // the models until runtime. There are however, predefined objects such as entities and
 // events, their schema is known but we generate them dynamically as well because async-graphql
 // does not allow mixing of static and dynamic schemas.
-pub async fn build_schema<P: Provider + Sync + Send + Clone + 'static>(
+pub async fn build_schema<P: Provider + Sync + Send + 'static>(
     pool: &SqlitePool,
     messaging: Arc<Messaging<P>>,
-    storage: Arc<dyn Storage>,
+    storage: Arc<dyn ReadOnlyStorage>,
 ) -> Result<Schema> {
     // build world gql objects
     let (objects, unions) = build_objects(pool).await?;

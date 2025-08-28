@@ -413,8 +413,6 @@ impl Runner {
         ));
 
         let (mut libp2p_relay_server, cross_messaging_tx) = Relay::new_with_peers(
-            storage.clone(),
-            provider.clone(),
             messaging.clone(),
             self.args.relay.port,
             self.args.relay.webrtc_port,
@@ -429,7 +427,6 @@ impl Runner {
         let (grpc_addr, grpc_server) = torii_grpc_server::new(
             shutdown_rx,
             storage.clone(),
-            provider.clone(),
             messaging.clone(),
             self.args.world_address.unwrap_or_default(),
             cross_messaging_tx,

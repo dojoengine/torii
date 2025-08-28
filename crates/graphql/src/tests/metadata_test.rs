@@ -8,6 +8,7 @@ mod tests {
     use starknet::providers::jsonrpc::HttpTransport;
     use starknet::providers::JsonRpcClient;
     use tokio::sync::broadcast;
+    use torii_messaging::{Messaging, MessagingConfig};
     use torii_sqlite::executor::Executor;
     use torii_sqlite::Sql;
     use torii_storage::proto::{Contract, ContractType};
@@ -76,7 +77,16 @@ mod tests {
         )
         .await
         .unwrap();
-        let schema = build_schema(&pool).await.unwrap();
+
+        let messaging = Arc::new(Messaging::new(
+            MessagingConfig::default(),
+            Arc::new(db.clone()),
+            provider.clone(),
+        ));
+
+        let schema = build_schema(&pool, messaging, Arc::new(db.clone()))
+            .await
+            .unwrap();
 
         let cover_img = "QWxsIHlvdXIgYmFzZSBiZWxvbmcgdG8gdXM=";
         let profile_config: ProfileConfig = toml::from_str(
@@ -161,7 +171,16 @@ mod tests {
         )
         .await
         .unwrap();
-        let schema = build_schema(&pool).await.unwrap();
+
+        let messaging = Arc::new(Messaging::new(
+            MessagingConfig::default(),
+            Arc::new(db.clone()),
+            provider.clone(),
+        ));
+
+        let schema = build_schema(&pool, messaging, Arc::new(db.clone()))
+            .await
+            .unwrap();
 
         db.set_metadata(&RESOURCE, URI, BLOCK_TIMESTAMP)
             .await

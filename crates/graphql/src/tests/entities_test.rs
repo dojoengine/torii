@@ -1,11 +1,18 @@
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use anyhow::Result;
     use async_graphql::dynamic::Schema;
     use serde_json::Value;
     use starknet::core::types::Felt;
     use starknet_crypto::poseidon_hash_many;
     use tempfile::NamedTempFile;
+    use tokio::sync::broadcast;
+    use torii_messaging::{Messaging, MessagingConfig};
+    use torii_sqlite::executor::Executor;
+    use torii_sqlite::Sql;
+    use torii_storage::proto::{Contract, ContractType};
 
     use crate::schema::build_schema;
     use crate::tests::{
@@ -101,8 +108,38 @@ mod tests {
     async fn entities_test() -> Result<()> {
         let tempfile = NamedTempFile::new().unwrap();
         let path = tempfile.path().to_string_lossy();
-        let pool = spinup_types_test(&path).await?;
-        let schema = build_schema(&pool).await.unwrap();
+        let (pool, provider) = spinup_types_test(&path).await?;
+
+        // Set up storage and messaging
+        let (shutdown_tx, _) = broadcast::channel(1);
+        let (mut executor, sender) =
+            Executor::new(pool.clone(), shutdown_tx.clone(), provider.clone())
+                .await
+                .unwrap();
+        tokio::spawn(async move {
+            executor.run().await.unwrap();
+        });
+
+        let storage = Arc::new(
+            Sql::new(
+                pool.clone(),
+                sender,
+                &[Contract {
+                    address: Felt::ZERO,
+                    r#type: ContractType::WORLD,
+                }],
+            )
+            .await
+            .unwrap(),
+        );
+
+        let messaging = Arc::new(Messaging::new(
+            MessagingConfig::default(),
+            storage.clone(),
+            provider.clone(),
+        ));
+
+        let schema = build_schema(&pool, messaging, storage).await.unwrap();
 
         // default without params
         let entities = entities_query(&schema, "").await;

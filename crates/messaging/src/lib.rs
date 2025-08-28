@@ -5,6 +5,7 @@ pub mod validation;
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 pub use entity::{get_identity_from_ty, get_timestamp_from_ty, set_entity, ty_keys, ty_model_id};
 pub use error::MessagingError;
 pub use parsing::parse_value_to_ty;
@@ -17,15 +18,6 @@ use tracing::{debug, info, warn};
 pub use validation::{validate_message, validate_signature};
 
 pub const LOG_TARGET: &str = "torii::messaging";
-
-#[async_trait::async_trait]
-pub trait MessagingTrait: Send + Sync {
-    async fn validate_and_set_entity(
-        &self,
-        message: &TypedData,
-        signature: &[Felt],
-    ) -> Result<Felt, MessagingError>;
-}
 
 #[derive(Debug, Clone)]
 pub struct MessagingConfig {
@@ -45,13 +37,33 @@ impl Default for MessagingConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct Messaging<P: Provider + Sync + Send> {
+pub struct Messaging<P: Provider + Sync> {
     config: MessagingConfig,
     storage: Arc<dyn Storage>,
     provider: P,
 }
 
-impl<P: Provider + Sync + Send> Messaging<P> {
+#[async_trait]
+pub trait MessagingTrait: Send + Sync {
+    async fn validate_and_set_entity(
+        &self,
+        message: &TypedData,
+        signature: &[Felt],
+    ) -> Result<Felt, MessagingError>;
+}
+
+#[async_trait]
+impl<P: Provider + Sync + Send> MessagingTrait for Messaging<P> {
+    async fn validate_and_set_entity(
+        &self,
+        message: &TypedData,
+        signature: &[Felt],
+    ) -> Result<Felt, MessagingError> {
+        self.validate_and_set_entity(message, signature).await
+    }
+}
+
+impl<P: Provider + Sync> Messaging<P> {
     pub fn new(config: MessagingConfig, storage: Arc<dyn Storage>, provider: P) -> Self {
         Self {
             config,
@@ -207,16 +219,5 @@ impl<P: Provider + Sync + Send> Messaging<P> {
         );
 
         Ok(entity_id)
-    }
-}
-
-#[async_trait::async_trait]
-impl<P: Provider + Sync + Send> MessagingTrait for Messaging<P> {
-    async fn validate_and_set_entity(
-        &self,
-        message: &TypedData,
-        signature: &[Felt],
-    ) -> Result<Felt, MessagingError> {
-        self.validate_and_set_entity(message, signature).await
     }
 }
