@@ -130,6 +130,13 @@ enum ComparisonOperator {
     LTE = 5;
     IN = 6;
     NOT_IN = 7;
+    // Array-specific operators
+    CONTAINS = 8;           // Array contains value
+    CONTAINS_ALL = 9;       // Array contains all values
+    CONTAINS_ANY = 10;      // Array contains any of the values
+    ARRAY_LENGTH_EQ = 11;   // Array length equals
+    ARRAY_LENGTH_GT = 12;   // Array length greater than
+    ARRAY_LENGTH_LT = 13;   // Array length less than
 }
 
 message Token {

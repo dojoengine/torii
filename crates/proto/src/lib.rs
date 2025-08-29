@@ -587,12 +587,12 @@ pub enum ComparisonOperator {
     In,
     NotIn,
     // Array-specific operators
-    Contains,       // Array contains value
-    ContainsAll,    // Array contains all values
-    ContainsAny,    // Array contains any of the values
-    ArrayLengthEq,  // Array length equals
-    ArrayLengthGt,  // Array length greater than
-    ArrayLengthLt,  // Array length less than
+    Contains,      // Array contains value
+    ContainsAll,   // Array contains all values
+    ContainsAny,   // Array contains any of the values
+    ArrayLengthEq, // Array length equals
+    ArrayLengthGt, // Array length greater than
+    ArrayLengthLt, // Array length less than
 }
 
 impl fmt::Display for ComparisonOperator {
@@ -606,7 +606,7 @@ impl fmt::Display for ComparisonOperator {
             ComparisonOperator::Eq => write!(f, "="),
             ComparisonOperator::In => write!(f, "IN"),
             ComparisonOperator::NotIn => write!(f, "NOT IN"),
-            // Array operators don't use simple SQL operators, 
+            // Array operators don't use simple SQL operators,
             // they require special JSON function handling
             ComparisonOperator::Contains => write!(f, "CONTAINS"),
             ComparisonOperator::ContainsAll => write!(f, "CONTAINS_ALL"),
