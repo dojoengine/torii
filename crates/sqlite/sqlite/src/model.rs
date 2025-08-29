@@ -26,6 +26,22 @@ use crate::error::ParseError;
 use crate::utils::build_keys_pattern;
 use crate::Sql;
 
+/// Helper function to parse array index from field name like "field[0]"
+fn parse_array_index(field_name: &str) -> Option<(String, usize)> {
+    if let Some(start) = field_name.find('[') {
+        if let Some(end) = field_name.find(']') {
+            if start < end {
+                let field = field_name[..start].to_string();
+                let index_str = &field_name[start + 1..end];
+                if let Ok(index) = index_str.parse::<usize>() {
+                    return Some((field, index));
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Helper function to build array-specific SQL queries
 fn build_array_query(
     table: &str,
@@ -508,8 +524,19 @@ fn build_composite_clause(
                 let model = member.model.clone();
                 let operator = member.operator.clone();
 
-                // Check if this is an array-specific operator
-                if matches!(
+                // Check if this field has array indexing syntax like "field[0]"
+                if let Some((field_name, index)) = parse_array_index(&member.member) {
+                    // Handle array element access
+                    let column_access = if historical {
+                        format!("JSON_EXTRACT({table}.data, '$.{field_name}')")
+                    } else {
+                        format!("[{model}].[{field_name}]")
+                    };
+
+                    let query =
+                        format!("json_extract({column_access}, '$[{index}]') {operator} {value}");
+                    where_clauses.push(query);
+                } else if matches!(
                     operator,
                     ComparisonOperator::Contains
                         | ComparisonOperator::ContainsAll
@@ -1163,6 +1190,73 @@ mod tests {
 
         assert_eq!(where_clause, "");
         assert_eq!(bind_values.len(), 0);
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_index() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "scores[0]".to_string(), // Array indexing syntax
+            operator: ComparisonOperator::Eq,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "json_extract([Player].[scores], '$[0]') = ?");
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_index_historical() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "inventory[2]".to_string(), // Array indexing syntax
+            operator: ComparisonOperator::Neq,
+            value: MemberValue::String("sword".to_string()),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, true).unwrap();
+
+        assert_eq!(
+            where_clause,
+            "json_extract(JSON_EXTRACT(entities.data, '$.inventory'), '$[2]') != ?"
+        );
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_array_index() {
+        // Test valid cases
+        assert_eq!(
+            parse_array_index("field[0]"),
+            Some(("field".to_string(), 0))
+        );
+        assert_eq!(
+            parse_array_index("scores[42]"),
+            Some(("scores".to_string(), 42))
+        );
+        assert_eq!(
+            parse_array_index("inventory[999]"),
+            Some(("inventory".to_string(), 999))
+        );
+
+        // Test invalid cases
+        assert_eq!(parse_array_index("field"), None);
+        assert_eq!(parse_array_index("field[]"), None);
+        assert_eq!(parse_array_index("field[abc]"), None);
+        assert_eq!(parse_array_index("field[0"), None);
+        assert_eq!(parse_array_index("field0]"), None);
     }
 
     #[test]
