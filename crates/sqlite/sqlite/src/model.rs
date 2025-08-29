@@ -4,7 +4,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::str::FromStr;
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, CompositeClause, LogicalOperator, MemberValue, OrderBy, OrderDirection, Page,
+    Clause, CompositeClause, ComparisonOperator, LogicalOperator, MemberValue, OrderBy, OrderDirection, Page,
     Pagination,
 };
 use torii_storage::ReadOnlyStorage;
@@ -25,6 +25,122 @@ use crate::constants::SQL_MAX_JOINS;
 use crate::error::ParseError;
 use crate::utils::build_keys_pattern;
 use crate::Sql;
+
+/// Helper function to find a field in model schemas and determine its type
+fn find_field_type<'a>(model_schemas: &'a [Ty], model_name: &str, field_name: &str) -> Option<&'a Ty> {
+    for schema in model_schemas {
+        if let Ty::Struct(s) = schema {
+            let schema_name = s.name.clone();
+            // Check if this is the correct model (handle namespace-model format)
+            if schema_name.ends_with(&format!("-{}", model_name)) || schema_name == model_name {
+                // Look for the field in the model's children
+                for child in &s.children {
+                    if child.name == field_name {
+                        return Some(&child.ty);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Helper function to check if a type is an array
+fn is_array_type(ty: &Ty) -> bool {
+    matches!(ty, Ty::Array(_) | Ty::FixedSizeArray(_))
+}
+
+/// Helper function to build array-specific SQL queries
+fn build_array_query(
+    table: &str,
+    model: &str,
+    field: &str,
+    operator: &ComparisonOperator,
+    value: &str,
+    field_type: &Ty,
+    historical: bool,
+) -> Result<String, Error> {
+    let column_access = if historical {
+        format!("JSON_EXTRACT({table}.data, '$.{field}')")
+    } else {
+        format!("[{model}].[{field}]")
+    };
+
+    match operator {
+        ComparisonOperator::Contains => {
+            // For fixed-size arrays, we need to access the 'elements' array
+            let json_path = if matches!(field_type, Ty::FixedSizeArray(_)) {
+                format!("json_each(json_extract({column_access}, '$.elements'))")
+            } else {
+                format!("json_each({column_access})")
+            };
+            
+            Ok(format!(
+                "EXISTS (SELECT 1 FROM {json_path} WHERE value = {value})"
+            ))
+        }
+        ComparisonOperator::ContainsAll => {
+            // Check that all values in the provided list are present in the array
+            let json_path = if matches!(field_type, Ty::FixedSizeArray(_)) {
+                format!("json_each(json_extract({column_access}, '$.elements'))")
+            } else {
+                format!("json_each({column_access})")
+            };
+            
+            // For CONTAINS_ALL, the value should be a list like "(?, ?, ?)"
+            // We need to count distinct matches and ensure it equals the number of values
+            Ok(format!(
+                "(SELECT COUNT(DISTINCT value) FROM {json_path} WHERE value IN {value}) = (SELECT COUNT(*) FROM (VALUES {value}))"
+            ))
+        }
+        ComparisonOperator::ContainsAny => {
+            // Check that any value in the provided list is present in the array
+            let json_path = if matches!(field_type, Ty::FixedSizeArray(_)) {
+                format!("json_each(json_extract({column_access}, '$.elements'))")
+            } else {
+                format!("json_each({column_access})")
+            };
+            
+            Ok(format!(
+                "EXISTS (SELECT 1 FROM {json_path} WHERE value IN {value})"
+            ))
+        }
+        ComparisonOperator::ArrayLengthEq => {
+            let length_expr = if matches!(field_type, Ty::FixedSizeArray(_)) {
+                format!("json_extract({column_access}, '$.size')")
+            } else {
+                format!("json_array_length({column_access})")
+            };
+            Ok(format!("{length_expr} = {value}"))
+        }
+        ComparisonOperator::ArrayLengthGt => {
+            let length_expr = if matches!(field_type, Ty::FixedSizeArray(_)) {
+                format!("json_extract({column_access}, '$.size')")
+            } else {
+                format!("json_array_length({column_access})")
+            };
+            Ok(format!("{length_expr} > {value}"))
+        }
+        ComparisonOperator::ArrayLengthLt => {
+            let length_expr = if matches!(field_type, Ty::FixedSizeArray(_)) {
+                format!("json_extract({column_access}, '$.size')")
+            } else {
+                format!("json_array_length({column_access})")
+            };
+            Ok(format!("{length_expr} < {value}"))
+        }
+        _ => {
+            // For non-array operations, fallback to the original behavior
+            if historical {
+                Ok(format!(
+                    "CAST(JSON_EXTRACT({table}.data, '$.{field}') AS TEXT) {operator} {value}"
+                ))
+            } else {
+                Ok(format!("([{model}].[{field}] {operator} {value})"))
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct ModelSQLReader {
@@ -380,6 +496,7 @@ fn build_composite_clause(
     model_relation_table: &str,
     composite: &torii_proto::CompositeClause,
     historical: bool,
+    model_schemas: &[Ty],
 ) -> Result<(String, Vec<String>), Error> {
     let is_or = composite.operator == LogicalOperator::Or;
     let mut where_clauses = Vec::new();
@@ -456,25 +573,54 @@ fn build_composite_clause(
 
                 let model = member.model.clone();
                 let operator = member.operator.clone();
-
-                if historical {
-                    // For historical data, query the JSON data column
-                    where_clauses.push(format!(
-                        "CAST(JSON_EXTRACT({table}.data, '$.{}') AS TEXT) {operator} {value}",
-                        member.member
-                    ));
+                
+                // Check if this field is an array type
+                if let Some(field_type) = find_field_type(model_schemas, &model, &member.member) {
+                    if is_array_type(field_type) {
+                        // Use array-specific query building
+                        let query = build_array_query(
+                            table,
+                            &model,
+                            &member.member,
+                            &operator,
+                            &value,
+                            field_type,
+                            historical,
+                        )?;
+                        where_clauses.push(query);
+                    } else {
+                        // Regular field handling
+                        if historical {
+                            where_clauses.push(format!(
+                                "CAST(JSON_EXTRACT({table}.data, '$.{}') AS TEXT) {operator} {value}",
+                                member.member
+                            ));
+                        } else {
+                            where_clauses.push(format!(
+                                "([{model}].[{}] {operator} {value})",
+                                member.member
+                            ));
+                        }
+                    }
                 } else {
-                    // Use the column name directly since it's already flattened
-                    where_clauses.push(format!(
-                        "([{model}].[{}] {operator} {value})",
-                        member.member
-                    ));
+                    // Fallback to original behavior if field type unknown
+                    if historical {
+                        where_clauses.push(format!(
+                            "CAST(JSON_EXTRACT({table}.data, '$.{}') AS TEXT) {operator} {value}",
+                            member.member
+                        ));
+                    } else {
+                        where_clauses.push(format!(
+                            "([{model}].[{}] {operator} {value})",
+                            member.member
+                        ));
+                    }
                 }
             }
             Clause::Composite(nested) => {
                 // Handle nested composite by recursively building the clause
                 let (nested_where, nested_values) =
-                    build_composite_clause(table, model_relation_table, nested, historical)?;
+                    build_composite_clause(table, model_relation_table, nested, historical, model_schemas)?;
 
                 if !nested_where.is_empty() {
                     where_clauses.push(nested_where);
@@ -506,9 +652,6 @@ impl Sql {
         models: Vec<String>,
         historical: bool,
     ) -> Result<Page<Entity>, Error> {
-        let (where_clause, bind_values) =
-            build_composite_clause(table, model_relation_table, composite, historical)?;
-
         let models = models
             .iter()
             .map(|model| compute_selector_from_tag(model))
@@ -519,6 +662,9 @@ impl Sql {
             .iter()
             .map(|m| m.schema.clone())
             .collect::<Vec<_>>();
+
+        let (where_clause, bind_values) =
+            build_composite_clause(table, model_relation_table, composite, historical, &schemas)?;
 
         let having_clause = models
             .iter()
@@ -843,7 +989,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+            build_composite_clause("entities", "entity_model", &composite, false, &[]).unwrap();
 
         assert_eq!(where_clause, "(entities.id IN (?, ?))");
         assert_eq!(
@@ -868,7 +1014,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+            build_composite_clause("entities", "entity_model", &composite, false, &[]).unwrap();
 
         assert_eq!(where_clause, "(entities.keys REGEXP ?)");
         assert_eq!(bind_values.len(), 1);
@@ -887,7 +1033,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+            build_composite_clause("entities", "entity_model", &composite, false, &[]).unwrap();
 
         assert!(where_clause.contains("entities.keys REGEXP ?"));
         assert!(where_clause.contains("entity_model.model_id IN"));
@@ -909,7 +1055,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+            build_composite_clause("entities", "entity_model", &composite, false, &[]).unwrap();
 
         assert_eq!(where_clause, "([Player].[score] = ?)");
         assert_eq!(bind_values.len(), 1);
@@ -929,7 +1075,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &composite, true).unwrap();
+            build_composite_clause("entities", "entity_model", &composite, true, &[]).unwrap();
 
         assert!(where_clause.contains("CAST(JSON_EXTRACT(entities.data, '$.score') AS TEXT) = ?"));
         assert_eq!(bind_values.len(), 1);
@@ -949,7 +1095,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+            build_composite_clause("entities", "entity_model", &composite, false, &[]).unwrap();
 
         assert_eq!(where_clause, "([Player].[name] = ?)");
         assert_eq!(bind_values, vec!["Alice".to_string()]);
@@ -973,7 +1119,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+            build_composite_clause("entities", "entity_model", &composite, false, &[]).unwrap();
 
         assert_eq!(where_clause, "([Player].[level] IN (?, ?, ?))");
         assert_eq!(bind_values.len(), 3);
@@ -999,7 +1145,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+            build_composite_clause("entities", "entity_model", &composite, false, &[]).unwrap();
 
         assert!(where_clause.contains("([Player].[score] > ?)"));
         assert!(where_clause.contains("([Player].[level] < ?)"));
@@ -1027,7 +1173,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+            build_composite_clause("entities", "entity_model", &composite, false, &[]).unwrap();
 
         assert!(where_clause.contains("([Player].[score] > ?)"));
         assert!(where_clause.contains("([Player].[level] < ?)"));
@@ -1069,7 +1215,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &outer_composite, false).unwrap();
+            build_composite_clause("entities", "entity_model", &outer_composite, false, &[]).unwrap();
 
         assert!(where_clause.contains("([Player].[score] > ?)"));
         assert!(where_clause.contains("([Player].[level] > ?)"));
@@ -1087,7 +1233,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+            build_composite_clause("entities", "entity_model", &composite, false, &[]).unwrap();
 
         assert_eq!(where_clause, "");
         assert_eq!(bind_values.len(), 0);
@@ -1118,7 +1264,7 @@ mod tests {
         };
 
         let (where_clause, bind_values) =
-            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+            build_composite_clause("entities", "entity_model", &composite, false, &[]).unwrap();
 
         assert!(where_clause.contains("(entities.id IN (?))"));
         assert!(where_clause.contains("([Player].[score] = ?)"));
