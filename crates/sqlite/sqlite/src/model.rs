@@ -498,7 +498,7 @@ fn build_composite_clause(
                 fn prepare_comparison(
                     value: &MemberValue,
                     bind_values: &mut Vec<String>,
-                    historical: bool,
+                    json_format: bool,
                 ) -> Result<String, Error> {
                     match value {
                         MemberValue::String(value) => {
@@ -506,7 +506,7 @@ fn build_composite_clause(
                             Ok("?".to_string())
                         }
                         MemberValue::Primitive(value) => {
-                            let value = if historical {
+                            let value = if json_format {
                                 Ty::Primitive(*value).to_json_value()?.to_string()
                             } else {
                                 value.to_sql_value()
@@ -518,19 +518,33 @@ fn build_composite_clause(
                             "({})",
                             values
                                 .iter()
-                                .map(|v| prepare_comparison(v, bind_values, historical))
+                                .map(|v| prepare_comparison(v, bind_values, json_format))
                                 .collect::<Result<Vec<String>, Error>>()?
                                 .join(", ")
                         )),
                     }
                 }
-                let value = prepare_comparison(&member.value, &mut bind_values, historical)?;
 
                 let model = member.model.clone();
                 let operator = member.operator.clone();
 
+                // Determine if we need JSON formatting for values
+                let array_index = parse_array_index(&member.member);
+                let is_array_operation = matches!(
+                    operator,
+                    ComparisonOperator::Contains
+                        | ComparisonOperator::ContainsAll
+                        | ComparisonOperator::ContainsAny
+                        | ComparisonOperator::ArrayLengthEq
+                        | ComparisonOperator::ArrayLengthGt
+                        | ComparisonOperator::ArrayLengthLt
+                ) || array_index.is_some(); // Array indexing also needs JSON formatting
+
+                let value =
+                    prepare_comparison(&member.value, &mut bind_values, is_array_operation)?;
+
                 // Check if this field has array indexing syntax like "field[0]"
-                if let Some((field_name, index)) = parse_array_index(&member.member) {
+                if let Some((field_name, index)) = array_index {
                     // Handle array element access
                     let column_access = if historical {
                         format!("JSON_EXTRACT({table}.data, '$.{field_name}')")
