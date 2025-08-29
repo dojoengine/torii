@@ -62,10 +62,15 @@ fn build_array_query(
             "EXISTS (SELECT 1 FROM json_each({column_access}) WHERE value = {value})"
         )),
         ComparisonOperator::ContainsAll => {
-            // For CONTAINS_ALL, the value should be a list like "(?, ?, ?)"
-            // We need to count distinct matches and ensure it equals the number of values
+            // For CONTAINS_ALL, we need to check that every value in the input list exists in the array
+            // We can't use COUNT(DISTINCT) because the input might have duplicates
+            // Instead, we'll use NOT EXISTS to check if any input value is missing from the array
+            //
+            // Create a subquery that checks if all input values exist in the array
+            // We use a VALUES clause to create a temporary table of the input values
+            // and check that none of them are missing from the array
             Ok(format!(
-                "(SELECT COUNT(DISTINCT value) FROM json_each({column_access}) WHERE value IN {value}) = (SELECT COUNT(*) FROM (VALUES {value}))"
+                "NOT EXISTS (SELECT 1 FROM (VALUES {value}) AS input_vals(val) WHERE NOT EXISTS (SELECT 1 FROM json_each({column_access}) WHERE value = input_vals.val))"
             ))
         }
         ComparisonOperator::ContainsAny => Ok(format!(
@@ -1257,6 +1262,264 @@ mod tests {
         assert_eq!(parse_array_index("field[abc]"), None);
         assert_eq!(parse_array_index("field[0"), None);
         assert_eq!(parse_array_index("field0]"), None);
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_contains() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "scores".to_string(),
+            operator: ComparisonOperator::Contains,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(
+            where_clause,
+            "EXISTS (SELECT 1 FROM json_each([Player].[scores]) WHERE value = ?)"
+        );
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_contains_all() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "scores".to_string(),
+            operator: ComparisonOperator::ContainsAll,
+            value: MemberValue::List(vec![
+                MemberValue::Primitive(Primitive::U32(Some(100))),
+                MemberValue::Primitive(Primitive::U32(Some(200))),
+                MemberValue::Primitive(Primitive::U32(Some(300))),
+            ]),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "NOT EXISTS (SELECT 1 FROM (VALUES (?, ?, ?)) AS input_vals(val) WHERE NOT EXISTS (SELECT 1 FROM json_each([Player].[scores]) WHERE value = input_vals.val))");
+        assert_eq!(bind_values.len(), 3); // The list values are used once
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_contains_all_with_duplicates() {
+        // Test CONTAINS_ALL with duplicate values in the search list
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "scores".to_string(),
+            operator: ComparisonOperator::ContainsAll,
+            value: MemberValue::List(vec![
+                MemberValue::Primitive(Primitive::U32(Some(100))),
+                MemberValue::Primitive(Primitive::U32(Some(100))), // Duplicate
+                MemberValue::Primitive(Primitive::U32(Some(200))),
+            ]),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        // Should still work correctly even with duplicate values in the search criteria
+        assert_eq!(where_clause, "NOT EXISTS (SELECT 1 FROM (VALUES (?, ?, ?)) AS input_vals(val) WHERE NOT EXISTS (SELECT 1 FROM json_each([Player].[scores]) WHERE value = input_vals.val))");
+        assert_eq!(bind_values.len(), 3); // Still 3 bind values even with duplicates
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_contains_any() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "inventory".to_string(),
+            operator: ComparisonOperator::ContainsAny,
+            value: MemberValue::List(vec![
+                MemberValue::String("sword".to_string()),
+                MemberValue::String("shield".to_string()),
+            ]),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(
+            where_clause,
+            "EXISTS (SELECT 1 FROM json_each([Player].[inventory]) WHERE value IN (?, ?))"
+        );
+        assert_eq!(bind_values.len(), 2);
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_length_eq() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "skills".to_string(),
+            operator: ComparisonOperator::ArrayLengthEq,
+            value: MemberValue::Primitive(Primitive::U32(Some(5))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "json_array_length([Player].[skills]) = ?");
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_length_gt() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "achievements".to_string(),
+            operator: ComparisonOperator::ArrayLengthGt,
+            value: MemberValue::Primitive(Primitive::U32(Some(10))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(
+            where_clause,
+            "json_array_length([Player].[achievements]) > ?"
+        );
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_length_lt() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "buffs".to_string(),
+            operator: ComparisonOperator::ArrayLengthLt,
+            value: MemberValue::Primitive(Primitive::U32(Some(3))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "json_array_length([Player].[buffs]) < ?");
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_operators_historical() {
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "scores".to_string(),
+            operator: ComparisonOperator::Contains,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, true).unwrap();
+
+        assert_eq!(where_clause, "EXISTS (SELECT 1 FROM json_each(JSON_EXTRACT(entities.data, '$.scores')) WHERE value = ?)");
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_mixed_array_and_regular() {
+        let array_member = MemberClause {
+            model: "Player".to_string(),
+            member: "scores".to_string(),
+            operator: ComparisonOperator::Contains,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let regular_member = MemberClause {
+            model: "Player".to_string(),
+            member: "name".to_string(),
+            operator: ComparisonOperator::Eq,
+            value: MemberValue::String("Alice".to_string()),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(array_member), Clause::Member(regular_member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert!(where_clause
+            .contains("EXISTS (SELECT 1 FROM json_each([Player].[scores]) WHERE value = ?)"));
+        assert!(where_clause.contains("([Player].[name] = ?)"));
+        assert!(where_clause.contains(" AND "));
+        assert_eq!(bind_values.len(), 2);
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_index_out_of_bounds() {
+        // Test what happens with array indexing when index might be out of bounds
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "scores[999]".to_string(), // Very high index
+            operator: ComparisonOperator::Eq,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        // SQLite json_extract returns NULL for out-of-bounds access
+        // This should still generate valid SQL, but will return NULL = 100 (which is false)
+        assert_eq!(
+            where_clause,
+            "json_extract([Player].[scores], '$[999]') = ?"
+        );
+        assert_eq!(bind_values.len(), 1);
+    }
+
+    #[test]
+    fn test_build_composite_clause_array_index_with_null_check() {
+        // Test array indexing with IS NOT NULL to handle out-of-bounds
+        let member = MemberClause {
+            model: "Player".to_string(),
+            member: "scores[0]".to_string(),
+            operator: ComparisonOperator::Neq,
+            value: MemberValue::String("null".to_string()),
+        };
+        let composite = CompositeClause {
+            operator: LogicalOperator::And,
+            clauses: vec![Clause::Member(member)],
+        };
+
+        let (where_clause, bind_values) =
+            build_composite_clause("entities", "entity_model", &composite, false).unwrap();
+
+        assert_eq!(where_clause, "json_extract([Player].[scores], '$[0]') != ?");
+        assert_eq!(bind_values.len(), 1);
     }
 
     #[test]
