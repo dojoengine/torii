@@ -44,6 +44,43 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         apply_balance_diff: ApplyBalanceDiffQuery,
         provider: P,
     ) -> Result<(), Error> {
+        // First, update total supply for ERC20 tokens
+        let tx = self.transaction.as_mut().unwrap();
+        for (token_id, supply_diff) in apply_balance_diff.total_supply_diff.iter() {
+            // Get current total supply
+            let current_supply: Option<String> =
+                sqlx::query_scalar("SELECT total_supply FROM tokens WHERE id = ?")
+                    .bind(token_id)
+                    .fetch_optional(&mut **tx)
+                    .await?;
+
+            if let Some(current_supply) = current_supply {
+                let mut total_supply = sql_string_to_u256(&current_supply);
+
+                // Apply the supply diff
+                if supply_diff.is_negative {
+                    if total_supply >= supply_diff.value {
+                        total_supply -= supply_diff.value;
+                    } else {
+                        // Handle underflow - set to 0
+                        total_supply = U256::from(0u8);
+                    }
+                } else {
+                    total_supply += supply_diff.value;
+                }
+
+                // Update the total supply in the database
+                sqlx::query("UPDATE tokens SET total_supply = ? WHERE id = ?")
+                    .bind(u256_to_sql_string(&total_supply))
+                    .bind(token_id)
+                    .execute(&mut **tx)
+                    .await?;
+
+                debug!(target: LOG_TARGET, token_id = ?token_id, total_supply = ?total_supply, "Updated total supply");
+            }
+        }
+
+        // Then, update individual balances
         let balances_diff = apply_balance_diff.balances_diff;
         for (id_str, balance) in balances_diff.iter() {
             let id = id_str.split(SQL_FELT_DELIMITER).collect::<Vec<&str>>();
@@ -122,7 +159,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         provider: P,
     ) -> Result<(), Error> {
         let tx = self.transaction.as_mut().unwrap();
-        let balance: Option<(String,)> = sqlx::query_as(&format!(
+        let balance: Option<String> = sqlx::query_scalar(&format!(
             "SELECT balance FROM {TOKEN_BALANCE_TABLE} WHERE id = ?"
         ))
         .bind(id)
@@ -130,7 +167,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         .await?;
 
         let mut balance = if let Some(balance) = balance {
-            sql_string_to_u256(&balance.0)
+            sql_string_to_u256(&balance)
         } else {
             U256::from(0u8)
         };

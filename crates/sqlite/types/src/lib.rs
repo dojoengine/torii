@@ -174,6 +174,7 @@ pub struct Token {
     pub symbol: String,
     pub decimals: u8,
     pub metadata: String,
+    pub total_supply: Option<String>,
 }
 
 impl From<Token> for torii_proto::Token {
@@ -189,6 +190,9 @@ impl From<Token> for torii_proto::Token {
             symbol: value.symbol,
             decimals: value.decimals,
             metadata: value.metadata,
+            total_supply: value
+                .total_supply
+                .map(|s| U256::from_be_hex(s.trim_start_matches("0x"))),
         }
     }
 }
