@@ -514,7 +514,6 @@ fn build_composite_clause(
                             } else {
                                 value.to_sql_value()
                             };
-                            println!("value: {}", value);
                             bind_values.push(value);
                             Ok("?".to_string())
                         }
@@ -544,7 +543,6 @@ fn build_composite_clause(
                         | ComparisonOperator::ArrayLengthLt
                 ) || array_index.is_some(); // Array indexing also needs JSON formatting
 
-                println!("is_array_operation: {}", is_array_operation);
                 let value =
                     prepare_comparison(&member.value, &mut bind_values, is_array_operation)?;
 
