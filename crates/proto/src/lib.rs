@@ -193,6 +193,7 @@ pub struct Token {
     pub symbol: String,
     pub decimals: u8,
     pub metadata: String,
+    pub total_supply: Option<U256>,
 }
 
 impl From<Token> for proto::types::Token {
@@ -204,6 +205,7 @@ impl From<Token> for proto::types::Token {
             symbol: value.symbol,
             decimals: value.decimals as u32,
             metadata: value.metadata.into_bytes(),
+            total_supply: value.total_supply.map(|s| s.to_be_bytes().to_vec()),
         }
     }
 }
@@ -218,6 +220,7 @@ impl TryFrom<proto::types::Token> for Token {
             symbol: value.symbol,
             decimals: value.decimals as u8,
             metadata: String::from_utf8(value.metadata).map_err(ProtoError::FromUtf8)?,
+            total_supply: value.total_supply.map(|s| U256::from_be_slice(&s)),
         })
     }
 }
@@ -231,6 +234,7 @@ impl TryFrom<proto::types::TokenCollection> for Token {
             symbol: value.symbol,
             decimals: value.decimals as u8,
             metadata: String::from_utf8(value.metadata).map_err(ProtoError::FromUtf8)?,
+            total_supply: None,
         })
     }
 }

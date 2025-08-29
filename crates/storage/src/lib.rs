@@ -248,6 +248,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     async fn apply_balances_diff(
         &self,
         balances_diff: HashMap<String, I256>,
+        total_supply_diff: HashMap<String, I256>,
         cursors: HashMap<Felt, ContractCursor>,
     ) -> Result<(), StorageError>;
 

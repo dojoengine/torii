@@ -306,7 +306,11 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         debug!(target: LOG_TARGET, "Applying ERC balances cache diff.");
         let instant = Instant::now();
         self.storage
-            .apply_balances_diff(self.cache.balances_diff().await, cursors.cursors.clone())
+            .apply_balances_diff(
+                self.cache.balances_diff().await,
+                self.cache.total_supply_diff().await,
+                cursors.cursors.clone(),
+            )
             .await?;
         self.cache.clear_balances_diff().await;
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied ERC balances cache diff.");
