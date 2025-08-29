@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use dojo_types::primitive::SqlType;
 use dojo_types::schema::Ty;
-use serde_json::json;
 use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
@@ -170,24 +169,7 @@ impl Sql {
                         collect_members(&column_name, member, columns, arguments)?;
                     }
                 }
-                Ty::FixedSizeArray((array, size)) => {
-                    columns.push(format!("\"{}\"", prefix));
-                    let elements = array
-                        .iter()
-                        .map(|v| v.to_json_value())
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    let value = json!({
-                        "elements": elements,
-                        "size": *size
-                    });
-
-                    arguments.push(Argument::String(
-                        serde_json::to_string(&value)
-                            .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?,
-                    ));
-                }
-                Ty::Array(array) => {
+                Ty::Array(array) | Ty::FixedSizeArray((array, _)) => {
                     columns.push(format!("\"{}\"", prefix));
                     let values = array
                         .iter()
