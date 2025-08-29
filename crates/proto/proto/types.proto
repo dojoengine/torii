@@ -146,6 +146,7 @@ message Token {
     string symbol = 4;
     uint32 decimals = 5;
     bytes metadata = 6;
+    optional bytes total_supply = 7;
 }
 
 message TokenCollection {

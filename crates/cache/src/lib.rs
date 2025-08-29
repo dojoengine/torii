@@ -38,6 +38,9 @@ pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
 
     /// Get the balances diff.
     async fn balances_diff(&self) -> HashMap<String, I256>;
+
+    /// Get the total supply diff.
+    async fn total_supply_diff(&self) -> HashMap<String, I256>;
 }
 
 #[async_trait]
@@ -104,6 +107,14 @@ impl ReadOnlyCache for InMemoryCache {
             .map(|t| (t.key().clone(), *t.value()))
             .collect()
     }
+
+    async fn total_supply_diff(&self) -> HashMap<String, I256> {
+        self.erc_cache
+            .total_supply_diff
+            .iter()
+            .map(|t| (t.key().clone(), *t.value()))
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -123,9 +134,12 @@ impl Cache for InMemoryCache {
     async fn clear_balances_diff(&self) {
         self.erc_cache.balances_diff.clear();
         self.erc_cache.balances_diff.shrink_to_fit();
+        self.erc_cache.total_supply_diff.clear();
+        self.erc_cache.total_supply_diff.shrink_to_fit();
     }
 
     async fn update_balance_diff(&self, token_id: &str, from: Felt, to: Felt, value: U256) {
+        // Track individual balance changes
         if from != Felt::ZERO {
             // from/token_id
             let from_balance_id = format!("{:#x}/{}", from, token_id);
@@ -146,6 +160,28 @@ impl Cache for InMemoryCache {
                 .entry(to_balance_id)
                 .or_default();
             *to_balance += I256::from(value);
+        }
+
+        // Track total supply changes for ERC20 tokens
+        // Minting: from == ZERO, to != ZERO -> increase supply
+        // Burning: from != ZERO, to == ZERO -> decrease supply
+        // Transfer: from != ZERO, to != ZERO -> no supply change
+        if from == Felt::ZERO && to != Felt::ZERO {
+            // Minting - increase total supply
+            let mut supply_diff = self
+                .erc_cache
+                .total_supply_diff
+                .entry(token_id.to_string())
+                .or_default();
+            *supply_diff += I256::from(value);
+        } else if from != Felt::ZERO && to == Felt::ZERO {
+            // Burning - decrease total supply
+            let mut supply_diff = self
+                .erc_cache
+                .total_supply_diff
+                .entry(token_id.to_string())
+                .or_default();
+            *supply_diff -= I256::from(value);
         }
     }
 }
@@ -226,6 +262,8 @@ pub enum TokenState {
 #[derive(Debug)]
 pub struct ErcCache {
     pub balances_diff: DashMap<String, I256>,
+    // Track total supply changes for ERC20 tokens (contract_address -> supply_diff)
+    pub total_supply_diff: DashMap<String, I256>,
     // the registry is a map of token_id to a mutex that is used to track if the token is registered
     // we need a mutex for the token state to prevent race conditions in case of multiple token regs
     pub token_id_registry: DashMap<String, TokenState>,
@@ -238,6 +276,7 @@ impl ErcCache {
 
         Ok(Self {
             balances_diff: DashMap::new(),
+            total_supply_diff: DashMap::new(),
             token_id_registry: token_id_registry
                 .iter()
                 .map(|token_id| (token_id.clone(), TokenState::Registered))

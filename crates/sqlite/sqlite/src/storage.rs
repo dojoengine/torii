@@ -1324,6 +1324,7 @@ impl Storage for Sql {
     async fn apply_balances_diff(
         &self,
         balances_diff: HashMap<String, I256>,
+        total_supply_diff: HashMap<String, I256>,
         cursors: HashMap<Felt, ContractCursor>,
     ) -> Result<(), StorageError> {
         self.executor
@@ -1332,6 +1333,7 @@ impl Storage for Sql {
                 vec![],
                 QueryType::ApplyBalanceDiff(ApplyBalanceDiffQuery {
                     balances_diff,
+                    total_supply_diff,
                     cursors,
                 }),
             ))
