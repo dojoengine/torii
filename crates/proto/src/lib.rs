@@ -586,6 +586,13 @@ pub enum ComparisonOperator {
     Lte,
     In,
     NotIn,
+    // Array-specific operators
+    Contains,      // Array contains value
+    ContainsAll,   // Array contains all values
+    ContainsAny,   // Array contains any of the values
+    ArrayLengthEq, // Array length equals
+    ArrayLengthGt, // Array length greater than
+    ArrayLengthLt, // Array length less than
 }
 
 impl fmt::Display for ComparisonOperator {
@@ -599,6 +606,14 @@ impl fmt::Display for ComparisonOperator {
             ComparisonOperator::Eq => write!(f, "="),
             ComparisonOperator::In => write!(f, "IN"),
             ComparisonOperator::NotIn => write!(f, "NOT IN"),
+            // Array operators don't use simple SQL operators,
+            // they require special JSON function handling
+            ComparisonOperator::Contains => write!(f, "CONTAINS"),
+            ComparisonOperator::ContainsAll => write!(f, "CONTAINS_ALL"),
+            ComparisonOperator::ContainsAny => write!(f, "CONTAINS_ANY"),
+            ComparisonOperator::ArrayLengthEq => write!(f, "ARRAY_LENGTH_EQ"),
+            ComparisonOperator::ArrayLengthGt => write!(f, "ARRAY_LENGTH_GT"),
+            ComparisonOperator::ArrayLengthLt => write!(f, "ARRAY_LENGTH_LT"),
         }
     }
 }
@@ -614,6 +629,12 @@ impl From<ComparisonOperator> for proto::types::ComparisonOperator {
             ComparisonOperator::Lte => proto::types::ComparisonOperator::Lte,
             ComparisonOperator::In => proto::types::ComparisonOperator::In,
             ComparisonOperator::NotIn => proto::types::ComparisonOperator::NotIn,
+            ComparisonOperator::Contains => proto::types::ComparisonOperator::Contains,
+            ComparisonOperator::ContainsAll => proto::types::ComparisonOperator::ContainsAll,
+            ComparisonOperator::ContainsAny => proto::types::ComparisonOperator::ContainsAny,
+            ComparisonOperator::ArrayLengthEq => proto::types::ComparisonOperator::ArrayLengthEq,
+            ComparisonOperator::ArrayLengthGt => proto::types::ComparisonOperator::ArrayLengthGt,
+            ComparisonOperator::ArrayLengthLt => proto::types::ComparisonOperator::ArrayLengthLt,
         }
     }
 }
@@ -629,6 +650,12 @@ impl From<proto::types::ComparisonOperator> for ComparisonOperator {
             proto::types::ComparisonOperator::Neq => ComparisonOperator::Neq,
             proto::types::ComparisonOperator::In => ComparisonOperator::In,
             proto::types::ComparisonOperator::NotIn => ComparisonOperator::NotIn,
+            proto::types::ComparisonOperator::Contains => ComparisonOperator::Contains,
+            proto::types::ComparisonOperator::ContainsAll => ComparisonOperator::ContainsAll,
+            proto::types::ComparisonOperator::ContainsAny => ComparisonOperator::ContainsAny,
+            proto::types::ComparisonOperator::ArrayLengthEq => ComparisonOperator::ArrayLengthEq,
+            proto::types::ComparisonOperator::ArrayLengthGt => ComparisonOperator::ArrayLengthGt,
+            proto::types::ComparisonOperator::ArrayLengthLt => ComparisonOperator::ArrayLengthLt,
         }
     }
 }
