@@ -348,7 +348,17 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             "Processing preconfirmed block transactions"
         );
 
-        let mut transactions: IndexMap<Felt, FetchTransaction> = IndexMap::new();
+        let mut transactions: IndexMap<Felt, FetchTransaction> =
+            IndexMap::from_iter(preconf_block.transactions.iter().map(|t| {
+                (
+                    *t.receipt.transaction_hash(),
+                    FetchTransaction {
+                        transaction: Some(t.transaction.clone()),
+                        events: vec![],
+                    },
+                )
+            }));
+
         for (contract_address, cursor) in &mut new_cursors.cursors {
             if cursor.head != Some(latest_block_number) {
                 debug!(
@@ -429,13 +439,11 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     .or_default()
                     .insert(*tx_hash);
 
-                transactions.insert(
-                    *tx_hash,
-                    FetchTransaction {
-                        transaction: Some(t.transaction.clone()),
-                        events,
-                    },
-                );
+                transactions
+                    .get_mut(tx_hash)
+                    .expect("Transaction should exist.")
+                    .events
+                    .extend(events);
                 cursor.last_pending_block_tx = Some(*tx_hash);
                 cursor.last_block_timestamp = Some(timestamp);
             }
