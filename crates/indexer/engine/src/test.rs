@@ -64,7 +64,7 @@ where
     let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();
 
-    db.apply_balances_diff(cache.balances_diff().await, cursors)
+    db.apply_balances_diff(cache.balances_diff().await, cache.total_supply_diff().await, cursors)
         .await
         .unwrap();
     db.execute().await.unwrap();
