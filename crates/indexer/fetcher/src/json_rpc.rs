@@ -457,6 +457,9 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             );
         }
 
+        // Only keep transactions that have events
+        transactions.retain(|_, tx| !tx.events.is_empty());
+
         Ok((
             Some(FetchPreconfirmedBlockResult {
                 timestamp,
