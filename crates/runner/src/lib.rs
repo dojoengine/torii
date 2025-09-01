@@ -51,9 +51,9 @@ use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::{Sql, SqlConfig};
+use torii_storage::ReadOnlyStorage;
 use torii_storage::proto::Contract;
 use torii_storage::proto::ContractType;
-use torii_storage::Storage;
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
@@ -587,7 +587,7 @@ async fn spawn_rebuilding_graphql_server<P: Provider + Sync + Send + Clone + 'st
     pool: Arc<SqlitePool>,
     proxy_server: Arc<Proxy>,
     messaging: Arc<Messaging<P>>,
-    storage: Arc<dyn Storage>,
+    storage: Arc<dyn ReadOnlyStorage>,
 ) {
     let mut broker = MemoryBroker::<ModelUpdate>::subscribe();
 

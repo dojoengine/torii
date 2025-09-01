@@ -9,7 +9,7 @@ use sqlx::{Pool, Sqlite};
 use starknet::providers::Provider;
 use tokio::sync::broadcast::Receiver;
 use torii_messaging::Messaging;
-use torii_storage::Storage;
+use torii_storage::ReadOnlyStorage;
 use warp::{Filter, Rejection, Reply};
 
 use crate::playground::{graphiql::GraphiQLSource, graphiql_plugin::GraphiQLPlugin};
@@ -20,7 +20,7 @@ pub async fn new<P: Provider + Sync + Send + Clone + 'static>(
     mut shutdown_rx: Receiver<()>,
     pool: &Pool<Sqlite>,
     messaging: Arc<Messaging<P>>,
-    storage: Arc<dyn Storage>,
+    storage: Arc<dyn ReadOnlyStorage>,
 ) -> (SocketAddr, impl Future<Output = ()> + 'static) {
     let schema = build_schema(pool, messaging, storage).await.unwrap();
     let routes = graphql_filter(schema);
