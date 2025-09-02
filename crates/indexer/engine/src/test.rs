@@ -1706,12 +1706,7 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
         .execute_v3(vec![Call {
             to: erc1155_address,
             selector: get_selector_from_name("mint").unwrap(),
-            calldata: vec![
-                Felt::from(1),
-                Felt::ZERO,
-                Felt::from(100),
-                Felt::ZERO,
-            ],
+            calldata: vec![Felt::from(1), Felt::ZERO, Felt::from(100), Felt::ZERO],
         }])
         .send()
         .await
@@ -1726,12 +1721,7 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
         .execute_v3(vec![Call {
             to: erc1155_address,
             selector: get_selector_from_name("mint").unwrap(),
-            calldata: vec![
-                Felt::from(1),
-                Felt::ZERO,
-                Felt::from(50),
-                Felt::ZERO,
-            ],
+            calldata: vec![Felt::from(1), Felt::ZERO, Felt::from(50), Felt::ZERO],
         }])
         .send()
         .await
@@ -1746,12 +1736,7 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
         .execute_v3(vec![Call {
             to: erc1155_address,
             selector: get_selector_from_name("mint").unwrap(),
-            calldata: vec![
-                Felt::from(2),
-                Felt::ZERO,
-                Felt::from(200),
-                Felt::ZERO,
-            ],
+            calldata: vec![Felt::from(2), Felt::ZERO, Felt::from(200), Felt::ZERO],
         }])
         .send()
         .await
@@ -1766,12 +1751,7 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
         .execute_v3(vec![Call {
             to: erc1155_address,
             selector: get_selector_from_name("burn").unwrap(),
-            calldata: vec![
-                Felt::from(1),
-                Felt::ZERO,
-                Felt::from(30),
-                Felt::ZERO,
-            ],
+            calldata: vec![Felt::from(1), Felt::ZERO, Felt::from(30), Felt::ZERO],
         }])
         .send()
         .await
