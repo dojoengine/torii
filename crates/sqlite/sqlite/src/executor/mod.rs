@@ -725,7 +725,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .bind(&symbol)
                 .bind(0)
                 .bind(&register_nft_token.metadata)
-                .bind::<Option<String>>(None); // NFTs don't have total_supply
+                .bind(u256_to_sql_string(&U256::from(1u8))); // Each NFT token ID has supply of 1 initially
 
                 let token = query.fetch_one(&mut **tx).await?;
 
@@ -743,7 +743,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .bind(&register_token_contract.symbol)
                 .bind(register_token_contract.decimals)
                 .bind(&register_token_contract.metadata)
-                .bind(u256_to_sql_string(&U256::from(0u8))); // Initialize total_supply to 0
+                .bind(u256_to_sql_string(&U256::from(0u8))); // Initialize total_supply to 0 for all contracts
 
                 let token = query.fetch_one(&mut **tx).await?;
                 info!(target: LOG_TARGET, name = %register_token_contract.name, symbol = %register_token_contract.symbol, contract_address = %token.contract_address, "Registered token contract.");
