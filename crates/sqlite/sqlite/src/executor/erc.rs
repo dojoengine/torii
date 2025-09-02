@@ -52,24 +52,21 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             // Token-level: ERC-721/ERC-1155 specific token IDs (has colon)
 
             // Get current total supply
-            let current_supply: Option<Option<String>> =
+            let current_supply: Option<String> =
                 sqlx::query_scalar("SELECT total_supply FROM tokens WHERE id = ?")
                     .bind(token_id)
-                    .fetch_optional(&mut **tx)
+                    .fetch_one(&mut **tx)
                     .await?;
 
-            if current_supply.is_some() {
+            if let Some(supply_str) = current_supply {
                 // Token/contract exists in database
-                let mut total_supply = current_supply
-                    .flatten()
-                    .and_then(|s| {
-                        if s.is_empty() {
-                            None
-                        } else {
-                            Some(sql_string_to_u256(&s))
-                        }
-                    })
-                    .unwrap_or(U256::from(0u8));
+                // After migration, total_supply should never be NULL or empty
+                let mut total_supply = if supply_str.is_empty() {
+                    // Handle edge case of empty string (shouldn't happen but be safe)
+                    U256::from(0u8)
+                } else {
+                    sql_string_to_u256(&supply_str)
+                };
 
                 // Apply the supply diff
                 if supply_diff.is_negative {
@@ -91,34 +88,6 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     .await?;
 
                 debug!(target: LOG_TARGET, token_id = ?token_id, total_supply = ?total_supply, "Updated total supply");
-            } else if !token_id.contains(':') {
-                // This is a contract-level entry that might not exist yet
-                // This can happen for NFT contracts where we track the count
-                // Try to insert with the supply diff as initial value
-                if !supply_diff.is_negative {
-                    // Only insert if it's a positive supply (minting)
-                    // Check if this is a known contract
-                    let contract_exists: Option<i64> = sqlx::query_scalar(
-                        "SELECT COUNT(*) FROM tokens WHERE contract_address = ? LIMIT 1",
-                    )
-                    .bind(token_id)
-                    .fetch_optional(&mut **tx)
-                    .await?;
-
-                    if contract_exists.unwrap_or(0) > 0 {
-                        // Update the contract-level entry's total_supply
-                        // This handles ERC-721 contract-level counts
-                        sqlx::query(
-                            "UPDATE tokens SET total_supply = ? WHERE contract_address = ? AND token_id IS NULL"
-                        )
-                        .bind(u256_to_sql_string(&supply_diff.value))
-                        .bind(token_id)
-                        .execute(&mut **tx)
-                        .await?;
-
-                        debug!(target: LOG_TARGET, contract_address = ?token_id, total_supply = ?supply_diff.value, "Set initial contract total supply");
-                    }
-                }
             }
         }
 

@@ -725,7 +725,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .bind(&symbol)
                 .bind(0)
                 .bind(&register_nft_token.metadata)
-                .bind(u256_to_sql_string(&U256::from(1u8))); // Each NFT token ID has supply of 1 initially
+                .bind(u256_to_sql_string(&U256::from(0u8))); // Default to 0, will be updated on mint
 
                 let token = query.fetch_one(&mut **tx).await?;
 
