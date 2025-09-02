@@ -1413,7 +1413,7 @@ async fn test_erc20_total_supply_tracking(sequencer: &RunnerCtx) {
         .execute_v3(vec![Call {
             to: erc20_address,
             selector: get_selector_from_name("mint").unwrap(),
-            calldata: vec![account.address(), mint_amount, Felt::ZERO],
+            calldata: vec![mint_amount, Felt::ZERO],
         }])
         .send()
         .await
@@ -1425,11 +1425,11 @@ async fn test_erc20_total_supply_tracking(sequencer: &RunnerCtx) {
 
     // Mint 500 more tokens to account 2
     let mint_amount2 = Felt::from(500);
-    let tx = &account
+    let tx = &account2
         .execute_v3(vec![Call {
             to: erc20_address,
             selector: get_selector_from_name("mint").unwrap(),
-            calldata: vec![account2.address(), mint_amount2, Felt::ZERO],
+            calldata: vec![mint_amount2, Felt::ZERO],
         }])
         .send()
         .await
@@ -1445,7 +1445,7 @@ async fn test_erc20_total_supply_tracking(sequencer: &RunnerCtx) {
         .execute_v3(vec![Call {
             to: erc20_address,
             selector: get_selector_from_name("burn").unwrap(),
-            calldata: vec![account.address(), burn_amount, Felt::ZERO],
+            calldata: vec![burn_amount, Felt::ZERO],
         }])
         .send()
         .await
@@ -1551,7 +1551,7 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
         .execute_v3(vec![Call {
             to: erc721_address,
             selector: get_selector_from_name("mint").unwrap(),
-            calldata: vec![account.address(), Felt::from(1), Felt::ZERO],
+            calldata: vec![Felt::from(1), Felt::ZERO],
         }])
         .send()
         .await
@@ -1562,11 +1562,11 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
         .unwrap();
 
     // Mint NFT token ID 2
-    let tx = &account
+    let tx = &account2
         .execute_v3(vec![Call {
             to: erc721_address,
             selector: get_selector_from_name("mint").unwrap(),
-            calldata: vec![account2.address(), Felt::from(2), Felt::ZERO],
+            calldata: vec![Felt::from(2), Felt::ZERO],
         }])
         .send()
         .await
@@ -1581,7 +1581,7 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
         .execute_v3(vec![Call {
             to: erc721_address,
             selector: get_selector_from_name("mint").unwrap(),
-            calldata: vec![account.address(), Felt::from(3), Felt::ZERO],
+            calldata: vec![Felt::from(3), Felt::ZERO],
         }])
         .send()
         .await
@@ -1707,7 +1707,6 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
             to: erc1155_address,
             selector: get_selector_from_name("mint").unwrap(),
             calldata: vec![
-                account.address(),
                 Felt::from(1),
                 Felt::ZERO,
                 Felt::from(100),
@@ -1723,12 +1722,11 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
         .unwrap();
 
     // Mint 50 more of token ID 1 to account2
-    let tx = &account
+    let tx = &account2
         .execute_v3(vec![Call {
             to: erc1155_address,
             selector: get_selector_from_name("mint").unwrap(),
             calldata: vec![
-                account2.address(),
                 Felt::from(1),
                 Felt::ZERO,
                 Felt::from(50),
@@ -1749,7 +1747,6 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
             to: erc1155_address,
             selector: get_selector_from_name("mint").unwrap(),
             calldata: vec![
-                account.address(),
                 Felt::from(2),
                 Felt::ZERO,
                 Felt::from(200),
@@ -1770,7 +1767,6 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
             to: erc1155_address,
             selector: get_selector_from_name("burn").unwrap(),
             calldata: vec![
-                account.address(),
                 Felt::from(1),
                 Felt::ZERO,
                 Felt::from(30),

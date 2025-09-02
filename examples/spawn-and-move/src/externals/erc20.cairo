@@ -68,6 +68,11 @@ mod ERC20Token {
         fn mint(ref self: ContractState, amount: u256) {
             self.erc20.mint(starknet::get_caller_address(), amount);
         }
+
+        #[external(v0)]
+        fn burn(ref self: ContractState, amount: u256) {
+            self.erc20.burn(starknet::get_caller_address(), amount);
+        }
     }
 
     #[abi(embed_v0)]
