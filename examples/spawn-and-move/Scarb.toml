@@ -1,7 +1,7 @@
 [package]
 name = "dojo_examples"
 description = "Dojo example to showcase Dojo features."
-version = "1.6.0-alpha.1"
+version = "1.7.0-alpha.1"	
 edition = "2024_07"
 cairo-version = "=2.11.4"
 license = "MIT"
@@ -15,14 +15,8 @@ starknet = "2.11.4"
 
 armory = { path = "../game-lib/armory" }
 bestiary = { path = "../game-lib/bestiary" }
-dojo = { git = "https://github.com/dojoengine/dojo", rev = "4476c33" }
-dojo_macros = { git = "https://github.com/dojoengine/dojo", rev = "4476c33" }
-
-[dev-dependencies]
-snforge_std = "0.43.1"
-assert_macros = "2.11.4"
-
-dojo_snf_test = { git = "https://github.com/dojoengine/dojo", rev = "4476c33" }
+dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.1" }
+dojo_macros = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.1" }
 
 [[target.starknet-contract]]
 build-external-contracts = [
@@ -31,12 +25,6 @@ build-external-contracts = [
 	"bestiary::m_RiverSkale",
 ]
 allowed-libfuncs-list.name = "experimental"
-
-[scripts]
-test = "snforge test"
-
-[tool.scarb]
-allow-prebuilt-plugins = ["snforge_std"]
 
 [features]
 default = ["dungeon"]
