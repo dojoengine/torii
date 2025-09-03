@@ -2,7 +2,7 @@
 cairo-version = "=2.11.4"
 edition = "2024_07"
 name = "types_test"
-version = "1.6.0-alpha.1"
+version = "1.7.0-alpha.1"
 
 [cairo]
 sierra-replace-ids = true
@@ -10,8 +10,8 @@ sierra-replace-ids = true
 [dependencies]
 starknet = "2.11.4"
 
-dojo = { git = "https://github.com/dojoengine/dojo", rev = "4cedf3f52" }
-dojo_macros = { git = "https://github.com/dojoengine/dojo", rev = "4cedf3f52" }
+dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.1" }
+dojo_macros = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.1" }
 
 [[target.starknet-contract]]
 build-external-contracts = ["dojo::world::world_contract::world"]

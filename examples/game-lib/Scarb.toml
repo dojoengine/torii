@@ -2,7 +2,7 @@
 members = ["armory", "bestiary"]
 
 [workspace.package]
-version = "1.6.0-alpha.1"
+version = "1.7.0-alpha.1"
 description = "Example game library for Dojo"
 edition = "2024_07"
 cairo-version = "=2.11.4"
@@ -10,5 +10,5 @@ license = "MIT"
 
 [workspace.dependencies]
 starknet = "2.11.4"
-dojo = { git = "https://github.com/dojoengine/dojo", rev = "4476c33" }
-dojo_macros = { git = "https://github.com/dojoengine/dojo", rev = "4476c33" }
+dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.1" }
+dojo_macros = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.1" }
