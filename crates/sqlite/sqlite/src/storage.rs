@@ -233,9 +233,7 @@ impl ReadOnlyStorage for Sql {
 
     async fn tokens(&self, query: &TokenQuery) -> Result<Page<Token>, StorageError> {
         let executor = PaginationExecutor::new(self.pool.clone());
-        let mut query_builder = QueryBuilder::new("tokens")
-            .select(&["*".to_string()])
-            .where_clause("token_id IS NOT NULL");
+        let mut query_builder = QueryBuilder::new("tokens").select(&["*".to_string()]);
 
         if !query.contract_addresses.is_empty() {
             let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
