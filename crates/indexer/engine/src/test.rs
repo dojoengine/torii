@@ -1860,41 +1860,11 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
     // Give the indexer some time to process all events
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
-    // Fetch total supply for token ID 1 via RPC (should be 100 + 50 - 30 = 120)
-    let token1_supply_result = provider
-        .call(
-            FunctionCall {
-                contract_address: erc1155_address,
-                entry_point_selector: get_selector_from_name("total_supply").unwrap(),
-                calldata: vec![Felt::from(1), Felt::ZERO], // token_id = 1
-            },
-            BlockId::Tag(BlockTag::Latest),
-        )
-        .await
-        .unwrap();
-
-    let expected_token1_supply = U256::from_words(
-        token1_supply_result[0].try_into().unwrap(),
-        token1_supply_result[1].try_into().unwrap(),
-    );
-
-    // Fetch total supply for token ID 2 via RPC (should be 200)
-    let token2_supply_result = provider
-        .call(
-            FunctionCall {
-                contract_address: erc1155_address,
-                entry_point_selector: get_selector_from_name("total_supply").unwrap(),
-                calldata: vec![Felt::from(2), Felt::ZERO], // token_id = 2
-            },
-            BlockId::Tag(BlockTag::Latest),
-        )
-        .await
-        .unwrap();
-
-    let expected_token2_supply = U256::from_words(
-        token2_supply_result[0].try_into().unwrap(),
-        token2_supply_result[1].try_into().unwrap(),
-    );
+    // Calculate expected supplies based on our transactions
+    // Token ID 1: 100 + 50 - 30 = 120
+    // Token ID 2: 200
+    let expected_token1_supply = U256::from(120u64);
+    let expected_token2_supply = U256::from(200u64);
 
     // Check contract-level total supply (sum of all token supplies)
     let expected_contract_total = expected_token1_supply + expected_token2_supply;
