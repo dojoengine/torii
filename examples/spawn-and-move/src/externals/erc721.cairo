@@ -82,6 +82,11 @@ mod ERC721Token {
         }
 
         #[external(v0)]
+        fn burn(ref self: ContractState, token_id: u256) {
+            self.erc721.burn(token_id);
+        }
+
+        #[external(v0)]
         fn update_token_metadata(ref self: ContractState, token_id: u256) {
             // Only owner can update metadata
             self.ownable.assert_only_owner();

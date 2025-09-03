@@ -186,16 +186,15 @@ impl Cache for InMemoryCache {
                     .or_default();
                 *supply_diff += I256::from(value);
 
-                // Also track contract-level supply for NFT count
-                // Only for ERC-721 where value is always 1
-                if value == U256::from(1u8) {
-                    let mut contract_supply_diff = self
-                        .erc_cache
-                        .total_supply_diff
-                        .entry(contract_address.to_string())
-                        .or_default();
-                    *contract_supply_diff += I256::from(1u8);
-                }
+                // Also track contract-level supply
+                // For ERC-721: count of unique NFTs (value is always 1)
+                // For ERC-1155: total sum of all token supplies
+                let mut contract_supply_diff = self
+                    .erc_cache
+                    .total_supply_diff
+                    .entry(contract_address.to_string())
+                    .or_default();
+                *contract_supply_diff += I256::from(value);
             } else if from != Felt::ZERO && to == Felt::ZERO {
                 // Burning
                 let mut supply_diff = self
@@ -205,16 +204,15 @@ impl Cache for InMemoryCache {
                     .or_default();
                 *supply_diff -= I256::from(value);
 
-                // Also track contract-level supply for NFT count
-                // Only for ERC-721 where value is always 1
-                if value == U256::from(1u8) {
-                    let mut contract_supply_diff = self
-                        .erc_cache
-                        .total_supply_diff
-                        .entry(contract_address.to_string())
-                        .or_default();
-                    *contract_supply_diff -= I256::from(1u8);
-                }
+                // Also track contract-level supply
+                // For ERC-721: count of unique NFTs (value is always 1)
+                // For ERC-1155: total sum of all token supplies
+                let mut contract_supply_diff = self
+                    .erc_cache
+                    .total_supply_diff
+                    .entry(contract_address.to_string())
+                    .or_default();
+                *contract_supply_diff -= I256::from(value);
             }
         } else {
             // This is an ERC20 token, track supply changes at contract level

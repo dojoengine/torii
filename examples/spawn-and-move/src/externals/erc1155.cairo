@@ -111,8 +111,8 @@ mod ERC1155Token {
             self
                 .erc1155
                 .update(
-                    NULL_ADDRESS,
                     starknet::get_caller_address(),
+                    NULL_ADDRESS,
                     array![token_id].span(),
                     array![value].span(),
                 );

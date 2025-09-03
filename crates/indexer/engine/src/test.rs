@@ -13,7 +13,7 @@ use scarb_interop::Profile;
 use scarb_metadata_ext::MetadataDojoExt;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use starknet::accounts::Account;
-use starknet::core::types::{Call, Felt, U256};
+use starknet::core::types::{BlockId, BlockTag, Call, Felt, FunctionCall, U256};
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
@@ -1485,11 +1485,31 @@ async fn test_erc20_total_supply_tracking(sequencer: &RunnerCtx) {
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
-    let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
+    let _ = bootstrap_engine(db.clone(), cache, provider.clone(), &contracts)
         .await
         .unwrap();
 
-    // Check total supply: should be 1000 + 500 - 200 = 1300
+    // Give the indexer some time to process all events
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Fetch the actual total supply from the contract via RPC
+    let total_supply_result = provider
+        .call(
+            FunctionCall {
+                contract_address: erc20_address,
+                entry_point_selector: get_selector_from_name("total_supply").unwrap(),
+                calldata: vec![],
+            },
+            BlockId::Tag(BlockTag::Latest),
+        )
+        .await
+        .unwrap();
+
+    let expected_total_supply = U256::from_words(
+        total_supply_result[0].try_into().unwrap(),
+        total_supply_result[1].try_into().unwrap(),
+    );
+    
     let token: Token = sqlx::query_as(
         format!(
             "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND (token_id IS NULL OR token_id = '')",
@@ -1503,7 +1523,7 @@ async fn test_erc20_total_supply_tracking(sequencer: &RunnerCtx) {
 
     assert_eq!(
         token.total_supply.unwrap(),
-        u256_to_sql_string(&U256::from(1300u64))
+        u256_to_sql_string(&expected_total_supply)
     );
 }
 
@@ -1591,6 +1611,24 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
         .await
         .unwrap();
 
+    // Burn NFT token ID 2
+    let tx = &account2
+        .execute_v3(vec![Call {
+            to: erc721_address,
+            selector: get_selector_from_name("burn").unwrap(),
+            calldata: vec![
+                Felt::from(2),      // token_id
+                Felt::ZERO,         // token_id high
+            ],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
     // Setup database and indexer
     let tempfile = NamedTempFile::new().unwrap();
     let path = tempfile.path().to_string_lossy();
@@ -1621,11 +1659,15 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
-    let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
+    let _ = bootstrap_engine(db.clone(), cache, provider.clone(), &contracts)
         .await
         .unwrap();
 
-    // Check contract-level total supply: should be 3 NFTs
+    // Give the indexer some time to process all events
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Check contract-level total supply (should be 2 NFTs after burning token ID 2)
+    // We track this ourselves since ERC721 doesn't have a total_supply entrypoint
     let contract_token: Token = sqlx::query_as(
         format!(
             "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND (token_id IS NULL OR token_id = '')",
@@ -1639,15 +1681,15 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
 
     assert_eq!(
         contract_token.total_supply.unwrap(),
-        u256_to_sql_string(&U256::from(3u64))
+        u256_to_sql_string(&U256::from(2u64)) // 3 minted - 1 burned = 2
     );
 
-    // Check individual NFT token supplies (should each be 1)
-    for token_id in 1..=3 {
+    // Check individual NFT token supplies for existing tokens (should each be 1)
+    for token_id in [1, 3] {  // Token ID 2 was burned
         let nft_token: Token = sqlx::query_as(
             format!(
                 "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
-                erc721_address, token_id
+                erc721_address, U256::from(token_id as u64)
             )
             .as_str(),
         )
@@ -1660,6 +1702,23 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
             u256_to_sql_string(&U256::from(1u64))
         );
     }
+
+    // Check that burned token ID 2 has supply 0
+    let burned_token: Token = sqlx::query_as(
+        format!(
+            "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
+            erc721_address, U256::from(2u64)
+        )
+        .as_str(),
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        burned_token.total_supply.unwrap(),
+        u256_to_sql_string(&U256::from(0u64))
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1791,15 +1850,73 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
-    let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
+    let _ = bootstrap_engine(db.clone(), cache, provider.clone(), &contracts)
         .await
         .unwrap();
 
-    // Check token ID 1 total supply: should be 100 + 50 - 30 = 120
+    // Give the indexer some time to process all events
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Fetch total supply for token ID 1 via RPC (should be 100 + 50 - 30 = 120)
+    let token1_supply_result = provider
+        .call(
+            FunctionCall {
+                contract_address: erc1155_address,
+                entry_point_selector: get_selector_from_name("total_supply").unwrap(),
+                calldata: vec![Felt::from(1), Felt::ZERO], // token_id = 1
+            },
+            BlockId::Tag(BlockTag::Latest),
+        )
+        .await
+        .unwrap();
+
+    let expected_token1_supply = U256::from_words(
+        token1_supply_result[0].try_into().unwrap(),
+        token1_supply_result[1].try_into().unwrap(),
+    );
+
+    // Fetch total supply for token ID 2 via RPC (should be 200)
+    let token2_supply_result = provider
+        .call(
+            FunctionCall {
+                contract_address: erc1155_address,
+                entry_point_selector: get_selector_from_name("total_supply").unwrap(),
+                calldata: vec![Felt::from(2), Felt::ZERO], // token_id = 2
+            },
+            BlockId::Tag(BlockTag::Latest),
+        )
+        .await
+        .unwrap();
+
+    let expected_token2_supply = U256::from_words(
+        token2_supply_result[0].try_into().unwrap(),
+        token2_supply_result[1].try_into().unwrap(),
+    );
+
+    // Check contract-level total supply (sum of all token supplies)
+    let expected_contract_total = expected_token1_supply + expected_token2_supply;
+    
+    let contract_token: Token = sqlx::query_as(
+        format!(
+            "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND (token_id IS NULL OR token_id = '')",
+            erc1155_address
+        )
+        .as_str(),
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        contract_token.total_supply.unwrap(),
+        u256_to_sql_string(&expected_contract_total)
+    );
+
+    // Check token ID 1 total supply
     let token1: Token = sqlx::query_as(
         format!(
             "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
-            erc1155_address, 1
+            erc1155_address, U256::from(1u64)
         )
         .as_str(),
     )
@@ -1809,14 +1926,14 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
 
     assert_eq!(
         token1.total_supply.unwrap(),
-        u256_to_sql_string(&U256::from(120u64))
+        u256_to_sql_string(&expected_token1_supply)
     );
 
-    // Check token ID 2 total supply: should be 200
+    // Check token ID 2 total supply
     let token2: Token = sqlx::query_as(
         format!(
             "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
-            erc1155_address, 2
+            erc1155_address, U256::from(2u64)
         )
         .as_str(),
     )
@@ -1826,6 +1943,6 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
 
     assert_eq!(
         token2.total_supply.unwrap(),
-        u256_to_sql_string(&U256::from(200u64))
+        u256_to_sql_string(&expected_token2_supply)
     );
 }
