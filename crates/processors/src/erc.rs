@@ -50,37 +50,6 @@ pub fn u256_to_sql_string(u256: &U256) -> String {
     format!("{:#064x}", u256)
 }
 
-/// Helper function to retry provider calls with exponential backoff
-async fn call_with_retry<P: Provider + Sync>(
-    provider: &P,
-    function_call: FunctionCall,
-    block_id: BlockId,
-) -> Result<Vec<Felt>, starknet::providers::ProviderError> {
-    let mut retries = 0;
-    let mut backoff = INITIAL_BACKOFF;
-
-    loop {
-        match provider.call(function_call.clone(), block_id).await {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                if retries >= PROVIDER_MAX_RETRIES {
-                    return Err(e);
-                }
-                debug!(
-                    error = ?e,
-                    retry = retries,
-                    contract_address = format!("{:#x}", function_call.contract_address),
-                    entry_point = format!("{:#x}", function_call.entry_point_selector),
-                    "Provider call failed, retrying after backoff"
-                );
-                tokio::time::sleep(backoff).await;
-                retries += 1;
-                backoff *= 2;
-            }
-        }
-    }
-}
-
 /// Helper function to retry batch requests with exponential backoff
 async fn batch_requests_with_retry<P: Provider + Sync>(
     provider: &P,
@@ -98,14 +67,156 @@ async fn batch_requests_with_retry<P: Provider + Sync>(
                 }
                 debug!(
                     error = ?e,
-                    retry = retries,
-                    "Batch provider request failed, retrying after backoff"
+                    retry = retries + 1,
+                    batch_size = requests.len(),
+                    "ERC batch request failed, retrying"
                 );
                 tokio::time::sleep(backoff).await;
                 retries += 1;
                 backoff *= 2;
             }
         }
+    }
+}
+
+/// Try to fetch contract URI using different method names, with retry logic for the entire sequence
+async fn try_fetch_contract_uri_sequence<P: Provider + Sync>(
+    provider: &P,
+    contract_address: Felt,
+    block_id: BlockId,
+) -> Result<Option<Vec<Felt>>, starknet::providers::ProviderError> {
+    let mut retries = 0;
+    let mut backoff = INITIAL_BACKOFF;
+
+    loop {
+        // Try all URI methods in sequence
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("contract_uri"),
+                    calldata: vec![],
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("contractURI"),
+                    calldata: vec![],
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("uri"),
+                    calldata: vec![],
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        // All methods failed, check if we should retry
+        if retries >= PROVIDER_MAX_RETRIES {
+            return Ok(None);
+        }
+
+        debug!(
+            retry = retries + 1,
+            contract_address = format!("{:#x}", contract_address),
+            "All contract URI methods failed, retrying sequence"
+        );
+        tokio::time::sleep(backoff).await;
+        retries += 1;
+        backoff *= 2;
+    }
+}
+
+/// Try to fetch token URI using different method names, with retry logic for the entire sequence
+async fn try_fetch_token_uri_sequence<P: Provider + Sync>(
+    provider: &P,
+    contract_address: Felt,
+    token_id: U256,
+    block_id: BlockId,
+) -> Result<Option<Vec<Felt>>, starknet::providers::ProviderError> {
+    let mut retries = 0;
+    let mut backoff = INITIAL_BACKOFF;
+    let calldata = vec![token_id.low().into(), token_id.high().into()];
+
+    loop {
+        // Try all URI methods in sequence
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("token_uri"),
+                    calldata: calldata.clone(),
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("tokenURI"),
+                    calldata: calldata.clone(),
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("uri"),
+                    calldata: calldata.clone(),
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        // All methods failed, check if we should retry
+        if retries >= PROVIDER_MAX_RETRIES {
+            return Ok(None);
+        }
+
+        debug!(
+            retry = retries + 1,
+            contract_address = format!("{:#x}", contract_address),
+            token_id = %token_id,
+            "All token URI methods failed, retrying sequence"
+        );
+        tokio::time::sleep(backoff).await;
+        retries += 1;
+        backoff *= 2;
     }
 }
 
@@ -291,45 +402,12 @@ pub async fn fetch_contract_uri<P: Provider + Sync>(
     contract_address: Felt,
 ) -> Result<Option<String>, TokenMetadataError> {
     let block_id = BlockId::Tag(BlockTag::PreConfirmed);
-    let contract_uri = if let Ok(contract_uri) = call_with_retry(
-        provider,
-        FunctionCall {
-            contract_address,
-            entry_point_selector: selector!("contract_uri"),
-            calldata: vec![],
-        },
-        block_id,
-    )
-    .await
-    {
-        contract_uri
-    } else if let Ok(contract_uri) = call_with_retry(
-        provider,
-        FunctionCall {
-            contract_address,
-            entry_point_selector: selector!("contractURI"),
-            calldata: vec![],
-        },
-        block_id,
-    )
-    .await
-    {
-        contract_uri
-    } else if let Ok(token_uri) = call_with_retry(
-        provider,
-        FunctionCall {
-            contract_address,
-            entry_point_selector: selector!("uri"),
-            calldata: vec![],
-        },
-        block_id,
-    )
-    .await
-    {
-        token_uri
-    } else {
-        return Ok(None);
-    };
+    let contract_uri =
+        match try_fetch_contract_uri_sequence(provider, contract_address, block_id).await {
+            Ok(Some(uri)) => uri,
+            Ok(None) => return Ok(None),
+            Err(_) => return Ok(None),
+        };
 
     let contract_uri = if let Ok(byte_array) = ByteArray::cairo_deserialize(&contract_uri, 0) {
         byte_array
@@ -360,51 +438,18 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
     token_id: U256,
 ) -> Result<String, TokenMetadataError> {
     let block_id = BlockId::Tag(BlockTag::PreConfirmed);
-    let calldata = vec![token_id.low().into(), token_id.high().into()];
-    let token_uri = if let Ok(token_uri) = call_with_retry(
-        provider,
-        FunctionCall {
-            contract_address,
-            entry_point_selector: selector!("token_uri"),
-            calldata: calldata.clone(),
-        },
-        block_id,
-    )
-    .await
-    {
-        token_uri
-    } else if let Ok(token_uri) = call_with_retry(
-        provider,
-        FunctionCall {
-            contract_address,
-            entry_point_selector: selector!("tokenURI"),
-            calldata: calldata.clone(),
-        },
-        block_id,
-    )
-    .await
-    {
-        token_uri
-    } else if let Ok(token_uri) = call_with_retry(
-        provider,
-        FunctionCall {
-            contract_address,
-            entry_point_selector: selector!("uri"),
-            calldata,
-        },
-        block_id,
-    )
-    .await
-    {
-        token_uri
-    } else {
-        warn!(
-            contract_address = format!("{:#x}", contract_address),
-            token_id = %token_id,
-            "Error fetching token URI, empty metadata will be used instead.",
-        );
-        return Ok("".to_string());
-    };
+    let token_uri =
+        match try_fetch_token_uri_sequence(provider, contract_address, token_id, block_id).await {
+            Ok(Some(uri)) => uri,
+            Ok(None) | Err(_) => {
+                warn!(
+                    contract_address = format!("{:#x}", contract_address),
+                    token_id = %token_id,
+                    "Error fetching token URI, empty metadata will be used instead.",
+                );
+                return Ok("".to_string());
+            }
+        };
 
     let mut token_uri = if let Ok(byte_array) = ByteArray::cairo_deserialize(&token_uri, 0) {
         byte_array
