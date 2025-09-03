@@ -13,7 +13,7 @@ use scarb_interop::Profile;
 use scarb_metadata_ext::MetadataDojoExt;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use starknet::accounts::Account;
-use starknet::core::types::{Call, Felt, U256};
+use starknet::core::types::{BlockId, BlockTag, Call, Felt, FunctionCall, U256};
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
@@ -64,9 +64,13 @@ where
     let data = fetcher.fetch(&cursors).await.unwrap();
     engine.process(&data).await.unwrap();
 
-    db.apply_balances_diff(cache.balances_diff().await, cursors)
-        .await
-        .unwrap();
+    db.apply_balances_diff(
+        cache.balances_diff().await,
+        cache.total_supply_diff().await,
+        cursors,
+    )
+    .await
+    .unwrap();
     db.execute().await.unwrap();
 
     Ok(engine)
@@ -1362,4 +1366,558 @@ async fn count_table(table_name: &str, pool: &sqlx::Pool<sqlx::Sqlite>) -> i64 {
     let count: (i64,) = sqlx::query_as(&count_query).fetch_one(pool).await.unwrap();
 
     count.0
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
+async fn test_erc20_total_supply_tracking(sequencer: &RunnerCtx) {
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
+
+    let account = sequencer.account(0);
+    let account2 = sequencer.account(1);
+    let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
+
+    let world_local = metadata.load_dojo_world_local().unwrap();
+    let manifest = metadata.read_dojo_manifest_profile().unwrap().unwrap();
+
+    let world_address = world_local.deterministic_world_address().unwrap();
+
+    // Get ERC20 token contract address
+    let erc20_address = manifest
+        .external_contracts
+        .iter()
+        .find(|c| c.contract_name == "ERC20Token")
+        .unwrap()
+        .address;
+
+    let world = WorldContract::new(world_address, &account);
+
+    // Grant writer permission
+    let res = world
+        .grant_writer(
+            &compute_bytearray_hash("ns"),
+            &ContractAddress(erc20_address),
+        )
+        .send_with_cfg(&TxnConfig::init_wait())
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(res.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Mint 1000 tokens to account 1
+    let mint_amount = Felt::from(1000);
+    let tx = &account
+        .execute_v3(vec![Call {
+            to: erc20_address,
+            selector: get_selector_from_name("mint").unwrap(),
+            calldata: vec![mint_amount, Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Mint 500 more tokens to account 2
+    let mint_amount2 = Felt::from(500);
+    let tx = &account2
+        .execute_v3(vec![Call {
+            to: erc20_address,
+            selector: get_selector_from_name("mint").unwrap(),
+            calldata: vec![mint_amount2, Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Burn 200 tokens from account 1
+    let burn_amount = Felt::from(200);
+    let tx = &account
+        .execute_v3(vec![Call {
+            to: erc20_address,
+            selector: get_selector_from_name("burn").unwrap(),
+            calldata: vec![burn_amount, Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Setup database and indexer
+    let tempfile = NamedTempFile::new().unwrap();
+    let path = tempfile.path().to_string_lossy();
+    let options = SqliteConnectOptions::from_str(&path)
+        .unwrap()
+        .create_if_missing(true);
+    let pool = SqlitePoolOptions::new()
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+
+    let (shutdown_tx, _) = broadcast::channel(1);
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
+    tokio::spawn(async move {
+        executor.run().await.unwrap();
+    });
+
+    let contracts = vec![Contract {
+        address: erc20_address,
+        r#type: ContractType::ERC20,
+    }];
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+
+    let _ = bootstrap_engine(db.clone(), cache, provider.clone(), &contracts)
+        .await
+        .unwrap();
+
+    // Give the indexer some time to process all events
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Fetch the actual total supply from the contract via RPC
+    let total_supply_result = provider
+        .call(
+            FunctionCall {
+                contract_address: erc20_address,
+                entry_point_selector: get_selector_from_name("total_supply").unwrap(),
+                calldata: vec![],
+            },
+            BlockId::Tag(BlockTag::Latest),
+        )
+        .await
+        .unwrap();
+
+    let expected_total_supply = U256::from_words(
+        total_supply_result[0].try_into().unwrap(),
+        total_supply_result[1].try_into().unwrap(),
+    );
+
+    let token: Token = sqlx::query_as(
+        format!(
+            "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND (token_id IS NULL OR token_id = '')",
+            erc20_address,
+        )
+        .as_str(),
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        token.total_supply.unwrap(),
+        u256_to_sql_string(&expected_total_supply)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
+async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
+
+    let account = sequencer.account(0);
+    let account2 = sequencer.account(1);
+    let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
+
+    let world_local = metadata.load_dojo_world_local().unwrap();
+    let manifest = metadata.read_dojo_manifest_profile().unwrap().unwrap();
+
+    let world_address = world_local.deterministic_world_address().unwrap();
+
+    // Get ERC721 token contract address
+    let erc721_address = manifest
+        .external_contracts
+        .iter()
+        .find(|c| c.contract_name == "ERC721Token")
+        .unwrap()
+        .address;
+
+    let world = WorldContract::new(world_address, &account);
+
+    // Grant writer permission
+    let res = world
+        .grant_writer(
+            &compute_bytearray_hash("ns"),
+            &ContractAddress(erc721_address),
+        )
+        .send_with_cfg(&TxnConfig::init_wait())
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(res.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Mint NFT token ID 1
+    let tx = &account
+        .execute_v3(vec![Call {
+            to: erc721_address,
+            selector: get_selector_from_name("mint").unwrap(),
+            calldata: vec![Felt::from(1), Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Mint NFT token ID 2
+    let tx = &account2
+        .execute_v3(vec![Call {
+            to: erc721_address,
+            selector: get_selector_from_name("mint").unwrap(),
+            calldata: vec![Felt::from(2), Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Mint NFT token ID 3
+    let tx = &account
+        .execute_v3(vec![Call {
+            to: erc721_address,
+            selector: get_selector_from_name("mint").unwrap(),
+            calldata: vec![Felt::from(3), Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Burn NFT token ID 2
+    let tx = &account2
+        .execute_v3(vec![Call {
+            to: erc721_address,
+            selector: get_selector_from_name("burn").unwrap(),
+            calldata: vec![
+                Felt::from(2), // token_id
+                Felt::ZERO,    // token_id high
+            ],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Setup database and indexer
+    let tempfile = NamedTempFile::new().unwrap();
+    let path = tempfile.path().to_string_lossy();
+    let options = SqliteConnectOptions::from_str(&path)
+        .unwrap()
+        .create_if_missing(true);
+    let pool = SqlitePoolOptions::new()
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+
+    let (shutdown_tx, _) = broadcast::channel(1);
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
+    tokio::spawn(async move {
+        executor.run().await.unwrap();
+    });
+
+    let contracts = vec![Contract {
+        address: erc721_address,
+        r#type: ContractType::ERC721,
+    }];
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+
+    let _ = bootstrap_engine(db.clone(), cache, provider.clone(), &contracts)
+        .await
+        .unwrap();
+
+    // Give the indexer some time to process all events
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Check contract-level total supply (should be 2 NFTs after burning token ID 2)
+    // We track this ourselves since ERC721 doesn't have a total_supply entrypoint
+    let contract_token: Token = sqlx::query_as(
+        format!(
+            "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND (token_id IS NULL OR token_id = '')",
+            erc721_address,
+        )
+        .as_str(),
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        contract_token.total_supply.unwrap(),
+        u256_to_sql_string(&U256::from(2u64)) // 3 minted - 1 burned = 2
+    );
+
+    // Check individual NFT token supplies for existing tokens (should each be 1)
+    for token_id in [1, 3] {
+        // Token ID 2 was burned
+        let nft_token: Token = sqlx::query_as(
+            format!(
+                "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
+                erc721_address,
+                U256::from(token_id as u64)
+            )
+            .as_str(),
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(
+            nft_token.total_supply.unwrap(),
+            u256_to_sql_string(&U256::from(1u64))
+        );
+    }
+
+    // Check that burned token ID 2 has supply 0
+    let burned_token: Token = sqlx::query_as(
+        format!(
+            "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
+            erc721_address,
+            U256::from(2u64)
+        )
+        .as_str(),
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        burned_token.total_supply.unwrap(),
+        u256_to_sql_string(&U256::from(0u64))
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
+async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
+
+    let account = sequencer.account(0);
+    let account2 = sequencer.account(1);
+    let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
+
+    let world_local = metadata.load_dojo_world_local().unwrap();
+    let manifest = metadata.read_dojo_manifest_profile().unwrap().unwrap();
+
+    let world_address = world_local.deterministic_world_address().unwrap();
+
+    // Get ERC1155 token contract address
+    let erc1155_address = manifest
+        .external_contracts
+        .iter()
+        .find(|c| c.contract_name == "ERC1155Token")
+        .unwrap()
+        .address;
+
+    let world = WorldContract::new(world_address, &account);
+
+    // Grant writer permission
+    let res = world
+        .grant_writer(
+            &compute_bytearray_hash("ns"),
+            &ContractAddress(erc1155_address),
+        )
+        .send_with_cfg(&TxnConfig::init_wait())
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(res.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Mint 100 of token ID 1
+    let tx = &account
+        .execute_v3(vec![Call {
+            to: erc1155_address,
+            selector: get_selector_from_name("mint").unwrap(),
+            calldata: vec![Felt::from(1), Felt::ZERO, Felt::from(100), Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Mint 50 more of token ID 1 to account2
+    let tx = &account2
+        .execute_v3(vec![Call {
+            to: erc1155_address,
+            selector: get_selector_from_name("mint").unwrap(),
+            calldata: vec![Felt::from(1), Felt::ZERO, Felt::from(50), Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Mint 200 of token ID 2
+    let tx = &account
+        .execute_v3(vec![Call {
+            to: erc1155_address,
+            selector: get_selector_from_name("mint").unwrap(),
+            calldata: vec![Felt::from(2), Felt::ZERO, Felt::from(200), Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Burn 30 of token ID 1 from account
+    let tx = &account
+        .execute_v3(vec![Call {
+            to: erc1155_address,
+            selector: get_selector_from_name("burn").unwrap(),
+            calldata: vec![Felt::from(1), Felt::ZERO, Felt::from(30), Felt::ZERO],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    // Setup database and indexer
+    let tempfile = NamedTempFile::new().unwrap();
+    let path = tempfile.path().to_string_lossy();
+    let options = SqliteConnectOptions::from_str(&path)
+        .unwrap()
+        .create_if_missing(true);
+    let pool = SqlitePoolOptions::new()
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+
+    let (shutdown_tx, _) = broadcast::channel(1);
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
+    tokio::spawn(async move {
+        executor.run().await.unwrap();
+    });
+
+    let contracts = vec![Contract {
+        address: erc1155_address,
+        r#type: ContractType::ERC1155,
+    }];
+    let db = Sql::new(pool.clone(), sender.clone(), &contracts)
+        .await
+        .unwrap();
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+
+    let _ = bootstrap_engine(db.clone(), cache, provider.clone(), &contracts)
+        .await
+        .unwrap();
+
+    // Give the indexer some time to process all events
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Calculate expected supplies based on our transactions
+    // Token ID 1: 100 + 50 - 30 = 120
+    // Token ID 2: 200
+    let expected_token1_supply = U256::from(120u64);
+    let expected_token2_supply = U256::from(200u64);
+
+    // Check contract-level total supply (sum of all token supplies)
+    let expected_contract_total = expected_token1_supply + expected_token2_supply;
+
+    let contract_token: Token = sqlx::query_as(
+        format!(
+            "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND (token_id IS NULL OR token_id = '')",
+            erc1155_address
+        )
+        .as_str(),
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        contract_token.total_supply.unwrap(),
+        u256_to_sql_string(&expected_contract_total)
+    );
+
+    // Check token ID 1 total supply
+    let token1: Token = sqlx::query_as(
+        format!(
+            "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
+            erc1155_address,
+            U256::from(1u64)
+        )
+        .as_str(),
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        token1.total_supply.unwrap(),
+        u256_to_sql_string(&expected_token1_supply)
+    );
+
+    // Check token ID 2 total supply
+    let token2: Token = sqlx::query_as(
+        format!(
+            "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
+            erc1155_address,
+            U256::from(2u64)
+        )
+        .as_str(),
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        token2.total_supply.unwrap(),
+        u256_to_sql_string(&expected_token2_supply)
+    );
 }

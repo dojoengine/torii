@@ -107,6 +107,18 @@ mod ERC1155Token {
         }
 
         #[external(v0)]
+        fn burn(ref self: ContractState, token_id: u256, value: u256) {
+            self
+                .erc1155
+                .update(
+                    starknet::get_caller_address(),
+                    NULL_ADDRESS,
+                    array![token_id].span(),
+                    array![value].span(),
+                );
+        }
+
+        #[external(v0)]
         fn transfer_from(
             ref self: ContractState,
             from: ContractAddress,

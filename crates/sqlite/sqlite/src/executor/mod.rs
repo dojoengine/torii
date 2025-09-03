@@ -7,7 +7,7 @@ use dojo_types::schema::{Struct, Ty};
 use erc::UpdateTokenMetadataQuery;
 use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
-use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
+use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
 use starknet::core::utils::parse_cairo_short_string;
 use starknet::macros::selector;
 use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
@@ -73,6 +73,7 @@ pub struct DeleteEntityQuery {
 #[derive(Debug, Clone)]
 pub struct ApplyBalanceDiffQuery {
     pub balances_diff: HashMap<String, I256>,
+    pub total_supply_diff: HashMap<String, I256>,
     pub cursors: HashMap<Felt, ContractCursor>,
 }
 
@@ -712,7 +713,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
                 let query = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "INSERT INTO tokens (id, contract_address, token_id, name, symbol, decimals, \
-                     metadata) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
+                     metadata, total_supply) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
                 )
                 .bind(felt_and_u256_to_sql_string(
                     &register_nft_token.contract_address,
@@ -723,7 +724,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .bind(&name)
                 .bind(&symbol)
                 .bind(0)
-                .bind(&register_nft_token.metadata);
+                .bind(&register_nft_token.metadata)
+                .bind(u256_to_sql_string(&U256::from(0u8))); // Default to 0, will be updated on mint
 
                 let token = query.fetch_one(&mut **tx).await?;
 
@@ -732,15 +734,16 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             }
             QueryType::RegisterTokenContract(register_token_contract) => {
                 let query = sqlx::query_as::<_, torii_sqlite_types::Token>(
-                    "INSERT INTO tokens (id, contract_address, name, symbol, decimals, metadata) VALUES (?, \
-                     ?, ?, ?, ?, ?) RETURNING *",
+                    "INSERT INTO tokens (id, contract_address, name, symbol, decimals, metadata, total_supply) VALUES (?, \
+                     ?, ?, ?, ?, ?, ?) RETURNING *",
                 )
                 .bind(felt_to_sql_string(&register_token_contract.contract_address))
                 .bind(felt_to_sql_string(&register_token_contract.contract_address))
                 .bind(&register_token_contract.name)
                 .bind(&register_token_contract.symbol)
                 .bind(register_token_contract.decimals)
-                .bind(&register_token_contract.metadata);
+                .bind(&register_token_contract.metadata)
+                .bind(u256_to_sql_string(&U256::from(0u8))); // Initialize total_supply to 0 for all contracts
 
                 let token = query.fetch_one(&mut **tx).await?;
                 info!(target: LOG_TARGET, name = %register_token_contract.name, symbol = %register_token_contract.symbol, contract_address = %token.contract_address, "Registered token contract.");

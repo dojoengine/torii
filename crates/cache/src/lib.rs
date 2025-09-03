@@ -38,6 +38,9 @@ pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
 
     /// Get the balances diff.
     async fn balances_diff(&self) -> HashMap<String, I256>;
+
+    /// Get the total supply diff.
+    async fn total_supply_diff(&self) -> HashMap<String, I256>;
 }
 
 #[async_trait]
@@ -104,6 +107,14 @@ impl ReadOnlyCache for InMemoryCache {
             .map(|t| (t.key().clone(), *t.value()))
             .collect()
     }
+
+    async fn total_supply_diff(&self) -> HashMap<String, I256> {
+        self.erc_cache
+            .total_supply_diff
+            .iter()
+            .map(|t| (t.key().clone(), *t.value()))
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -123,9 +134,12 @@ impl Cache for InMemoryCache {
     async fn clear_balances_diff(&self) {
         self.erc_cache.balances_diff.clear();
         self.erc_cache.balances_diff.shrink_to_fit();
+        self.erc_cache.total_supply_diff.clear();
+        self.erc_cache.total_supply_diff.shrink_to_fit();
     }
 
     async fn update_balance_diff(&self, token_id: &str, from: Felt, to: Felt, value: U256) {
+        // Track individual balance changes
         if from != Felt::ZERO {
             // from/token_id
             let from_balance_id = format!("{:#x}/{}", from, token_id);
@@ -146,6 +160,79 @@ impl Cache for InMemoryCache {
                 .entry(to_balance_id)
                 .or_default();
             *to_balance += I256::from(value);
+        }
+
+        // Track total supply changes based on token type
+        // Schema:
+        // - ERC-20: total_supply at contract level (sum of all tokens)
+        // - ERC-721: total_supply at contract level (count of unique NFTs)
+        // - ERC-1155: total_supply per token ID
+
+        if token_id.contains(':') {
+            // This is an NFT token (ERC721/ERC1155)
+            // Format: "contract_address:token_id"
+            let parts: Vec<&str> = token_id.split(':').collect();
+            let contract_address = parts[0];
+
+            // Track supply changes
+            if from == Felt::ZERO && to != Felt::ZERO {
+                // Minting
+                // For ERC-1155: track supply per token_id (the full token_id string)
+                // For ERC-721: each token has supply of 1, track count at contract level
+                let mut supply_diff = self
+                    .erc_cache
+                    .total_supply_diff
+                    .entry(token_id.to_string())
+                    .or_default();
+                *supply_diff += I256::from(value);
+
+                // Also track contract-level supply
+                // For ERC-721: count of unique NFTs (value is always 1)
+                // For ERC-1155: total sum of all token supplies
+                let mut contract_supply_diff = self
+                    .erc_cache
+                    .total_supply_diff
+                    .entry(contract_address.to_string())
+                    .or_default();
+                *contract_supply_diff += I256::from(value);
+            } else if from != Felt::ZERO && to == Felt::ZERO {
+                // Burning
+                let mut supply_diff = self
+                    .erc_cache
+                    .total_supply_diff
+                    .entry(token_id.to_string())
+                    .or_default();
+                *supply_diff -= I256::from(value);
+
+                // Also track contract-level supply
+                // For ERC-721: count of unique NFTs (value is always 1)
+                // For ERC-1155: total sum of all token supplies
+                let mut contract_supply_diff = self
+                    .erc_cache
+                    .total_supply_diff
+                    .entry(contract_address.to_string())
+                    .or_default();
+                *contract_supply_diff -= I256::from(value);
+            }
+        } else {
+            // This is an ERC20 token, track supply changes at contract level
+            if from == Felt::ZERO && to != Felt::ZERO {
+                // Minting - increase total supply by amount
+                let mut supply_diff = self
+                    .erc_cache
+                    .total_supply_diff
+                    .entry(token_id.to_string())
+                    .or_default();
+                *supply_diff += I256::from(value);
+            } else if from != Felt::ZERO && to == Felt::ZERO {
+                // Burning - decrease total supply by amount
+                let mut supply_diff = self
+                    .erc_cache
+                    .total_supply_diff
+                    .entry(token_id.to_string())
+                    .or_default();
+                *supply_diff -= I256::from(value);
+            }
         }
     }
 }
@@ -226,6 +313,8 @@ pub enum TokenState {
 #[derive(Debug)]
 pub struct ErcCache {
     pub balances_diff: DashMap<String, I256>,
+    // Track total supply changes for ERC20 tokens (contract_address -> supply_diff)
+    pub total_supply_diff: DashMap<String, I256>,
     // the registry is a map of token_id to a mutex that is used to track if the token is registered
     // we need a mutex for the token state to prevent race conditions in case of multiple token regs
     pub token_id_registry: DashMap<String, TokenState>,
@@ -238,6 +327,7 @@ impl ErcCache {
 
         Ok(Self {
             balances_diff: DashMap::new(),
+            total_supply_diff: DashMap::new(),
             token_id_registry: token_id_registry
                 .iter()
                 .map(|token_id| (token_id.clone(), TokenState::Registered))
