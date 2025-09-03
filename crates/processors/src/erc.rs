@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use cainome_cairo_serde::{ByteArray, CairoSerde};
 use data_url::{mime::Mime, DataUrl};
@@ -24,6 +24,10 @@ use crate::{
 #[allow(dead_code)]
 const SQL_FELT_DELIMITER: &str = "/";
 
+// Retry configuration constants
+const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
+const PROVIDER_MAX_RETRIES: u32 = 5;
+
 #[allow(dead_code)]
 pub fn felts_to_sql_string(felts: &[Felt]) -> String {
     felts
@@ -44,6 +48,246 @@ pub fn felt_and_u256_to_sql_string(felt: &Felt, u256: &U256) -> String {
 
 pub fn u256_to_sql_string(u256: &U256) -> String {
     format!("{:#064x}", u256)
+}
+
+/// Try to fetch contract metadata (name, symbol, decimals) with retry logic
+async fn try_fetch_contract_metadata_sequence<P: Provider + Sync>(
+    provider: &P,
+    contract_address: Felt,
+    is_erc20: bool,
+) -> Result<Option<(String, String, u8)>, starknet::providers::ProviderError> {
+    let mut retries = 0;
+    let mut backoff = INITIAL_BACKOFF;
+    let block_id = BlockId::Tag(BlockTag::PreConfirmed);
+
+    loop {
+        let mut requests = vec![
+            ProviderRequestData::Call(CallRequest {
+                request: FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("name"),
+                    calldata: vec![],
+                },
+                block_id,
+            }),
+            ProviderRequestData::Call(CallRequest {
+                request: FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("symbol"),
+                    calldata: vec![],
+                },
+                block_id,
+            }),
+        ];
+
+        if is_erc20 {
+            requests.push(ProviderRequestData::Call(CallRequest {
+                request: FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("decimals"),
+                    calldata: vec![],
+                },
+                block_id,
+            }));
+        }
+
+        match provider.batch_requests(requests).await {
+            Ok(results) => {
+                // Parse name
+                let name = match &results[0] {
+                    ProviderResponseData::Call(name) if name.len() == 1 => {
+                        parse_cairo_short_string(&name[0]).unwrap_or_default()
+                    }
+                    ProviderResponseData::Call(name) => ByteArray::cairo_deserialize(name, 0)
+                        .ok()
+                        .and_then(|ba| ba.to_string().ok())
+                        .unwrap_or_default(),
+                    _ => String::new(),
+                };
+
+                // Parse symbol
+                let symbol = match &results[1] {
+                    ProviderResponseData::Call(symbol) if symbol.len() == 1 => {
+                        parse_cairo_short_string(&symbol[0]).unwrap_or_default()
+                    }
+                    ProviderResponseData::Call(symbol) => ByteArray::cairo_deserialize(symbol, 0)
+                        .ok()
+                        .and_then(|ba| ba.to_string().ok())
+                        .unwrap_or_default(),
+                    _ => String::new(),
+                };
+
+                // Parse decimals
+                let decimals = if is_erc20 {
+                    match &results[2] {
+                        ProviderResponseData::Call(decimals) => {
+                            u8::cairo_deserialize(decimals, 0).unwrap_or(0)
+                        }
+                        _ => 0,
+                    }
+                } else {
+                    0
+                };
+
+                return Ok(Some((name, symbol, decimals)));
+            }
+            Err(e) => {
+                if retries >= PROVIDER_MAX_RETRIES {
+                    return Ok(None);
+                }
+                debug!(
+                    error = ?e,
+                    retry = retries + 1,
+                    contract_address = format!("{:#x}", contract_address),
+                    "Contract metadata fetch failed, retrying"
+                );
+                tokio::time::sleep(backoff).await;
+                retries += 1;
+                backoff *= 2;
+            }
+        }
+    }
+}
+
+/// Try to fetch contract URI using different method names, with retry logic for the entire sequence
+async fn try_fetch_contract_uri_sequence<P: Provider + Sync>(
+    provider: &P,
+    contract_address: Felt,
+    block_id: BlockId,
+) -> Result<Option<Vec<Felt>>, starknet::providers::ProviderError> {
+    let mut retries = 0;
+    let mut backoff = INITIAL_BACKOFF;
+
+    loop {
+        // Try all URI methods in sequence
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("contract_uri"),
+                    calldata: vec![],
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("contractURI"),
+                    calldata: vec![],
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("uri"),
+                    calldata: vec![],
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        // All methods failed, check if we should retry
+        if retries >= PROVIDER_MAX_RETRIES {
+            return Ok(None);
+        }
+
+        debug!(
+            retry = retries + 1,
+            contract_address = format!("{:#x}", contract_address),
+            "All contract URI methods failed, retrying sequence"
+        );
+        tokio::time::sleep(backoff).await;
+        retries += 1;
+        backoff *= 2;
+    }
+}
+
+/// Try to fetch token URI using different method names, with retry logic for the entire sequence
+async fn try_fetch_token_uri_sequence<P: Provider + Sync>(
+    provider: &P,
+    contract_address: Felt,
+    token_id: U256,
+    block_id: BlockId,
+) -> Result<Option<Vec<Felt>>, starknet::providers::ProviderError> {
+    let mut retries = 0;
+    let mut backoff = INITIAL_BACKOFF;
+    let calldata = vec![token_id.low().into(), token_id.high().into()];
+
+    loop {
+        // Try all URI methods in sequence
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("token_uri"),
+                    calldata: calldata.clone(),
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("tokenURI"),
+                    calldata: calldata.clone(),
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        if let Ok(result) = provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector!("uri"),
+                    calldata: calldata.clone(),
+                },
+                block_id,
+            )
+            .await
+        {
+            return Ok(Some(result));
+        }
+
+        // All methods failed, check if we should retry
+        if retries >= PROVIDER_MAX_RETRIES {
+            return Ok(None);
+        }
+
+        debug!(
+            retry = retries + 1,
+            contract_address = format!("{:#x}", contract_address),
+            token_id = %token_id,
+            "All token URI methods failed, retrying sequence"
+        );
+        tokio::time::sleep(backoff).await;
+        retries += 1;
+        backoff *= 2;
+    }
 }
 
 pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
@@ -134,82 +378,11 @@ pub async fn fetch_contract_metadata<P: Provider + Sync>(
     contract_address: Felt,
     is_erc20: bool,
 ) -> Result<(String, String, u8, Option<String>), TokenMetadataError> {
-    let block_id = BlockId::Tag(BlockTag::PreConfirmed);
-    let mut requests = vec![
-        ProviderRequestData::Call(CallRequest {
-            request: FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("name"),
-                calldata: vec![],
-            },
-            block_id,
-        }),
-        ProviderRequestData::Call(CallRequest {
-            request: FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("symbol"),
-                calldata: vec![],
-            },
-            block_id,
-        }),
-    ];
-    // ERC20 metadata has decimals
-    if is_erc20 {
-        requests.push(ProviderRequestData::Call(CallRequest {
-            request: FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("decimals"),
-                calldata: vec![],
-            },
-            block_id,
-        }));
-    }
-
-    let (name, symbol, decimals) = match provider.batch_requests(requests).await {
-        Ok(results) => {
-            // Parse name
-            let name = match &results[0] {
-                ProviderResponseData::Call(name) if name.len() == 1 => {
-                    parse_cairo_short_string(&name[0]).map_err(|e| {
-                        TokenMetadataError::Parse(ParseError::ParseCairoShortString(e))
-                    })?
-                }
-                ProviderResponseData::Call(name) => ByteArray::cairo_deserialize(name, 0)
-                    .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
-                    .to_string()
-                    .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
-                _ => return Err(TokenMetadataError::InvalidTokenName),
-            };
-
-            // Parse symbol
-            let symbol = match &results[1] {
-                ProviderResponseData::Call(symbol) if symbol.len() == 1 => {
-                    parse_cairo_short_string(&symbol[0]).map_err(|e| {
-                        TokenMetadataError::Parse(ParseError::ParseCairoShortString(e))
-                    })?
-                }
-                ProviderResponseData::Call(symbol) => ByteArray::cairo_deserialize(symbol, 0)
-                    .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?
-                    .to_string()
-                    .map_err(|e| TokenMetadataError::Parse(ParseError::FromUtf8(e)))?,
-                _ => return Err(TokenMetadataError::InvalidTokenSymbol),
-            };
-
-            // Parse decimals
-            let decimals = if is_erc20 {
-                match &results[2] {
-                    ProviderResponseData::Call(decimals) => u8::cairo_deserialize(decimals, 0)
-                        .map_err(|e| TokenMetadataError::Parse(ParseError::CairoSerdeError(e)))?,
-                    _ => return Err(TokenMetadataError::InvalidTokenDecimals),
-                }
-            } else {
-                0
-            };
-
-            (name, symbol, decimals)
-        }
-        Err(_) => (String::new(), String::new(), 0),
-    };
+    let (name, symbol, decimals) =
+        match try_fetch_contract_metadata_sequence(provider, contract_address, is_erc20).await {
+            Ok(Some(metadata)) => metadata,
+            Ok(None) | Err(_) => (String::new(), String::new(), 0),
+        };
 
     let metadata = if let Some(uri) = fetch_contract_uri(provider, contract_address).await? {
         fetch_metadata(&uri)
@@ -227,45 +400,13 @@ pub async fn fetch_contract_uri<P: Provider + Sync>(
     provider: &P,
     contract_address: Felt,
 ) -> Result<Option<String>, TokenMetadataError> {
-    let contract_uri = if let Ok(contract_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("contract_uri"),
-                calldata: vec![],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
-    {
-        contract_uri
-    } else if let Ok(contract_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("contractURI"),
-                calldata: vec![],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
-    {
-        contract_uri
-    } else if let Ok(token_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("uri"),
-                calldata: vec![],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
-    {
-        token_uri
-    } else {
-        return Ok(None);
-    };
+    let block_id = BlockId::Tag(BlockTag::PreConfirmed);
+    let contract_uri =
+        match try_fetch_contract_uri_sequence(provider, contract_address, block_id).await {
+            Ok(Some(uri)) => uri,
+            Ok(None) => return Ok(None),
+            Err(_) => return Ok(None),
+        };
 
     let contract_uri = if let Ok(byte_array) = ByteArray::cairo_deserialize(&contract_uri, 0) {
         byte_array
@@ -295,50 +436,19 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
     contract_address: Felt,
     token_id: U256,
 ) -> Result<String, TokenMetadataError> {
-    let token_uri = if let Ok(token_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("token_uri"),
-                calldata: vec![token_id.low().into(), token_id.high().into()],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
-    {
-        token_uri
-    } else if let Ok(token_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("tokenURI"),
-                calldata: vec![token_id.low().into(), token_id.high().into()],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
-    {
-        token_uri
-    } else if let Ok(token_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("uri"),
-                calldata: vec![token_id.low().into(), token_id.high().into()],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
-    {
-        token_uri
-    } else {
-        warn!(
-            contract_address = format!("{:#x}", contract_address),
-            token_id = %token_id,
-            "Error fetching token URI, empty metadata will be used instead.",
-        );
-        return Ok("".to_string());
-    };
+    let block_id = BlockId::Tag(BlockTag::PreConfirmed);
+    let token_uri =
+        match try_fetch_token_uri_sequence(provider, contract_address, token_id, block_id).await {
+            Ok(Some(uri)) => uri,
+            Ok(None) | Err(_) => {
+                warn!(
+                    contract_address = format!("{:#x}", contract_address),
+                    token_id = %token_id,
+                    "Error fetching token URI, empty metadata will be used instead.",
+                );
+                return Ok("".to_string());
+            }
+        };
 
     let mut token_uri = if let Ok(byte_array) = ByteArray::cairo_deserialize(&token_uri, 0) {
         byte_array
