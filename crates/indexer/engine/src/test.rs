@@ -1509,7 +1509,7 @@ async fn test_erc20_total_supply_tracking(sequencer: &RunnerCtx) {
         total_supply_result[0].try_into().unwrap(),
         total_supply_result[1].try_into().unwrap(),
     );
-    
+
     let token: Token = sqlx::query_as(
         format!(
             "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND (token_id IS NULL OR token_id = '')",
@@ -1617,8 +1617,8 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
             to: erc721_address,
             selector: get_selector_from_name("burn").unwrap(),
             calldata: vec![
-                Felt::from(2),      // token_id
-                Felt::ZERO,         // token_id high
+                Felt::from(2), // token_id
+                Felt::ZERO,    // token_id high
             ],
         }])
         .send()
@@ -1685,11 +1685,13 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
     );
 
     // Check individual NFT token supplies for existing tokens (should each be 1)
-    for token_id in [1, 3] {  // Token ID 2 was burned
+    for token_id in [1, 3] {
+        // Token ID 2 was burned
         let nft_token: Token = sqlx::query_as(
             format!(
                 "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
-                erc721_address, U256::from(token_id as u64)
+                erc721_address,
+                U256::from(token_id as u64)
             )
             .as_str(),
         )
@@ -1707,7 +1709,8 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
     let burned_token: Token = sqlx::query_as(
         format!(
             "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
-            erc721_address, U256::from(2u64)
+            erc721_address,
+            U256::from(2u64)
         )
         .as_str(),
     )
@@ -1895,7 +1898,7 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
 
     // Check contract-level total supply (sum of all token supplies)
     let expected_contract_total = expected_token1_supply + expected_token2_supply;
-    
+
     let contract_token: Token = sqlx::query_as(
         format!(
             "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND (token_id IS NULL OR token_id = '')",
@@ -1916,7 +1919,8 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
     let token1: Token = sqlx::query_as(
         format!(
             "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
-            erc1155_address, U256::from(1u64)
+            erc1155_address,
+            U256::from(1u64)
         )
         .as_str(),
     )
@@ -1933,7 +1937,8 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
     let token2: Token = sqlx::query_as(
         format!(
             "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
-            erc1155_address, U256::from(2u64)
+            erc1155_address,
+            U256::from(2u64)
         )
         .as_str(),
     )
