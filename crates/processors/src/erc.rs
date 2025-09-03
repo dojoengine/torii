@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use cainome_cairo_serde::{ByteArray, CairoSerde};
 use data_url::{mime::Mime, DataUrl};
@@ -24,6 +24,10 @@ use crate::{
 #[allow(dead_code)]
 const SQL_FELT_DELIMITER: &str = "/";
 
+// Retry configuration constants
+const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
+const PROVIDER_MAX_RETRIES: u32 = 5;
+
 #[allow(dead_code)]
 pub fn felts_to_sql_string(felts: &[Felt]) -> String {
     felts
@@ -44,6 +48,65 @@ pub fn felt_and_u256_to_sql_string(felt: &Felt, u256: &U256) -> String {
 
 pub fn u256_to_sql_string(u256: &U256) -> String {
     format!("{:#064x}", u256)
+}
+
+/// Helper function to retry provider calls with exponential backoff
+async fn call_with_retry<P: Provider + Sync>(
+    provider: &P,
+    function_call: FunctionCall,
+    block_id: BlockId,
+) -> Result<Vec<Felt>, starknet::providers::ProviderError> {
+    let mut retries = 0;
+    let mut backoff = INITIAL_BACKOFF;
+
+    loop {
+        match provider.call(function_call.clone(), block_id).await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                if retries >= PROVIDER_MAX_RETRIES {
+                    return Err(e);
+                }
+                debug!(
+                    error = ?e,
+                    retry = retries,
+                    contract_address = format!("{:#x}", function_call.contract_address),
+                    entry_point = format!("{:#x}", function_call.entry_point_selector),
+                    "Provider call failed, retrying after backoff"
+                );
+                tokio::time::sleep(backoff).await;
+                retries += 1;
+                backoff *= 2;
+            }
+        }
+    }
+}
+
+/// Helper function to retry batch requests with exponential backoff
+async fn batch_requests_with_retry<P: Provider + Sync>(
+    provider: &P,
+    requests: Vec<ProviderRequestData>,
+) -> Result<Vec<ProviderResponseData>, starknet::providers::ProviderError> {
+    let mut retries = 0;
+    let mut backoff = INITIAL_BACKOFF;
+
+    loop {
+        match provider.batch_requests(requests.clone()).await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                if retries >= PROVIDER_MAX_RETRIES {
+                    return Err(e);
+                }
+                debug!(
+                    error = ?e,
+                    retry = retries,
+                    "Batch provider request failed, retrying after backoff"
+                );
+                tokio::time::sleep(backoff).await;
+                retries += 1;
+                backoff *= 2;
+            }
+        }
+    }
 }
 
 pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
@@ -165,7 +228,7 @@ pub async fn fetch_contract_metadata<P: Provider + Sync>(
         }));
     }
 
-    let (name, symbol, decimals) = match provider.batch_requests(requests).await {
+    let (name, symbol, decimals) = match batch_requests_with_retry(provider, requests).await {
         Ok(results) => {
             // Parse name
             let name = match &results[0] {
@@ -227,40 +290,41 @@ pub async fn fetch_contract_uri<P: Provider + Sync>(
     provider: &P,
     contract_address: Felt,
 ) -> Result<Option<String>, TokenMetadataError> {
-    let contract_uri = if let Ok(contract_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("contract_uri"),
-                calldata: vec![],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
+    let block_id = BlockId::Tag(BlockTag::PreConfirmed);
+    let contract_uri = if let Ok(contract_uri) = call_with_retry(
+        provider,
+        FunctionCall {
+            contract_address,
+            entry_point_selector: selector!("contract_uri"),
+            calldata: vec![],
+        },
+        block_id,
+    )
+    .await
     {
         contract_uri
-    } else if let Ok(contract_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("contractURI"),
-                calldata: vec![],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
+    } else if let Ok(contract_uri) = call_with_retry(
+        provider,
+        FunctionCall {
+            contract_address,
+            entry_point_selector: selector!("contractURI"),
+            calldata: vec![],
+        },
+        block_id,
+    )
+    .await
     {
         contract_uri
-    } else if let Ok(token_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("uri"),
-                calldata: vec![],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
+    } else if let Ok(token_uri) = call_with_retry(
+        provider,
+        FunctionCall {
+            contract_address,
+            entry_point_selector: selector!("uri"),
+            calldata: vec![],
+        },
+        block_id,
+    )
+    .await
     {
         token_uri
     } else {
@@ -295,40 +359,42 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
     contract_address: Felt,
     token_id: U256,
 ) -> Result<String, TokenMetadataError> {
-    let token_uri = if let Ok(token_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("token_uri"),
-                calldata: vec![token_id.low().into(), token_id.high().into()],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
+    let block_id = BlockId::Tag(BlockTag::PreConfirmed);
+    let calldata = vec![token_id.low().into(), token_id.high().into()];
+    let token_uri = if let Ok(token_uri) = call_with_retry(
+        provider,
+        FunctionCall {
+            contract_address,
+            entry_point_selector: selector!("token_uri"),
+            calldata: calldata.clone(),
+        },
+        block_id,
+    )
+    .await
     {
         token_uri
-    } else if let Ok(token_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("tokenURI"),
-                calldata: vec![token_id.low().into(), token_id.high().into()],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
+    } else if let Ok(token_uri) = call_with_retry(
+        provider,
+        FunctionCall {
+            contract_address,
+            entry_point_selector: selector!("tokenURI"),
+            calldata: calldata.clone(),
+        },
+        block_id,
+    )
+    .await
     {
         token_uri
-    } else if let Ok(token_uri) = provider
-        .call(
-            FunctionCall {
-                contract_address,
-                entry_point_selector: selector!("uri"),
-                calldata: vec![token_id.low().into(), token_id.high().into()],
-            },
-            BlockId::Tag(BlockTag::PreConfirmed),
-        )
-        .await
+    } else if let Ok(token_uri) = call_with_retry(
+        provider,
+        FunctionCall {
+            contract_address,
+            entry_point_selector: selector!("uri"),
+            calldata,
+        },
+        block_id,
+    )
+    .await
     {
         token_uri
     } else {
