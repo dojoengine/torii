@@ -4,11 +4,11 @@ use cainome_cairo_serde::{ByteArray, CairoSerde};
 use data_url::{mime::Mime, DataUrl};
 use starknet::{
     core::{
-        types::{requests::CallRequest, BlockId, BlockTag, FunctionCall, U256},
+        types::{requests::CallRequest, BlockId, BlockTag, FunctionCall, StarknetError, U256},
         utils::parse_cairo_short_string,
     },
     macros::selector,
-    providers::{Provider, ProviderRequestData, ProviderResponseData},
+    providers::{Provider, ProviderError, ProviderRequestData, ProviderResponseData},
 };
 use starknet_crypto::Felt;
 use tokio::sync::Semaphore;
@@ -27,6 +27,16 @@ const SQL_FELT_DELIMITER: &str = "/";
 // Retry configuration constants
 const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
 const PROVIDER_MAX_RETRIES: u32 = 5;
+
+/// Determines if a provider error is permanent (should not be retried) or transient (can be retried)
+fn is_permanent_error(error: &ProviderError) -> bool {
+    match error {
+        ProviderError::StarknetError(StarknetError::EntrypointNotFound) => true,
+        ProviderError::StarknetError(StarknetError::ContractNotFound) => true,
+        // Add other permanent errors as needed
+        _ => false,
+    }
+}
 
 #[allow(dead_code)]
 pub fn felts_to_sql_string(felts: &[Felt]) -> String {
@@ -132,6 +142,15 @@ async fn try_fetch_contract_metadata_sequence<P: Provider + Sync>(
                 return Ok(Some((name, symbol, decimals)));
             }
             Err(e) => {
+                if is_permanent_error(&e) {
+                    debug!(
+                        error = ?e,
+                        contract_address = format!("{:#x}", contract_address),
+                        "Permanent error encountered, not retrying"
+                    );
+                    return Ok(None);
+                }
+
                 if retries >= PROVIDER_MAX_RETRIES {
                     return Ok(None);
                 }
@@ -157,52 +176,107 @@ async fn try_fetch_contract_uri_sequence<P: Provider + Sync>(
 ) -> Result<Option<Vec<Felt>>, starknet::providers::ProviderError> {
     let mut retries = 0;
     let mut backoff = INITIAL_BACKOFF;
+    let mut permanent_failures = std::collections::HashSet::new();
 
     loop {
-        // Try all URI methods in sequence
-        if let Ok(result) = provider
-            .call(
-                FunctionCall {
-                    contract_address,
-                    entry_point_selector: selector!("contract_uri"),
-                    calldata: vec![],
-                },
-                block_id,
-            )
-            .await
-        {
-            return Ok(Some(result));
+        let mut has_transient_error = false;
+
+        // Try contract_uri if not permanently failed
+        if !permanent_failures.contains("contract_uri") {
+            match provider
+                .call(
+                    FunctionCall {
+                        contract_address,
+                        entry_point_selector: selector!("contract_uri"),
+                        calldata: vec![],
+                    },
+                    block_id,
+                )
+                .await
+            {
+                Ok(result) => return Ok(Some(result)),
+                Err(e) if is_permanent_error(&e) => {
+                    debug!(
+                        error = ?e,
+                        contract_address = format!("{:#x}", contract_address),
+                        method = "contract_uri",
+                        "Permanent error, skipping this method"
+                    );
+                    permanent_failures.insert("contract_uri");
+                }
+                Err(_) => has_transient_error = true,
+            }
         }
 
-        if let Ok(result) = provider
-            .call(
-                FunctionCall {
-                    contract_address,
-                    entry_point_selector: selector!("contractURI"),
-                    calldata: vec![],
-                },
-                block_id,
-            )
-            .await
-        {
-            return Ok(Some(result));
+        // Try contractURI if not permanently failed
+        if !permanent_failures.contains("contractURI") {
+            match provider
+                .call(
+                    FunctionCall {
+                        contract_address,
+                        entry_point_selector: selector!("contractURI"),
+                        calldata: vec![],
+                    },
+                    block_id,
+                )
+                .await
+            {
+                Ok(result) => return Ok(Some(result)),
+                Err(e) if is_permanent_error(&e) => {
+                    debug!(
+                        error = ?e,
+                        contract_address = format!("{:#x}", contract_address),
+                        method = "contractURI",
+                        "Permanent error, skipping this method"
+                    );
+                    permanent_failures.insert("contractURI");
+                }
+                Err(_) => has_transient_error = true,
+            }
         }
 
-        if let Ok(result) = provider
-            .call(
-                FunctionCall {
-                    contract_address,
-                    entry_point_selector: selector!("uri"),
-                    calldata: vec![],
-                },
-                block_id,
-            )
-            .await
-        {
-            return Ok(Some(result));
+        // Try uri if not permanently failed
+        if !permanent_failures.contains("uri") {
+            match provider
+                .call(
+                    FunctionCall {
+                        contract_address,
+                        entry_point_selector: selector!("uri"),
+                        calldata: vec![],
+                    },
+                    block_id,
+                )
+                .await
+            {
+                Ok(result) => return Ok(Some(result)),
+                Err(e) if is_permanent_error(&e) => {
+                    debug!(
+                        error = ?e,
+                        contract_address = format!("{:#x}", contract_address),
+                        method = "uri",
+                        "Permanent error, skipping this method"
+                    );
+                    permanent_failures.insert("uri");
+                }
+                Err(_) => has_transient_error = true,
+            }
         }
 
-        // All methods failed, check if we should retry
+        // If all methods have permanent failures, return None
+        if permanent_failures.len() == 3 {
+            debug!(
+                contract_address = format!("{:#x}", contract_address),
+                "All contract URI methods have permanent failures"
+            );
+            return Ok(None);
+        }
+
+        // If no transient errors occurred, return None (all remaining methods succeeded or had permanent errors)
+        if !has_transient_error {
+            return Ok(None);
+        }
+
+        // Check if we should retry for transient errors
         if retries >= PROVIDER_MAX_RETRIES {
             return Ok(None);
         }
@@ -210,7 +284,8 @@ async fn try_fetch_contract_uri_sequence<P: Provider + Sync>(
         debug!(
             retry = retries + 1,
             contract_address = format!("{:#x}", contract_address),
-            "All contract URI methods failed, retrying sequence"
+            permanent_failures = ?permanent_failures,
+            "Contract URI methods had transient errors, retrying sequence"
         );
         tokio::time::sleep(backoff).await;
         retries += 1;
@@ -228,52 +303,111 @@ async fn try_fetch_token_uri_sequence<P: Provider + Sync>(
     let mut retries = 0;
     let mut backoff = INITIAL_BACKOFF;
     let calldata = vec![token_id.low().into(), token_id.high().into()];
+    let mut permanent_failures = std::collections::HashSet::new();
 
     loop {
-        // Try all URI methods in sequence
-        if let Ok(result) = provider
-            .call(
-                FunctionCall {
-                    contract_address,
-                    entry_point_selector: selector!("token_uri"),
-                    calldata: calldata.clone(),
-                },
-                block_id,
-            )
-            .await
-        {
-            return Ok(Some(result));
+        let mut has_transient_error = false;
+
+        // Try token_uri if not permanently failed
+        if !permanent_failures.contains("token_uri") {
+            match provider
+                .call(
+                    FunctionCall {
+                        contract_address,
+                        entry_point_selector: selector!("token_uri"),
+                        calldata: calldata.clone(),
+                    },
+                    block_id,
+                )
+                .await
+            {
+                Ok(result) => return Ok(Some(result)),
+                Err(e) if is_permanent_error(&e) => {
+                    debug!(
+                        error = ?e,
+                        contract_address = format!("{:#x}", contract_address),
+                        token_id = %token_id,
+                        method = "token_uri",
+                        "Permanent error, skipping this method"
+                    );
+                    permanent_failures.insert("token_uri");
+                }
+                Err(_) => has_transient_error = true,
+            }
         }
 
-        if let Ok(result) = provider
-            .call(
-                FunctionCall {
-                    contract_address,
-                    entry_point_selector: selector!("tokenURI"),
-                    calldata: calldata.clone(),
-                },
-                block_id,
-            )
-            .await
-        {
-            return Ok(Some(result));
+        // Try tokenURI if not permanently failed
+        if !permanent_failures.contains("tokenURI") {
+            match provider
+                .call(
+                    FunctionCall {
+                        contract_address,
+                        entry_point_selector: selector!("tokenURI"),
+                        calldata: calldata.clone(),
+                    },
+                    block_id,
+                )
+                .await
+            {
+                Ok(result) => return Ok(Some(result)),
+                Err(e) if is_permanent_error(&e) => {
+                    debug!(
+                        error = ?e,
+                        contract_address = format!("{:#x}", contract_address),
+                        token_id = %token_id,
+                        method = "tokenURI",
+                        "Permanent error, skipping this method"
+                    );
+                    permanent_failures.insert("tokenURI");
+                }
+                Err(_) => has_transient_error = true,
+            }
         }
 
-        if let Ok(result) = provider
-            .call(
-                FunctionCall {
-                    contract_address,
-                    entry_point_selector: selector!("uri"),
-                    calldata: calldata.clone(),
-                },
-                block_id,
-            )
-            .await
-        {
-            return Ok(Some(result));
+        // Try uri if not permanently failed
+        if !permanent_failures.contains("uri") {
+            match provider
+                .call(
+                    FunctionCall {
+                        contract_address,
+                        entry_point_selector: selector!("uri"),
+                        calldata: calldata.clone(),
+                    },
+                    block_id,
+                )
+                .await
+            {
+                Ok(result) => return Ok(Some(result)),
+                Err(e) if is_permanent_error(&e) => {
+                    debug!(
+                        error = ?e,
+                        contract_address = format!("{:#x}", contract_address),
+                        token_id = %token_id,
+                        method = "uri",
+                        "Permanent error, skipping this method"
+                    );
+                    permanent_failures.insert("uri");
+                }
+                Err(_) => has_transient_error = true,
+            }
         }
 
-        // All methods failed, check if we should retry
+        // If all methods have permanent failures, return None
+        if permanent_failures.len() == 3 {
+            debug!(
+                contract_address = format!("{:#x}", contract_address),
+                token_id = %token_id,
+                "All token URI methods have permanent failures"
+            );
+            return Ok(None);
+        }
+
+        // If no transient errors occurred, return None (all remaining methods succeeded or had permanent errors)
+        if !has_transient_error {
+            return Ok(None);
+        }
+
+        // Check if we should retry for transient errors
         if retries >= PROVIDER_MAX_RETRIES {
             return Ok(None);
         }
@@ -282,7 +416,8 @@ async fn try_fetch_token_uri_sequence<P: Provider + Sync>(
             retry = retries + 1,
             contract_address = format!("{:#x}", contract_address),
             token_id = %token_id,
-            "All token URI methods failed, retrying sequence"
+            permanent_failures = ?permanent_failures,
+            "Token URI methods had transient errors, retrying sequence"
         );
         tokio::time::sleep(backoff).await;
         retries += 1;
