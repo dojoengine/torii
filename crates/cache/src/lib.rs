@@ -139,27 +139,33 @@ impl Cache for InMemoryCache {
     }
 
     async fn update_balance_diff(&self, token_id: &str, from: Felt, to: Felt, value: U256) {
+        let value_i256 = I256::from(value);
+        let negative_value_i256 = I256 {
+            value,
+            is_negative: true,
+        };
+
         // Track individual balance changes
         if from != Felt::ZERO {
             // from/token_id
             let from_balance_id = format!("{:#x}/{}", from, token_id);
-            let mut from_balance = self
-                .erc_cache
+            // Use atomic operation to avoid deadlocks
+            self.erc_cache
                 .balances_diff
                 .entry(from_balance_id)
-                .or_default();
-            *from_balance -= I256::from(value);
+                .and_modify(|balance| *balance -= value_i256)
+                .or_insert(negative_value_i256);
         }
 
         if to != Felt::ZERO {
             // to/token_id
             let to_balance_id = format!("{:#x}/{}", to, token_id);
-            let mut to_balance = self
-                .erc_cache
+            // Use atomic operation to avoid deadlocks
+            self.erc_cache
                 .balances_diff
                 .entry(to_balance_id)
-                .or_default();
-            *to_balance += I256::from(value);
+                .and_modify(|balance| *balance += value_i256)
+                .or_insert(value_i256);
         }
 
         // Track total supply changes based on token type
@@ -179,59 +185,53 @@ impl Cache for InMemoryCache {
                 // Minting
                 // For ERC-1155: track supply per token_id (the full token_id string)
                 // For ERC-721: each token has supply of 1, track count at contract level
-                let mut supply_diff = self
-                    .erc_cache
+                self.erc_cache
                     .total_supply_diff
                     .entry(token_id.to_string())
-                    .or_default();
-                *supply_diff += I256::from(value);
+                    .and_modify(|supply| *supply += value_i256)
+                    .or_insert(value_i256);
 
                 // Also track contract-level supply
                 // For ERC-721: count of unique NFTs (value is always 1)
                 // For ERC-1155: total sum of all token supplies
-                let mut contract_supply_diff = self
-                    .erc_cache
+                self.erc_cache
                     .total_supply_diff
                     .entry(contract_address.to_string())
-                    .or_default();
-                *contract_supply_diff += I256::from(value);
+                    .and_modify(|supply| *supply += value_i256)
+                    .or_insert(value_i256);
             } else if from != Felt::ZERO && to == Felt::ZERO {
                 // Burning
-                let mut supply_diff = self
-                    .erc_cache
+                self.erc_cache
                     .total_supply_diff
                     .entry(token_id.to_string())
-                    .or_default();
-                *supply_diff -= I256::from(value);
+                    .and_modify(|supply| *supply -= value_i256)
+                    .or_insert(negative_value_i256);
 
                 // Also track contract-level supply
                 // For ERC-721: count of unique NFTs (value is always 1)
                 // For ERC-1155: total sum of all token supplies
-                let mut contract_supply_diff = self
-                    .erc_cache
+                self.erc_cache
                     .total_supply_diff
                     .entry(contract_address.to_string())
-                    .or_default();
-                *contract_supply_diff -= I256::from(value);
+                    .and_modify(|supply| *supply -= value_i256)
+                    .or_insert(negative_value_i256);
             }
         } else {
             // This is an ERC20 token, track supply changes at contract level
             if from == Felt::ZERO && to != Felt::ZERO {
                 // Minting - increase total supply by amount
-                let mut supply_diff = self
-                    .erc_cache
+                self.erc_cache
                     .total_supply_diff
                     .entry(token_id.to_string())
-                    .or_default();
-                *supply_diff += I256::from(value);
+                    .and_modify(|supply| *supply += value_i256)
+                    .or_insert(value_i256);
             } else if from != Felt::ZERO && to == Felt::ZERO {
                 // Burning - decrease total supply by amount
-                let mut supply_diff = self
-                    .erc_cache
+                self.erc_cache
                     .total_supply_diff
                     .entry(token_id.to_string())
-                    .or_default();
-                *supply_diff -= I256::from(value);
+                    .and_modify(|supply| *supply -= value_i256)
+                    .or_insert(negative_value_i256);
             }
         }
     }
