@@ -85,8 +85,25 @@ pub(crate) fn match_entity(
                 return false;
             }
 
+            // Check for array indexing syntax like "field[0]"
+            let (member_path, array_index) = if let Some(start) = member_clause.member.find('[') {
+                if let Some(end) = member_clause.member.find(']') {
+                    let field = &member_clause.member[..start];
+                    let index_str = &member_clause.member[start + 1..end];
+                    if let Ok(index) = index_str.parse::<usize>() {
+                        (field, Some(index))
+                    } else {
+                        (member_clause.member.as_str(), None)
+                    }
+                } else {
+                    (member_clause.member.as_str(), None)
+                }
+            } else {
+                (member_clause.member.as_str(), None)
+            };
+
             // Split the member path
-            let parts = member_clause.member.split('.').collect::<Vec<&str>>();
+            let parts = member_path.split('.').collect::<Vec<&str>>();
 
             // Traverse the model structure to find the target member
             let mut current_ty = updated_model.clone();
@@ -156,11 +173,23 @@ pub(crate) fn match_entity(
                             }
                         }
                     }
-                    Ty::ByteArray(_) | Ty::Primitive(_) | Ty::Array(_) => {
+                    Ty::Array(array_ty) | Ty::FixedSizeArray((array_ty, _)) => {
+                        // If we have array indexing, extract the element
+                        if let Some(index) = array_index {
+                            if let Some(element) = array_ty.get(index) {
+                                current_ty = element.clone();
+                            } else {
+                                return false; // Index out of bounds
+                            }
+                        } else {
+                            // Array types without indexing cannot be navigated further
+                            return false;
+                        }
+                    }
+                    Ty::ByteArray(_) | Ty::Primitive(_) => {
                         // These types cannot be navigated further
                         return false;
                     }
-                    Ty::FixedSizeArray(_) => todo!(),
                 }
             }
 
@@ -252,11 +281,49 @@ pub(crate) fn match_entity(
                         _ => false,
                     }
                 }
-                Ty::Struct(_) | Ty::Tuple(_) | Ty::Array(_) => {
+                Ty::Array(array_ty) | Ty::FixedSizeArray((array_ty, _)) => {
+                    // Array operations on whole array (only when no indexing was used)
+                    match (member_clause.operator.clone(), &member_clause.value) {
+                        (ComparisonOperator::Contains, MemberValue::Primitive(value)) => array_ty
+                            .iter()
+                            .any(|elem| matches!(elem, Ty::Primitive(p) if p == value)),
+                        (ComparisonOperator::Contains, MemberValue::String(value)) => array_ty
+                            .iter()
+                            .any(|elem| matches!(elem, Ty::ByteArray(s) if s == value)),
+                        (ComparisonOperator::ContainsAll, MemberValue::List(values)) => {
+                            values.iter().all(|search_val| {
+                                array_ty.iter().any(|elem| match (elem, search_val) {
+                                    (Ty::Primitive(p), MemberValue::Primitive(v)) => p == v,
+                                    (Ty::ByteArray(s), MemberValue::String(v)) => s == v,
+                                    _ => false,
+                                })
+                            })
+                        }
+                        (ComparisonOperator::ContainsAny, MemberValue::List(values)) => {
+                            values.iter().any(|search_val| {
+                                array_ty.iter().any(|elem| match (elem, search_val) {
+                                    (Ty::Primitive(p), MemberValue::Primitive(v)) => p == v,
+                                    (Ty::ByteArray(s), MemberValue::String(v)) => s == v,
+                                    _ => false,
+                                })
+                            })
+                        }
+                        (ComparisonOperator::ArrayLengthEq, MemberValue::Primitive(value)) => value
+                            .as_u32()
+                            .map_or(false, |len| array_ty.len() == len as usize),
+                        (ComparisonOperator::ArrayLengthGt, MemberValue::Primitive(value)) => value
+                            .as_u32()
+                            .map_or(false, |len| array_ty.len() > len as usize),
+                        (ComparisonOperator::ArrayLengthLt, MemberValue::Primitive(value)) => value
+                            .as_u32()
+                            .map_or(false, |len| array_ty.len() < len as usize),
+                        _ => false,
+                    }
+                }
+                Ty::Struct(_) | Ty::Tuple(_) => {
                     // These types are not directly comparable to a MemberValue
                     false
                 }
-                Ty::FixedSizeArray(_) => todo!(),
             }
         }
         Clause::Composite(composite_clause) => match composite_clause.operator {
