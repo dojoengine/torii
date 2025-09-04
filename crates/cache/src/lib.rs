@@ -144,7 +144,7 @@ impl Cache for InMemoryCache {
             value,
             is_negative: true,
         };
-        
+
         // Track individual balance changes
         if from != Felt::ZERO {
             // from/token_id
