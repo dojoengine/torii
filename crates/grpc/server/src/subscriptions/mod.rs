@@ -310,13 +310,13 @@ pub(crate) fn match_entity(
                         }
                         (ComparisonOperator::ArrayLengthEq, MemberValue::Primitive(value)) => value
                             .as_u32()
-                            .map_or(false, |len| array_ty.len() == len as usize),
+                            .is_some_and(|len| array_ty.len() == len as usize),
                         (ComparisonOperator::ArrayLengthGt, MemberValue::Primitive(value)) => value
                             .as_u32()
-                            .map_or(false, |len| array_ty.len() > len as usize),
+                            .is_some_and(|len| array_ty.len() > len as usize),
                         (ComparisonOperator::ArrayLengthLt, MemberValue::Primitive(value)) => value
                             .as_u32()
-                            .map_or(false, |len| array_ty.len() < len as usize),
+                            .is_some_and(|len| array_ty.len() < len as usize),
                         _ => false,
                     }
                 }
