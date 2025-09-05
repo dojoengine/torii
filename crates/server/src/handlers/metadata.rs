@@ -28,7 +28,7 @@ impl<P: Provider + Sync + Send> MetadataHandler<P> {
 #[async_trait::async_trait]
 impl<P: Provider + Sync + Send> Handler for MetadataHandler<P> {
     fn should_handle(&self, req: &Request<Body>) -> bool {
-        req.uri().path().starts_with("/metadata/reindex/") && req.method() == http::Method::POST
+        req.uri().path().starts_with("/metadata/reindex/")
     }
 
     async fn handle(&self, req: Request<Body>, _client_addr: IpAddr) -> Response<Body> {

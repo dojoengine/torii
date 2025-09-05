@@ -102,6 +102,7 @@ impl<P: Provider + Sync + Send + 'static> Proxy<P> {
         graphql_addr: Option<SocketAddr>,
         artifacts_addr: Option<SocketAddr>,
         pool: Arc<SqlitePool>,
+        writable_pool: Arc<SqlitePool>,
         provider: P,
         version_spec: String,
     ) -> Self {
@@ -109,7 +110,7 @@ impl<P: Provider + Sync + Send + 'static> Proxy<P> {
             Box::new(GraphQLHandler::new(graphql_addr)),
             Box::new(GrpcHandler::new(grpc_addr)),
             Box::new(McpHandler::new(pool.clone())),
-            Box::new(MetadataHandler::new(pool.clone(), provider)),
+            Box::new(MetadataHandler::new(writable_pool.clone(), provider)),
             Box::new(SqlHandler::new(pool.clone())),
             Box::new(StaticHandler::new(artifacts_addr)),
         ]));
