@@ -457,7 +457,7 @@ impl Runner {
             None,
             Some(artifacts_addr),
             Arc::new(readonly_pool.clone()),
-            self.args.rpc.to_string(),
+            provider.clone(),
             self.version_spec.clone(),
         );
 
@@ -586,7 +586,7 @@ impl Runner {
 async fn spawn_rebuilding_graphql_server<P: Provider + Sync + Send + Clone + 'static>(
     shutdown_tx: Sender<()>,
     pool: Arc<SqlitePool>,
-    proxy_server: Arc<Proxy>,
+    proxy_server: Arc<Proxy<P>>,
     messaging: Arc<Messaging<P>>,
     storage: Arc<dyn ReadOnlyStorage>,
 ) {

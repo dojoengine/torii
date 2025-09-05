@@ -17,6 +17,7 @@ use hyper_reverse_proxy::ReverseProxy;
 use rustls::{Certificate, PrivateKey, ServerConfig};
 use serde_json::json;
 use sqlx::SqlitePool;
+use starknet::providers::Provider;
 use tokio::sync::RwLock;
 use tokio_rustls::TlsAcceptor;
 use tower::ServiceBuilder;
@@ -78,13 +79,13 @@ pub fn is_websocket_upgrade(req: &Request<Body>) -> bool {
             .unwrap_or(false)
 }
 
-#[derive(Debug)]
-pub struct Proxy {
+pub struct Proxy<P: Provider + Sync + Send + 'static> {
     addr: SocketAddr,
     allowed_origins: Option<Vec<String>>,
     handlers: Arc<RwLock<Vec<Box<dyn Handler>>>>,
     version_spec: String,
     tls_config: Option<Arc<ServerConfig>>,
+    _provider: std::marker::PhantomData<P>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,7 +94,7 @@ pub struct TlsConfig {
     pub key_path: String,
 }
 
-impl Proxy {
+impl<P: Provider + Sync + Send + 'static> Proxy<P> {
     pub fn new(
         addr: SocketAddr,
         allowed_origins: Option<Vec<String>>,
@@ -101,14 +102,14 @@ impl Proxy {
         graphql_addr: Option<SocketAddr>,
         artifacts_addr: Option<SocketAddr>,
         pool: Arc<SqlitePool>,
-        provider_url: String,
+        provider: P,
         version_spec: String,
     ) -> Self {
         let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(vec![
             Box::new(GraphQLHandler::new(graphql_addr)),
             Box::new(GrpcHandler::new(grpc_addr)),
             Box::new(McpHandler::new(pool.clone())),
-            Box::new(MetadataHandler::new(pool.clone(), provider_url)),
+            Box::new(MetadataHandler::new(pool.clone(), provider)),
             Box::new(SqlHandler::new(pool.clone())),
             Box::new(StaticHandler::new(artifacts_addr)),
         ]));
@@ -119,6 +120,7 @@ impl Proxy {
             handlers,
             version_spec,
             tls_config: None,
+            _provider: std::marker::PhantomData,
         }
     }
 
