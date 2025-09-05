@@ -457,7 +457,7 @@ impl Runner {
             None,
             Some(artifacts_addr),
             Arc::new(readonly_pool.clone()),
-            Arc::new(write_pool.clone()),
+            storage.clone(),
             provider.clone(),
             self.version_spec.clone(),
         );

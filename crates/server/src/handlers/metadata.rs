@@ -5,28 +5,27 @@ use std::sync::Arc;
 use crypto_bigint::U256;
 use http::{Request, Response, StatusCode};
 use hyper::Body;
-use sqlx::SqlitePool;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use torii_processors::erc::fetch_token_metadata;
-use torii_sqlite::constants::TOKENS_TABLE;
+use torii_storage::Storage;
 use tracing::{debug, error};
 
 use super::Handler;
 
-pub struct MetadataHandler<P: Provider + Sync + Send> {
-    pool: Arc<SqlitePool>,
+pub struct MetadataHandler<P: Provider + Sync + Send, S: Storage> {
+    storage: Arc<S>,
     provider: P,
 }
 
-impl<P: Provider + Sync + Send> MetadataHandler<P> {
-    pub fn new(pool: Arc<SqlitePool>, provider: P) -> Self {
-        Self { pool, provider }
+impl<P: Provider + Sync + Send, S: Storage> MetadataHandler<P, S> {
+    pub fn new(storage: Arc<S>, provider: P) -> Self {
+        Self { storage, provider }
     }
 }
 
 #[async_trait::async_trait]
-impl<P: Provider + Sync + Send> Handler for MetadataHandler<P> {
+impl<P: Provider + Sync + Send, S: Storage> Handler for MetadataHandler<P, S> {
     fn should_handle(&self, req: &Request<Body>) -> bool {
         req.uri().path().starts_with("/metadata/reindex/")
     }
@@ -123,43 +122,48 @@ impl<P: Provider + Sync + Send> Handler for MetadataHandler<P> {
             }
         };
 
-        // Update metadata in database
-        let result = sqlx::query(&format!(
-            "UPDATE {} SET metadata = ? WHERE id = ?",
-            TOKENS_TABLE
-        ))
-        .bind(&metadata)
-        .bind(&token_key)
-        .execute(self.pool.as_ref())
-        .await;
+        // Update metadata using storage layer
+        let result = self
+            .storage
+            .update_token_metadata(contract_address, Some(token_id), metadata.clone())
+            .await;
 
         match result {
-            Ok(result) => {
-                if result.rows_affected() > 0 {
-                    debug!(
-                        contract_address = format!("{:#x}", contract_address),
-                        token_id = %token_id,
-                        "Successfully updated metadata"
-                    );
-                    Response::builder()
-                        .status(StatusCode::OK)
-                        .header("content-type", "application/json")
-                        .body(Body::from(format!(
-                            r#"{{"success":true,"message":"Metadata updated successfully","token_id":"{}","metadata":{}}}"#,
-                            token_key, metadata
-                        )))
-                        .unwrap()
-                } else {
-                    error!(
-                        contract_address = format!("{:#x}", contract_address),
-                        token_id = %token_id,
-                        "Token not found in database"
-                    );
-                    Response::builder()
-                        .status(StatusCode::NOT_FOUND)
-                        .header("content-type", "application/json")
-                        .body(Body::from(r#"{"error":"Token not found"}"#))
-                        .unwrap()
+            Ok(()) => {
+                // Execute the transaction
+                let execute_result = self.storage.execute().await;
+                match execute_result {
+                    Ok(()) => {
+                        debug!(
+                            contract_address = format!("{:#x}", contract_address),
+                            token_id = %token_id,
+                            "Successfully updated metadata"
+                        );
+                        Response::builder()
+                            .status(StatusCode::OK)
+                            .header("content-type", "application/json")
+                            .body(Body::from(format!(
+                                r#"{{"success":true,"message":"Metadata updated successfully","token_id":"{}","metadata":{}}}"#,
+                                token_key, metadata
+                            )))
+                            .unwrap()
+                    }
+                    Err(e) => {
+                        error!(
+                            error = ?e,
+                            contract_address = format!("{:#x}", contract_address),
+                            token_id = %token_id,
+                            "Failed to execute storage transaction"
+                        );
+                        Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .header("content-type", "application/json")
+                            .body(Body::from(format!(
+                                r#"{{"error":"Transaction execution failed: {}"}}"#,
+                                e
+                            )))
+                            .unwrap()
+                    }
                 }
             }
             Err(e) => {
@@ -167,13 +171,13 @@ impl<P: Provider + Sync + Send> Handler for MetadataHandler<P> {
                     error = ?e,
                     contract_address = format!("{:#x}", contract_address),
                     token_id = %token_id,
-                    "Failed to update metadata in database"
+                    "Failed to update metadata"
                 );
                 Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .header("content-type", "application/json")
                     .body(Body::from(format!(
-                        r#"{{"error":"Database update failed: {}"}}"#,
+                        r#"{{"error":"Metadata update failed: {}"}}"#,
                         e
                     )))
                     .unwrap()

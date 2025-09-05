@@ -20,6 +20,7 @@ use sqlx::SqlitePool;
 use starknet::providers::Provider;
 use tokio::sync::RwLock;
 use tokio_rustls::TlsAcceptor;
+use torii_storage::Storage;
 use tower::ServiceBuilder;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::{debug, error, warn};
@@ -95,14 +96,14 @@ pub struct TlsConfig {
 }
 
 impl<P: Provider + Sync + Send + 'static> Proxy<P> {
-    pub fn new(
+    pub fn new<S: Storage + 'static>(
         addr: SocketAddr,
         allowed_origins: Option<Vec<String>>,
         grpc_addr: Option<SocketAddr>,
         graphql_addr: Option<SocketAddr>,
         artifacts_addr: Option<SocketAddr>,
         pool: Arc<SqlitePool>,
-        writable_pool: Arc<SqlitePool>,
+        storage: Arc<S>,
         provider: P,
         version_spec: String,
     ) -> Self {
@@ -110,7 +111,7 @@ impl<P: Provider + Sync + Send + 'static> Proxy<P> {
             Box::new(GraphQLHandler::new(graphql_addr)),
             Box::new(GrpcHandler::new(grpc_addr)),
             Box::new(McpHandler::new(pool.clone())),
-            Box::new(MetadataHandler::new(writable_pool.clone(), provider)),
+            Box::new(MetadataHandler::new(storage.clone(), provider)),
             Box::new(SqlHandler::new(pool.clone())),
             Box::new(StaticHandler::new(artifacts_addr)),
         ]));
