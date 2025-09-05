@@ -9461,6 +9461,7 @@ dependencies = [
  "torii-mcp",
  "torii-processors",
  "torii-sqlite",
+ "torii-storage",
  "tower 0.4.13",
  "tower-http 0.4.4",
  "tracing",
