@@ -3,15 +3,15 @@ pub mod grpc;
 pub mod mcp;
 pub mod metadata;
 pub mod sql;
-pub mod static_files;
+pub mod r#static;
 
-use std::net::IpAddr;
+use std::{fmt::Debug, net::IpAddr};
 
 use http::{Method, StatusCode};
 use hyper::{Body, Request, Response};
 
 #[async_trait::async_trait]
-pub trait Handler: Send + Sync {
+pub trait Handler: Send + Sync + Debug {
     // Check if this handler should handle the given request
     fn should_handle(&self, req: &Request<Body>) -> bool;
 

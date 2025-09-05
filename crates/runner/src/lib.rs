@@ -12,6 +12,7 @@
 
 use std::cmp;
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::str::FromStr;
@@ -393,13 +394,6 @@ impl Runner {
         tokio::fs::create_dir_all(&artifacts_path).await?;
         let absolute_path = artifacts_path.canonicalize_utf8()?;
 
-        let (artifacts_addr, artifacts_server) = torii_server::artifacts::new(
-            shutdown_tx.subscribe(),
-            &absolute_path,
-            readonly_pool.clone(),
-        )
-        .await?;
-
         // Create messaging instance with configuration
         let messaging_config = MessagingConfig {
             max_age: self.args.messaging.max_age,
@@ -455,7 +449,7 @@ impl Runner {
                 .filter(|cors_origins| !cors_origins.is_empty()),
             Some(grpc_addr),
             None,
-            Some(artifacts_addr),
+            absolute_path.clone(),
             Arc::new(readonly_pool.clone()),
             storage.clone(),
             provider.clone(),
@@ -567,8 +561,6 @@ impl Runner {
         let libp2p_relay_server_handle =
             tokio::spawn(async move { libp2p_relay_server.run().await });
 
-        let artifacts_server_handle = tokio::spawn(artifacts_server);
-
         tokio::select! {
             res = engine_handle => res??,
             res = executor_handle => res??,
@@ -576,7 +568,6 @@ impl Runner {
             res = graphql_server_handle => res?,
             res = grpc_server_handle => res??,
             res = libp2p_relay_server_handle => res?,
-            res = artifacts_server_handle => res?,
             _ = dojo_utils::signal::wait_signals() => {},
         };
 
@@ -584,7 +575,7 @@ impl Runner {
     }
 }
 
-async fn spawn_rebuilding_graphql_server<P: Provider + Sync + Send + Clone + 'static>(
+async fn spawn_rebuilding_graphql_server<P: Provider + Sync + Send + Clone + Debug + 'static>(
     shutdown_tx: Sender<()>,
     pool: Arc<SqlitePool>,
     proxy_server: Arc<Proxy<P>>,
