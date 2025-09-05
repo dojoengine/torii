@@ -13,6 +13,8 @@ use tracing::{debug, error};
 
 use super::Handler;
 
+pub(crate) const LOG_TARGET: &str = "torii::server::handlers::metadata";
+
 #[derive(Debug)]
 pub struct MetadataHandler<P: Provider + Sync + Send + Debug, S: Storage> {
     storage: Arc<S>,
@@ -69,7 +71,7 @@ impl<P: Provider + Sync + Send + Debug, S: Storage> Handler for MetadataHandler<
         let contract_address = match Felt::from_str(parts[0]) {
             Ok(addr) => addr,
             Err(e) => {
-                error!(error = ?e, "Failed to parse contract address");
+                error!(target: LOG_TARGET, error = ?e, "Failed to parse contract address");
                 return Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("content-type", "application/json")
@@ -96,6 +98,7 @@ impl<P: Provider + Sync + Send + Debug, S: Storage> Handler for MetadataHandler<
         let token_key = format!("{}:{}", parts[0], parts[1]);
 
         debug!(
+            target: LOG_TARGET,
             contract_address = format!("{:#x}", contract_address),
             token_id = format!("{:#x}", token_id),
             "Reindexing metadata for token"
@@ -107,6 +110,7 @@ impl<P: Provider + Sync + Send + Debug, S: Storage> Handler for MetadataHandler<
             Ok(metadata) => metadata,
             Err(e) => {
                 error!(
+                    target: LOG_TARGET,
                     error = ?e,
                     contract_address = format!("{:#x}", contract_address),
                     token_id = %token_id,
@@ -136,6 +140,7 @@ impl<P: Provider + Sync + Send + Debug, S: Storage> Handler for MetadataHandler<
                 match execute_result {
                     Ok(()) => {
                         debug!(
+                            target: LOG_TARGET,
                             contract_address = format!("{:#x}", contract_address),
                             token_id = %token_id,
                             "Successfully updated metadata"
@@ -151,6 +156,7 @@ impl<P: Provider + Sync + Send + Debug, S: Storage> Handler for MetadataHandler<
                     }
                     Err(e) => {
                         error!(
+                            target: LOG_TARGET,
                             error = ?e,
                             contract_address = format!("{:#x}", contract_address),
                             token_id = %token_id,
@@ -169,6 +175,7 @@ impl<P: Provider + Sync + Send + Debug, S: Storage> Handler for MetadataHandler<
             }
             Err(e) => {
                 error!(
+                    target: LOG_TARGET,
                     error = ?e,
                     contract_address = format!("{:#x}", contract_address),
                     token_id = %token_id,

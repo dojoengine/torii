@@ -21,7 +21,7 @@ use tracing::{debug, error, trace};
 
 use super::Handler;
 
-pub(crate) const LOG_TARGET: &str = "torii::server::handlers::artifacts";
+pub(crate) const LOG_TARGET: &str = "torii::server::handlers::static";
 
 fn parse_image_query(query_str: &str) -> ImageQuery {
     let mut height = None;
@@ -136,7 +136,7 @@ impl StaticHandler {
             match self.check_image_hash(&token_image_dir, &token_id).await {
                 Ok(needs_update) => needs_update,
                 Err(e) => {
-                    error!(error = ?e, "Failed to check image hash, will attempt to fetch");
+                    error!(target: LOG_TARGET, error = ?e, "Failed to check image hash, will attempt to fetch");
                     true
                 }
             }
@@ -148,7 +148,7 @@ impl StaticHandler {
             match self.fetch_and_process_image(&token_id).await {
                 Ok(_) => {}
                 Err(e) => {
-                    error!(error = ?e, "Failed to fetch and process image for token_id: {}", token_id);
+                    error!(target: LOG_TARGET, error = ?e, "Failed to fetch and process image for token_id: {}", token_id);
                     return Ok(Response::builder()
                         .status(StatusCode::NOT_FOUND)
                         .body(Body::empty())
@@ -160,7 +160,7 @@ impl StaticHandler {
         let file_name = match self.file_name_from_dir_and_query(token_image_dir, &query) {
             Ok(file_name) => file_name,
             Err(e) => {
-                error!(error = ?e, "Failed to get file name from directory and query");
+                error!(target: LOG_TARGET, error = ?e, "Failed to get file name from directory and query");
                 return Ok(Response::builder()
                     .status(StatusCode::NOT_FOUND)
                     .body(Body::empty())
