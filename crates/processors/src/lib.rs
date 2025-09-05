@@ -9,7 +9,7 @@ use torii_cache::{Cache, ContractClassCache};
 use torii_storage::Storage;
 
 mod constants;
-mod erc;
+pub mod erc;
 pub mod error;
 pub mod fetch;
 pub mod processors;
