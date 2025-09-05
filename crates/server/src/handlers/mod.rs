@@ -1,6 +1,7 @@
 pub mod graphql;
 pub mod grpc;
 pub mod mcp;
+pub mod metadata;
 pub mod sql;
 pub mod static_files;
 

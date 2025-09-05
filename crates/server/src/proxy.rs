@@ -26,6 +26,7 @@ use tracing::{debug, error, warn};
 use crate::handlers::graphql::GraphQLHandler;
 use crate::handlers::grpc::GrpcHandler;
 use crate::handlers::mcp::McpHandler;
+use crate::handlers::metadata::MetadataHandler;
 use crate::handlers::sql::SqlHandler;
 use crate::handlers::static_files::StaticHandler;
 use crate::handlers::Handler;
@@ -100,12 +101,14 @@ impl Proxy {
         graphql_addr: Option<SocketAddr>,
         artifacts_addr: Option<SocketAddr>,
         pool: Arc<SqlitePool>,
+        provider_url: String,
         version_spec: String,
     ) -> Self {
         let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(vec![
             Box::new(GraphQLHandler::new(graphql_addr)),
             Box::new(GrpcHandler::new(grpc_addr)),
             Box::new(McpHandler::new(pool.clone())),
+            Box::new(MetadataHandler::new(pool.clone(), provider_url)),
             Box::new(SqlHandler::new(pool.clone())),
             Box::new(StaticHandler::new(artifacts_addr)),
         ]));
