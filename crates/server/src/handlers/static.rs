@@ -57,12 +57,12 @@ pub struct ImageQuery {
 }
 
 #[derive(Debug)]
-pub struct ArtifactsHandler {
+pub struct StaticHandler {
     artifacts_dir: Utf8PathBuf,
     pool: Pool<Sqlite>,
 }
 
-impl ArtifactsHandler {
+impl StaticHandler {
     pub fn new(artifacts_dir: Utf8PathBuf, pool: Pool<Sqlite>) -> Self {
         Self {
             artifacts_dir,
@@ -72,7 +72,7 @@ impl ArtifactsHandler {
 }
 
 #[async_trait::async_trait]
-impl Handler for ArtifactsHandler {
+impl Handler for StaticHandler {
     fn should_handle(&self, req: &Request<Body>) -> bool {
         req.uri().path().starts_with("/static")
     }
@@ -100,7 +100,7 @@ impl Handler for ArtifactsHandler {
     }
 }
 
-impl ArtifactsHandler {
+impl StaticHandler {
     async fn serve_static_file(&self, path: &str, query: ImageQuery) -> Result<Response<Body>> {
         // Split the path and validate format
         let parts: Vec<&str> = path.split('/').collect();

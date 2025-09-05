@@ -31,7 +31,7 @@ use crate::handlers::graphql::GraphQLHandler;
 use crate::handlers::grpc::GrpcHandler;
 use crate::handlers::mcp::McpHandler;
 use crate::handlers::metadata::MetadataHandler;
-use crate::handlers::r#static::ArtifactsHandler;
+use crate::handlers::r#static::StaticHandler;
 use crate::handlers::sql::SqlHandler;
 use crate::handlers::Handler;
 
@@ -117,7 +117,7 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
             Box::new(McpHandler::new(pool.clone())),
             Box::new(MetadataHandler::new(storage.clone(), provider)),
             Box::new(SqlHandler::new(pool.clone())),
-            Box::new(ArtifactsHandler::new(artifacts_dir, (*pool).clone())),
+            Box::new(StaticHandler::new(artifacts_dir, (*pool).clone())),
         ]));
 
         Self {
