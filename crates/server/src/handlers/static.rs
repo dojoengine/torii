@@ -23,6 +23,31 @@ use super::Handler;
 
 pub(crate) const LOG_TARGET: &str = "torii::server::handlers::artifacts";
 
+fn parse_image_query(query_str: &str) -> ImageQuery {
+    let mut height = None;
+    let mut width = None;
+
+    for pair in query_str.split('&') {
+        if let Some((key, value)) = pair.split_once('=') {
+            match key {
+                "h" | "height" => {
+                    if let Ok(h) = value.parse::<u32>() {
+                        height = Some(h);
+                    }
+                }
+                "w" | "width" => {
+                    if let Ok(w) = value.parse::<u32>() {
+                        width = Some(w);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    ImageQuery { height, width }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImageQuery {
     #[serde(alias = "h")]
@@ -39,7 +64,10 @@ pub struct ArtifactsHandler {
 
 impl ArtifactsHandler {
     pub fn new(artifacts_dir: Utf8PathBuf, pool: Pool<Sqlite>) -> Self {
-        Self { artifacts_dir, pool }
+        Self {
+            artifacts_dir,
+            pool,
+        }
     }
 }
 
@@ -51,16 +79,13 @@ impl Handler for ArtifactsHandler {
 
     async fn handle(&self, req: Request<Body>, _client_addr: IpAddr) -> Response<Body> {
         let path = req.uri().path();
-        
+
         // Remove "/static/" prefix to get the actual path
         let path = path.strip_prefix("/static/").unwrap_or("");
-        
+
         // Parse query parameters
         let query = req.uri().query().unwrap_or("");
-        let query: ImageQuery = match serde_urlencoded::from_str(query) {
-            Ok(q) => q,
-            Err(_) => ImageQuery { height: None, width: None },
-        };
+        let query = parse_image_query(query);
 
         match self.serve_static_file(path, query).await {
             Ok(response) => response,
@@ -76,11 +101,7 @@ impl Handler for ArtifactsHandler {
 }
 
 impl ArtifactsHandler {
-    async fn serve_static_file(
-        &self,
-        path: &str,
-        query: ImageQuery,
-    ) -> Result<Response<Body>> {
+    async fn serve_static_file(&self, path: &str, query: ImageQuery) -> Result<Response<Body>> {
         // Split the path and validate format
         let parts: Vec<&str> = path.split('/').collect();
 
@@ -125,7 +146,7 @@ impl ArtifactsHandler {
 
         if should_fetch {
             match self.fetch_and_process_image(&token_id).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     error!(error = ?e, "Failed to fetch and process image for token_id: {}", token_id);
                     return Ok(Response::builder()
@@ -297,10 +318,7 @@ impl ArtifactsHandler {
         Ok(patched_svg.into_bytes())
     }
 
-    async fn fetch_and_process_image(
-        &self,
-        token_id: &str,
-    ) -> anyhow::Result<String> {
+    async fn fetch_and_process_image(&self, token_id: &str) -> anyhow::Result<String> {
         let query = sqlx::query_as::<_, (String,)>(&format!(
             "SELECT metadata FROM {TOKENS_TABLE} WHERE id = ?"
         ))
@@ -382,8 +400,9 @@ impl ArtifactsHandler {
                     let decoded = data_url
                         .decode_to_vec()
                         .context("Failed to decode data URI")?;
-                    let format = image::guess_format(&decoded.0)
-                        .with_context(|| format!("Unknown file format for token_id: {}", token_id))?;
+                    let format = image::guess_format(&decoded.0).with_context(|| {
+                        format!("Unknown file format for token_id: {}", token_id)
+                    })?;
                     ErcImageType::DynamicImage((
                         image::load_from_memory_with_format(&decoded.0, format)
                             .context("Failed to load image from bytes")?,
@@ -406,7 +425,10 @@ impl ArtifactsHandler {
         let contract_address = parts[0];
         let token_id_part = parts[1];
 
-        let dir_path = self.artifacts_dir.join(contract_address).join(token_id_part);
+        let dir_path = self
+            .artifacts_dir
+            .join(contract_address)
+            .join(token_id_part);
 
         // Create directories if they don't exist
         fs::create_dir_all(&dir_path)
@@ -432,7 +454,8 @@ impl ArtifactsHandler {
                 let mut file = fs::File::create(&original_file_path)
                     .await
                     .with_context(|| format!("Failed to create file: {:?}", original_file_path))?;
-                let encoded_image = self.encode_image_to_vec(&img, format)
+                let encoded_image = self
+                    .encode_image_to_vec(&img, format)
                     .with_context(|| format!("Failed to encode image: {:?}", original_file_path))?;
                 file.write_all(&encoded_image).await.with_context(|| {
                     format!("Failed to write image to file: {:?}", original_file_path)
@@ -446,11 +469,12 @@ impl ArtifactsHandler {
                     let mut file = fs::File::create(&file_path)
                         .await
                         .with_context(|| format!("Failed to create file: {:?}", file_path))?;
-                    let encoded_image = self.encode_image_to_vec(&resized_image, format)
+                    let encoded_image = self
+                        .encode_image_to_vec(&resized_image, format)
                         .context("Failed to encode image")?;
-                    file.write_all(&encoded_image)
-                        .await
-                        .with_context(|| format!("Failed to write image to file: {:?}", file_path))?;
+                    file.write_all(&encoded_image).await.with_context(|| {
+                        format!("Failed to write image to file: {:?}", file_path)
+                    })?;
                 }
 
                 // Before returning, store the image URI hash
@@ -478,7 +502,12 @@ impl ArtifactsHandler {
         }
     }
 
-    fn resize_image_to_fit(&self, image: &DynamicImage, max_width: u32, max_height: u32) -> DynamicImage {
+    fn resize_image_to_fit(
+        &self,
+        image: &DynamicImage,
+        max_width: u32,
+        max_height: u32,
+    ) -> DynamicImage {
         image.resize_to_fill(max_width, max_height, image::imageops::FilterType::Lanczos3)
     }
 

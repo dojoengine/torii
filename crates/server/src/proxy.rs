@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow;
+use camino::Utf8PathBuf;
 use http::header::CONTENT_TYPE;
 use http::{HeaderName, Method};
 use hyper::client::connect::dns::GaiResolver;
@@ -30,8 +31,8 @@ use crate::handlers::graphql::GraphQLHandler;
 use crate::handlers::grpc::GrpcHandler;
 use crate::handlers::mcp::McpHandler;
 use crate::handlers::metadata::MetadataHandler;
+use crate::handlers::r#static::ArtifactsHandler;
 use crate::handlers::sql::SqlHandler;
-use crate::handlers::static_files::StaticHandler;
 use crate::handlers::Handler;
 
 pub const LOG_TARGET: &str = "torii::server::proxy";
@@ -104,7 +105,7 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
         allowed_origins: Option<Vec<String>>,
         grpc_addr: Option<SocketAddr>,
         graphql_addr: Option<SocketAddr>,
-        artifacts_addr: Option<SocketAddr>,
+        artifacts_dir: Utf8PathBuf,
         pool: Arc<SqlitePool>,
         storage: Arc<S>,
         provider: P,
@@ -116,7 +117,7 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
             Box::new(McpHandler::new(pool.clone())),
             Box::new(MetadataHandler::new(storage.clone(), provider)),
             Box::new(SqlHandler::new(pool.clone())),
-            Box::new(StaticHandler::new(artifacts_addr)),
+            Box::new(ArtifactsHandler::new(artifacts_dir, (*pool).clone())),
         ]));
 
         Self {

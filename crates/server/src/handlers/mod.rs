@@ -3,7 +3,7 @@ pub mod grpc;
 pub mod mcp;
 pub mod metadata;
 pub mod sql;
-pub mod static_files;
+pub mod r#static;
 
 use std::{fmt::Debug, net::IpAddr};
 
