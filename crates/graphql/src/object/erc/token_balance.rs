@@ -198,7 +198,11 @@ async fn fetch_token_balances(
     );
 
     // Only select balances for the given account address and non-zero balances.
-    let mut conditions = vec!["(b.account_address = ?)".to_string()];
+    let mut conditions = vec![
+        "(b.account_address = ?)".to_string(),
+        "(b.token_id IS NOT NULL OR b.balance != '0x0000000000000000000000000000000000000000000000000000000000000000')"
+            .to_string(),
+    ];
 
     let mut cursor_param = &connection.after;
     if let Some(after_cursor) = &connection.after {
