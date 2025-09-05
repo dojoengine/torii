@@ -2,6 +2,7 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use crypto_bigint::U256;
 use http::{Request, Response, StatusCode};
 use hyper::Body;
 use sqlx::SqlitePool;
@@ -10,7 +11,6 @@ use starknet_crypto::Felt;
 use torii_processors::erc::fetch_token_metadata;
 use torii_sqlite::constants::TOKENS_TABLE;
 use tracing::{debug, error};
-use crypto_bigint::U256;
 
 use super::Handler;
 
@@ -28,13 +28,12 @@ impl<P: Provider + Sync + Send> MetadataHandler<P> {
 #[async_trait::async_trait]
 impl<P: Provider + Sync + Send> Handler for MetadataHandler<P> {
     fn should_handle(&self, req: &Request<Body>) -> bool {
-        req.uri().path().starts_with("/metadata/reindex/")
-            && req.method() == http::Method::POST
+        req.uri().path().starts_with("/metadata/reindex/") && req.method() == http::Method::POST
     }
 
     async fn handle(&self, req: Request<Body>, _client_addr: IpAddr) -> Response<Body> {
         let path = req.uri().path();
-        
+
         // Remove "/metadata/reindex/" prefix
         let path = match path.strip_prefix("/metadata/reindex/") {
             Some(p) => p,
@@ -60,7 +59,7 @@ impl<P: Provider + Sync + Send> Handler for MetadataHandler<P> {
 
         // Validate and parse contract_address
         if !parts[0].starts_with("0x") {
-            return Response::builder()  
+            return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"error":"Invalid contract address format"}"#))
@@ -74,7 +73,10 @@ impl<P: Provider + Sync + Send> Handler for MetadataHandler<P> {
                 return Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .header("content-type", "application/json")
-                    .body(Body::from(format!(r#"{{"error":"Invalid contract address: {}"}}"#, e)))
+                    .body(Body::from(format!(
+                        r#"{{"error":"Invalid contract address: {}"}}"#,
+                        e
+                    )))
                     .unwrap();
             }
         };
@@ -98,9 +100,10 @@ impl<P: Provider + Sync + Send> Handler for MetadataHandler<P> {
             token_id = format!("{:#x}", token_id),
             "Reindexing metadata for token"
         );
-        
+
         // Fetch new metadata
-        let metadata = match fetch_token_metadata(contract_address, token_id, &self.provider).await {
+        let metadata = match fetch_token_metadata(contract_address, token_id, &self.provider).await
+        {
             Ok(metadata) => metadata,
             Err(e) => {
                 error!(
