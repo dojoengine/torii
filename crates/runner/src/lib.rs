@@ -12,6 +12,7 @@
 
 use std::cmp;
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::str::FromStr;
@@ -584,7 +585,7 @@ impl Runner {
     }
 }
 
-async fn spawn_rebuilding_graphql_server<P: Provider + Sync + Send + Clone + 'static>(
+async fn spawn_rebuilding_graphql_server<P: Provider + Sync + Send + Clone + Debug + 'static>(
     shutdown_tx: Sender<()>,
     pool: Arc<SqlitePool>,
     proxy_server: Arc<Proxy<P>>,

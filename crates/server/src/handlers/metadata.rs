@@ -1,6 +1,6 @@
-use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::{fmt::Debug, net::IpAddr};
 
 use crypto_bigint::U256;
 use http::{Request, Response, StatusCode};
@@ -13,19 +13,20 @@ use tracing::{debug, error};
 
 use super::Handler;
 
-pub struct MetadataHandler<P: Provider + Sync + Send, S: Storage> {
+#[derive(Debug)]
+pub struct MetadataHandler<P: Provider + Sync + Send + Debug, S: Storage> {
     storage: Arc<S>,
     provider: P,
 }
 
-impl<P: Provider + Sync + Send, S: Storage> MetadataHandler<P, S> {
+impl<P: Provider + Sync + Send + Debug, S: Storage> MetadataHandler<P, S> {
     pub fn new(storage: Arc<S>, provider: P) -> Self {
         Self { storage, provider }
     }
 }
 
 #[async_trait::async_trait]
-impl<P: Provider + Sync + Send, S: Storage> Handler for MetadataHandler<P, S> {
+impl<P: Provider + Sync + Send + Debug, S: Storage> Handler for MetadataHandler<P, S> {
     fn should_handle(&self, req: &Request<Body>) -> bool {
         req.uri().path().starts_with("/metadata/reindex/")
     }

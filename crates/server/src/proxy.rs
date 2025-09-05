@@ -1,4 +1,5 @@
 use std::convert::Infallible;
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::BufReader;
 use std::net::{IpAddr, SocketAddr};
@@ -80,7 +81,8 @@ pub fn is_websocket_upgrade(req: &Request<Body>) -> bool {
             .unwrap_or(false)
 }
 
-pub struct Proxy<P: Provider + Sync + Send + 'static> {
+#[derive(Debug)]
+pub struct Proxy<P: Provider + Sync + Send + Debug + 'static> {
     addr: SocketAddr,
     allowed_origins: Option<Vec<String>>,
     handlers: Arc<RwLock<Vec<Box<dyn Handler>>>>,
@@ -95,7 +97,8 @@ pub struct TlsConfig {
     pub key_path: String,
 }
 
-impl<P: Provider + Sync + Send + 'static> Proxy<P> {
+impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new<S: Storage + 'static>(
         addr: SocketAddr,
         allowed_origins: Option<Vec<String>>,
