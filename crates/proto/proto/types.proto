@@ -310,8 +310,10 @@ message Contract {
     optional uint64 tps = 4;
     // Last block timestamp
     optional uint64 last_block_timestamp = 5;
+    // Last pending block transaction
+    optional bytes last_pending_block_tx = 6;
     // When the contract was first tracked
-    uint64 created_at = 6;
+    uint64 created_at = 7;
 }
 
 // A request to retrieve contracts

@@ -12,7 +12,7 @@ use tokio::sync::mpsc::{
 };
 use torii_broker::types::ContractUpdate;
 use torii_broker::MemoryBroker;
-use torii_proto::ContractCursor;
+use torii_proto::{ContractCursor, ContractQuery};
 use torii_storage::ReadOnlyStorage;
 use torii_storage::StorageError;
 use tracing::{error, trace};
@@ -53,14 +53,19 @@ impl IndexerManager {
         let id = rand::thread_rng().gen::<usize>();
         let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
-        let contracts = storage.cursors().await?;
-        for (contract_address, contract) in contracts {
+        let query = ContractQuery {
+            contract_addresses: vec![],
+            contract_types: vec![],
+        };
+        let contracts = storage.contracts(&query).await?;
+        for contract in contracts {
+            let cursor: ContractCursor = contract.into();
             let _ = sender
                 .send(Ok(SubscribeIndexerResponse {
-                    head: contract.head.unwrap() as i64,
-                    tps: contract.tps.unwrap() as i64,
-                    last_block_timestamp: contract.last_block_timestamp.unwrap() as i64,
-                    contract_address: contract_address.to_bytes_be().to_vec(),
+                    head: cursor.head.unwrap() as i64,
+                    tps: cursor.tps.unwrap() as i64,
+                    last_block_timestamp: cursor.last_block_timestamp.unwrap() as i64,
+                    contract_address: cursor.contract_address.to_bytes_be().to_vec(),
                 }))
                 .await;
         }

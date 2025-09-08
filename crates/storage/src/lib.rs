@@ -13,9 +13,9 @@ use torii_math::I256;
 use torii_proto::schema::Entity;
 
 use torii_proto::{
-    Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token,
-    TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall,
-    TransactionQuery,
+    Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, Model,
+    Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction,
+    TransactionCall, TransactionQuery,
 };
 
 pub mod utils;
@@ -27,9 +27,6 @@ pub type StorageError = Box<dyn Error + Send + Sync>;
 #[async_trait]
 pub trait ReadOnlyStorage: Send + Sync + Debug {
     fn as_read_only(&self) -> &dyn ReadOnlyStorage;
-
-    /// Returns the cursors for all contracts.
-    async fn cursors(&self) -> Result<HashMap<Felt, ContractCursor>, StorageError>;
 
     /// Returns the model metadata for the storage.
     async fn model(&self, model: Felt) -> Result<Model, StorageError>;

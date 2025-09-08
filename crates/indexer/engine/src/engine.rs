@@ -18,7 +18,7 @@ use torii_processors::{
     BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors,
     TransactionProcessorContext,
 };
-use torii_storage::proto::{Contract, ContractType};
+use torii_storage::proto::{Contract, ContractCursor, ContractQuery, ContractType};
 use torii_storage::utils::format_event_id;
 use torii_storage::Storage;
 use tracing::{debug, error, info, trace};
@@ -124,7 +124,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
     ) -> Self {
         let contracts = contracts
             .iter()
-            .map(|contract| (contract.address, contract.r#type))
+            .map(|contract| (contract.contract_address, contract.contract_type))
             .collect();
         let max_concurrent_tasks = config.max_concurrent_tasks;
         let event_processor_config = config.event_processor_config.clone();
@@ -156,6 +156,22 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         }
     }
 
+    async fn get_cursors(&self) -> Result<HashMap<Felt, ContractCursor>, Error> {
+        let query = ContractQuery {
+            contract_addresses: vec![],
+            contract_types: vec![],
+        };
+        let contracts = self.storage.contracts(&query).await?;
+        let cursors = contracts
+            .into_iter()
+            .map(|contract| {
+                let cursor: ContractCursor = contract.into();
+                (cursor.contract_address, cursor)
+            })
+            .collect();
+        Ok(cursors)
+    }
+
     pub async fn start(&mut self) -> Result<(), Error> {
         let mut fetching_backoff_delay = Duration::from_secs(1);
         let mut processing_backoff_delay = Duration::from_secs(1);
@@ -180,7 +196,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                         Result::<_, Error>::Ok(last_fetch_result.clone())
                     } else {
                         let fetch_start = Instant::now();
-                        let cursors = self.storage.cursors().await?;
+                        let cursors = self.get_cursors().await?;
                         let fetch_result = self.fetcher.fetch(&cursors).await?;
                         histogram!("torii_indexer_fetch_duration_seconds").record(fetch_start.elapsed().as_secs_f64());
                         counter!("torii_indexer_fetch_total", "status" => "success").increment(1);

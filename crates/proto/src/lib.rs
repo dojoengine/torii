@@ -90,12 +90,25 @@ pub struct Contract {
     pub head: Option<u64>,
     pub tps: Option<u64>,
     pub last_block_timestamp: Option<u64>,
+    pub last_pending_block_tx: Option<Felt>,
     pub created_at: DateTime<Utc>,
 }
 
 impl std::fmt::Display for Contract {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{:#x}", self.contract_type, self.contract_address)
+    }
+}
+
+impl From<Contract> for ContractCursor {
+    fn from(contract: Contract) -> Self {
+        Self {
+            contract_address: contract.contract_address,
+            head: contract.head,
+            tps: contract.tps,
+            last_block_timestamp: contract.last_block_timestamp,
+            last_pending_block_tx: contract.last_pending_block_tx,
+        }
     }
 }
 
@@ -107,6 +120,9 @@ impl From<Contract> for proto::types::Contract {
             head: value.head,
             tps: value.tps,
             last_block_timestamp: value.last_block_timestamp,
+            last_pending_block_tx: value
+                .last_pending_block_tx
+                .map(|tx| tx.to_bytes_be().into()),
             created_at: value.created_at.timestamp() as u64,
         }
     }
@@ -122,7 +138,11 @@ impl TryFrom<proto::types::Contract> for Contract {
             3 => ContractType::ERC1155,
             4 => ContractType::UDC,
             5 => ContractType::OTHER,
-            _ => return Err(ProtoError::InvalidContractType(value.contract_type.to_string())),
+            _ => {
+                return Err(ProtoError::InvalidContractType(
+                    value.contract_type.to_string(),
+                ))
+            }
         };
 
         Ok(Self {
@@ -131,6 +151,9 @@ impl TryFrom<proto::types::Contract> for Contract {
             head: value.head,
             tps: value.tps,
             last_block_timestamp: value.last_block_timestamp,
+            last_pending_block_tx: value
+                .last_pending_block_tx
+                .map(|tx| Felt::from_bytes_be_slice(&tx)),
             created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
         })
     }
@@ -497,11 +520,7 @@ impl From<ContractQuery> for proto::types::ContractQuery {
                 .into_iter()
                 .map(|a| a.to_bytes_be().into())
                 .collect(),
-            contract_types: value
-                .contract_types
-                .into_iter()
-                .map(|t| t as i32)
-                .collect(),
+            contract_types: value.contract_types.into_iter().map(|t| t as i32).collect(),
         }
     }
 }
