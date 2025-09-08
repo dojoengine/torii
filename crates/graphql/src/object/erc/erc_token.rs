@@ -242,7 +242,7 @@ async fn fetch_tokens(
                     JOIN contracts c ON t.contract_address = c.contract_address"
         .to_string();
 
-    let mut conditions = Vec::new();
+    let mut conditions = vec![];
     if let Some(addr) = contract_address {
         conditions.push(format!("t.contract_address = '{}'", addr));
     }

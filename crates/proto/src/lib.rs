@@ -83,15 +83,56 @@ impl std::fmt::Display for ContractType {
     }
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Contract {
-    pub address: Felt,
-    pub r#type: ContractType,
+    pub contract_address: Felt,
+    pub contract_type: ContractType,
+    pub head: Option<u64>,
+    pub tps: Option<u64>,
+    pub last_block_timestamp: Option<u64>,
+    pub created_at: DateTime<Utc>,
 }
 
 impl std::fmt::Display for Contract {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{:#x}", self.r#type, self.address)
+        write!(f, "{}:{:#x}", self.contract_type, self.contract_address)
+    }
+}
+
+impl From<Contract> for proto::types::Contract {
+    fn from(value: Contract) -> Self {
+        Self {
+            contract_address: value.contract_address.to_bytes_be().into(),
+            contract_type: value.contract_type as i32,
+            head: value.head,
+            tps: value.tps,
+            last_block_timestamp: value.last_block_timestamp,
+            created_at: value.created_at.timestamp() as u64,
+        }
+    }
+}
+
+impl TryFrom<proto::types::Contract> for Contract {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::Contract) -> Result<Self, Self::Error> {
+        let contract_type = match value.contract_type {
+            0 => ContractType::WORLD,
+            1 => ContractType::ERC20,
+            2 => ContractType::ERC721,
+            3 => ContractType::ERC1155,
+            4 => ContractType::UDC,
+            5 => ContractType::OTHER,
+            _ => return Err(ProtoError::InvalidContractType(value.contract_type.to_string())),
+        };
+
+        Ok(Self {
+            contract_address: Felt::from_bytes_be_slice(&value.contract_address),
+            contract_type,
+            head: value.head,
+            tps: value.tps,
+            last_block_timestamp: value.last_block_timestamp,
+            created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
+        })
     }
 }
 
@@ -438,6 +479,57 @@ impl TryFrom<proto::types::TokenBalanceQuery> for TokenBalanceQuery {
                 .map(|id| U256::from_be_slice(&id))
                 .collect(),
             pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct ContractQuery {
+    pub contract_addresses: Vec<Felt>,
+    pub contract_types: Vec<ContractType>,
+}
+
+impl From<ContractQuery> for proto::types::ContractQuery {
+    fn from(value: ContractQuery) -> Self {
+        Self {
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().into())
+                .collect(),
+            contract_types: value
+                .contract_types
+                .into_iter()
+                .map(|t| t as i32)
+                .collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::types::ContractQuery> for ContractQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::ContractQuery) -> Result<Self, Self::Error> {
+        let contract_types = value
+            .contract_types
+            .into_iter()
+            .map(|t| match t {
+                0 => Ok(ContractType::WORLD),
+                1 => Ok(ContractType::ERC20),
+                2 => Ok(ContractType::ERC721),
+                3 => Ok(ContractType::ERC1155),
+                4 => Ok(ContractType::UDC),
+                5 => Ok(ContractType::OTHER),
+                _ => Err(ProtoError::InvalidContractType(t.to_string())),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Self {
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
+            contract_types,
         })
     }
 }

@@ -12,7 +12,7 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    schema::Entity, CallType, Clause, CompositeClause, ContractCursor, Controller, ControllerQuery,
+    schema::Entity, CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery,
     Event, EventQuery, LogicalOperator, Model, OrderBy, OrderDirection, Page, Query, Token,
     TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall,
     TransactionQuery,
@@ -229,6 +229,43 @@ impl ReadOnlyStorage for Sql {
             items,
             next_cursor: page.next_cursor,
         })
+    }
+
+    async fn contracts(&self, query: &ContractQuery) -> Result<Vec<Contract>, StorageError> {
+        let mut query_builder = "SELECT * FROM contracts".to_string();
+        let mut bind_values = vec![];
+        let mut conditions = vec![];
+
+        if !query.contract_addresses.is_empty() {
+            let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
+            conditions.push(format!("contract_address IN ({})", placeholders));
+            bind_values.extend(query.contract_addresses.iter().map(|addr| format!("{:#x}", addr)));
+        }
+
+        if !query.contract_types.is_empty() {
+            let placeholders = vec!["?"; query.contract_types.len()].join(", ");
+            conditions.push(format!("contract_type IN ({})", placeholders));
+            bind_values.extend(query.contract_types.iter().map(|t| t.to_string()));
+        }
+
+        if !conditions.is_empty() {
+            query_builder += &format!(" WHERE {}", conditions.join(" AND "));
+        }
+
+        query_builder += " ORDER BY created_at DESC";
+
+        let mut query = sqlx::query_as::<_, torii_sqlite_types::Contract>(&query_builder);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+
+        let contracts = query.fetch_all(&self.pool).await?;
+        let items: Vec<Contract> = contracts
+            .into_iter()
+            .map(|contract| contract.into())
+            .collect();
+
+        Ok(items)
     }
 
     async fn tokens(&self, query: &TokenQuery) -> Result<Page<Token>, StorageError> {
