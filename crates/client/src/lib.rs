@@ -7,14 +7,14 @@ use torii_grpc_client::{
     TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
 };
 use torii_proto::proto::world::{
-    RetrieveControllersResponse, RetrieveEntitiesResponse, RetrieveEventsResponse,
-    RetrieveTokenBalancesResponse, RetrieveTokenCollectionsResponse, RetrieveTokensResponse,
-    RetrieveTransactionsResponse,
+    RetrieveContractsResponse, RetrieveControllersResponse, RetrieveEntitiesResponse,
+    RetrieveEventsResponse, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsResponse,
+    RetrieveTokensResponse, RetrieveTransactionsResponse,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, ContractQuery, Controller, ControllerQuery, Event, EventQuery, KeysClause, Message,
-    Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction,
+    Clause, Contract, ContractQuery, Controller, ControllerQuery, Event, EventQuery, KeysClause,
+    Message, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction,
     TransactionFilter, TransactionQuery, World,
 };
 
@@ -76,6 +76,16 @@ impl Client {
                 Some(next_cursor)
             },
         })
+    }
+
+    /// Retrieves contracts matching the query parameters.
+    pub async fn contracts(&self, query: ContractQuery) -> Result<Vec<Contract>, Error> {
+        let mut grpc_client = self.inner.clone();
+        let RetrieveContractsResponse { contracts } = grpc_client.retrieve_contracts(query).await?;
+        Ok(contracts
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<Contract>, _>>()?)
     }
 
     /// Retrieves tokens matching contract addresses.
