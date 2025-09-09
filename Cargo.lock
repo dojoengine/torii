@@ -9234,7 +9234,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "torii-processors",
- "torii-sqlite",
  "torii-storage",
  "tracing",
  "url",
