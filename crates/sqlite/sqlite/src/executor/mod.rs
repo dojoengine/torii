@@ -358,7 +358,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
                     sqlx::query(
                         "UPDATE contracts SET head = ?, last_block_timestamp = ?, \
-                         last_pending_block_tx = ? WHERE id = \
+                         last_pending_block_tx = ?, updated_at = CURRENT_TIMESTAMP WHERE id = \
                          ?",
                     )
                     .bind(cursor.head)
