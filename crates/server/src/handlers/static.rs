@@ -6,6 +6,7 @@ use std::time::SystemTime;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use camino::Utf8PathBuf;
+use chrono;
 use data_url::mime::Mime;
 use data_url::DataUrl;
 use hyper::{Body, Request, Response, StatusCode};
@@ -101,7 +102,6 @@ impl Handler for StaticHandler {
         }
     }
 }
-
 impl StaticHandler {
     async fn serve_static_file(&self, path: &str, query: ImageQuery) -> Result<Response<Body>> {
         // Split the path and validate format
@@ -133,12 +133,12 @@ impl StaticHandler {
         let token_image_dir = self.artifacts_dir.join(parts[0]).join(parts[1]);
         let token_id = format!("{}:{}", parts[0], parts[1]);
 
-        // Check if image needs to be refetched
+        // Check if image needs to be refetched based on timestamps
         let should_fetch = if token_image_dir.exists() {
-            match self.check_image_hash(&token_image_dir, &token_id).await {
+            match self.check_if_image_outdated(&token_image_dir, &token_id).await {
                 Ok(needs_update) => needs_update,
                 Err(e) => {
-                    error!(target: LOG_TARGET, error = ?e, "Failed to check image hash, will attempt to fetch");
+                    error!(target: LOG_TARGET, error = ?e, "Failed to check image timestamps, will attempt to fetch");
                     true
                 }
             }
@@ -183,19 +183,30 @@ impl StaticHandler {
                     hasher.update(&contents);
                     let etag = format!("\"{}\"", hex::encode(hasher.finalize())[..16].to_string());
 
-                    // Use current timestamp as last modified since we control when files are processed
-                    let last_modified = httpdate::fmt_http_date(SystemTime::now());
+                    // Get last modified time from file metadata
+                    let last_modified = match file.metadata().await {
+                        Ok(metadata) => {
+                            match metadata.modified() {
+                                Ok(time) => Some(httpdate::fmt_http_date(time)),
+                                Err(_) => None,
+                            }
+                        }
+                        Err(_) => None,
+                    };
 
-                    Ok(Response::builder()
+                    let mut response_builder = Response::builder()
                         .header("content-type", mime)
                         .header("etag", etag)
-                        .header("last-modified", last_modified)
                         .header(
                             "cache-control",
                             "public, max-age=3600, stale-while-revalidate=86400",
-                        )
-                        .body(Body::from(contents))
-                        .unwrap())
+                        );
+
+                    if let Some(last_mod) = last_modified {
+                        response_builder = response_builder.header("last-modified", last_mod);
+                    }
+
+                    Ok(response_builder.body(Body::from(contents)).unwrap())
                 } else {
                     Ok(Response::builder()
                         .status(StatusCode::NOT_FOUND)
@@ -228,7 +239,7 @@ impl StaticHandler {
                     .file_name()
                     .to_str()
                     .map(|name| {
-                        name.starts_with("image") && !name.contains('@') && !name.ends_with(".hash")
+                        name.starts_with("image") && !name.contains('@')
                     })
                     .unwrap_or(false)
             })
@@ -253,90 +264,64 @@ impl StaticHandler {
         Ok(token_image_dir.join(target_filename))
     }
 
-    async fn check_image_hash(
+    async fn check_if_image_outdated(
         &self,
         token_image_dir: &Utf8PathBuf,
         token_id: &str,
     ) -> Result<bool> {
-        let hash_file = token_image_dir.join("image.hash");
+        // Find the base image file in the directory
+        let mut entries = match std::fs::read_dir(token_image_dir) {
+            Ok(entries) => entries,
+            Err(_) => return Ok(true), // Directory doesn't exist, need to fetch
+        };
 
-        // Get current image URI from metadata
+        let base_image_file = entries
+            .find_map(|entry| {
+                let entry = entry.ok()?;
+                let file_name = entry.file_name();
+                let file_name_str = file_name.to_str()?;
+                if file_name_str.starts_with("image") && !file_name_str.contains('@') {
+                    Some(entry.path())
+                } else {
+                    None
+                }
+            });
+
+        let existing_image_path = match base_image_file {
+            Some(path) => path,
+            None => return Ok(true), // No existing image, need to fetch
+        };
+
+        // Get file modification time
+        let file_modified_time = match std::fs::metadata(&existing_image_path) {
+            Ok(metadata) => match metadata.modified() {
+                Ok(time) => time,
+                Err(_) => return Ok(true), // Can't get file time, refetch
+            },
+            Err(_) => return Ok(true), // Can't read file metadata, refetch
+        };
+
+        // Get token updated_at timestamp from database
         let query = sqlx::query_as::<_, (String,)>(&format!(
-            "SELECT metadata FROM {TOKENS_TABLE} WHERE id = ?"
+            "SELECT updated_at FROM {TOKENS_TABLE} WHERE id = ?"
         ))
         .bind(token_id)
         .fetch_one(&self.pool)
         .await
-        .context("Failed to fetch metadata from database")?;
+        .context("Failed to fetch updated_at from database")?;
 
-        let metadata: serde_json::Value =
-            serde_json::from_str(&query.0).context("Failed to parse metadata")?;
-        let current_uri = metadata
-            .get("image")
-            .context("Image URL not found in metadata")?
-            .as_str()
-            .context("Image field not a string")?;
-
-        // Check if hash file exists and compare
-        if hash_file.exists() {
-            let stored_content = fs::read_to_string(&hash_file)
-                .await
-                .context("Failed to read hash file")?;
-            
-            // Parse the stored hash content (format: "uri:content_hash")
-            if let Some((stored_uri, stored_content_hash)) = stored_content.split_once(':') {
-                // If URI changed, definitely need to refetch
-                if stored_uri != current_uri {
-                    return Ok(true);
-                }
-                
-                // If URI is the same, check if content changed by fetching and hashing
-                // For data URIs, we can skip the fetch and just hash the URI itself
-                if current_uri.starts_with("data:") {
-                    let current_content_hash = self.hash_string(current_uri);
-                    Ok(stored_content_hash != current_content_hash)
-                } else {
-                    // For HTTP/HTTPS/IPFS URIs, we need to fetch and hash the content
-                    match self.fetch_and_hash_content(current_uri).await {
-                        Ok(current_content_hash) => Ok(stored_content_hash != current_content_hash),
-                        Err(e) => {
-                            debug!(target: LOG_TARGET, error = ?e, "Failed to fetch content for hash comparison, will refetch");
-                            Ok(true) // If we can't fetch for comparison, assume we need to refetch
-                        }
-                    }
-                }
-            } else {
-                // Old format hash file, need to refetch
-                Ok(true)
+        // Parse the timestamp string to SystemTime
+        let db_updated_time = match chrono::DateTime::parse_from_rfc3339(&query.0) {
+            Ok(dt) => SystemTime::from(dt),
+            Err(_) => {
+                // If we can't parse the timestamp, assume we need to refetch
+                debug!(target: LOG_TARGET, "Failed to parse updated_at timestamp: {}", query.0);
+                return Ok(true);
             }
-        } else {
-            Ok(true)
-        }
-    }
-
-    fn hash_string(&self, content: &str) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(content.as_bytes());
-        hex::encode(hasher.finalize())
-    }
-
-    fn hash_bytes(&self, content: &[u8]) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(content);
-        hex::encode(hasher.finalize())
-    }
-
-    async fn fetch_and_hash_content(&self, uri: &str) -> anyhow::Result<String> {
-        let content = if uri.starts_with("http://") || uri.starts_with("https://") {
-            fetch_content_from_http(uri).await?
-        } else if uri.starts_with("ipfs://") {
-            let cid = uri.strip_prefix("ipfs://").unwrap();
-            fetch_content_from_ipfs(cid).await?
-        } else {
-            return Err(anyhow::anyhow!("Unsupported URI scheme for content fetching: {}", uri));
         };
-        
-        Ok(self.hash_bytes(&content))
+
+        // Compare timestamps - refetch if database was updated after file
+        Ok(db_updated_time > file_modified_time)
     }
 
     async fn patch_svg_images_regex(&self, svg_data: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -540,13 +525,7 @@ impl StaticHandler {
                     })?;
                 }
 
-                // Store the image URI and content hash
-                let content_hash = self.hash_bytes(&encoded_image);
-                let hash_content = format!("{}:{}", image_uri, content_hash);
-                let hash_file = dir_path.join("image.hash");
-                fs::write(&hash_file, &hash_content)
-                    .await
-                    .context("Failed to write hash file")?;
+                // No need to store hash files anymore - we use timestamp comparison
 
                 Ok(format!("{}/{}", relative_path, base_image_name))
             }
@@ -562,15 +541,6 @@ impl StaticHandler {
                 file.write_all(&patched_svg)
                     .await
                     .with_context(|| format!("Failed to write SVG to file: {:?}", file_path))?;
-                    
-                // Store the image URI and content hash for SVG too
-                let content_hash = self.hash_bytes(&patched_svg);
-                let hash_content = format!("{}:{}", image_uri, content_hash);
-                let hash_file = dir_path.join("image.hash");
-                fs::write(&hash_file, &hash_content)
-                    .await
-                    .context("Failed to write hash file")?;
-                    
                 Ok(format!("{}/{}", relative_path, file_name))
             }
         }
@@ -599,3 +569,4 @@ pub enum ErcImageType {
     DynamicImage((DynamicImage, ImageFormat)),
     Svg(Vec<u8>),
 }
+

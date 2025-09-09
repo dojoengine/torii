@@ -47,6 +47,7 @@ crypto-bigint.workspace = true
 sha2.workspace = true
 hex.workspace = true
 httpdate = "1.0"
+chrono.workspace = true
 
 # TLS dependencies for HTTPS support
 tokio-rustls = "0.24.1"

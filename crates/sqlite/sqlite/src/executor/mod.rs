@@ -769,9 +769,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     felt_to_sql_string(&update_metadata.contract_address)
                 };
 
-                // Update metadata in database
+                // Update metadata and timestamp in database
                 let token = sqlx::query_as::<_, torii_sqlite_types::Token>(
-                    "UPDATE tokens SET metadata = ? WHERE id = ? RETURNING *",
+                    "UPDATE tokens SET metadata = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *",
                 )
                 .bind(&update_metadata.metadata)
                 .bind(&id)
