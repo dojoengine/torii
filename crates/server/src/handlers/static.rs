@@ -1,6 +1,7 @@
 use std::io::Cursor;
 use std::net::IpAddr;
 use std::str::FromStr;
+use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
@@ -11,6 +12,7 @@ use hyper::{Body, Request, Response, StatusCode};
 use image::{DynamicImage, ImageFormat};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::{Pool, Sqlite};
 use tokio::fs;
 use tokio::fs::File;
@@ -176,8 +178,18 @@ impl StaticHandler {
                         .first_or_octet_stream()
                         .to_string();
 
+                    // Generate ETag from content hash
+                    let mut hasher = Sha256::new();
+                    hasher.update(&contents);
+                    let etag = format!("\"{}\"", hex::encode(hasher.finalize())[..16].to_string());
+
+                    // Use current timestamp as last modified since we control when files are processed
+                    let last_modified = httpdate::fmt_http_date(SystemTime::now());
+
                     Ok(Response::builder()
                         .header("content-type", mime)
+                        .header("etag", etag)
+                        .header("last-modified", last_modified)
                         .header(
                             "cache-control",
                             "public, max-age=3600, stale-while-revalidate=86400",
@@ -267,13 +279,64 @@ impl StaticHandler {
 
         // Check if hash file exists and compare
         if hash_file.exists() {
-            let stored_hash = fs::read_to_string(&hash_file)
+            let stored_content = fs::read_to_string(&hash_file)
                 .await
                 .context("Failed to read hash file")?;
-            Ok(stored_hash != current_uri)
+            
+            // Parse the stored hash content (format: "uri:content_hash")
+            if let Some((stored_uri, stored_content_hash)) = stored_content.split_once(':') {
+                // If URI changed, definitely need to refetch
+                if stored_uri != current_uri {
+                    return Ok(true);
+                }
+                
+                // If URI is the same, check if content changed by fetching and hashing
+                // For data URIs, we can skip the fetch and just hash the URI itself
+                if current_uri.starts_with("data:") {
+                    let current_content_hash = self.hash_string(current_uri);
+                    Ok(stored_content_hash != current_content_hash)
+                } else {
+                    // For HTTP/HTTPS/IPFS URIs, we need to fetch and hash the content
+                    match self.fetch_and_hash_content(current_uri).await {
+                        Ok(current_content_hash) => Ok(stored_content_hash != current_content_hash),
+                        Err(e) => {
+                            debug!(target: LOG_TARGET, error = ?e, "Failed to fetch content for hash comparison, will refetch");
+                            Ok(true) // If we can't fetch for comparison, assume we need to refetch
+                        }
+                    }
+                }
+            } else {
+                // Old format hash file, need to refetch
+                Ok(true)
+            }
         } else {
             Ok(true)
         }
+    }
+
+    fn hash_string(&self, content: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(content.as_bytes());
+        hex::encode(hasher.finalize())
+    }
+
+    fn hash_bytes(&self, content: &[u8]) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(content);
+        hex::encode(hasher.finalize())
+    }
+
+    async fn fetch_and_hash_content(&self, uri: &str) -> anyhow::Result<String> {
+        let content = if uri.starts_with("http://") || uri.starts_with("https://") {
+            fetch_content_from_http(uri).await?
+        } else if uri.starts_with("ipfs://") {
+            let cid = uri.strip_prefix("ipfs://").unwrap();
+            fetch_content_from_ipfs(cid).await?
+        } else {
+            return Err(anyhow::anyhow!("Unsupported URI scheme for content fetching: {}", uri));
+        };
+        
+        Ok(self.hash_bytes(&content))
     }
 
     async fn patch_svg_images_regex(&self, svg_data: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -477,9 +540,11 @@ impl StaticHandler {
                     })?;
                 }
 
-                // Before returning, store the image URI hash
+                // Store the image URI and content hash
+                let content_hash = self.hash_bytes(&encoded_image);
+                let hash_content = format!("{}:{}", image_uri, content_hash);
                 let hash_file = dir_path.join("image.hash");
-                fs::write(&hash_file, &image_uri)
+                fs::write(&hash_file, &hash_content)
                     .await
                     .context("Failed to write hash file")?;
 
@@ -497,6 +562,15 @@ impl StaticHandler {
                 file.write_all(&patched_svg)
                     .await
                     .with_context(|| format!("Failed to write SVG to file: {:?}", file_path))?;
+                    
+                // Store the image URI and content hash for SVG too
+                let content_hash = self.hash_bytes(&patched_svg);
+                let hash_content = format!("{}:{}", image_uri, content_hash);
+                let hash_file = dir_path.join("image.hash");
+                fs::write(&hash_file, &hash_content)
+                    .await
+                    .context("Failed to write hash file")?;
+                    
                 Ok(format!("{}/{}", relative_path, file_name))
             }
         }
