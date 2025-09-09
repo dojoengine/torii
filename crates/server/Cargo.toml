@@ -46,6 +46,7 @@ starknet-crypto.workspace = true
 crypto-bigint.workspace = true
 sha2 = "0.10"
 httpdate = "1.0"
+filetime = "0.2"
 
 # TLS dependencies for HTTPS support
 tokio-rustls = "0.24.1"

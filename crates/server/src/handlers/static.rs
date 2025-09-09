@@ -170,9 +170,22 @@ impl StaticHandler {
         } else {
             true
         };
+        println!("should_fetch: {}", should_fetch);
+
+        // Get database timestamp for Last-Modified header
+        let db_timestamp = match self.get_token_updated_at(&token_id).await {
+            Ok(timestamp) => Some(timestamp),
+            Err(e) => {
+                debug!(target: LOG_TARGET, error = ?e, "Failed to get database timestamp");
+                None
+            }
+        };
 
         if should_fetch {
-            match self.fetch_and_process_image(&token_id).await {
+            match self
+                .fetch_and_process_image(&token_id, db_timestamp.as_deref())
+                .await
+            {
                 Ok(_) => {}
                 Err(e) => {
                     error!(target: LOG_TARGET, error = ?e, "Failed to fetch and process image for token_id: {}", token_id);
@@ -230,8 +243,8 @@ impl StaticHandler {
                         }
                     }
 
-                    // Get file modification time for Last-Modified
-                    let file_last_modified = if let Ok(metadata) = file.metadata().await {
+                    // Get file modification time for Last-Modified header from the file path
+                    let file_last_modified = if let Ok(metadata) = std::fs::metadata(&file_name) {
                         metadata.modified().ok()
                     } else {
                         None
@@ -273,7 +286,7 @@ impl StaticHandler {
                             "public, max-age=3600, stale-while-revalidate=86400",
                         );
 
-                    // Add Last-Modified header from file metadata
+                    // Add Last-Modified header from file modification time
                     if let Some(file_mod_time) = file_last_modified {
                         response_builder = response_builder
                             .header("last-modified", httpdate::fmt_http_date(file_mod_time));
@@ -386,9 +399,15 @@ impl StaticHandler {
         // Get token updated_at timestamp from database
         let db_timestamp = self.get_token_updated_at(token_id).await?;
 
-        // Parse the timestamp string to SystemTime
-        let db_updated_time = match chrono::DateTime::parse_from_rfc3339(&db_timestamp) {
-            Ok(dt) => SystemTime::from(dt),
+        // Parse the database timestamp format: "2025-09-09 11:46:17"
+        let db_updated_time = match chrono::NaiveDateTime::parse_from_str(
+            &db_timestamp,
+            "%Y-%m-%d %H:%M:%S",
+        ) {
+            Ok(naive_dt) => {
+                let timestamp_utc = naive_dt.and_utc();
+                SystemTime::from(timestamp_utc)
+            }
             Err(_) => {
                 // If we can't parse the timestamp, assume we need to refetch
                 debug!(target: LOG_TARGET, "Failed to parse updated_at timestamp: {}", db_timestamp);
@@ -397,7 +416,11 @@ impl StaticHandler {
         };
 
         // Compare timestamps - refetch if database was updated after file
-        Ok(db_updated_time > file_modified_time)
+        let needs_refetch = db_updated_time > file_modified_time;
+        println!("DB timestamp: {:?}", db_updated_time);
+        println!("File timestamp: {:?}", file_modified_time);
+        println!("Needs refetch: {}", needs_refetch);
+        Ok(needs_refetch)
     }
 
     async fn patch_svg_images_regex(&self, svg_data: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -442,7 +465,33 @@ impl StaticHandler {
         Ok(patched_svg.into_bytes())
     }
 
-    async fn fetch_and_process_image(&self, token_id: &str) -> anyhow::Result<String> {
+    fn set_file_timestamp(
+        &self,
+        file_path: &std::path::Path,
+        timestamp_str: &str,
+    ) -> anyhow::Result<()> {
+        use filetime::{set_file_times, FileTime};
+
+        // Parse database timestamp format: "2025-09-09 11:46:17"
+        let timestamp = chrono::NaiveDateTime::parse_from_str(timestamp_str, "%Y-%m-%d %H:%M:%S")
+            .context("Failed to parse timestamp")?;
+
+        // Assume UTC timezone for database timestamps
+        let timestamp_utc = timestamp.and_utc();
+        let system_time = SystemTime::from(timestamp_utc);
+        let file_time = FileTime::from_system_time(system_time);
+
+        // Set both access and modification times to the database timestamp
+        set_file_times(file_path, file_time, file_time).context("Failed to set file times")?;
+
+        Ok(())
+    }
+
+    async fn fetch_and_process_image(
+        &self,
+        token_id: &str,
+        db_timestamp: Option<&str>,
+    ) -> anyhow::Result<String> {
         let query = sqlx::query_as::<_, (String,)>(&format!(
             "SELECT metadata FROM {TOKENS_TABLE} WHERE id = ?"
         ))
@@ -585,6 +634,19 @@ impl StaticHandler {
                     format!("Failed to write image to file: {:?}", original_file_path)
                 })?;
 
+                // Set file timestamp to match database timestamp for outdated check
+                if let Some(timestamp) = db_timestamp {
+                    println!("Setting file timestamp to: {}", timestamp);
+                    if let Err(e) =
+                        self.set_file_timestamp(original_file_path.as_std_path(), timestamp)
+                    {
+                        debug!(target: LOG_TARGET, error = ?e, "Failed to set file timestamp");
+                        println!("Failed to set file timestamp: {:?}", e);
+                    } else {
+                        println!("Successfully set file timestamp");
+                    }
+                }
+
                 // Save resized images
                 for (label, max_width, max_height) in &target_sizes {
                     let resized_image = self.resize_image_to_fit(&img, *max_width, *max_height);
@@ -599,6 +661,14 @@ impl StaticHandler {
                     file.write_all(&encoded_image).await.with_context(|| {
                         format!("Failed to write image to file: {:?}", file_path)
                     })?;
+
+                    // Set file timestamp to match database timestamp for outdated check
+                    if let Some(timestamp) = db_timestamp {
+                        if let Err(e) = self.set_file_timestamp(file_path.as_std_path(), timestamp)
+                        {
+                            debug!(target: LOG_TARGET, error = ?e, "Failed to set file timestamp for resized image");
+                        }
+                    }
                 }
 
                 // No need to store hash files anymore - we use timestamp comparison
@@ -617,6 +687,13 @@ impl StaticHandler {
                 file.write_all(&patched_svg)
                     .await
                     .with_context(|| format!("Failed to write SVG to file: {:?}", file_path))?;
+
+                // Set file timestamp to match database timestamp for outdated check
+                if let Some(timestamp) = db_timestamp {
+                    if let Err(e) = self.set_file_timestamp(file_path.as_std_path(), timestamp) {
+                        debug!(target: LOG_TARGET, error = ?e, "Failed to set file timestamp for SVG");
+                    }
+                }
                 Ok(format!("{}/{}", relative_path, file_name))
             }
         }
