@@ -1,16 +1,19 @@
 use std::io::Cursor;
 use std::net::IpAddr;
 use std::str::FromStr;
+use std::time::SystemTime;
 
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use camino::Utf8PathBuf;
+use chrono;
 use data_url::mime::Mime;
 use data_url::DataUrl;
 use hyper::{Body, Request, Response, StatusCode};
 use image::{DynamicImage, ImageFormat};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::{Pool, Sqlite};
 use tokio::fs;
 use tokio::fs::File;
@@ -87,7 +90,7 @@ impl Handler for StaticHandler {
         let query = req.uri().query().unwrap_or("");
         let query = parse_image_query(query);
 
-        match self.serve_static_file(path, query).await {
+        match self.serve_static_file(path, query, &req).await {
             Ok(response) => response,
             Err(e) => {
                 error!(target: LOG_TARGET, error = ?e, "Failed to serve static file");
@@ -99,9 +102,13 @@ impl Handler for StaticHandler {
         }
     }
 }
-
 impl StaticHandler {
-    async fn serve_static_file(&self, path: &str, query: ImageQuery) -> Result<Response<Body>> {
+    async fn serve_static_file(
+        &self,
+        path: &str,
+        query: ImageQuery,
+        req: &Request<Body>,
+    ) -> Result<Response<Body>> {
         // Split the path and validate format
         let parts: Vec<&str> = path.split('/').collect();
 
@@ -131,12 +138,32 @@ impl StaticHandler {
         let token_image_dir = self.artifacts_dir.join(parts[0]).join(parts[1]);
         let token_id = format!("{}:{}", parts[0], parts[1]);
 
-        // Check if image needs to be refetched
+        // We'll generate ETag from content hash after reading the file
+
+        // We'll get Last-Modified from actual file metadata (matches content-based ETag approach)
+
+        // Store conditional request headers for later comparison
+        let client_etag = req
+            .headers()
+            .get("if-none-match")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+
+        let client_modified_since = req
+            .headers()
+            .get("if-modified-since")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| httpdate::parse_http_date(s).ok());
+
+        // Check if image needs to be refetched based on timestamps
         let should_fetch = if token_image_dir.exists() {
-            match self.check_image_hash(&token_image_dir, &token_id).await {
+            match self
+                .check_if_image_outdated(&token_image_dir, &token_id)
+                .await
+            {
                 Ok(needs_update) => needs_update,
                 Err(e) => {
-                    error!(target: LOG_TARGET, error = ?e, "Failed to check image hash, will attempt to fetch");
+                    error!(target: LOG_TARGET, error = ?e, "Failed to check image timestamps, will attempt to fetch");
                     true
                 }
             }
@@ -144,8 +171,19 @@ impl StaticHandler {
             true
         };
 
+        let db_timestamp = match self.get_token_updated_at(&token_id).await {
+            Ok(timestamp) => Some(timestamp),
+            Err(e) => {
+                debug!(target: LOG_TARGET, error = ?e, "Failed to get database timestamp");
+                None
+            }
+        };
+
         if should_fetch {
-            match self.fetch_and_process_image(&token_id).await {
+            match self
+                .fetch_and_process_image(&token_id, db_timestamp.as_deref())
+                .await
+            {
                 Ok(_) => {}
                 Err(e) => {
                     error!(target: LOG_TARGET, error = ?e, "Failed to fetch and process image for token_id: {}", token_id);
@@ -176,14 +214,83 @@ impl StaticHandler {
                         .first_or_octet_stream()
                         .to_string();
 
-                    Ok(Response::builder()
+                    // Generate ETag from content hash
+                    let mut hasher = Sha256::new();
+                    hasher.update(&contents);
+                    let hash_bytes = hasher.finalize();
+                    let etag = format!(
+                        "\"{}\"",
+                        hash_bytes[..8]
+                            .iter()
+                            .map(|b| format!("{:02x}", b))
+                            .collect::<String>()
+                    );
+
+                    // Check conditional requests now that we have the content ETag
+                    if let Some(ref client_etag_str) = client_etag {
+                        if client_etag_str == &etag {
+                            return Ok(Response::builder()
+                                .status(StatusCode::NOT_MODIFIED)
+                                .header("etag", etag)
+                                .header(
+                                    "cache-control",
+                                    "public, max-age=3600, stale-while-revalidate=86400",
+                                )
+                                .body(Body::empty())
+                                .unwrap());
+                        }
+                    }
+
+                    // Get file modification time for Last-Modified header from the file path
+                    let file_last_modified = if let Ok(metadata) = std::fs::metadata(&file_name) {
+                        metadata.modified().ok()
+                    } else {
+                        None
+                    };
+
+                    // Check If-Modified-Since against file modification time
+                    if let (Some(client_time), Some(file_mod_time)) =
+                        (client_modified_since, file_last_modified)
+                    {
+                        let server_time_secs = file_mod_time
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        let client_time_secs = client_time
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+
+                        if server_time_secs <= client_time_secs {
+                            return Ok(Response::builder()
+                                .status(StatusCode::NOT_MODIFIED)
+                                .header("etag", etag)
+                                .header("last-modified", httpdate::fmt_http_date(file_mod_time))
+                                .header(
+                                    "cache-control",
+                                    "public, max-age=3600, stale-while-revalidate=86400",
+                                )
+                                .body(Body::empty())
+                                .unwrap());
+                        }
+                    }
+
+                    // Build response with content-based ETag and file-based Last-Modified
+                    let mut response_builder = Response::builder()
                         .header("content-type", mime)
+                        .header("etag", etag)
                         .header(
                             "cache-control",
                             "public, max-age=3600, stale-while-revalidate=86400",
-                        )
-                        .body(Body::from(contents))
-                        .unwrap())
+                        );
+
+                    // Add Last-Modified header from file modification time
+                    if let Some(file_mod_time) = file_last_modified {
+                        response_builder = response_builder
+                            .header("last-modified", httpdate::fmt_http_date(file_mod_time));
+                    }
+
+                    Ok(response_builder.body(Body::from(contents)).unwrap())
                 } else {
                     Ok(Response::builder()
                         .status(StatusCode::NOT_FOUND)
@@ -215,9 +322,7 @@ impl StaticHandler {
                 entry
                     .file_name()
                     .to_str()
-                    .map(|name| {
-                        name.starts_with("image") && !name.contains('@') && !name.ends_with(".hash")
-                    })
+                    .map(|name| name.starts_with("image") && !name.contains('@'))
                     .unwrap_or(false)
             })
             .with_context(|| "Failed to find base image")?;
@@ -241,39 +346,76 @@ impl StaticHandler {
         Ok(token_image_dir.join(target_filename))
     }
 
-    async fn check_image_hash(
-        &self,
-        token_image_dir: &Utf8PathBuf,
-        token_id: &str,
-    ) -> Result<bool> {
-        let hash_file = token_image_dir.join("image.hash");
-
-        // Get current image URI from metadata
+    async fn get_token_updated_at(&self, token_id: &str) -> Result<String> {
         let query = sqlx::query_as::<_, (String,)>(&format!(
-            "SELECT metadata FROM {TOKENS_TABLE} WHERE id = ?"
+            "SELECT updated_at FROM {TOKENS_TABLE} WHERE id = ?"
         ))
         .bind(token_id)
         .fetch_one(&self.pool)
         .await
-        .context("Failed to fetch metadata from database")?;
+        .context("Failed to fetch updated_at from database")?;
 
-        let metadata: serde_json::Value =
-            serde_json::from_str(&query.0).context("Failed to parse metadata")?;
-        let current_uri = metadata
-            .get("image")
-            .context("Image URL not found in metadata")?
-            .as_str()
-            .context("Image field not a string")?;
+        Ok(query.0)
+    }
 
-        // Check if hash file exists and compare
-        if hash_file.exists() {
-            let stored_hash = fs::read_to_string(&hash_file)
-                .await
-                .context("Failed to read hash file")?;
-            Ok(stored_hash != current_uri)
-        } else {
-            Ok(true)
-        }
+    async fn check_if_image_outdated(
+        &self,
+        token_image_dir: &Utf8PathBuf,
+        token_id: &str,
+    ) -> Result<bool> {
+        // Find the base image file in the directory
+        let mut entries = match std::fs::read_dir(token_image_dir) {
+            Ok(entries) => entries,
+            Err(_) => return Ok(true), // Directory doesn't exist, need to fetch
+        };
+
+        let base_image_file = entries.find_map(|entry| {
+            let entry = entry.ok()?;
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_str()?;
+            if file_name_str.starts_with("image") && !file_name_str.contains('@') {
+                Some(entry.path())
+            } else {
+                None
+            }
+        });
+
+        let existing_image_path = match base_image_file {
+            Some(path) => path,
+            None => return Ok(true), // No existing image, need to fetch
+        };
+
+        // Get file modification time
+        let file_modified_time = match std::fs::metadata(&existing_image_path) {
+            Ok(metadata) => match metadata.modified() {
+                Ok(time) => time,
+                Err(_) => return Ok(true), // Can't get file time, refetch
+            },
+            Err(_) => return Ok(true), // Can't read file metadata, refetch
+        };
+
+        // Get token updated_at timestamp from database
+        let db_timestamp = self.get_token_updated_at(token_id).await?;
+
+        // Parse the database timestamp format: "2025-09-09 11:46:17"
+        let db_updated_time = match chrono::NaiveDateTime::parse_from_str(
+            &db_timestamp,
+            "%Y-%m-%d %H:%M:%S",
+        ) {
+            Ok(naive_dt) => {
+                let timestamp_utc = naive_dt.and_utc();
+                SystemTime::from(timestamp_utc)
+            }
+            Err(_) => {
+                // If we can't parse the timestamp, assume we need to refetch
+                debug!(target: LOG_TARGET, "Failed to parse updated_at timestamp: {}", db_timestamp);
+                return Ok(true);
+            }
+        };
+
+        // Compare timestamps - refetch if database was updated after file
+        let needs_refetch = db_updated_time > file_modified_time;
+        Ok(needs_refetch)
     }
 
     async fn patch_svg_images_regex(&self, svg_data: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -318,7 +460,33 @@ impl StaticHandler {
         Ok(patched_svg.into_bytes())
     }
 
-    async fn fetch_and_process_image(&self, token_id: &str) -> anyhow::Result<String> {
+    fn set_file_timestamp(
+        &self,
+        file_path: &std::path::Path,
+        timestamp_str: &str,
+    ) -> anyhow::Result<()> {
+        use filetime::{set_file_times, FileTime};
+
+        // Parse database timestamp format: "2025-09-09 11:46:17"
+        let timestamp = chrono::NaiveDateTime::parse_from_str(timestamp_str, "%Y-%m-%d %H:%M:%S")
+            .context("Failed to parse timestamp")?;
+
+        // Assume UTC timezone for database timestamps
+        let timestamp_utc = timestamp.and_utc();
+        let system_time = SystemTime::from(timestamp_utc);
+        let file_time = FileTime::from_system_time(system_time);
+
+        // Set both access and modification times to the database timestamp
+        set_file_times(file_path, file_time, file_time).context("Failed to set file times")?;
+
+        Ok(())
+    }
+
+    async fn fetch_and_process_image(
+        &self,
+        token_id: &str,
+        db_timestamp: Option<&str>,
+    ) -> anyhow::Result<String> {
         let query = sqlx::query_as::<_, (String,)>(&format!(
             "SELECT metadata FROM {TOKENS_TABLE} WHERE id = ?"
         ))
@@ -461,6 +629,15 @@ impl StaticHandler {
                     format!("Failed to write image to file: {:?}", original_file_path)
                 })?;
 
+                // Set file timestamp to match database timestamp for outdated check
+                if let Some(timestamp) = db_timestamp {
+                    if let Err(e) =
+                        self.set_file_timestamp(original_file_path.as_std_path(), timestamp)
+                    {
+                        debug!(target: LOG_TARGET, error = ?e, "Failed to set file timestamp");
+                    }
+                }
+
                 // Save resized images
                 for (label, max_width, max_height) in &target_sizes {
                     let resized_image = self.resize_image_to_fit(&img, *max_width, *max_height);
@@ -475,13 +652,17 @@ impl StaticHandler {
                     file.write_all(&encoded_image).await.with_context(|| {
                         format!("Failed to write image to file: {:?}", file_path)
                     })?;
+
+                    // Set file timestamp to match database timestamp for outdated check
+                    if let Some(timestamp) = db_timestamp {
+                        if let Err(e) = self.set_file_timestamp(file_path.as_std_path(), timestamp)
+                        {
+                            debug!(target: LOG_TARGET, error = ?e, "Failed to set file timestamp for resized image");
+                        }
+                    }
                 }
 
-                // Before returning, store the image URI hash
-                let hash_file = dir_path.join("image.hash");
-                fs::write(&hash_file, &image_uri)
-                    .await
-                    .context("Failed to write hash file")?;
+                // No need to store hash files anymore - we use timestamp comparison
 
                 Ok(format!("{}/{}", relative_path, base_image_name))
             }
@@ -497,6 +678,13 @@ impl StaticHandler {
                 file.write_all(&patched_svg)
                     .await
                     .with_context(|| format!("Failed to write SVG to file: {:?}", file_path))?;
+
+                // Set file timestamp to match database timestamp for outdated check
+                if let Some(timestamp) = db_timestamp {
+                    if let Err(e) = self.set_file_timestamp(file_path.as_std_path(), timestamp) {
+                        debug!(target: LOG_TARGET, error = ?e, "Failed to set file timestamp for SVG");
+                    }
+                }
                 Ok(format!("{}/{}", relative_path, file_name))
             }
         }
