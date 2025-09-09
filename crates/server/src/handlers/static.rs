@@ -635,7 +635,6 @@ impl StaticHandler {
                         self.set_file_timestamp(original_file_path.as_std_path(), timestamp)
                     {
                         debug!(target: LOG_TARGET, error = ?e, "Failed to set file timestamp");
-                    } else {
                     }
                 }
 
