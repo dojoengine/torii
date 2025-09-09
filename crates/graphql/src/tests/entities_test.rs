@@ -12,7 +12,7 @@ mod tests {
     use torii_messaging::{Messaging, MessagingConfig};
     use torii_sqlite::executor::Executor;
     use torii_sqlite::Sql;
-    use torii_storage::proto::{Contract, ContractType};
+    use torii_storage::proto::{ContractDefinition, ContractType};
 
     use crate::schema::build_schema;
     use crate::tests::{
@@ -124,7 +124,7 @@ mod tests {
             Sql::new(
                 pool.clone(),
                 sender,
-                &[Contract {
+                &[ContractDefinition {
                     address: Felt::ZERO,
                     r#type: ContractType::WORLD,
                 }],

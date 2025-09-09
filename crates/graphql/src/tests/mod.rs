@@ -35,7 +35,7 @@ use torii_messaging::Messaging;
 use torii_processors::processors::Processors;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::Sql;
-use torii_storage::proto::{Contract, ContractType};
+use torii_storage::proto::{ContractDefinition, ContractType};
 use torii_storage::Storage;
 
 mod entities_test;
@@ -402,23 +402,20 @@ pub async fn spinup_types_test(
         executor.run().await.unwrap();
     });
 
+    let contracts = &[ContractDefinition {
+        address: world_address,
+        r#type: ContractType::WORLD,
+    }];
     let db = Sql::new(
         pool.clone(),
         sender,
-        &[Contract {
-            address: world_address,
-            r#type: ContractType::WORLD,
-        }],
+        contracts
     )
     .await
     .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
     let (shutdown_tx, _) = broadcast::channel(1);
-    let contracts = &[Contract {
-        address: world_address,
-        r#type: ContractType::WORLD,
-    }];
     let mut engine = Engine::new(
         Arc::new(db.clone()),
         cache.clone(),

@@ -9,7 +9,7 @@ pub mod entity;
 pub mod error;
 pub mod event;
 pub mod event_message;
-pub mod indexer;
+pub mod contract;
 pub mod token;
 pub mod token_balance;
 pub mod transaction;

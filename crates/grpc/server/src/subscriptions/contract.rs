@@ -6,13 +6,12 @@ use std::task::{Context, Poll};
 use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use rand::Rng;
-use starknet::core::types::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
 use torii_broker::types::ContractUpdate;
 use torii_broker::MemoryBroker;
-use torii_proto::{ContractCursor, ContractQuery};
+use torii_proto::{Contract, ContractQuery};
 use torii_storage::ReadOnlyStorage;
 use torii_storage::StorageError;
 use tracing::{error, trace};
@@ -26,7 +25,7 @@ pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::contrac
 #[derive(Debug)]
 pub struct ContractSubscriber {
     /// Contract address that the subscriber is interested in
-    contract_address: Felt,
+    query: ContractQuery,
     /// The channel to send the response back to the subscriber.
     sender: Sender<Result<SubscribeContractsResponse, tonic::Status>>,
 }
@@ -48,31 +47,23 @@ impl ContractManager {
     pub async fn add_subscriber(
         &self,
         storage: Arc<dyn ReadOnlyStorage>,
-        contract_address: Felt,
+        query: ContractQuery,
     ) -> Result<Receiver<Result<SubscribeContractsResponse, tonic::Status>>, StorageError> {
         let id = rand::thread_rng().gen::<usize>();
         let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
-        let query = ContractQuery {
-            contract_addresses: vec![],
-            contract_types: vec![],
-        };
         let contracts = storage.contracts(&query).await?;
         for contract in contracts {
-            let cursor: ContractCursor = contract.into();
             let _ = sender
                 .send(Ok(SubscribeContractsResponse {
-                    head: cursor.head.unwrap() as i64,
-                    tps: cursor.tps.unwrap() as i64,
-                    last_block_timestamp: cursor.last_block_timestamp.unwrap() as i64,
-                    contract_address: cursor.contract_address.to_bytes_be().to_vec(),
+                    contract: Some(contract.clone().into()),
                 }))
                 .await;
         }
         self.subscribers.insert(
             id,
             ContractSubscriber {
-                contract_address,
+                query,
                 sender,
             },
         );
@@ -88,8 +79,8 @@ impl ContractManager {
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = ContractCursor> + Send>>,
-    update_sender: UnboundedSender<ContractCursor>,
+    simple_broker: Pin<Box<dyn Stream<Item = Contract> + Send>>,
+    update_sender: UnboundedSender<Contract>,
 }
 
 impl Service {
@@ -111,31 +102,34 @@ impl Service {
 
     async fn publish_updates(
         subs: Arc<ContractManager>,
-        mut update_receiver: UnboundedReceiver<ContractCursor>,
+        mut update_receiver: UnboundedReceiver<Contract>,
     ) {
         while let Some(update) = update_receiver.recv().await {
             Self::process_update(&subs, &update).await;
         }
     }
 
-    async fn process_update(subs: &Arc<ContractManager>, contract: &ContractCursor) {
+    async fn process_update(subs: &Arc<ContractManager>, contract: &Contract) {
         let mut closed_stream = Vec::new();
 
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
             let sub = sub.value();
 
-            if sub.contract_address != Felt::ZERO
-                && sub.contract_address != contract.contract_address
+            if !sub.query.contract_addresses.is_empty()
+                && !sub.query.contract_addresses.contains(&contract.contract_address.clone())
+            {
+                continue;
+            }
+
+            if !sub.query.contract_types.is_empty()
+                && !sub.query.contract_types.contains(&contract.contract_type.clone())
             {
                 continue;
             }
 
             let resp = SubscribeContractsResponse {
-                head: contract.head.unwrap() as i64,
-                tps: contract.tps.unwrap() as i64,
-                last_block_timestamp: contract.last_block_timestamp.unwrap() as i64,
-                contract_address: contract.contract_address.to_bytes_be().to_vec(),
+                contract: Some(contract.clone().into()),
             };
 
             // Use try_send to avoid blocking on slow subscribers

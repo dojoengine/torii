@@ -25,7 +25,7 @@ use torii_sqlite::executor::Executor;
 use torii_sqlite::types::Token;
 use torii_sqlite::utils::u256_to_sql_string;
 use torii_sqlite::Sql;
-use torii_storage::proto::{Contract, ContractType};
+use torii_storage::proto::{ContractDefinition, ContractType};
 use torii_storage::Storage;
 
 use crate::engine::{Engine, EngineConfig};
@@ -36,7 +36,7 @@ pub async fn bootstrap_engine<P>(
     db: Sql,
     cache: Arc<dyn Cache>,
     provider: P,
-    contracts: &[Contract],
+    contracts: &[ContractDefinition],
 ) -> Result<Engine<P>, Box<dyn std::error::Error>>
 where
     P: Provider + Send + Sync + core::fmt::Debug + Clone + 'static,
@@ -157,7 +157,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: world_address,
         r#type: ContractType::WORLD,
     }];
@@ -324,7 +324,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: token_address,
         r#type: ContractType::ERC20,
     }];
@@ -467,7 +467,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: badge_address,
         r#type: ContractType::ERC721,
     }];
@@ -665,7 +665,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: rewards_address,
         r#type: ContractType::ERC1155,
     }];
@@ -850,7 +850,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: world_address,
         r#type: ContractType::WORLD,
     }];
@@ -977,7 +977,7 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: world_address,
         r#type: ContractType::WORLD,
     }];
@@ -1088,7 +1088,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: world_address,
         r#type: ContractType::WORLD,
     }];
@@ -1202,7 +1202,7 @@ async fn test_update_token_metadata_erc4906(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: rewards_address,
         r#type: ContractType::ERC1155,
     }];
@@ -1321,7 +1321,7 @@ async fn test_erc7572_contract_uri_updated(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: rewards_address,
         r#type: ContractType::ERC1155,
     }];
@@ -1476,7 +1476,7 @@ async fn test_erc20_total_supply_tracking(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: erc20_address,
         r#type: ContractType::ERC20,
     }];
@@ -1650,7 +1650,7 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: erc721_address,
         r#type: ContractType::ERC721,
     }];
@@ -1844,7 +1844,7 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let contracts = vec![Contract {
+    let contracts = vec![ContractDefinition {
         address: erc1155_address,
         r#type: ContractType::ERC1155,
     }];

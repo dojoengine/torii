@@ -18,7 +18,7 @@ use torii_processors::{
     BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors,
     TransactionProcessorContext,
 };
-use torii_storage::proto::{Contract, ContractCursor, ContractQuery, ContractType};
+use torii_storage::proto::{ContractCursor, ContractDefinition, ContractQuery, ContractType};
 use torii_storage::utils::format_event_id;
 use torii_storage::Storage;
 use tracing::{debug, error, info, trace};
@@ -97,7 +97,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         processors: Arc<Processors<P>>,
         config: EngineConfig,
         shutdown_tx: Sender<()>,
-        contracts: &[Contract],
+        contracts: &[ContractDefinition],
     ) -> Self {
         Self::new_with_controllers(
             storage,
@@ -119,12 +119,12 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         processors: Arc<Processors<P>>,
         config: EngineConfig,
         shutdown_tx: Sender<()>,
-        contracts: &[Contract],
+        contracts: &[ContractDefinition],
         controllers: Option<Arc<ControllersSync>>,
     ) -> Self {
         let contracts = contracts
             .iter()
-            .map(|contract| (contract.contract_address, contract.contract_type))
+            .map(|contract| (contract.address, contract.r#type))
             .collect();
         let max_concurrent_tasks = config.max_concurrent_tasks;
         let event_processor_config = config.event_processor_config.clone();

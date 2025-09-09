@@ -39,7 +39,6 @@ use strum_macros::{AsRefStr, EnumIter, FromRepr};
 pub struct ContractCursor {
     pub contract_address: Felt,
     pub head: Option<u64>,
-    pub tps: Option<u64>,
     pub last_block_timestamp: Option<u64>,
     pub last_pending_block_tx: Option<Felt>,
 }
@@ -83,6 +82,14 @@ impl std::fmt::Display for ContractType {
     }
 }
 
+/// Simple contract representation for CLI and basic usage
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Copy)]
+pub struct ContractDefinition {
+    pub address: Felt,
+    pub r#type: ContractType,
+}
+
+/// Full contract representation with metadata for storage/indexing
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Contract {
     pub contract_address: Felt,
@@ -92,6 +99,12 @@ pub struct Contract {
     pub last_block_timestamp: Option<u64>,
     pub last_pending_block_tx: Option<Felt>,
     pub created_at: DateTime<Utc>,
+}
+
+impl std::fmt::Display for ContractDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{:#x}", self.r#type, self.address)
+    }
 }
 
 impl std::fmt::Display for Contract {
@@ -105,9 +118,17 @@ impl From<Contract> for ContractCursor {
         Self {
             contract_address: contract.contract_address,
             head: contract.head,
-            tps: contract.tps,
             last_block_timestamp: contract.last_block_timestamp,
             last_pending_block_tx: contract.last_pending_block_tx,
+        }
+    }
+}
+
+impl From<Contract> for ContractDefinition {
+    fn from(contract: Contract) -> Self {
+        Self {
+            address: contract.contract_address,
+            r#type: contract.contract_type,
         }
     }
 }
@@ -550,25 +571,6 @@ impl TryFrom<proto::types::ContractQuery> for ContractQuery {
                 .collect(),
             contract_types,
         })
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
-pub struct IndexerUpdate {
-    pub head: i64,
-    pub tps: i64,
-    pub last_block_timestamp: i64,
-    pub contract_address: Felt,
-}
-
-impl From<proto::world::SubscribeContractsResponse> for IndexerUpdate {
-    fn from(value: proto::world::SubscribeContractsResponse) -> Self {
-        Self {
-            head: value.head,
-            tps: value.tps,
-            last_block_timestamp: value.last_block_timestamp,
-            contract_address: Felt::from_bytes_be_slice(&value.contract_address),
-        }
     }
 }
 

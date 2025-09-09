@@ -3,7 +3,7 @@ pub mod error;
 use crypto_bigint::U256;
 use starknet::core::types::Felt;
 use torii_grpc_client::{
-    EntityUpdateStreaming, EventUpdateStreaming, IndexerUpdateStreaming, TokenBalanceStreaming,
+    ContractUpdateStreaming, EntityUpdateStreaming, EventUpdateStreaming, TokenBalanceStreaming,
     TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
 };
 use torii_proto::proto::world::{
@@ -14,7 +14,7 @@ use torii_proto::proto::world::{
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Controller, ControllerQuery, Event, EventQuery, KeysClause, Message, Page, Query,
-    Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionFilter,
+    Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionFilter, ContractQuery,
     TransactionQuery, World,
 };
 
@@ -292,13 +292,16 @@ impl Client {
 
     /// Subscribe to indexer updates for a specific contract address.
     /// If no contract address is provided, it will subscribe to updates for world contract.
-    pub async fn on_indexer_updated(
+    pub async fn on_contract_updated(
         &self,
         contract_address: Option<Felt>,
-    ) -> Result<IndexerUpdateStreaming, Error> {
+    ) -> Result<ContractUpdateStreaming, Error> {
         let mut grpc_client = self.inner.clone();
         let stream = grpc_client
-            .subscribe_indexer(contract_address.unwrap_or_default())
+            .subscribe_contracts(ContractQuery {
+                contract_addresses: contract_address.map(|c| vec![c]).unwrap_or_default(),
+                contract_types: vec![],
+            })
             .await?;
         Ok(stream)
     }

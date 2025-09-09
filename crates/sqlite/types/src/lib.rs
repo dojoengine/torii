@@ -263,7 +263,6 @@ impl From<ContractCursor> for torii_proto::ContractCursor {
         Self {
             contract_address: Felt::from_str(&value.contract_address).unwrap(),
             head: value.head.map(|h| h as u64),
-            tps: value.tps.map(|t| t as u64),
             last_block_timestamp: value.last_block_timestamp.map(|t| t as u64),
             last_pending_block_tx: value
                 .last_pending_block_tx

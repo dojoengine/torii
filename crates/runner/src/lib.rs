@@ -52,8 +52,7 @@ use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::{Sql, SqlConfig};
-use torii_storage::proto::Contract;
-use torii_storage::proto::ContractType;
+use torii_storage::proto::{Contract, ContractDefinition, ContractType};
 use torii_storage::ReadOnlyStorage;
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
@@ -135,7 +134,7 @@ impl Runner {
 
         // Add world to list of generic contracts if it is provided
         if let Some(world_address) = self.args.world_address {
-            self.args.indexing.contracts.push(Contract {
+            self.args.indexing.contracts.push(ContractDefinition {
                 address: world_address,
                 r#type: ContractType::WORLD,
             });
@@ -605,8 +604,8 @@ async fn spawn_rebuilding_graphql_server<P: Provider + Sync + Send + Clone + Deb
 
 async fn verify_contracts_deployed(
     provider: &JsonRpcClient<HttpTransport>,
-    contracts: &[Contract],
-) -> anyhow::Result<Vec<Contract>> {
+    contracts: &[ContractDefinition],
+) -> anyhow::Result<Vec<ContractDefinition>> {
     // Create a future for each contract verification
     let verification_futures = contracts.iter().map(|contract| {
         let contract = *contract;

@@ -22,7 +22,7 @@ use proto::world::{
 use starknet::core::types::Felt;
 use starknet::providers::Provider;
 use subscriptions::event::EventManager;
-use subscriptions::indexer::ContractManager;
+use subscriptions::contract::ContractManager;
 use subscriptions::token::TokenManager;
 use subscriptions::token_balance::TokenBalanceManager;
 use tokio::net::TcpListener;
@@ -119,7 +119,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             &event_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::indexer::Service::new(Arc::clone(
+        SUBSCRIPTION_RUNTIME.spawn(subscriptions::contract::Service::new(Arc::clone(
             &contract_manager,
         )));
 
