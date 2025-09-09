@@ -64,6 +64,9 @@ service World {
     // Retrieve controllers
     rpc RetrieveControllers (RetrieveControllersRequest) returns (RetrieveControllersResponse);
 
+    // Retrieve contracts
+    rpc RetrieveContracts (RetrieveContractsRequest) returns (RetrieveContractsResponse);
+
     // Retrieve tokens collections
     rpc RetrieveTokenCollections (RetrieveTokenCollectionsRequest) returns (RetrieveTokenCollectionsResponse);
 
@@ -89,6 +92,14 @@ message RetrieveControllersRequest {
 message RetrieveControllersResponse {
     string next_cursor = 1;
     repeated types.Controller controllers = 2;
+}
+
+message RetrieveContractsRequest {
+    types.ContractQuery query = 1;
+}
+
+message RetrieveContractsResponse {
+    repeated types.Contract contracts = 1;
 }
 
 // A request to update a token balance subscription
