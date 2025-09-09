@@ -44,7 +44,8 @@ use self::subscriptions::event_message::EventMessageManager;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
     PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest,
-    PublishMessageResponse, RetrieveControllersRequest, RetrieveControllersResponse,
+    PublishMessageResponse, RetrieveContractsRequest, RetrieveContractsResponse,
+    RetrieveControllersRequest, RetrieveControllersResponse,
     RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
     RetrieveTokenCollectionsRequest, RetrieveTokenCollectionsResponse, RetrieveTokensRequest,
     RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
@@ -372,6 +373,27 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         Ok(Response::new(RetrieveControllersResponse {
             next_cursor: controllers.next_cursor.unwrap_or_default(),
             controllers: controllers.items.into_iter().map(|c| c.into()).collect(),
+        }))
+    }
+
+    async fn retrieve_contracts(
+        &self,
+        request: Request<RetrieveContractsRequest>,
+    ) -> Result<Response<RetrieveContractsResponse>, Status> {
+        let RetrieveContractsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+
+        let contracts = self
+            .storage
+            .contracts(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(RetrieveContractsResponse {
+            contracts: contracts.into_iter().map(Into::into).collect(),
         }))
     }
 
