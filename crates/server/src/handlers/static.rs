@@ -170,9 +170,7 @@ impl StaticHandler {
         } else {
             true
         };
-        println!("should_fetch: {}", should_fetch);
 
-        // Get database timestamp for Last-Modified header
         let db_timestamp = match self.get_token_updated_at(&token_id).await {
             Ok(timestamp) => Some(timestamp),
             Err(e) => {
@@ -417,9 +415,6 @@ impl StaticHandler {
 
         // Compare timestamps - refetch if database was updated after file
         let needs_refetch = db_updated_time > file_modified_time;
-        println!("DB timestamp: {:?}", db_updated_time);
-        println!("File timestamp: {:?}", file_modified_time);
-        println!("Needs refetch: {}", needs_refetch);
         Ok(needs_refetch)
     }
 
@@ -636,14 +631,11 @@ impl StaticHandler {
 
                 // Set file timestamp to match database timestamp for outdated check
                 if let Some(timestamp) = db_timestamp {
-                    println!("Setting file timestamp to: {}", timestamp);
                     if let Err(e) =
                         self.set_file_timestamp(original_file_path.as_std_path(), timestamp)
                     {
                         debug!(target: LOG_TARGET, error = ?e, "Failed to set file timestamp");
-                        println!("Failed to set file timestamp: {:?}", e);
                     } else {
-                        println!("Successfully set file timestamp");
                     }
                 }
 
