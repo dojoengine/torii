@@ -12,10 +12,10 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    schema::Entity, CallType, Clause, CompositeClause, ContractCursor, Controller, ControllerQuery,
-    Event, EventQuery, LogicalOperator, Model, OrderBy, OrderDirection, Page, Query, Token,
-    TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery, Transaction, TransactionCall,
-    TransactionQuery,
+    schema::Entity, CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery,
+    Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy,
+    OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection,
+    TokenQuery, Transaction, TransactionCall, TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{ReadOnlyStorage, Storage, StorageError};
@@ -51,33 +51,6 @@ pub const LOG_TARGET: &str = "torii::sqlite::storage";
 impl ReadOnlyStorage for Sql {
     fn as_read_only(&self) -> &dyn ReadOnlyStorage {
         self
-    }
-
-    /// Returns the cursors for all contracts.
-    async fn cursors(&self) -> Result<HashMap<Felt, ContractCursor>, StorageError> {
-        let cursors =
-            sqlx::query_as::<_, torii_sqlite_types::ContractCursor>("SELECT * FROM contracts")
-                .fetch_all(&self.pool)
-                .await?;
-
-        let mut cursors_map = HashMap::new();
-        for c in cursors {
-            let contract_address = Felt::from_str(&c.contract_address)
-                .map_err(|e| Error::Parse(ParseError::FromStr(e)))?;
-            let last_pending_block_tx = c
-                .last_pending_block_tx
-                .map(|tx| Felt::from_str(&tx).map_err(|e| Error::Parse(ParseError::FromStr(e))))
-                .transpose()?;
-            let cursor = ContractCursor {
-                contract_address,
-                last_pending_block_tx,
-                head: c.head.map(|h| h as u64),
-                last_block_timestamp: c.last_block_timestamp.map(|t| t as u64),
-                tps: c.tps.map(|t| t as u64),
-            };
-            cursors_map.insert(contract_address, cursor);
-        }
-        Ok(cursors_map)
     }
 
     /// Returns the model metadata for the storage.
@@ -229,6 +202,48 @@ impl ReadOnlyStorage for Sql {
             items,
             next_cursor: page.next_cursor,
         })
+    }
+
+    async fn contracts(&self, query: &ContractQuery) -> Result<Vec<Contract>, StorageError> {
+        let mut query_builder = "SELECT * FROM contracts".to_string();
+        let mut bind_values = vec![];
+        let mut conditions = vec![];
+
+        if !query.contract_addresses.is_empty() {
+            let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
+            conditions.push(format!("contract_address IN ({})", placeholders));
+            bind_values.extend(
+                query
+                    .contract_addresses
+                    .iter()
+                    .map(|addr| format!("{:#x}", addr)),
+            );
+        }
+
+        if !query.contract_types.is_empty() {
+            let placeholders = vec!["?"; query.contract_types.len()].join(", ");
+            conditions.push(format!("contract_type IN ({})", placeholders));
+            bind_values.extend(query.contract_types.iter().map(|t| t.to_string()));
+        }
+
+        if !conditions.is_empty() {
+            query_builder += &format!(" WHERE {}", conditions.join(" AND "));
+        }
+
+        query_builder += " ORDER BY created_at DESC";
+
+        let mut query = sqlx::query_as::<_, torii_sqlite_types::Contract>(&query_builder);
+        for value in bind_values {
+            query = query.bind(value);
+        }
+
+        let contracts = query.fetch_all(&self.pool).await?;
+        let items: Vec<Contract> = contracts
+            .into_iter()
+            .map(|contract| contract.into())
+            .collect();
+
+        Ok(items)
     }
 
     async fn tokens(&self, query: &TokenQuery) -> Result<Page<Token>, StorageError> {

@@ -37,7 +37,6 @@ tokio = { version = "1.32.0", features = [ "macros", "sync" ], default-features 
 ipfs-api-backend-hyper.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
-torii-sqlite.workspace = true
 dojo-metrics.workspace = true
 metrics.workspace = true
 torii-processors.workspace = true

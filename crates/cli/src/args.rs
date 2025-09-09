@@ -141,7 +141,7 @@ mod test {
     use std::net::{IpAddr, Ipv4Addr};
     use std::str::FromStr;
 
-    use torii_proto::{Contract, ContractType};
+    use torii_proto::{ContractDefinition, ContractType};
     use torii_sqlite_types::ModelIndices;
 
     use super::*;
@@ -367,11 +367,11 @@ mod test {
         assert_eq!(
             torii_args.indexing.contracts,
             vec![
-                Contract {
+                ContractDefinition {
                     address: Felt::from_str("0x1234").unwrap(),
                     r#type: ContractType::ERC20
                 },
-                Contract {
+                ContractDefinition {
                     address: Felt::from_str("0x5678").unwrap(),
                     r#type: ContractType::ERC721
                 }

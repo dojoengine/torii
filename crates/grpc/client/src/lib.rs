@@ -23,9 +23,9 @@ use torii_proto::proto::world::{
     RetrieveEventMessagesRequest, RetrieveEventsRequest, RetrieveEventsResponse,
     RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
     RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
-    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeEntitiesRequest,
-    SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsRequest,
-    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
+    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeContractsRequest,
+    SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
+    SubscribeEventMessagesRequest, SubscribeEventsRequest, SubscribeEventsResponse,
     SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
     SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
     UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
@@ -33,8 +33,9 @@ use torii_proto::proto::world::{
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, ControllerQuery, Event, EventQuery, IndexerUpdate, KeysClause, Message, Query, Token,
-    TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionFilter, TransactionQuery,
+    Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message,
+    Query, Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionFilter,
+    TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -293,23 +294,25 @@ impl WorldClient {
             .map(|res| res.into_inner())
     }
 
-    /// Subscribe to indexer updates.
-    pub async fn subscribe_indexer(
+    /// Subscribe to contracts updates.
+    pub async fn subscribe_contracts(
         &mut self,
-        contract_address: Felt,
-    ) -> Result<IndexerUpdateStreaming, Error> {
-        let request = SubscribeIndexerRequest {
-            contract_address: contract_address.to_bytes_be().to_vec(),
+        query: ContractQuery,
+    ) -> Result<ContractUpdateStreaming, Error> {
+        let request = SubscribeContractsRequest {
+            query: Some(query.into()),
         };
         let stream = self
             .inner
-            .subscribe_indexer(request)
+            .subscribe_contracts(request)
             .await
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
-        Ok(IndexerUpdateStreaming(
-            stream.map_ok(Box::new(|res| res.into())),
-        ))
+        Ok(ContractUpdateStreaming(stream.map_ok(Box::new(|res| {
+            res.contract
+                .map(|c| c.try_into().expect("must able to serialize"))
+                .expect("must able to serialize")
+        }))))
     }
 
     /// Subscribe to entities updates of a World.
@@ -599,16 +602,16 @@ impl Stream for EventUpdateStreaming {
     }
 }
 
-type IndexerMappedStream = MapOk<
-    tonic::Streaming<SubscribeIndexerResponse>,
-    Box<dyn Fn(SubscribeIndexerResponse) -> IndexerUpdate + Send>,
+type ContractMappedStream = MapOk<
+    tonic::Streaming<SubscribeContractsResponse>,
+    Box<dyn Fn(SubscribeContractsResponse) -> Contract + Send>,
 >;
 
 #[derive(Debug)]
-pub struct IndexerUpdateStreaming(IndexerMappedStream);
+pub struct ContractUpdateStreaming(ContractMappedStream);
 
-impl Stream for IndexerUpdateStreaming {
-    type Item = <IndexerMappedStream as Stream>::Item;
+impl Stream for ContractUpdateStreaming {
+    type Item = <ContractMappedStream as Stream>::Item;
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,

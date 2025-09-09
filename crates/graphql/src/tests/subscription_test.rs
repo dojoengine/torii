@@ -19,7 +19,7 @@ mod tests {
     use tokio::sync::{broadcast, mpsc};
     use torii_sqlite::executor::Executor;
     use torii_sqlite::Sql;
-    use torii_storage::proto::{Contract, ContractType};
+    use torii_storage::proto::{ContractDefinition, ContractType};
     use torii_storage::Storage;
     use url::Url;
 
@@ -44,7 +44,7 @@ mod tests {
         let db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract {
+            &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
@@ -220,7 +220,7 @@ mod tests {
         let db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract {
+            &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
@@ -373,7 +373,7 @@ mod tests {
         let db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract {
+            &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
@@ -467,7 +467,7 @@ mod tests {
         let db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract {
+            &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],
@@ -561,7 +561,7 @@ mod tests {
         let db = Sql::new(
             pool.clone(),
             sender,
-            &[Contract {
+            &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
             }],

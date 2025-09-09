@@ -7,7 +7,7 @@ use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
 use torii_cache::Cache;
-use torii_proto::Contract;
+use torii_proto::ContractDefinition;
 use torii_storage::Storage;
 
 use crate::error::{Error, ParseError};
@@ -56,7 +56,7 @@ impl Sql {
     pub async fn new(
         pool: Pool<Sqlite>,
         executor: UnboundedSender<QueryMessage>,
-        contracts: &[Contract],
+        contracts: &[ContractDefinition],
     ) -> Result<Self, Error> {
         Self::new_with_config(pool, executor, contracts, Default::default()).await
     }
@@ -64,7 +64,7 @@ impl Sql {
     pub async fn new_with_config(
         pool: Pool<Sqlite>,
         executor: UnboundedSender<QueryMessage>,
-        contracts: &[Contract],
+        contracts: &[ContractDefinition],
         config: SqlConfig,
     ) -> Result<Self, Error> {
         for contract in contracts {

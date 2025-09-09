@@ -21,8 +21,8 @@ use proto::world::{
 };
 use starknet::core::types::Felt;
 use starknet::providers::Provider;
+use subscriptions::contract::ContractManager;
 use subscriptions::event::EventManager;
-use subscriptions::indexer::IndexerManager;
 use subscriptions::token::TokenManager;
 use subscriptions::token_balance::TokenBalanceManager;
 use tokio::net::TcpListener;
@@ -48,8 +48,8 @@ use torii_proto::proto::world::{
     RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
     RetrieveTokenCollectionsRequest, RetrieveTokenCollectionsResponse, RetrieveTokensRequest,
     RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
-    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
-    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
+    SubscribeContractsRequest, SubscribeContractsResponse, SubscribeEntitiesRequest,
+    SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsResponse,
     SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
     SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
     UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
@@ -82,7 +82,7 @@ pub struct DojoWorld<P: Provider + Sync> {
     entity_manager: Arc<EntityManager>,
     event_message_manager: Arc<EventMessageManager>,
     event_manager: Arc<EventManager>,
-    indexer_manager: Arc<IndexerManager>,
+    contract_manager: Arc<ContractManager>,
     token_balance_manager: Arc<TokenBalanceManager>,
     token_manager: Arc<TokenManager>,
     transaction_manager: Arc<TransactionManager>,
@@ -100,7 +100,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let entity_manager = Arc::new(EntityManager::new(config.clone()));
         let event_message_manager = Arc::new(EventMessageManager::new(config.clone()));
         let event_manager = Arc::new(EventManager::new(config.clone()));
-        let indexer_manager = Arc::new(IndexerManager::new(config.clone()));
+        let contract_manager = Arc::new(ContractManager::new(config.clone()));
         let token_balance_manager = Arc::new(TokenBalanceManager::new(config.clone()));
         let token_manager = Arc::new(TokenManager::new(config.clone()));
         let transaction_manager = Arc::new(TransactionManager::new(config.clone()));
@@ -119,8 +119,8 @@ impl<P: Provider + Sync> DojoWorld<P> {
             &event_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::indexer::Service::new(Arc::clone(
-            &indexer_manager,
+        SUBSCRIPTION_RUNTIME.spawn(subscriptions::contract::Service::new(Arc::clone(
+            &contract_manager,
         )));
 
         SUBSCRIPTION_RUNTIME.spawn(subscriptions::token_balance::Service::new(Arc::clone(
@@ -143,7 +143,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             entity_manager,
             event_message_manager,
             event_manager,
-            indexer_manager,
+            contract_manager,
             token_balance_manager,
             token_manager,
             transaction_manager,
@@ -216,8 +216,8 @@ type SubscribeEntitiesResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeEntityResponse, Status>> + Send>>;
 type SubscribeEventsResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeEventsResponse, Status>> + Send>>;
-type SubscribeIndexerResponseStream =
-    Pin<Box<dyn Stream<Item = Result<SubscribeIndexerResponse, Status>> + Send>>;
+type SubscribeContractsResponseStream =
+    Pin<Box<dyn Stream<Item = Result<SubscribeContractsResponse, Status>> + Send>>;
 type SubscribeTokenBalancesResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokenBalancesResponse, Status>> + Send>>;
 type SubscribeTokensResponseStream =
@@ -230,7 +230,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
     type SubscribeEntitiesStream = SubscribeEntitiesResponseStream;
     type SubscribeEventMessagesStream = SubscribeEntitiesResponseStream;
     type SubscribeEventsStream = SubscribeEventsResponseStream;
-    type SubscribeIndexerStream = SubscribeIndexerResponseStream;
+    type SubscribeContractsStream = SubscribeContractsResponseStream;
     type SubscribeTokenBalancesStream = SubscribeTokenBalancesResponseStream;
     type SubscribeTokensStream = SubscribeTokensResponseStream;
     type SubscribeTransactionsStream = SubscribeTransactionsResponseStream;
@@ -494,22 +494,23 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         }))
     }
 
-    async fn subscribe_indexer(
+    async fn subscribe_contracts(
         &self,
-        request: Request<SubscribeIndexerRequest>,
-    ) -> ServiceResult<Self::SubscribeIndexerStream> {
-        let SubscribeIndexerRequest { contract_address } = request.into_inner();
+        request: Request<SubscribeContractsRequest>,
+    ) -> ServiceResult<Self::SubscribeContractsStream> {
+        let SubscribeContractsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
         let rx = self
-            .indexer_manager
-            .add_subscriber(
-                self.storage.clone(),
-                Felt::from_bytes_be_slice(&contract_address),
-            )
+            .contract_manager
+            .add_subscriber(self.storage.clone(), query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(
-            Box::pin(ReceiverStream::new(rx)) as Self::SubscribeIndexerStream
+            Box::pin(ReceiverStream::new(rx)) as Self::SubscribeContractsStream
         ))
     }
 

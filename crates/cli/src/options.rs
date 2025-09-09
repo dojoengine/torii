@@ -9,7 +9,7 @@ use merge_options::MergeOptions;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
-use torii_proto::{Contract, ContractType};
+use torii_proto::{ContractDefinition, ContractType};
 use torii_sqlite_types::{Hook, HookEvent, ModelIndices};
 
 pub const DEFAULT_HTTP_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
@@ -166,7 +166,7 @@ pub struct IndexingOptions {
     )]
     #[serde(deserialize_with = "deserialize_contracts")]
     #[serde(serialize_with = "serialize_contracts")]
-    pub contracts: Vec<Contract>,
+    pub contracts: Vec<ContractDefinition>,
 
     /// Namespaces to index
     #[arg(
@@ -768,21 +768,21 @@ fn parse_hook(part: &str) -> anyhow::Result<Hook> {
 
 // Parses clap cli argument which is expected to be in the format:
 // - contract_type:address
-fn parse_erc_contract(part: &str) -> anyhow::Result<Contract> {
+fn parse_erc_contract(part: &str) -> anyhow::Result<ContractDefinition> {
     match part.split(':').collect::<Vec<&str>>().as_slice() {
         [r#type, address] => {
             let r#type = r#type.parse::<ContractType>()?;
 
             let address = Felt::from_str(address)
                 .with_context(|| format!("Expected address, found {}", address))?;
-            Ok(Contract { address, r#type })
+            Ok(ContractDefinition { address, r#type })
         }
         _ => Err(anyhow::anyhow!("Invalid contract format")),
     }
 }
 
 // Add this function to handle TOML deserialization
-fn deserialize_contracts<'de, D>(deserializer: D) -> Result<Vec<Contract>, D::Error>
+fn deserialize_contracts<'de, D>(deserializer: D) -> Result<Vec<ContractDefinition>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -793,7 +793,10 @@ where
         .collect()
 }
 
-fn serialize_contracts<S>(contracts: &Vec<Contract>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_contracts<S>(
+    contracts: &Vec<ContractDefinition>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
