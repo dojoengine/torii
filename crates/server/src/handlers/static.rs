@@ -90,7 +90,7 @@ impl Handler for StaticHandler {
         let query = req.uri().query().unwrap_or("");
         let query = parse_image_query(query);
 
-        match self.serve_static_file(path, query).await {
+        match self.serve_static_file(path, query, &req).await {
             Ok(response) => response,
             Err(e) => {
                 error!(target: LOG_TARGET, error = ?e, "Failed to serve static file");
@@ -103,7 +103,12 @@ impl Handler for StaticHandler {
     }
 }
 impl StaticHandler {
-    async fn serve_static_file(&self, path: &str, query: ImageQuery) -> Result<Response<Body>> {
+    async fn serve_static_file(
+        &self,
+        path: &str,
+        query: ImageQuery,
+        req: &Request<Body>,
+    ) -> Result<Response<Body>> {
         // Split the path and validate format
         let parts: Vec<&str> = path.split('/').collect();
 
@@ -133,9 +138,41 @@ impl StaticHandler {
         let token_image_dir = self.artifacts_dir.join(parts[0]).join(parts[1]);
         let token_id = format!("{}:{}", parts[0], parts[1]);
 
+        // Get the updated_at timestamp from database for ETag
+        let db_timestamp = match self.get_token_updated_at(&token_id).await {
+            Ok(timestamp) => timestamp,
+            Err(e) => {
+                error!(target: LOG_TARGET, error = ?e, "Failed to get token timestamp");
+                return Ok(Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Body::empty())
+                    .unwrap());
+            }
+        };
+
+        // We'll generate ETag from content hash after reading the file
+
+        // We'll get Last-Modified from actual file metadata (matches content-based ETag approach)
+
+        // Store conditional request headers for later comparison
+        let client_etag = req
+            .headers()
+            .get("if-none-match")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+
+        let client_modified_since = req
+            .headers()
+            .get("if-modified-since")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| httpdate::parse_http_date(s).ok());
+
         // Check if image needs to be refetched based on timestamps
         let should_fetch = if token_image_dir.exists() {
-            match self.check_if_image_outdated(&token_image_dir, &token_id).await {
+            match self
+                .check_if_image_outdated(&token_image_dir, &token_id)
+                .await
+            {
                 Ok(needs_update) => needs_update,
                 Err(e) => {
                     error!(target: LOG_TARGET, error = ?e, "Failed to check image timestamps, will attempt to fetch");
@@ -181,19 +218,65 @@ impl StaticHandler {
                     // Generate ETag from content hash
                     let mut hasher = Sha256::new();
                     hasher.update(&contents);
-                    let etag = format!("\"{}\"", hex::encode(hasher.finalize())[..16].to_string());
+                    let hash_bytes = hasher.finalize();
+                    let etag = format!(
+                        "\"{}\"",
+                        hash_bytes[..8]
+                            .iter()
+                            .map(|b| format!("{:02x}", b))
+                            .collect::<String>()
+                    );
 
-                    // Get last modified time from file metadata
-                    let last_modified = match file.metadata().await {
-                        Ok(metadata) => {
-                            match metadata.modified() {
-                                Ok(time) => Some(httpdate::fmt_http_date(time)),
-                                Err(_) => None,
-                            }
+                    // Check conditional requests now that we have the content ETag
+                    if let Some(ref client_etag_str) = client_etag {
+                        if client_etag_str == &etag {
+                            return Ok(Response::builder()
+                                .status(StatusCode::NOT_MODIFIED)
+                                .header("etag", etag)
+                                .header(
+                                    "cache-control",
+                                    "public, max-age=3600, stale-while-revalidate=86400",
+                                )
+                                .body(Body::empty())
+                                .unwrap());
                         }
-                        Err(_) => None,
+                    }
+
+                    // Get file modification time for Last-Modified
+                    let file_last_modified = if let Ok(metadata) = file.metadata().await {
+                        metadata.modified().ok()
+                    } else {
+                        None
                     };
 
+                    // Check If-Modified-Since against file modification time
+                    if let (Some(client_time), Some(file_mod_time)) =
+                        (client_modified_since, file_last_modified)
+                    {
+                        let server_time_secs = file_mod_time
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        let client_time_secs = client_time
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+
+                        if server_time_secs <= client_time_secs {
+                            return Ok(Response::builder()
+                                .status(StatusCode::NOT_MODIFIED)
+                                .header("etag", etag)
+                                .header("last-modified", httpdate::fmt_http_date(file_mod_time))
+                                .header(
+                                    "cache-control",
+                                    "public, max-age=3600, stale-while-revalidate=86400",
+                                )
+                                .body(Body::empty())
+                                .unwrap());
+                        }
+                    }
+
+                    // Build response with content-based ETag and file-based Last-Modified
                     let mut response_builder = Response::builder()
                         .header("content-type", mime)
                         .header("etag", etag)
@@ -202,8 +285,10 @@ impl StaticHandler {
                             "public, max-age=3600, stale-while-revalidate=86400",
                         );
 
-                    if let Some(last_mod) = last_modified {
-                        response_builder = response_builder.header("last-modified", last_mod);
+                    // Add Last-Modified header from file metadata
+                    if let Some(file_mod_time) = file_last_modified {
+                        response_builder = response_builder
+                            .header("last-modified", httpdate::fmt_http_date(file_mod_time));
                     }
 
                     Ok(response_builder.body(Body::from(contents)).unwrap())
@@ -238,9 +323,7 @@ impl StaticHandler {
                 entry
                     .file_name()
                     .to_str()
-                    .map(|name| {
-                        name.starts_with("image") && !name.contains('@')
-                    })
+                    .map(|name| name.starts_with("image") && !name.contains('@'))
                     .unwrap_or(false)
             })
             .with_context(|| "Failed to find base image")?;
@@ -264,6 +347,18 @@ impl StaticHandler {
         Ok(token_image_dir.join(target_filename))
     }
 
+    async fn get_token_updated_at(&self, token_id: &str) -> Result<String> {
+        let query = sqlx::query_as::<_, (String,)>(&format!(
+            "SELECT updated_at FROM {TOKENS_TABLE} WHERE id = ?"
+        ))
+        .bind(token_id)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to fetch updated_at from database")?;
+
+        Ok(query.0)
+    }
+
     async fn check_if_image_outdated(
         &self,
         token_image_dir: &Utf8PathBuf,
@@ -275,17 +370,16 @@ impl StaticHandler {
             Err(_) => return Ok(true), // Directory doesn't exist, need to fetch
         };
 
-        let base_image_file = entries
-            .find_map(|entry| {
-                let entry = entry.ok()?;
-                let file_name = entry.file_name();
-                let file_name_str = file_name.to_str()?;
-                if file_name_str.starts_with("image") && !file_name_str.contains('@') {
-                    Some(entry.path())
-                } else {
-                    None
-                }
-            });
+        let base_image_file = entries.find_map(|entry| {
+            let entry = entry.ok()?;
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_str()?;
+            if file_name_str.starts_with("image") && !file_name_str.contains('@') {
+                Some(entry.path())
+            } else {
+                None
+            }
+        });
 
         let existing_image_path = match base_image_file {
             Some(path) => path,
@@ -302,20 +396,14 @@ impl StaticHandler {
         };
 
         // Get token updated_at timestamp from database
-        let query = sqlx::query_as::<_, (String,)>(&format!(
-            "SELECT updated_at FROM {TOKENS_TABLE} WHERE id = ?"
-        ))
-        .bind(token_id)
-        .fetch_one(&self.pool)
-        .await
-        .context("Failed to fetch updated_at from database")?;
+        let db_timestamp = self.get_token_updated_at(token_id).await?;
 
         // Parse the timestamp string to SystemTime
-        let db_updated_time = match chrono::DateTime::parse_from_rfc3339(&query.0) {
+        let db_updated_time = match chrono::DateTime::parse_from_rfc3339(&db_timestamp) {
             Ok(dt) => SystemTime::from(dt),
             Err(_) => {
                 // If we can't parse the timestamp, assume we need to refetch
-                debug!(target: LOG_TARGET, "Failed to parse updated_at timestamp: {}", query.0);
+                debug!(target: LOG_TARGET, "Failed to parse updated_at timestamp: {}", db_timestamp);
                 return Ok(true);
             }
         };
@@ -569,4 +657,3 @@ pub enum ErcImageType {
     DynamicImage((DynamicImage, ImageFormat)),
     Svg(Vec<u8>),
 }
-

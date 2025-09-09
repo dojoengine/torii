@@ -44,10 +44,8 @@ torii-storage.workspace = true
 starknet.workspace = true
 starknet-crypto.workspace = true
 crypto-bigint.workspace = true
-sha2.workspace = true
-hex.workspace = true
+sha2 = "0.10"
 httpdate = "1.0"
-chrono.workspace = true
 
 # TLS dependencies for HTTPS support
 tokio-rustls = "0.24.1"
