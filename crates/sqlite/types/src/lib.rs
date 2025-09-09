@@ -346,6 +346,7 @@ pub struct Contract {
     pub tps: Option<i64>,
     pub last_block_timestamp: Option<i64>,
     pub last_pending_block_tx: Option<String>,
+    pub updated_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -363,6 +364,7 @@ impl From<Contract> for torii_proto::Contract {
             last_pending_block_tx: value
                 .last_pending_block_tx
                 .map(|tx| Felt::from_str(&tx).unwrap()),
+            updated_at: value.updated_at,
             created_at: value.created_at,
         }
     }

@@ -98,6 +98,7 @@ pub struct Contract {
     pub tps: Option<u64>,
     pub last_block_timestamp: Option<u64>,
     pub last_pending_block_tx: Option<Felt>,
+    pub updated_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -144,6 +145,7 @@ impl From<Contract> for proto::types::Contract {
             last_pending_block_tx: value
                 .last_pending_block_tx
                 .map(|tx| tx.to_bytes_be().into()),
+            updated_at: value.updated_at.timestamp() as u64,
             created_at: value.created_at.timestamp() as u64,
         }
     }
@@ -175,6 +177,7 @@ impl TryFrom<proto::types::Contract> for Contract {
             last_pending_block_tx: value
                 .last_pending_block_tx
                 .map(|tx| Felt::from_bytes_be_slice(&tx)),
+            updated_at: DateTime::from_timestamp(value.updated_at as i64, 0).unwrap(),
             created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
         })
     }
