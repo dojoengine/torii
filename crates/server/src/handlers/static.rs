@@ -138,18 +138,6 @@ impl StaticHandler {
         let token_image_dir = self.artifacts_dir.join(parts[0]).join(parts[1]);
         let token_id = format!("{}:{}", parts[0], parts[1]);
 
-        // Get the updated_at timestamp from database for ETag
-        let db_timestamp = match self.get_token_updated_at(&token_id).await {
-            Ok(timestamp) => timestamp,
-            Err(e) => {
-                error!(target: LOG_TARGET, error = ?e, "Failed to get token timestamp");
-                return Ok(Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body(Body::empty())
-                    .unwrap());
-            }
-        };
-
         // We'll generate ETag from content hash after reading the file
 
         // We'll get Last-Modified from actual file metadata (matches content-based ETag approach)
