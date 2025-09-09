@@ -17,27 +17,27 @@ use torii_storage::ReadOnlyStorage;
 use torii_storage::StorageError;
 use tracing::{error, trace};
 
-use torii_proto::proto::world::SubscribeIndexerResponse;
+use torii_proto::proto::world::SubscribeContractsResponse;
 
 use crate::GrpcConfig;
 
-pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::indexer";
+pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::contracts";
 
 #[derive(Debug)]
-pub struct IndexerSubscriber {
+pub struct ContractSubscriber {
     /// Contract address that the subscriber is interested in
     contract_address: Felt,
     /// The channel to send the response back to the subscriber.
-    sender: Sender<Result<SubscribeIndexerResponse, tonic::Status>>,
+    sender: Sender<Result<SubscribeContractsResponse, tonic::Status>>,
 }
 
 #[derive(Debug, Default)]
-pub struct IndexerManager {
-    subscribers: DashMap<usize, IndexerSubscriber>,
+pub struct ContractManager {
+    subscribers: DashMap<usize, ContractSubscriber>,
     config: GrpcConfig,
 }
 
-impl IndexerManager {
+impl ContractManager {
     pub fn new(config: GrpcConfig) -> Self {
         Self {
             subscribers: DashMap::new(),
@@ -49,7 +49,7 @@ impl IndexerManager {
         &self,
         storage: Arc<dyn ReadOnlyStorage>,
         contract_address: Felt,
-    ) -> Result<Receiver<Result<SubscribeIndexerResponse, tonic::Status>>, StorageError> {
+    ) -> Result<Receiver<Result<SubscribeContractsResponse, tonic::Status>>, StorageError> {
         let id = rand::thread_rng().gen::<usize>();
         let (sender, receiver) = channel(self.config.subscription_buffer_size);
 
@@ -61,7 +61,7 @@ impl IndexerManager {
         for contract in contracts {
             let cursor: ContractCursor = contract.into();
             let _ = sender
-                .send(Ok(SubscribeIndexerResponse {
+                .send(Ok(SubscribeContractsResponse {
                     head: cursor.head.unwrap() as i64,
                     tps: cursor.tps.unwrap() as i64,
                     last_block_timestamp: cursor.last_block_timestamp.unwrap() as i64,
@@ -71,7 +71,7 @@ impl IndexerManager {
         }
         self.subscribers.insert(
             id,
-            IndexerSubscriber {
+            ContractSubscriber {
                 contract_address,
                 sender,
             },
@@ -93,7 +93,7 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn new(subs_manager: Arc<IndexerManager>) -> Self {
+    pub fn new(subs_manager: Arc<ContractManager>) -> Self {
         let (update_sender, update_receiver) = unbounded_channel();
         let service = Self {
             simple_broker: if subs_manager.config.optimistic {
@@ -110,7 +110,7 @@ impl Service {
     }
 
     async fn publish_updates(
-        subs: Arc<IndexerManager>,
+        subs: Arc<ContractManager>,
         mut update_receiver: UnboundedReceiver<ContractCursor>,
     ) {
         while let Some(update) = update_receiver.recv().await {
@@ -118,7 +118,7 @@ impl Service {
         }
     }
 
-    async fn process_update(subs: &Arc<IndexerManager>, contract: &ContractCursor) {
+    async fn process_update(subs: &Arc<ContractManager>, contract: &ContractCursor) {
         let mut closed_stream = Vec::new();
 
         for sub in subs.subscribers.iter() {
@@ -131,7 +131,7 @@ impl Service {
                 continue;
             }
 
-            let resp = SubscribeIndexerResponse {
+            let resp = SubscribeContractsResponse {
                 head: contract.head.unwrap() as i64,
                 tps: contract.tps.unwrap() as i64,
                 last_block_timestamp: contract.last_block_timestamp.unwrap() as i64,
@@ -156,7 +156,7 @@ impl Service {
         }
 
         for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing indexer updates stream.");
+            trace!(target = LOG_TARGET, id = %id, "Closing contract updates stream.");
             subs.remove_subscriber(id).await
         }
     }
@@ -170,7 +170,7 @@ impl Future for Service {
 
         while let Poll::Ready(Some(update)) = this.simple_broker.poll_next_unpin(cx) {
             if let Err(e) = this.update_sender.send(update) {
-                error!(target = LOG_TARGET, error = ?e, "Sending indexer update to processor.");
+                error!(target = LOG_TARGET, error = ?e, "Sending contract update to processor.");
             }
         }
 

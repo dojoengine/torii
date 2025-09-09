@@ -25,7 +25,7 @@ use torii_proto::proto::world::{
     RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
     RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeEntitiesRequest,
     SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsRequest,
-    SubscribeEventsResponse, SubscribeIndexerRequest, SubscribeIndexerResponse,
+    SubscribeEventsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
     SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
     SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
     UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
@@ -298,12 +298,12 @@ impl WorldClient {
         &mut self,
         contract_address: Felt,
     ) -> Result<IndexerUpdateStreaming, Error> {
-        let request = SubscribeIndexerRequest {
+        let request = SubscribeContractsRequest {
             contract_address: contract_address.to_bytes_be().to_vec(),
         };
         let stream = self
             .inner
-            .subscribe_indexer(request)
+            .subscribe_contracts(request)
             .await
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
@@ -600,8 +600,8 @@ impl Stream for EventUpdateStreaming {
 }
 
 type IndexerMappedStream = MapOk<
-    tonic::Streaming<SubscribeIndexerResponse>,
-    Box<dyn Fn(SubscribeIndexerResponse) -> IndexerUpdate + Send>,
+    tonic::Streaming<SubscribeContractsResponse>,
+    Box<dyn Fn(SubscribeContractsResponse) -> IndexerUpdate + Send>,
 >;
 
 #[derive(Debug)]

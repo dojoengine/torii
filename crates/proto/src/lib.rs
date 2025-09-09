@@ -561,8 +561,8 @@ pub struct IndexerUpdate {
     pub contract_address: Felt,
 }
 
-impl From<proto::world::SubscribeIndexerResponse> for IndexerUpdate {
-    fn from(value: proto::world::SubscribeIndexerResponse) -> Self {
+impl From<proto::world::SubscribeContractsResponse> for IndexerUpdate {
+    fn from(value: proto::world::SubscribeContractsResponse) -> Self {
         Self {
             head: value.head,
             tps: value.tps,
