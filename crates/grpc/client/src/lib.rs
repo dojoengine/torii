@@ -33,7 +33,9 @@ use torii_proto::proto::world::{
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message, Query, Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionFilter, TransactionQuery
+    Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message,
+    Query, Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionFilter,
+    TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -306,13 +308,11 @@ impl WorldClient {
             .await
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())?;
-        Ok(ContractUpdateStreaming(
-            stream.map_ok(Box::new(|res| {
-                res.contract
-                    .map(|c| c.try_into().expect("must able to serialize"))
-                    .expect("must able to serialize")
-            })),
-        ))
+        Ok(ContractUpdateStreaming(stream.map_ok(Box::new(|res| {
+            res.contract
+                .map(|c| c.try_into().expect("must able to serialize"))
+                .expect("must able to serialize")
+        }))))
     }
 
     /// Subscribe to entities updates of a World.

@@ -13,9 +13,9 @@ use torii_proto::proto::world::{
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Controller, ControllerQuery, Event, EventQuery, KeysClause, Message, Page, Query,
-    Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionFilter, ContractQuery,
-    TransactionQuery, World,
+    Clause, ContractQuery, Controller, ControllerQuery, Event, EventQuery, KeysClause, Message,
+    Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction,
+    TransactionFilter, TransactionQuery, World,
 };
 
 use crate::error::Error;

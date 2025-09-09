@@ -21,8 +21,8 @@ use proto::world::{
 };
 use starknet::core::types::Felt;
 use starknet::providers::Provider;
-use subscriptions::event::EventManager;
 use subscriptions::contract::ContractManager;
+use subscriptions::event::EventManager;
 use subscriptions::token::TokenManager;
 use subscriptions::token_balance::TokenBalanceManager;
 use tokio::net::TcpListener;
@@ -498,13 +498,14 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<SubscribeContractsRequest>,
     ) -> ServiceResult<Self::SubscribeContractsStream> {
-        let SubscribeContractsRequest { contract_address } = request.into_inner();
+        let SubscribeContractsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
         let rx = self
             .contract_manager
-            .add_subscriber(
-                self.storage.clone(),
-                Felt::from_bytes_be_slice(&contract_address),
-            )
+            .add_subscriber(self.storage.clone(), query)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

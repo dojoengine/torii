@@ -60,13 +60,8 @@ impl ContractManager {
                 }))
                 .await;
         }
-        self.subscribers.insert(
-            id,
-            ContractSubscriber {
-                query,
-                sender,
-            },
-        );
+        self.subscribers
+            .insert(id, ContractSubscriber { query, sender });
 
         Ok(receiver)
     }
@@ -117,13 +112,19 @@ impl Service {
             let sub = sub.value();
 
             if !sub.query.contract_addresses.is_empty()
-                && !sub.query.contract_addresses.contains(&contract.contract_address.clone())
+                && !sub
+                    .query
+                    .contract_addresses
+                    .contains(&contract.contract_address.clone())
             {
                 continue;
             }
 
             if !sub.query.contract_types.is_empty()
-                && !sub.query.contract_types.contains(&contract.contract_type.clone())
+                && !sub
+                    .query
+                    .contract_types
+                    .contains(&contract.contract_type.clone())
             {
                 continue;
             }

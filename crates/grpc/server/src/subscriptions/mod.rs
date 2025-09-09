@@ -5,11 +5,11 @@ use torii_proto::{
     Clause, ComparisonOperator, KeysClause, LogicalOperator, MemberValue, PatternMatching,
 };
 
+pub mod contract;
 pub mod entity;
 pub mod error;
 pub mod event;
 pub mod event_message;
-pub mod contract;
 pub mod token;
 pub mod token_balance;
 pub mod transaction;

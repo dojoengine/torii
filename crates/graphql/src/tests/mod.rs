@@ -406,13 +406,7 @@ pub async fn spinup_types_test(
         address: world_address,
         r#type: ContractType::WORLD,
     }];
-    let db = Sql::new(
-        pool.clone(),
-        sender,
-        contracts
-    )
-    .await
-    .unwrap();
+    let db = Sql::new(pool.clone(), sender, contracts).await.unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
 
     let (shutdown_tx, _) = broadcast::channel(1);

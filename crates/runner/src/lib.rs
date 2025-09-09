@@ -52,7 +52,7 @@ use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::Proxy;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::{Sql, SqlConfig};
-use torii_storage::proto::{Contract, ContractDefinition, ContractType};
+use torii_storage::proto::{ContractDefinition, ContractType};
 use torii_storage::ReadOnlyStorage;
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;

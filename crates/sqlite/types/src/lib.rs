@@ -250,29 +250,6 @@ impl From<TokenBalance> for torii_proto::TokenBalance {
 
 #[derive(FromRow, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct ContractCursor {
-    pub head: Option<i64>,
-    pub tps: Option<i64>,
-    pub last_block_timestamp: Option<i64>,
-    pub contract_address: String,
-    pub last_pending_block_tx: Option<String>,
-}
-
-impl From<ContractCursor> for torii_proto::ContractCursor {
-    fn from(value: ContractCursor) -> Self {
-        Self {
-            contract_address: Felt::from_str(&value.contract_address).unwrap(),
-            head: value.head.map(|h| h as u64),
-            last_block_timestamp: value.last_block_timestamp.map(|t| t as u64),
-            last_pending_block_tx: value
-                .last_pending_block_tx
-                .map(|tx| Felt::from_str(&tx).unwrap()),
-        }
-    }
-}
-
-#[derive(FromRow, Deserialize, Debug, Clone, Default)]
-#[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub id: String,
     pub transaction_hash: String,

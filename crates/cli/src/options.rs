@@ -793,7 +793,10 @@ where
         .collect()
 }
 
-fn serialize_contracts<S>(contracts: &Vec<ContractDefinition>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_contracts<S>(
+    contracts: &Vec<ContractDefinition>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {

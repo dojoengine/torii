@@ -307,14 +307,14 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         match query_message.query_type {
             QueryType::UpdateCursors(update_cursors) => {
                 // Read all cursors from db
-                let mut cursors: Vec<torii_sqlite_types::ContractCursor> =
+                let mut contracts: Vec<torii_sqlite_types::Contract> =
                     sqlx::query_as("SELECT * FROM contracts")
                         .fetch_all(&mut **tx)
                         .await?;
 
                 let mut updates = Vec::with_capacity(update_cursors.cursors.len());
 
-                for cursor in &mut cursors {
+                for cursor in &mut contracts {
                     let new_cursor = update_cursors
                         .cursors
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
