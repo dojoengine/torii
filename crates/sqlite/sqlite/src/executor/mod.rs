@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
 use erc::UpdateTokenMetadataQuery;
+use metrics::{counter, histogram};
 use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
@@ -20,7 +21,6 @@ use torii_broker::types::{
     TokenBalanceUpdate, TokenUpdate, TransactionUpdate, Update,
 };
 use torii_math::I256;
-use torii_metrics::executor::ExecutorMetrics;
 use torii_proto::{ContractCursor, TransactionCall};
 use tracing::{debug, error, info, warn};
 
@@ -792,8 +792,17 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
         // Record metrics
         let duration = start_time.elapsed();
-        ExecutorMetrics::record_query_duration(&query_type_str, duration);
-        ExecutorMetrics::record_query_execution(&query_type_str, "success");
+        histogram!(
+            "torii_executor_query_duration_seconds",
+            "query_type" => query_type_str.clone()
+        )
+        .record(duration.as_secs_f64());
+        counter!(
+            "torii_executor_queries_total",
+            "query_type" => query_type_str,
+            "status" => "success"
+        )
+        .increment(1);
 
         Ok(())
     }
@@ -813,7 +822,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         }
 
         // Record metrics
-        ExecutorMetrics::record_transaction_operation("execute", "success");
+        counter!("torii_executor_transaction_operations_total", "operation" => "execute", "status" => "success")
+            .increment(1);
 
         Ok(())
     }
@@ -831,7 +841,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         self.publish_queue.clear();
 
         // Record metrics
-        ExecutorMetrics::record_transaction_operation("rollback", "success");
+        counter!("torii_executor_transaction_operations_total", "operation" => "rollback", "status" => "success")
+            .increment(1);
 
         Ok(())
     }
