@@ -44,5 +44,6 @@ pub type ContractUpdate = Update<torii_proto::Contract>;
 pub type ModelUpdate = Update<torii_proto::Model>;
 pub type TokenUpdate = Update<torii_proto::Token>;
 pub type TokenBalanceUpdate = Update<torii_proto::TokenBalance>;
+pub type TokenTransferUpdate = Update<torii_proto::TokenTransfer>;
 pub type EventUpdate = Update<torii_proto::EventWithMetadata>;
 pub type TransactionUpdate = Update<torii_proto::Transaction>;

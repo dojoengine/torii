@@ -1380,26 +1380,29 @@ impl Storage for Sql {
         };
 
         let id = format!("{}:{}", event_id, token_id);
+        let token_id_str = token_id.to_string();
+        let event_id_str = event_id.to_string();
+        let executed_at_str = utc_dt_string_from_timestamp(block_timestamp);
 
         let insert_query = format!(
             "INSERT INTO {TOKEN_TRANSFER_TABLE} (id, contract_address, from_address, to_address, \
-             amount, token_id, event_id, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING"
+             amount, token_id, event_id, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING *"
         );
 
         self.executor
             .send(QueryMessage::new(
                 insert_query.to_string(),
                 vec![
-                    Argument::String(id),
+                    Argument::String(id.clone()),
                     Argument::FieldElement(contract_address),
                     Argument::FieldElement(from),
                     Argument::FieldElement(to),
                     Argument::String(u256_to_sql_string(&amount)),
-                    Argument::String(token_id.to_string()),
-                    Argument::String(event_id.to_string()),
-                    Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
+                    Argument::String(token_id_str.clone()),
+                    Argument::String(event_id_str.clone()),
+                    Argument::String(executed_at_str.clone()),
                 ],
-                QueryType::Other,
+                QueryType::StoreTokenTransfer,
             ))
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 

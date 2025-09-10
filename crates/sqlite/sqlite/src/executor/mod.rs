@@ -17,10 +17,11 @@ use tokio::sync::oneshot;
 use tokio::time::Instant;
 use torii_broker::types::{
     ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType, ModelUpdate,
-    TokenBalanceUpdate, TokenUpdate, TransactionUpdate, Update,
+    TokenBalanceUpdate, TokenTransferUpdate, TokenUpdate, TransactionUpdate, Update,
 };
 use torii_math::I256;
 use torii_proto::{ContractCursor, TransactionCall};
+use torii_sqlite_types::TokenTransfer as SQLTokenTransfer;
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
@@ -58,6 +59,7 @@ pub enum BrokerMessage {
     EventEmitted(<EventUpdate as InnerType>::Inner),
     TokenRegistered(<TokenUpdate as InnerType>::Inner),
     TokenBalanceUpdated(<TokenBalanceUpdate as InnerType>::Inner),
+    TokenTransfer(<TokenTransferUpdate as InnerType>::Inner),
     Transaction(<TransactionUpdate as InnerType>::Inner),
 }
 
@@ -124,6 +126,7 @@ pub enum QueryType {
     RegisterTokenContract(RegisterTokenContractQuery),
     RegisterModel,
     StoreEvent,
+    StoreTokenTransfer,
     UpdateTokenMetadata(UpdateTokenMetadataQuery),
     Execute,
     Rollback,
@@ -146,6 +149,7 @@ impl std::fmt::Display for QueryType {
                 QueryType::RegisterTokenContract(_) => "RegisterTokenContract",
                 QueryType::RegisterModel => "RegisterModel",
                 QueryType::StoreEvent => "StoreEvent",
+                QueryType::StoreTokenTransfer => "StoreTokenTransfer",
                 QueryType::UpdateTokenMetadata(_) => "UpdateTokenMetadata",
                 QueryType::Execute => "Execute",
                 QueryType::Rollback => "Rollback",
@@ -604,6 +608,13 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 let event = torii_sqlite_types::Event::from_row(&row)?;
                 self.publish_optimistic_and_queue(BrokerMessage::EventEmitted(event.into()));
             }
+            QueryType::StoreTokenTransfer => {
+                let row = query.fetch_one(&mut **tx).await?;
+                let token_transfer = SQLTokenTransfer::from_row(&row)?;
+                self.publish_optimistic_and_queue(BrokerMessage::TokenTransfer(
+                    token_transfer.into(),
+                ));
+            }
             QueryType::ApplyBalanceDiff(apply_balance_diff) => {
                 debug!(target: LOG_TARGET, "Applying balance diff.");
                 let instant = Instant::now();
@@ -846,6 +857,9 @@ fn send_broker_message(message: BrokerMessage, optimistic: bool) {
         }
         BrokerMessage::TokenBalanceUpdated(token_balance) => {
             MemoryBroker::publish(Update::new(token_balance, optimistic))
+        }
+        BrokerMessage::TokenTransfer(token_transfer) => {
+            MemoryBroker::publish(Update::new(token_transfer, optimistic))
         }
         BrokerMessage::Transaction(transaction) => {
             MemoryBroker::publish(Update::new(transaction, optimistic))

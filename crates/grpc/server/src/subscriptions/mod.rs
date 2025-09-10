@@ -12,6 +12,7 @@ pub mod event;
 pub mod event_message;
 pub mod token;
 pub mod token_balance;
+pub mod token_transfer;
 pub mod transaction;
 
 pub(crate) fn match_entity(

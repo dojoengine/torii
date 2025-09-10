@@ -25,6 +25,7 @@ use subscriptions::contract::ContractManager;
 use subscriptions::event::EventManager;
 use subscriptions::token::TokenManager;
 use subscriptions::token_balance::TokenBalanceManager;
+use subscriptions::token_transfer::TokenTransferManager;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
@@ -47,14 +48,17 @@ use torii_proto::proto::world::{
     PublishMessageResponse, RetrieveContractsRequest, RetrieveContractsResponse,
     RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEventMessagesRequest,
     RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
-    RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
+    RetrieveTokenCollectionsResponse, RetrieveTokenTransfersRequest,
+    RetrieveTokenTransfersResponse, RetrieveTokensRequest, RetrieveTokensResponse,
     RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeContractsRequest,
     SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
     SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeTokenBalancesRequest,
-    SubscribeTokenBalancesResponse, SubscribeTokensRequest, SubscribeTokensResponse,
+    SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
+    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
     SubscribeTransactionsRequest, SubscribeTransactionsResponse,
     UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
-    UpdateTokenSubscriptionRequest, WorldMetadataRequest, WorldMetadataResponse,
+    UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
+    WorldMetadataResponse,
 };
 use torii_proto::proto::{self};
 use torii_proto::Message;
@@ -86,6 +90,7 @@ pub struct DojoWorld<P: Provider + Sync> {
     contract_manager: Arc<ContractManager>,
     token_balance_manager: Arc<TokenBalanceManager>,
     token_manager: Arc<TokenManager>,
+    token_transfer_manager: Arc<TokenTransferManager>,
     transaction_manager: Arc<TransactionManager>,
     _config: GrpcConfig,
 }
@@ -104,6 +109,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let contract_manager = Arc::new(ContractManager::new(config.clone()));
         let token_balance_manager = Arc::new(TokenBalanceManager::new(config.clone()));
         let token_manager = Arc::new(TokenManager::new(config.clone()));
+        let token_transfer_manager = Arc::new(TokenTransferManager::new(config.clone()));
         let transaction_manager = Arc::new(TransactionManager::new(config.clone()));
 
         // Spawn subscription services on the dedicated subscription runtime
@@ -132,6 +138,10 @@ impl<P: Provider + Sync> DojoWorld<P> {
             &token_manager,
         )));
 
+        SUBSCRIPTION_RUNTIME.spawn(subscriptions::token_transfer::Service::new(Arc::clone(
+            &token_transfer_manager,
+        )));
+
         SUBSCRIPTION_RUNTIME.spawn(subscriptions::transaction::Service::new(Arc::clone(
             &transaction_manager,
         )));
@@ -147,6 +157,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             contract_manager,
             token_balance_manager,
             token_manager,
+            token_transfer_manager,
             transaction_manager,
             _config: config,
         }
@@ -223,6 +234,8 @@ type SubscribeTokenBalancesResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokenBalancesResponse, Status>> + Send>>;
 type SubscribeTokensResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokensResponse, Status>> + Send>>;
+type SubscribeTokenTransfersResponseStream =
+    Pin<Box<dyn Stream<Item = Result<SubscribeTokenTransfersResponse, Status>> + Send>>;
 type SubscribeTransactionsResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTransactionsResponse, Status>> + Send>>;
 
@@ -234,6 +247,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
     type SubscribeContractsStream = SubscribeContractsResponseStream;
     type SubscribeTokenBalancesStream = SubscribeTokenBalancesResponseStream;
     type SubscribeTokensStream = SubscribeTokensResponseStream;
+    type SubscribeTokenTransfersStream = SubscribeTokenTransfersResponseStream;
     type SubscribeTransactionsStream = SubscribeTransactionsResponseStream;
 
     async fn world_metadata(
@@ -493,6 +507,94 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .update_subscriber(subscription_id, contract_addresses, token_ids)
             .await;
         Ok(Response::new(()))
+    }
+
+    async fn subscribe_token_transfers(
+        &self,
+        request: Request<SubscribeTokenTransfersRequest>,
+    ) -> ServiceResult<Self::SubscribeTokenTransfersStream> {
+        let SubscribeTokenTransfersRequest {
+            contract_addresses,
+            account_addresses,
+            token_ids,
+        } = request.into_inner();
+        let contract_addresses = contract_addresses
+            .iter()
+            .map(|address| Felt::from_bytes_be_slice(address))
+            .collect::<Vec<_>>();
+        let account_addresses = account_addresses
+            .iter()
+            .map(|address| Felt::from_bytes_be_slice(address))
+            .collect::<Vec<_>>();
+        let token_ids = token_ids
+            .iter()
+            .map(|id| U256::from_be_slice(id))
+            .collect::<Vec<_>>();
+
+        let rx = self
+            .token_transfer_manager
+            .add_subscriber(contract_addresses, account_addresses, token_ids)
+            .await;
+
+        Ok(Response::new(
+            Box::pin(ReceiverStream::new(rx)) as Self::SubscribeTokenTransfersStream
+        ))
+    }
+
+    async fn update_token_transfers_subscription(
+        &self,
+        request: Request<UpdateTokenTransfersSubscriptionRequest>,
+    ) -> ServiceResult<()> {
+        let UpdateTokenTransfersSubscriptionRequest {
+            subscription_id,
+            contract_addresses,
+            account_addresses,
+            token_ids,
+        } = request.into_inner();
+        let contract_addresses = contract_addresses
+            .iter()
+            .map(|address| Felt::from_bytes_be_slice(address))
+            .collect::<Vec<_>>();
+        let account_addresses = account_addresses
+            .iter()
+            .map(|address| Felt::from_bytes_be_slice(address))
+            .collect::<Vec<_>>();
+        let token_ids = token_ids
+            .iter()
+            .map(|id| U256::from_be_slice(id))
+            .collect::<Vec<_>>();
+
+        self.token_transfer_manager
+            .update_subscriber(
+                subscription_id,
+                contract_addresses,
+                account_addresses,
+                token_ids,
+            )
+            .await;
+        Ok(Response::new(()))
+    }
+
+    async fn retrieve_token_transfers(
+        &self,
+        request: Request<RetrieveTokenTransfersRequest>,
+    ) -> Result<Response<RetrieveTokenTransfersResponse>, Status> {
+        let RetrieveTokenTransfersRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+
+        let transfers = self
+            .storage
+            .token_transfers(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(RetrieveTokenTransfersResponse {
+            transfers: transfers.items.into_iter().map(Into::into).collect(),
+            next_cursor: transfers.next_cursor.unwrap_or_default(),
+        }))
     }
 
     async fn retrieve_token_balances(
