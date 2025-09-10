@@ -13,9 +13,9 @@ use torii_proto::Model;
 use tracing::{debug, info};
 
 use crate::error::Error;
-use crate::metrics::ProcessorMetrics;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
+use metrics::counter;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::register_model";
 
@@ -61,7 +61,6 @@ where
     }
 
     async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
-        let _timer = ProcessorMetrics::start_timer("register_model");
         
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
@@ -85,11 +84,11 @@ where
         // If the namespace is not in the list of namespaces to index, silently ignore it.
         // If our config is empty, we index all namespaces.
         if !ctx.config.should_index(&namespace, &name) {
-            ProcessorMetrics::increment_success("register_model");
             return Ok(());
         }
 
         let world = WorldContractReader::new(ctx.event.from_address, &ctx.provider);
+        let namespace_for_metrics = namespace.clone();
         let mut model = ModelRPCReader::new(
             &namespace,
             &name,
@@ -179,8 +178,14 @@ where
             )
             .await;
 
-        ProcessorMetrics::increment_success("register_model");
-        ProcessorMetrics::record_operation("model_registered", 1);
+        // Record successful model registration with context
+        counter!(
+            "torii_processor_operations_total",
+            "operation" => "model_registered",
+            "namespace" => namespace_for_metrics,
+            "legacy_store" => use_legacy_store.to_string()
+        )
+        .increment(1);
 
         Ok(())
     }

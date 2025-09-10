@@ -12,6 +12,7 @@ use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext};
 use crate::{IndexingMode, Result};
+use metrics::counter;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_update_member";
 
@@ -112,6 +113,7 @@ where
                 member_selector
             )))?
             .clone();
+        let member_name_for_metrics = member.name.clone();
 
         info!(
             target: LOG_TARGET,
@@ -139,6 +141,17 @@ where
                 None,
             )
             .await?;
+
+        // Record successful member update with context
+        counter!(
+            "torii_processor_operations_total",
+            "operation" => "member_updated",
+            "namespace" => model.namespace.clone(),
+            "model_name" => model.name.clone(),
+            "member_name" => member_name_for_metrics
+        )
+        .increment(1);
+
         Ok(())
     }
 }

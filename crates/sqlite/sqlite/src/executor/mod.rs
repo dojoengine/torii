@@ -15,7 +15,7 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
-use metrics::{counter, histogram};
+use torii_metrics::executor::ExecutorMetrics;
 use torii_broker::types::{
     ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType, ModelUpdate,
     TokenBalanceUpdate, TokenUpdate, TransactionUpdate, Update,
@@ -792,18 +792,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
         // Record metrics
         let duration = start_time.elapsed();
-        histogram!(
-            "torii_executor_query_duration_seconds",
-            "query_type" => query_type_str.clone()
-        )
-        .record(duration.as_secs_f64());
-        
-        counter!(
-            "torii_executor_queries_total",
-            "query_type" => query_type_str,
-            "status" => "success"
-        )
-        .increment(1);
+        ExecutorMetrics::record_query_duration(&query_type_str, duration);
+        ExecutorMetrics::record_query_execution(&query_type_str, "success");
 
         Ok(())
     }
@@ -823,8 +813,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         }
 
         // Record metrics
-        counter!("torii_executor_transaction_operations_total", "operation" => "execute", "status" => "success")
-            .increment(1);
+        ExecutorMetrics::record_transaction_operation("execute", "success");
 
         Ok(())
     }
@@ -842,8 +831,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         self.publish_queue.clear();
         
         // Record metrics
-        counter!("torii_executor_transaction_operations_total", "operation" => "rollback", "status" => "success")
-            .increment(1);
+        ExecutorMetrics::record_transaction_operation("rollback", "success");
             
         Ok(())
     }

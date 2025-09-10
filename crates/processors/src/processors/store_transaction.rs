@@ -11,6 +11,7 @@ use tracing::warn;
 
 use crate::error::Error;
 use crate::TransactionProcessorContext;
+use metrics::counter;
 
 use super::TransactionProcessor;
 
@@ -333,6 +334,15 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug> TransactionProcessor<P
                 &ctx.unique_models,
             )
             .await?;
+
+        // Record successful transaction storage with type and call count
+        counter!(
+            "torii_processor_operations_total",
+            "operation" => "transaction_stored",
+            "tx_type" => tx_info.transaction_type.to_string(),
+            "call_count" => calls.len().to_string()
+        )
+        .increment(1);
 
         Ok(())
     }
