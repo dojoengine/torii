@@ -30,6 +30,7 @@ use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
 use crate::error::Error;
+use crate::metrics::ProcessorMetrics;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
 
@@ -127,9 +128,12 @@ where
     }
 
     async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
+        let _timer = ProcessorMetrics::start_timer("controller");
+        
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&ctx.event.data, 0)?;
 
         if !is_cartridge_controller(&udc_event).await? {
+            ProcessorMetrics::increment_success("controller");
             return Ok(());
         }
 
@@ -143,6 +147,7 @@ where
                 // The few cases we have are not clearly identified yet, but something is off with those accounts.
                 // Hence, they are currently silently discarded.
                 // (Only 3 controller accounts have been identified so far with this issue.)
+                ProcessorMetrics::increment_success("controller");
                 return Ok(());
             }
         };
@@ -163,6 +168,9 @@ where
                 DateTime::from_timestamp(ctx.block_timestamp as i64, 0).unwrap(),
             )
             .await?;
+
+        ProcessorMetrics::increment_success("controller");
+        ProcessorMetrics::record_operation("controller_registered", 1);
 
         Ok(())
     }

@@ -13,6 +13,7 @@ use torii_proto::Model;
 use tracing::{debug, info};
 
 use crate::error::Error;
+use crate::metrics::ProcessorMetrics;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
 
@@ -60,6 +61,8 @@ where
     }
 
     async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
+        let _timer = ProcessorMetrics::start_timer("register_model");
+        
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
@@ -82,6 +85,7 @@ where
         // If the namespace is not in the list of namespaces to index, silently ignore it.
         // If our config is empty, we index all namespaces.
         if !ctx.config.should_index(&namespace, &name) {
+            ProcessorMetrics::increment_success("register_model");
             return Ok(());
         }
 
@@ -174,6 +178,9 @@ where
                 },
             )
             .await;
+
+        ProcessorMetrics::increment_success("register_model");
+        ProcessorMetrics::record_operation("model_registered", 1);
 
         Ok(())
     }

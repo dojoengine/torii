@@ -12,6 +12,7 @@ mod constants;
 pub mod erc;
 pub mod error;
 pub mod fetch;
+pub mod metrics;
 pub mod processors;
 pub mod task_manager;
 

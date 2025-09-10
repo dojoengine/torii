@@ -7,6 +7,7 @@ use starknet::providers::Provider;
 use tracing::{debug, info};
 
 use crate::error::Error;
+use crate::metrics::ProcessorMetrics;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
 
@@ -54,6 +55,8 @@ where
     }
 
     async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
+        let _timer = ProcessorMetrics::start_timer("store_set_record");
+        
         // Torii version is coupled to the world version, so we can expect the event to be well
         // formed.
         let event = match WorldEvent::try_from(&ctx.event).unwrap_or_else(|_| {
@@ -78,9 +81,11 @@ where
                     selector = %event.selector,
                     "Model does not exist, skipping."
                 );
+                ProcessorMetrics::increment_success("store_set_record");
                 return Ok(());
             }
             Err(e) => {
+                ProcessorMetrics::increment_error("store_set_record");
                 return Err(e.into());
             }
         };
@@ -108,6 +113,10 @@ where
                 Some(event.keys.clone()),
             )
             .await?;
+            
+        ProcessorMetrics::increment_success("store_set_record");
+        ProcessorMetrics::record_items_processed("store_set_record", "entity_set", 1);
+
         Ok(())
     }
 }

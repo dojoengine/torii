@@ -10,6 +10,7 @@ use crate::erc::{
     felt_and_u256_to_sql_string, try_register_nft_token_metadata, try_register_token_contract,
 };
 use crate::error::Error;
+use crate::metrics::ProcessorMetrics;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
 
@@ -55,6 +56,8 @@ where
     }
 
     async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
+        let _timer = ProcessorMetrics::start_timer("erc721_transfer");
+        
         let token_address = ctx.event.from_address;
         let from = ctx.event.keys[1];
         let to = ctx.event.keys[2];
@@ -103,6 +106,9 @@ where
             .await?;
 
         debug!(target: LOG_TARGET, from = ?from, to = ?to, token_id = ?token_id, "ERC721 Transfer.");
+
+        ProcessorMetrics::increment_success("erc721_transfer");
+        ProcessorMetrics::record_items_processed("erc721_transfer", "transfer", 1);
 
         Ok(())
     }
