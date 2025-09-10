@@ -196,16 +196,16 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                             // Record processor timing and success/error metrics
                             let start_time = std::time::Instant::now();
                             let processor_name = processor.event_key();
-                            
+
                             let result = processor.process(&ctx).await;
-                            
+
                             let duration = start_time.elapsed();
                             histogram!(
                                 "torii_processor_duration_seconds",
                                 "processor" => processor_name.clone()
                             )
                             .record(duration.as_secs_f64());
-                            
+
                             match &result {
                                 Ok(_) => {
                                     counter!(

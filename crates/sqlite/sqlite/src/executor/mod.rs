@@ -15,12 +15,12 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
-use torii_metrics::executor::ExecutorMetrics;
 use torii_broker::types::{
     ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType, ModelUpdate,
     TokenBalanceUpdate, TokenUpdate, TransactionUpdate, Update,
 };
 use torii_math::I256;
+use torii_metrics::executor::ExecutorMetrics;
 use torii_proto::{ContractCursor, TransactionCall};
 use tracing::{debug, error, info, warn};
 
@@ -293,7 +293,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
     async fn handle_query_message(&mut self, query_message: QueryMessage) -> QueryResult<()> {
         let start_time = Instant::now();
         let query_type_str = format!("{}", query_message.query_type);
-        
+
         let tx = self.transaction.as_mut().unwrap();
 
         let mut query = sqlx::query(&query_message.statement);
@@ -829,10 +829,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         self.transaction = Some(self.pool.begin().await?);
 
         self.publish_queue.clear();
-        
+
         // Record metrics
         ExecutorMetrics::record_transaction_operation("rollback", "success");
-            
+
         Ok(())
     }
 

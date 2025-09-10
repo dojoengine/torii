@@ -434,8 +434,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             }
 
             counter!("torii_indexer_events_processed_total",
-                "contract_type" => contract_type.to_string(),
-                "event_key" => format!("{:#x}", event_key)
+                "contract_type" => contract_type.to_string()
             )
             .increment(1);
 

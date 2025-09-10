@@ -128,7 +128,6 @@ where
     }
 
     async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
-        
         let udc_event = UdcContractDeployedEvent::cairo_deserialize(&ctx.event.data, 0)?;
 
         if !is_cartridge_controller(&udc_event).await? {

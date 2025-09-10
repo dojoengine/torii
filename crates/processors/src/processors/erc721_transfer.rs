@@ -56,7 +56,6 @@ where
     }
 
     async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
-        
         let token_address = ctx.event.from_address;
         let from = ctx.event.keys[1];
         let to = ctx.event.keys[2];
