@@ -15,7 +15,7 @@ use torii_proto::{
     schema::Entity, CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery,
     Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy,
     OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection,
-    TokenQuery, Transaction, TransactionCall, TransactionQuery, TokenTransfer, TokenTransferQuery,
+    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{ReadOnlyStorage, Storage, StorageError};
@@ -645,10 +645,8 @@ impl ReadOnlyStorage for Sql {
 
         if !query.contract_addresses.is_empty() {
             let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
-            query_builder = query_builder.where_clause(&format!(
-                "contract_address IN ({})",
-                placeholders
-            ));
+            query_builder =
+                query_builder.where_clause(&format!("contract_address IN ({})", placeholders));
             for addr in &query.contract_addresses {
                 query_builder = query_builder.bind_value(format!("{:#x}", addr));
             }
@@ -662,7 +660,8 @@ impl ReadOnlyStorage for Sql {
                 placeholders
             ));
             for token_id in &query.token_ids {
-                query_builder = query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
+                query_builder =
+                    query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
             }
         }
 
@@ -670,7 +669,10 @@ impl ReadOnlyStorage for Sql {
             .execute_paginated_query(
                 query_builder,
                 &query.pagination,
-                &OrderBy { field: "id".to_string(), direction: OrderDirection::Desc },
+                &OrderBy {
+                    field: "id".to_string(),
+                    direction: OrderDirection::Desc,
+                },
             )
             .await?;
 
@@ -684,7 +686,10 @@ impl ReadOnlyStorage for Sql {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(Page { items, next_cursor: page.next_cursor })
+        Ok(Page {
+            items,
+            next_cursor: page.next_cursor,
+        })
     }
 
     /// Queries the entities from the storage.
