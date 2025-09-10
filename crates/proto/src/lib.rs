@@ -395,6 +395,26 @@ impl TryFrom<proto::types::TokenBalance> for TokenBalance {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
+pub struct TokenTransfer {
+    pub id: String,
+    pub contract_address: Felt,
+    pub from_address: Felt,
+    pub to_address: Felt,
+    pub amount: U256,
+    pub token_id: Option<U256>,
+    pub executed_at: DateTime<Utc>,
+    pub event_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
+pub struct TokenTransferQuery {
+    pub account_addresses: Vec<Felt>,
+    pub contract_addresses: Vec<Felt>,
+    pub token_ids: Vec<U256>,
+    pub pagination: Pagination,
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct ControllerQuery {
     pub contract_addresses: Vec<Felt>,

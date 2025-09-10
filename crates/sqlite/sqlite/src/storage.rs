@@ -15,7 +15,7 @@ use torii_proto::{
     schema::Entity, CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery,
     Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy,
     OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection,
-    TokenQuery, Transaction, TransactionCall, TransactionQuery,
+    TokenQuery, Transaction, TransactionCall, TransactionQuery, TokenTransfer, TokenTransferQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{ReadOnlyStorage, Storage, StorageError};
@@ -617,6 +617,104 @@ impl ReadOnlyStorage for Sql {
             items,
             next_cursor: page.next_cursor,
         })
+    }
+
+    async fn token_transfers(
+        &self,
+        query: &TokenTransferQuery,
+    ) -> Result<Page<TokenTransfer>, StorageError> {
+        use crate::query::{PaginationExecutor, QueryBuilder};
+        use chrono::Utc;
+        use crypto_bigint::U256 as BigU256;
+
+        let executor = PaginationExecutor::new(self.pool.clone());
+        let mut query_builder = QueryBuilder::new("token_transfers").select(&[
+            "id".to_string(),
+            "contract_address".to_string(),
+            "from_address".to_string(),
+            "to_address".to_string(),
+            "amount".to_string(),
+            "token_id".to_string(),
+            "executed_at".to_string(),
+            "event_id".to_string(),
+        ]);
+
+        if !query.account_addresses.is_empty() {
+            let placeholders_from = vec!["?"; query.account_addresses.len()].join(", ");
+            let placeholders_to = vec!["?"; query.account_addresses.len()].join(", ");
+            query_builder = query_builder.where_clause(&format!(
+                "((from_address IN ({})) OR (to_address IN ({})))",
+                placeholders_from, placeholders_to
+            ));
+            for addr in &query.account_addresses {
+                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+            }
+            for addr in &query.account_addresses {
+                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+            }
+        }
+
+        if !query.contract_addresses.is_empty() {
+            let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
+            query_builder = query_builder.where_clause(&format!(
+                "contract_address IN ({})",
+                placeholders
+            ));
+            for addr in &query.contract_addresses {
+                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+            }
+        }
+
+        if !query.token_ids.is_empty() {
+            let placeholders = vec!["?"; query.token_ids.len()].join(", ");
+            // Match numeric token id when present (after ':')
+            query_builder = query_builder.where_clause(&format!(
+                "SUBSTR(token_id, INSTR(token_id, ':') + 1) IN ({})",
+                placeholders
+            ));
+            for token_id in &query.token_ids {
+                query_builder = query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
+            }
+        }
+
+        let page = executor
+            .execute_paginated_query(
+                query_builder,
+                &query.pagination,
+                &OrderBy { field: "id".to_string(), direction: OrderDirection::Desc },
+            )
+            .await?;
+
+        let mut items: Vec<TokenTransfer> = Vec::with_capacity(page.items.len());
+        for row in page.items {
+            let id = row.try_get::<String, _>("id")?;
+            let contract_address = Felt::from_str(&row.try_get::<String, _>("contract_address")?)?;
+            let from_address = Felt::from_str(&row.try_get::<String, _>("from_address")?)?;
+            let to_address = Felt::from_str(&row.try_get::<String, _>("to_address")?)?;
+            let amount_str = row.try_get::<String, _>("amount")?;
+            let amount = BigU256::from_be_hex(amount_str.trim_start_matches("0x"));
+            let token_id_str = row.try_get::<String, _>("token_id")?;
+            let token_id = if let Some((_, tid)) = token_id_str.split_once(':') {
+                Some(BigU256::from_be_hex(tid.trim_start_matches("0x")))
+            } else {
+                None
+            };
+            let executed_at = row.try_get::<DateTime<Utc>, _>("executed_at")?;
+            let event_id = row.try_get::<Option<String>, _>("event_id")?;
+
+            items.push(TokenTransfer {
+                id,
+                contract_address,
+                from_address,
+                to_address,
+                amount,
+                token_id,
+                executed_at,
+                event_id,
+            });
+        }
+
+        Ok(Page { items, next_cursor: page.next_cursor })
     }
 
     /// Queries the entities from the storage.

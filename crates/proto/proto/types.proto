@@ -224,6 +224,38 @@ message TokenBalanceQuery {
     Pagination pagination = 4;
 }
 
+// A token transfer record
+message TokenTransfer {
+    // Unique identifier for the transfer (event_id:token_id key)
+    string id = 1;
+    // Contract address of the token
+    bytes contract_address = 2;
+    // Sender address
+    bytes from_address = 3;
+    // Recipient address
+    bytes to_address = 4;
+    // Amount transferred (big-endian bytes)
+    bytes amount = 5;
+    // Token ID when applicable (ERC721/1155); omitted for ERC20
+    optional bytes token_id = 6;
+    // Executed at timestamp (seconds since epoch)
+    uint64 executed_at = 7;
+    // Optional event id that originated this transfer
+    optional string event_id = 8;
+}
+
+// A request to retrieve token transfers
+message TokenTransferQuery {
+    // Filter by any of these account addresses (as sender or recipient)
+    repeated bytes account_addresses = 1;
+    // Filter by token contract addresses
+    repeated bytes contract_addresses = 2;
+    // Filter by token IDs (bytes of numeric id)
+    repeated bytes token_ids = 3;
+    // Pagination
+    Pagination pagination = 4;
+}
+
 enum CallType {
     EXECUTE = 0;
     EXECUTE_FROM_OUTSIDE = 1;
