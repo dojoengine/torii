@@ -15,7 +15,7 @@ use torii_proto::{
     schema::Entity, CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery,
     Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy,
     OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection,
-    TokenQuery, Transaction, TransactionCall, TransactionQuery,
+    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{ReadOnlyStorage, Storage, StorageError};
@@ -613,6 +613,79 @@ impl ReadOnlyStorage for Sql {
                 Result::<Event, Error>::Ok(torii_sqlite_types::Event::from_row(&row)?.into())
             })
             .collect::<Result<Vec<_>, _>>()?;
+        Ok(Page {
+            items,
+            next_cursor: page.next_cursor,
+        })
+    }
+
+    async fn token_transfers(
+        &self,
+        query: &TokenTransferQuery,
+    ) -> Result<Page<TokenTransfer>, StorageError> {
+        use crate::query::{PaginationExecutor, QueryBuilder};
+
+        let executor = PaginationExecutor::new(self.pool.clone());
+        let mut query_builder = QueryBuilder::new("token_transfers").select(&["*".to_string()]);
+
+        if !query.account_addresses.is_empty() {
+            let placeholders_from = vec!["?"; query.account_addresses.len()].join(", ");
+            let placeholders_to = vec!["?"; query.account_addresses.len()].join(", ");
+            query_builder = query_builder.where_clause(&format!(
+                "((from_address IN ({})) OR (to_address IN ({})))",
+                placeholders_from, placeholders_to
+            ));
+            for addr in &query.account_addresses {
+                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+            }
+            for addr in &query.account_addresses {
+                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+            }
+        }
+
+        if !query.contract_addresses.is_empty() {
+            let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
+            query_builder =
+                query_builder.where_clause(&format!("contract_address IN ({})", placeholders));
+            for addr in &query.contract_addresses {
+                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+            }
+        }
+
+        if !query.token_ids.is_empty() {
+            let placeholders = vec!["?"; query.token_ids.len()].join(", ");
+            // Match numeric token id when present (after ':')
+            query_builder = query_builder.where_clause(&format!(
+                "SUBSTR(token_id, INSTR(token_id, ':') + 1) IN ({})",
+                placeholders
+            ));
+            for token_id in &query.token_ids {
+                query_builder =
+                    query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
+            }
+        }
+
+        let page = executor
+            .execute_paginated_query(
+                query_builder,
+                &query.pagination,
+                &OrderBy {
+                    field: "id".to_string(),
+                    direction: OrderDirection::Desc,
+                },
+            )
+            .await?;
+
+        let items: Vec<TokenTransfer> = page
+            .items
+            .into_iter()
+            .map(|row| {
+                Result::<TokenTransfer, Error>::Ok(
+                    torii_sqlite_types::TokenTransfer::from_row(&row)?.into(),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
         Ok(Page {
             items,
             next_cursor: page.next_cursor,

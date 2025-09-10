@@ -395,6 +395,104 @@ impl TryFrom<proto::types::TokenBalance> for TokenBalance {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
+pub struct TokenTransfer {
+    pub id: String,
+    pub contract_address: Felt,
+    pub from_address: Felt,
+    pub to_address: Felt,
+    pub amount: U256,
+    pub token_id: Option<U256>,
+    pub executed_at: DateTime<Utc>,
+    pub event_id: Option<String>,
+}
+
+impl From<TokenTransfer> for proto::types::TokenTransfer {
+    fn from(value: TokenTransfer) -> Self {
+        Self {
+            id: value.id,
+            contract_address: value.contract_address.to_bytes_be().into(),
+            from_address: value.from_address.to_bytes_be().into(),
+            to_address: value.to_address.to_bytes_be().into(),
+            amount: value.amount.to_be_bytes().to_vec(),
+            token_id: value.token_id.map(|id| id.to_be_bytes().to_vec()),
+            executed_at: value.executed_at.timestamp() as u64,
+            event_id: value.event_id,
+        }
+    }
+}
+
+impl TryFrom<proto::types::TokenTransfer> for TokenTransfer {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::TokenTransfer) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: value.id,
+            contract_address: Felt::from_bytes_be_slice(&value.contract_address),
+            from_address: Felt::from_bytes_be_slice(&value.from_address),
+            to_address: Felt::from_bytes_be_slice(&value.to_address),
+            amount: U256::from_be_slice(&value.amount),
+            token_id: value.token_id.map(|id| U256::from_be_slice(&id)),
+            executed_at: DateTime::from_timestamp(value.executed_at as i64, 0).unwrap(),
+            event_id: value.event_id,
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
+pub struct TokenTransferQuery {
+    pub account_addresses: Vec<Felt>,
+    pub contract_addresses: Vec<Felt>,
+    pub token_ids: Vec<U256>,
+    pub pagination: Pagination,
+}
+
+impl From<TokenTransferQuery> for proto::types::TokenTransferQuery {
+    fn from(value: TokenTransferQuery) -> Self {
+        Self {
+            account_addresses: value
+                .account_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().into())
+                .collect(),
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().into())
+                .collect(),
+            token_ids: value
+                .token_ids
+                .into_iter()
+                .map(|id| id.to_be_bytes().to_vec())
+                .collect(),
+            pagination: Some(value.pagination.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::TokenTransferQuery> for TokenTransferQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::TokenTransferQuery) -> Result<Self, Self::Error> {
+        Ok(Self {
+            account_addresses: value
+                .account_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
+            token_ids: value
+                .token_ids
+                .into_iter()
+                .map(|id| U256::from_be_slice(&id))
+                .collect(),
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct ControllerQuery {
     pub contract_addresses: Vec<Felt>,

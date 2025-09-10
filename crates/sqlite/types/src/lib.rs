@@ -248,6 +248,41 @@ impl From<TokenBalance> for torii_proto::TokenBalance {
     }
 }
 
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenTransfer {
+    pub id: String,
+    pub contract_address: String,
+    pub from_address: String,
+    pub to_address: String,
+    pub amount: String,
+    pub token_id: String,
+    pub executed_at: DateTime<Utc>,
+    pub event_id: Option<String>,
+}
+
+impl From<TokenTransfer> for torii_proto::TokenTransfer {
+    fn from(value: TokenTransfer) -> Self {
+        let token_id_opt = value
+            .token_id
+            .split(':')
+            .collect::<Vec<&str>>()
+            .get(1)
+            .map(|tid| U256::from_be_hex(tid.trim_start_matches("0x")));
+
+        Self {
+            id: value.id,
+            contract_address: Felt::from_str(&value.contract_address).unwrap(),
+            from_address: Felt::from_str(&value.from_address).unwrap(),
+            to_address: Felt::from_str(&value.to_address).unwrap(),
+            amount: U256::from_be_hex(value.amount.trim_start_matches("0x")),
+            token_id: token_id_opt,
+            executed_at: value.executed_at,
+            event_id: value.event_id,
+        }
+    }
+}
+
 #[derive(FromRow, Deserialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
