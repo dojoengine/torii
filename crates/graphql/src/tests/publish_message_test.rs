@@ -108,7 +108,7 @@ mod tests {
             provider.clone(),
         ));
 
-        let schema = build_schema(&pool, messaging, storage).await.unwrap();
+        let schema = build_schema(messaging, storage).await.unwrap();
 
         // Create typed data for the message
         let mut typed_data = TypedData::new(

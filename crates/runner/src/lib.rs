@@ -586,7 +586,7 @@ async fn spawn_rebuilding_graphql_server<P: Provider + Sync + Send + Clone + Deb
     loop {
         let shutdown_rx = shutdown_tx.subscribe();
         let (new_addr, new_server) =
-            torii_graphql::server::new(shutdown_rx, &pool, messaging.clone(), storage.clone())
+            torii_graphql::server::new(shutdown_rx, messaging.clone(), storage.clone())
                 .await;
 
         tokio::spawn(new_server);

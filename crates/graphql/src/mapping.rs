@@ -13,14 +13,7 @@ pub static ENTITY_TYPE_MAPPING: LazyLock<TypeMapping> = LazyLock::new(|| {
             Name::new("id"),
             TypeData::Simple(TypeRef::named(TypeRef::ID)),
         ),
-        (
-            Name::new("keys"),
-            TypeData::Simple(TypeRef::named_list(TypeRef::STRING)),
-        ),
-        (
-            Name::new("eventId"),
-            TypeData::Simple(TypeRef::named(TypeRef::STRING)),
-        ),
+        // keys and eventId removed; align with storage Entity
         (
             Name::new("executedAt"),
             TypeData::Simple(TypeRef::named(GraphqlType::DateTime.to_string())),
@@ -67,17 +60,11 @@ pub static EVENT_TYPE_MAPPING: LazyLock<TypeMapping> = LazyLock::new(|| {
 
 pub static MODEL_TYPE_MAPPING: LazyLock<TypeMapping> = LazyLock::new(|| {
     IndexMap::from([
+        (Name::new("namespace"), TypeData::Simple(TypeRef::named(TypeRef::STRING))),
+        (Name::new("name"), TypeData::Simple(TypeRef::named(TypeRef::STRING))),
         (
-            Name::new("id"),
-            TypeData::Simple(TypeRef::named(TypeRef::ID)),
-        ),
-        (
-            Name::new("name"),
-            TypeData::Simple(TypeRef::named(TypeRef::STRING)),
-        ),
-        (
-            Name::new("namespace"),
-            TypeData::Simple(TypeRef::named(TypeRef::STRING)),
+            Name::new("selector"),
+            TypeData::Simple(TypeRef::named(Primitive::Felt252(None).to_string())),
         ),
         (
             Name::new("classHash"),
@@ -87,18 +74,14 @@ pub static MODEL_TYPE_MAPPING: LazyLock<TypeMapping> = LazyLock::new(|| {
             Name::new("contractAddress"),
             TypeData::Simple(TypeRef::named(Primitive::Felt252(None).to_string())),
         ),
+        (Name::new("packedSize"), TypeData::Simple(TypeRef::named(TypeRef::INT))),
+        (Name::new("unpackedSize"), TypeData::Simple(TypeRef::named(TypeRef::INT))),
         (
-            Name::new("transactionHash"),
-            TypeData::Simple(TypeRef::named(Primitive::Felt252(None).to_string())),
+            Name::new("useLegacyStore"),
+            TypeData::Simple(TypeRef::named(TypeRef::BOOLEAN)),
         ),
-        (
-            Name::new("executedAt"),
-            TypeData::Simple(TypeRef::named(GraphqlType::DateTime.to_string())),
-        ),
-        (
-            Name::new("createdAt"),
-            TypeData::Simple(TypeRef::named(GraphqlType::DateTime.to_string())),
-        ),
+        (Name::new("layout"), TypeData::Simple(TypeRef::named(TypeRef::STRING))),
+        (Name::new("schema"), TypeData::Simple(TypeRef::named(TypeRef::STRING))),
     ])
 });
 

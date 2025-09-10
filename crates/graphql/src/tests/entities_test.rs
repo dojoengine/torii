@@ -139,7 +139,7 @@ mod tests {
             provider.clone(),
         ));
 
-        let schema = build_schema(&pool, messaging, storage).await.unwrap();
+        let schema = build_schema(messaging, storage).await.unwrap();
 
         // default without params
         let entities = entities_query(&schema, "").await;

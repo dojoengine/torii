@@ -5,7 +5,6 @@ use std::sync::Arc;
 use async_graphql::dynamic::Schema;
 use async_graphql::Request;
 use async_graphql_warp::graphql_subscription;
-use sqlx::{Pool, Sqlite};
 use starknet::providers::Provider;
 use tokio::sync::broadcast::Receiver;
 use torii_messaging::Messaging;
@@ -18,11 +17,10 @@ use super::schema::build_schema;
 
 pub async fn new<P: Provider + Sync + Send + Clone + 'static>(
     mut shutdown_rx: Receiver<()>,
-    pool: &Pool<Sqlite>,
     messaging: Arc<Messaging<P>>,
     storage: Arc<dyn ReadOnlyStorage>,
 ) -> (SocketAddr, impl Future<Output = ()> + 'static) {
-    let schema = build_schema(pool, messaging, storage).await.unwrap();
+    let schema = build_schema(messaging, storage).await.unwrap();
     let routes = graphql_filter(schema);
     warp::serve(routes).bind_with_graceful_shutdown(([127, 0, 0, 1], 0), async move {
         shutdown_rx.recv().await.ok();
