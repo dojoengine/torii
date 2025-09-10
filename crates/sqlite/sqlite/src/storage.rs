@@ -624,20 +624,9 @@ impl ReadOnlyStorage for Sql {
         query: &TokenTransferQuery,
     ) -> Result<Page<TokenTransfer>, StorageError> {
         use crate::query::{PaginationExecutor, QueryBuilder};
-        use chrono::Utc;
-        use crypto_bigint::U256 as BigU256;
 
         let executor = PaginationExecutor::new(self.pool.clone());
-        let mut query_builder = QueryBuilder::new("token_transfers").select(&[
-            "id".to_string(),
-            "contract_address".to_string(),
-            "from_address".to_string(),
-            "to_address".to_string(),
-            "amount".to_string(),
-            "token_id".to_string(),
-            "executed_at".to_string(),
-            "event_id".to_string(),
-        ]);
+        let mut query_builder = QueryBuilder::new("token_transfers").select(&["*".to_string()]);
 
         if !query.account_addresses.is_empty() {
             let placeholders_from = vec!["?"; query.account_addresses.len()].join(", ");
@@ -685,34 +674,15 @@ impl ReadOnlyStorage for Sql {
             )
             .await?;
 
-        let mut items: Vec<TokenTransfer> = Vec::with_capacity(page.items.len());
-        for row in page.items {
-            let id = row.try_get::<String, _>("id")?;
-            let contract_address = Felt::from_str(&row.try_get::<String, _>("contract_address")?)?;
-            let from_address = Felt::from_str(&row.try_get::<String, _>("from_address")?)?;
-            let to_address = Felt::from_str(&row.try_get::<String, _>("to_address")?)?;
-            let amount_str = row.try_get::<String, _>("amount")?;
-            let amount = BigU256::from_be_hex(amount_str.trim_start_matches("0x"));
-            let token_id_str = row.try_get::<String, _>("token_id")?;
-            let token_id = if let Some((_, tid)) = token_id_str.split_once(':') {
-                Some(BigU256::from_be_hex(tid.trim_start_matches("0x")))
-            } else {
-                None
-            };
-            let executed_at = row.try_get::<DateTime<Utc>, _>("executed_at")?;
-            let event_id = row.try_get::<Option<String>, _>("event_id")?;
-
-            items.push(TokenTransfer {
-                id,
-                contract_address,
-                from_address,
-                to_address,
-                amount,
-                token_id,
-                executed_at,
-                event_id,
-            });
-        }
+        let items: Vec<TokenTransfer> = page
+            .items
+            .into_iter()
+            .map(|row| {
+                Result::<TokenTransfer, Error>::Ok(
+                    torii_sqlite_types::TokenTransfer::from_row(&row)?.into(),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Page { items, next_cursor: page.next_cursor })
     }
