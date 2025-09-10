@@ -9509,6 +9509,7 @@ dependencies = [
  "hashlink",
  "ipfs-api-backend-hyper",
  "katana-runner",
+ "metrics",
  "rayon",
  "reqwest 0.11.27",
  "scarb-interop",
