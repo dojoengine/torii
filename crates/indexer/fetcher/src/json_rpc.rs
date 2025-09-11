@@ -53,24 +53,26 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             .record(range_start.elapsed().as_secs_f64());
         debug!(target: LOG_TARGET, duration = ?range_start.elapsed(), cursors = ?cursors, "Fetched data for range.");
 
-        let (preconfirmed_block, cursors) =
-            if self.config.flags.contains(FetchingFlags::PENDING_BLOCKS)
-                && cursors
-                    .cursors
-                    .values()
-                    .any(|c| c.head == Some(latest_block.block_number))
-            {
-                let pending_start = Instant::now();
-                let pending_result = self
-                    .fetch_preconfirmed_block(latest_block.block_number, &cursors)
-                    .await?;
-                histogram!("torii_fetcher_pending_duration_seconds")
-                    .record(pending_start.elapsed().as_secs_f64());
+        let (preconfirmed_block, cursors) = if self
+            .config
+            .flags
+            .contains(FetchingFlags::PRECONFIRMED_BLOCK)
+            && cursors
+                .cursors
+                .values()
+                .any(|c| c.head == Some(latest_block.block_number))
+        {
+            let preconfirmed_start = Instant::now();
+            let preconfirmed_result = self
+                .fetch_preconfirmed_block(latest_block.block_number, &cursors)
+                .await?;
+            histogram!("torii_fetcher_preconfirmed_duration_seconds")
+                .record(preconfirmed_start.elapsed().as_secs_f64());
 
-                pending_result
-            } else {
-                (None, cursors)
-            };
+            preconfirmed_result
+        } else {
+            (None, cursors)
+        };
 
         histogram!("torii_fetcher_total_duration_seconds")
             .record(fetch_start.elapsed().as_secs_f64());

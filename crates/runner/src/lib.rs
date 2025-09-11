@@ -339,8 +339,8 @@ impl Runner {
         if self.args.indexing.transactions {
             fetching_flags.insert(FetchingFlags::TRANSACTIONS);
         }
-        if self.args.indexing.pending {
-            fetching_flags.insert(FetchingFlags::PENDING_BLOCKS);
+        if self.args.indexing.preconfirmed {
+            fetching_flags.insert(FetchingFlags::PRECONFIRMED_BLOCK);
         }
 
         let storage = Arc::new(db.clone());

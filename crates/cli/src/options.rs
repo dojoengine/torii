@@ -127,11 +127,13 @@ pub struct IndexingOptions {
 
     /// Enable indexing pending blocks
     #[arg(
-        long = "indexing.pending",
+        long = "indexing.preconfirmed",
+        alias = "indexing.pending",
         default_value_t = true,
         help = "Whether or not to index pending blocks."
     )]
-    pub pending: bool,
+    #[serde(alias = "pending")]
+    pub preconfirmed: bool,
 
     /// Polling interval in ms
     #[arg(
@@ -229,7 +231,7 @@ impl Default for IndexingOptions {
             events_chunk_size: DEFAULT_EVENTS_CHUNK_SIZE,
             blocks_chunk_size: DEFAULT_BLOCKS_CHUNK_SIZE,
             batch_chunk_size: DEFAULT_BATCH_CHUNK_SIZE,
-            pending: true,
+            preconfirmed: true,
             polling_interval: DEFAULT_POLLING_INTERVAL,
             max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
             transactions: false,

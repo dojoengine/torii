@@ -18,7 +18,7 @@ bitflags! {
     #[derive(Debug, Clone)]
     pub struct FetchingFlags: u32 {
         const TRANSACTIONS = 0b00000001;
-        const PENDING_BLOCKS = 0b00000010;
+        const PRECONFIRMED_BLOCK = 0b00000010;
     }
 }
 
