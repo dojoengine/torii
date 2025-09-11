@@ -10,6 +10,7 @@ use tracing::{debug, info};
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext};
 use crate::{IndexingMode, Result};
+use metrics::counter;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_update_record";
 
@@ -122,6 +123,16 @@ where
                 None,
             )
             .await?;
+
+        // Record successful record update with context
+        counter!(
+            "torii_processor_operations_total",
+            "operation" => "record_updated",
+            "namespace" => model.namespace.clone(),
+            "model_name" => model.name.clone()
+        )
+        .increment(1);
+
         Ok(())
     }
 }

@@ -9,6 +9,7 @@ use tracing::{debug, info};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
+use metrics::counter;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::store_set_record";
 
@@ -108,6 +109,16 @@ where
                 Some(event.keys.clone()),
             )
             .await?;
+
+        // Record successful entity storage with context
+        counter!(
+            "torii_processor_operations_total",
+            "operation" => "entity_set",
+            "namespace" => model.namespace.clone(),
+            "model_name" => model.name.clone()
+        )
+        .increment(1);
+
         Ok(())
     }
 }

@@ -13,6 +13,7 @@ use tracing::{debug, error};
 use crate::error::Error;
 use crate::processors::Processors;
 use crate::{EventKey, EventProcessorConfig, EventProcessorContext, IndexingMode};
+use metrics::{counter, histogram};
 
 const LOG_TARGET: &str = "torii::indexer::task_manager";
 
@@ -192,10 +193,42 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                                 nft_metadata_semaphore: nft_metadata_semaphore.clone(),
                             };
 
-                            if let Err(e) = processor.process(&ctx).await {
+                            // Record processor timing and success/error metrics
+                            let start_time = std::time::Instant::now();
+                            let processor_name = processor.event_key();
+
+                            let result = processor.process(&ctx).await;
+
+                            let duration = start_time.elapsed();
+                            histogram!(
+                                "torii_processor_duration_seconds",
+                                "processor" => processor_name.clone()
+                            )
+                            .record(duration.as_secs_f64());
+
+                            match &result {
+                                Ok(_) => {
+                                    counter!(
+                                        "torii_processor_events_processed_total",
+                                        "processor" => processor_name.clone(),
+                                        "status" => "success"
+                                    )
+                                    .increment(1);
+                                }
+                                Err(_) => {
+                                    counter!(
+                                        "torii_processor_events_processed_total",
+                                        "processor" => processor_name.clone(),
+                                        "status" => "error"
+                                    )
+                                    .increment(1);
+                                }
+                            }
+
+                            if let Err(e) = result {
                                 error!(
                                     target: LOG_TARGET,
-                                    event_name = processor.event_key(),
+                                    event_name = processor_name,
                                     error = ?e,
                                     task_id = %task_id,
                                     "Processing parallelized event."

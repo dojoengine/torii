@@ -9,6 +9,7 @@ use crate::erc::{felt_to_sql_string, try_register_token_contract};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
+use metrics::counter;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc20_transfer";
 
@@ -89,6 +90,15 @@ where
             .await?;
 
         debug!(target: LOG_TARGET,from = ?from, to = ?to, value = ?value, "ERC20 Transfer.");
+
+        // Record successful transfer with contract address (truncated for cardinality)
+        let contract_short = format!("{:#x}", token_address)[2..10].to_string(); // First 8 chars
+        counter!(
+            "torii_processor_operations_total",
+            "operation" => "erc20_transfer",
+            "contract" => contract_short
+        )
+        .increment(1);
 
         Ok(())
     }

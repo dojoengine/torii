@@ -15,6 +15,7 @@ use tracing::{debug, info};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
+use metrics::counter;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::register_model";
 
@@ -86,6 +87,7 @@ where
         }
 
         let world = WorldContractReader::new(ctx.event.from_address, &ctx.provider);
+        let namespace_for_metrics = namespace.clone();
         let mut model = ModelRPCReader::new(
             &namespace,
             &name,
@@ -174,6 +176,15 @@ where
                 },
             )
             .await;
+
+        // Record successful model registration with context
+        counter!(
+            "torii_processor_operations_total",
+            "operation" => "model_registered",
+            "namespace" => namespace_for_metrics,
+            "legacy_store" => use_legacy_store.to_string()
+        )
+        .increment(1);
 
         Ok(())
     }

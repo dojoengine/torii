@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
 use erc::UpdateTokenMetadataQuery;
+use metrics::{counter, histogram};
 use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
@@ -294,6 +295,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
     }
 
     async fn handle_query_message(&mut self, query_message: QueryMessage) -> QueryResult<()> {
+        let start_time = Instant::now();
+        let query_type_str = format!("{}", query_message.query_type);
+
         let tx = self.transaction.as_mut().unwrap();
 
         let mut query = sqlx::query(&query_message.statement);
@@ -797,6 +801,20 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             }
         }
 
+        // Record metrics
+        let duration = start_time.elapsed();
+        histogram!(
+            "torii_executor_query_duration_seconds",
+            "query_type" => query_type_str.clone()
+        )
+        .record(duration.as_secs_f64());
+        counter!(
+            "torii_executor_queries_total",
+            "query_type" => query_type_str,
+            "status" => "success"
+        )
+        .increment(1);
+
         Ok(())
     }
 
@@ -814,6 +832,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             send_broker_message(message, false);
         }
 
+        // Record metrics
+        counter!("torii_executor_transaction_operations_total", "operation" => "execute", "status" => "success")
+            .increment(1);
+
         Ok(())
     }
 
@@ -828,6 +850,11 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         self.transaction = Some(self.pool.begin().await?);
 
         self.publish_queue.clear();
+
+        // Record metrics
+        counter!("torii_executor_transaction_operations_total", "operation" => "rollback", "status" => "success")
+            .increment(1);
+
         Ok(())
     }
 

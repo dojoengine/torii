@@ -11,6 +11,7 @@ use tracing::info;
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
+use metrics::counter;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::event_message";
 
@@ -99,6 +100,17 @@ where
         ctx.storage
             .set_event_message(entity, &ctx.event_id, ctx.block_timestamp)
             .await?;
+
+        // Record successful event message storage with context
+        counter!(
+            "torii_processor_operations_total",
+            "operation" => "event_message_stored",
+            "namespace" => model.namespace.clone(),
+            "model_name" => model.name.clone(),
+            "system_address" => format!("{:#x}", Felt::from(event.system_address))[2..10].to_string() // Truncated for cardinality
+        )
+        .increment(1);
+
         Ok(())
     }
 }

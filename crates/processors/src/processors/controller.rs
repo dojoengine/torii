@@ -32,6 +32,7 @@ use tracing::{debug, error, info, warn};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
+use metrics::counter;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::controller";
 const CARTRIDGE_LOOKUP_URL: &str = "https://api.cartridge.gg/lookup";
@@ -163,6 +164,14 @@ where
                 DateTime::from_timestamp(ctx.block_timestamp as i64, 0).unwrap(),
             )
             .await?;
+
+        // Record successful controller registration with username
+        counter!(
+            "torii_processor_operations_total",
+            "operation" => "controller_registered",
+            "username" => username.clone()
+        )
+        .increment(1);
 
         Ok(())
     }
