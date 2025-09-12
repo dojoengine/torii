@@ -69,8 +69,8 @@ impl Sql {
     ) -> Result<Self, Error> {
         for contract in contracts {
             executor.send(QueryMessage::other(
-                "INSERT OR IGNORE INTO contracts (id, contract_address, contract_type) VALUES (?, \
-                 ?, ?)"
+                "INSERT OR IGNORE INTO contracts (id, contract_address, contract_type, updated_at) VALUES (?, \
+                 ?, ?, CURRENT_TIMESTAMP)"
                     .to_string(),
                 vec![
                     Argument::FieldElement(contract.address),
