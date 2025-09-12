@@ -45,6 +45,7 @@ impl Default for FetcherConfig {
 
 #[derive(Debug, Clone)]
 pub struct FetchRangeBlock {
+    pub timestamp: u64,
     pub transactions: IndexMap<Felt, FetchTransaction>,
 }
 

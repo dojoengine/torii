@@ -148,6 +148,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             blocks
                 .entry(block_number)
                 .or_insert_with(|| FetchRangeBlock {
+                    timestamp: 0,
                     transactions: IndexMap::new(),
                 })
                 .transactions
@@ -226,8 +227,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             }
 
             let block_results = self.chunked_batch_requests(&block_requests).await?;
-            let mut block_timestamps = HashMap::new();
-
             for (block_number, result) in head_blocks_to_fetch.iter().zip(block_results) {
                 match result {
                     ProviderResponseData::GetBlockWithTxHashes(block) => {
@@ -235,7 +234,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                             MaybePreConfirmedBlockWithTxHashes::Block(block) => block.timestamp,
                             _ => unreachable!(),
                         };
-                        block_timestamps.insert(*block_number, timestamp);
+                        blocks
+                            .get_mut(block_number)
+                            .expect("Block should exist.")
+                            .timestamp = timestamp;
                     }
                     _ => unreachable!(),
                 }
@@ -243,10 +245,9 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
             // Update cursor timestamps
             for (_, cursor) in cursors.iter_mut() {
-                if let Some(head) = cursor.head {
-                    if let Some(timestamp) = block_timestamps.get(&head) {
-                        cursor.last_block_timestamp = Some(*timestamp);
-                    }
+                if let Some(head) = &cursor.head {
+                    let timestamp = blocks.get(head).expect("Block should exist.").timestamp;
+                    cursor.last_block_timestamp = Some(timestamp);
                 }
             }
         }
