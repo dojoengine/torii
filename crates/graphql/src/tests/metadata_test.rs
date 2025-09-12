@@ -73,6 +73,7 @@ mod tests {
             &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
+                starting_block: None,
             }],
         )
         .await
@@ -167,6 +168,7 @@ mod tests {
             &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
+                starting_block: None,
             }],
         )
         .await

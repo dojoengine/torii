@@ -323,7 +323,7 @@ mod test {
         max_concurrent_tasks = 1000
         transactions = false
         contracts = [
-            "erc20:0x1234",
+            "erc20:0x1234:123",
             "erc721:0x5678"
         ]
         namespaces = []
@@ -369,11 +369,13 @@ mod test {
             vec![
                 ContractDefinition {
                     address: Felt::from_str("0x1234").unwrap(),
-                    r#type: ContractType::ERC20
+                    r#type: ContractType::ERC20,
+                    starting_block: Some(123),
                 },
                 ContractDefinition {
                     address: Felt::from_str("0x5678").unwrap(),
-                    r#type: ContractType::ERC721
+                    r#type: ContractType::ERC721,
+                    starting_block: None,
                 }
             ]
         );
