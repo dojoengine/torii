@@ -874,6 +874,7 @@ pub struct GrpcConfig {
     pub tcp_keepalive_interval: Duration,
     pub http2_keepalive_interval: Duration,
     pub http2_keepalive_timeout: Duration,
+    pub max_message_size: usize,
 }
 
 impl Default for GrpcConfig {
@@ -884,6 +885,7 @@ impl Default for GrpcConfig {
             tcp_keepalive_interval: Duration::from_secs(60),
             http2_keepalive_interval: Duration::from_secs(30),
             http2_keepalive_timeout: Duration::from_secs(10),
+            max_message_size: 16 * 1024 * 1024,
         }
     }
 }
@@ -917,6 +919,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     let tcp_keepalive = config.tcp_keepalive_interval;
     let http2_keepalive_interval = config.http2_keepalive_interval;
     let http2_keepalive_timeout = config.http2_keepalive_timeout;
+    let max_message_size = config.max_message_size;
 
     let world = DojoWorld::new(
         storage,
@@ -927,7 +930,9 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     );
     let server = WorldServer::new(world)
         .accept_compressed(CompressionEncoding::Gzip)
-        .send_compressed(CompressionEncoding::Gzip);
+        .send_compressed(CompressionEncoding::Gzip)
+        .max_decoding_message_size(max_message_size)
+        .max_encoding_message_size(max_message_size);
 
     let server_future = Server::builder()
         // GrpcWeb is over http1 so we must enable it.

@@ -28,9 +28,25 @@ pub struct Client {
 }
 
 impl Client {
-    /// Returns a initialized [Client].
+    /// Returns a initialized [Client] with default max message size (4MB).
     pub async fn new(torii_url: String, world: Felt) -> Result<Self, Error> {
         let grpc_client = WorldClient::new(torii_url, world).await?;
+
+        Ok(Self { inner: grpc_client })
+    }
+
+    /// Returns a initialized [Client] with custom max message size.
+    ///
+    /// # Arguments
+    /// * `torii_url` - The URL of the Torii server
+    /// * `world` - The world address
+    /// * `max_message_size` - Maximum size in bytes for gRPC messages (both incoming and outgoing)
+    pub async fn new_with_config(
+        torii_url: String,
+        world: Felt,
+        max_message_size: usize,
+    ) -> Result<Self, Error> {
+        let grpc_client = WorldClient::new_with_config(torii_url, world, max_message_size).await?;
 
         Ok(Self { inner: grpc_client })
     }

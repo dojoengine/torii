@@ -550,7 +550,7 @@ async fn test_fetch_pending_basic(sequencer: &RunnerCtx) {
     let fetcher = Fetcher::new(
         provider.clone(),
         FetcherConfig {
-            flags: FetchingFlags::PENDING_BLOCKS | FetchingFlags::TRANSACTIONS,
+            flags: FetchingFlags::PRECONFIRMED_BLOCK | FetchingFlags::TRANSACTIONS,
             blocks_chunk_size: 10,
             ..Default::default()
         },
@@ -657,7 +657,7 @@ async fn test_fetch_pending_multiple_transactions(sequencer: &RunnerCtx) {
     let fetcher = Fetcher::new(
         provider.clone(),
         FetcherConfig {
-            flags: FetchingFlags::PENDING_BLOCKS | FetchingFlags::TRANSACTIONS,
+            flags: FetchingFlags::PRECONFIRMED_BLOCK | FetchingFlags::TRANSACTIONS,
             blocks_chunk_size: 10,
             ..Default::default()
         },
@@ -781,7 +781,7 @@ async fn test_fetch_pending_with_cursor_continuation(sequencer: &RunnerCtx) {
     let fetcher = Fetcher::new(
         provider.clone(),
         FetcherConfig {
-            flags: FetchingFlags::PENDING_BLOCKS | FetchingFlags::TRANSACTIONS,
+            flags: FetchingFlags::PRECONFIRMED_BLOCK | FetchingFlags::TRANSACTIONS,
             blocks_chunk_size: 10,
             ..Default::default()
         },
@@ -925,7 +925,7 @@ async fn test_fetch_pending_to_mined_switching_logic(sequencer: &RunnerCtx) {
     let fetcher = Fetcher::new(
         provider.clone(),
         FetcherConfig {
-            flags: FetchingFlags::PENDING_BLOCKS | FetchingFlags::TRANSACTIONS,
+            flags: FetchingFlags::PRECONFIRMED_BLOCK | FetchingFlags::TRANSACTIONS,
             blocks_chunk_size: 10,
             ..Default::default()
         },
@@ -1075,7 +1075,7 @@ async fn test_fetch_pending_with_events_comprehensive(sequencer: &RunnerCtx) {
     let fetcher = Fetcher::new(
         provider.clone(),
         FetcherConfig {
-            flags: FetchingFlags::PENDING_BLOCKS | FetchingFlags::TRANSACTIONS,
+            flags: FetchingFlags::PRECONFIRMED_BLOCK | FetchingFlags::TRANSACTIONS,
             blocks_chunk_size: 10,
             ..Default::default()
         },
@@ -1179,7 +1179,7 @@ async fn test_fetch_pending_filters_reverted_transactions(sequencer: &RunnerCtx)
     let fetcher = Fetcher::new(
         provider.clone(),
         FetcherConfig {
-            flags: FetchingFlags::PENDING_BLOCKS | FetchingFlags::TRANSACTIONS,
+            flags: FetchingFlags::PRECONFIRMED_BLOCK | FetchingFlags::TRANSACTIONS,
             blocks_chunk_size: 10,
             ..Default::default()
         },
@@ -1283,7 +1283,7 @@ async fn test_fetch_pending_multiple_contracts_comprehensive(sequencer: &RunnerC
     let fetcher = Fetcher::new(
         provider.clone(),
         FetcherConfig {
-            flags: FetchingFlags::PENDING_BLOCKS | FetchingFlags::TRANSACTIONS,
+            flags: FetchingFlags::PRECONFIRMED_BLOCK | FetchingFlags::TRANSACTIONS,
             blocks_chunk_size: 10,
             ..Default::default()
         },
@@ -1496,7 +1496,7 @@ async fn test_fetch_comprehensive_multi_contract_spam_with_selective_indexing_an
     let fetcher = Fetcher::new(
         provider.clone(),
         FetcherConfig {
-            flags: FetchingFlags::PENDING_BLOCKS | FetchingFlags::TRANSACTIONS,
+            flags: FetchingFlags::PRECONFIRMED_BLOCK | FetchingFlags::TRANSACTIONS,
             blocks_chunk_size: 10,
             ..Default::default()
         },
