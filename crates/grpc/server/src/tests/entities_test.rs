@@ -113,6 +113,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         &[ContractDefinition {
             address: world_address,
             r#type: ContractType::WORLD,
+            starting_block: None,
         }],
     )
     .await
@@ -125,6 +126,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     let contracts = &[ContractDefinition {
         address: world_address,
         r#type: ContractType::WORLD,
+        starting_block: None,
     }];
     let mut engine = Engine::new(
         Arc::new(db.clone()),

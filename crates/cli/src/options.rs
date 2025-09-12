@@ -165,7 +165,7 @@ pub struct IndexingOptions {
         long = "indexing.contracts",
         value_delimiter = ',',
         value_parser = parse_erc_contract,
-        help = "The list of contracts to index, in the following format: contract_type:address. Supported contract types include ERC20, ERC721, ERC1155, WORLD, UDC, OTHER."
+        help = "The list of contracts to index, in the following format: contract_type:address or contract_type:address:starting_block. Supported contract types include ERC20, ERC721, ERC1155, WORLD, UDC, OTHER."
     )]
     #[serde(deserialize_with = "deserialize_contracts")]
     #[serde(serialize_with = "serialize_contracts")]
@@ -779,7 +779,7 @@ fn parse_hook(part: &str) -> anyhow::Result<Hook> {
 }
 
 // Parses clap cli argument which is expected to be in the format:
-// - contract_type:address
+// - contract_type:address or contract_type:address:starting_block
 fn parse_erc_contract(part: &str) -> anyhow::Result<ContractDefinition> {
     match part.split(':').collect::<Vec<&str>>().as_slice() {
         [r#type, address] => {
@@ -787,9 +787,28 @@ fn parse_erc_contract(part: &str) -> anyhow::Result<ContractDefinition> {
 
             let address = Felt::from_str(address)
                 .with_context(|| format!("Expected address, found {}", address))?;
-            Ok(ContractDefinition { address, r#type })
+            Ok(ContractDefinition {
+                address,
+                r#type,
+                starting_block: None,
+            })
         }
-        _ => Err(anyhow::anyhow!("Invalid contract format")),
+        [r#type, address, starting_block] => {
+            let r#type = r#type.parse::<ContractType>()?;
+
+            let address = Felt::from_str(address)
+                .with_context(|| format!("Expected address, found {}", address))?;
+
+            let starting_block = starting_block.parse::<u64>()
+                .with_context(|| format!("Expected block number, found {}", starting_block))?;
+
+            Ok(ContractDefinition {
+                address,
+                r#type,
+                starting_block: Some(starting_block),
+            })
+        }
+        _ => Err(anyhow::anyhow!("Invalid contract format. Expected format: contract_type:address or contract_type:address:starting_block")),
     }
 }
 

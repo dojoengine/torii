@@ -160,6 +160,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: world_address,
         r#type: ContractType::WORLD,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
         .await
@@ -327,6 +328,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: token_address,
         r#type: ContractType::ERC20,
+        starting_block: None,
     }];
 
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
@@ -470,6 +472,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: badge_address,
         r#type: ContractType::ERC721,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
         .await
@@ -668,6 +671,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: rewards_address,
         r#type: ContractType::ERC1155,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
         .await
@@ -853,6 +857,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: world_address,
         r#type: ContractType::WORLD,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
         .await
@@ -980,6 +985,7 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: world_address,
         r#type: ContractType::WORLD,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
         .await
@@ -1091,6 +1097,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: world_address,
         r#type: ContractType::WORLD,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
         .await
@@ -1205,6 +1212,7 @@ async fn test_update_token_metadata_erc4906(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: rewards_address,
         r#type: ContractType::ERC1155,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
         .await
@@ -1324,6 +1332,7 @@ async fn test_erc7572_contract_uri_updated(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: rewards_address,
         r#type: ContractType::ERC1155,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
         .await
@@ -1479,6 +1488,7 @@ async fn test_erc20_total_supply_tracking(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: erc20_address,
         r#type: ContractType::ERC20,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
         .await
@@ -1653,6 +1663,7 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: erc721_address,
         r#type: ContractType::ERC721,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
         .await
@@ -1847,6 +1858,7 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
     let contracts = vec![ContractDefinition {
         address: erc1155_address,
         r#type: ContractType::ERC1155,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender.clone(), &contracts)
         .await

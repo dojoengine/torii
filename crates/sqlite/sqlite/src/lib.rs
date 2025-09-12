@@ -69,13 +69,14 @@ impl Sql {
     ) -> Result<Self, Error> {
         for contract in contracts {
             executor.send(QueryMessage::other(
-                "INSERT OR IGNORE INTO contracts (id, contract_address, contract_type) VALUES (?, \
-                 ?, ?)"
+                "INSERT OR IGNORE INTO contracts (id, contract_address, contract_type, head) VALUES (?, \
+                 ?, ?, ?)"
                     .to_string(),
                 vec![
                     Argument::FieldElement(contract.address),
                     Argument::FieldElement(contract.address),
                     Argument::String(contract.r#type.to_string()),
+                    Argument::Int(contract.starting_block.map_or(0, |b| b - 1) as i64),
                 ],
             )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }

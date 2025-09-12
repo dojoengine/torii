@@ -405,6 +405,7 @@ pub async fn spinup_types_test(
     let contracts = &[ContractDefinition {
         address: world_address,
         r#type: ContractType::WORLD,
+        starting_block: None,
     }];
     let db = Sql::new(pool.clone(), sender, contracts).await.unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
