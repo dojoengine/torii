@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
-use metrics::{counter, gauge, histogram};
+use metrics::{counter, gauge};
 use starknet::core::types::{Event, TransactionContent};
 use starknet::macros::selector;
 use starknet::providers::Provider;
@@ -195,11 +195,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     let fetch_result = if let Some(last_fetch_result) = self.cached_fetch.as_ref() {
                         Result::<_, Error>::Ok(last_fetch_result.clone())
                     } else {
-                        let fetch_start = Instant::now();
                         let cursors = self.get_cursors().await?;
                         let fetch_result = self.fetcher.fetch(&cursors).await?;
-                        histogram!("torii_indexer_fetch_duration_seconds").record(fetch_start.elapsed().as_secs_f64());
-                        counter!("torii_indexer_fetch_total", "status" => "success").increment(1);
                         Ok(Box::new(fetch_result))
                     };
 
@@ -226,8 +223,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                                     let process_start = Instant::now();
                                     match self.process(&fetch_result).await {
                                         Ok(_) => {
-                                            histogram!("torii_indexer_process_duration_seconds").record(process_start.elapsed().as_secs_f64());
-                                            counter!("torii_indexer_process_total", "status" => "success").increment(1);
 
                                             // Only reset backoff delay after successful processing
                                             if processing_erroring_out {
@@ -245,7 +240,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                                         },
                                         Err(e) => {
                                             self.abort_controllers_sync(controller_sync_handle).await;
-                                            counter!("torii_indexer_process_total", "status" => "error").increment(1);
                                             counter!("torii_indexer_errors_total", "operation" => "process").increment(1);
                                             error!(target: LOG_TARGET, error = ?e, "Processing fetched data.");
                                             processing_erroring_out = true;
@@ -263,7 +257,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                                 }
                                 Err(e) => {
                                     self.abort_controllers_sync(controller_sync_handle).await;
-                                    counter!("torii_indexer_fetch_total", "status" => "error").increment(1);
                                     counter!("torii_indexer_errors_total", "operation" => "fetch").increment(1);
                                     fetching_erroring_out = true;
                                     self.cached_fetch = None;
@@ -277,7 +270,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                             }
                         }
                         Err(e) => {
-                            counter!("torii_indexer_fetch_total", "status" => "error").increment(1);
                             counter!("torii_indexer_errors_total", "operation" => "fetch").increment(1);
                             fetching_erroring_out = true;
                             self.cached_fetch = None;
@@ -310,12 +302,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         // Process parallelized events
         debug!(target: LOG_TARGET, "Processing parallelized events.");
         let instant = Instant::now();
-        let task_count = self.task_manager.pending_tasks_count();
-        counter!("torii_indexer_parallelized_tasks_total").increment(task_count as u64);
-
         self.task_manager.process_tasks().await?;
-        histogram!("torii_indexer_parallelized_tasks_duration_seconds")
-            .record(instant.elapsed().as_secs_f64());
         debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Processed parallelized events.");
 
         // Apply ERC balances cache diff
@@ -618,13 +605,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 let duration = controller_start.elapsed();
                 match &result {
                     Ok(num_controllers) => {
-                        histogram!("torii_indexer_controller_sync_duration_seconds")
-                            .record(duration.as_secs_f64());
-                        counter!("torii_indexer_controllers_synced_total")
-                            .increment(*num_controllers as u64);
                         debug!(target: LOG_TARGET, duration = ?duration, num_controllers = num_controllers, "Synced controllers in background.");
                     }
                     Err(e) => {
+                        counter!("torii_indexer_errors_total", "operation" => "controller_sync").increment(1);
                         error!(target: LOG_TARGET, error = ?e, duration = ?duration, "Syncing controllers failed in background.");
                     }
                 }

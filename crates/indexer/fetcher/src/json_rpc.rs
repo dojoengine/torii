@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use futures_util::future::try_join_all;
 use indexmap::IndexMap;
-use metrics::{counter, histogram};
+use metrics::{counter, gauge, histogram};
 use starknet::core::types::requests::{
     GetBlockWithTxHashesRequest, GetEventsRequest, GetTransactionByHashRequest,
 };
@@ -45,6 +45,9 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         let fetch_start = Instant::now();
 
         let latest_block = self.provider.block_hash_and_number().await?;
+        
+        // Track chain head for lag monitoring
+        counter!("torii_fetcher_chain_head_block_number").absolute(latest_block.block_number);
 
         let range_start = Instant::now();
         // Fetch all events from 'from' to our blocks chunk size
@@ -248,20 +251,29 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 }
             }
 
-            let transaction_results = self.chunked_batch_requests(&transaction_requests).await?;
-            for (block_number, result) in block_numbers_for_tx.into_iter().zip(transaction_results)
-            {
-                match result {
-                    ProviderResponseData::GetTransactionByHash(transaction) => {
-                        if let Some(block) = blocks.get_mut(&block_number) {
-                            if let Some(tx) =
-                                block.transactions.get_mut(transaction.transaction_hash())
-                            {
-                                tx.transaction = Some(transaction.into());
+            if !transaction_requests.is_empty() {
+                let transactions_start = Instant::now();
+                let transaction_results = self.chunked_batch_requests(&transaction_requests).await?;
+                
+                histogram!("torii_fetcher_transactions_duration_seconds")
+                    .record(transactions_start.elapsed().as_secs_f64());
+                counter!("torii_fetcher_transactions_fetched_total")
+                    .increment(transaction_results.len() as u64);
+                
+                for (block_number, result) in block_numbers_for_tx.into_iter().zip(transaction_results)
+                {
+                    match result {
+                        ProviderResponseData::GetTransactionByHash(transaction) => {
+                            if let Some(block) = blocks.get_mut(&block_number) {
+                                if let Some(tx) =
+                                    block.transactions.get_mut(transaction.transaction_hash())
+                                {
+                                    tx.transaction = Some(transaction.into());
+                                }
                             }
                         }
+                        _ => unreachable!(),
                     }
-                    _ => unreachable!(),
                 }
             }
         }
@@ -269,13 +281,62 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Step 8: Update cursor timestamps
         for (_, cursor) in cursors.iter_mut() {
             if let Some(head) = cursor.head {
+<<<<<<< Updated upstream
                 if let Some(block) = blocks.get(&head) {
                     cursor.last_block_timestamp = Some(block.timestamp);
+=======
+                head_blocks_to_fetch.insert(head);
+            }
+        }
+
+        if !head_blocks_to_fetch.is_empty() {
+            let mut block_requests = Vec::new();
+            for block_number in &head_blocks_to_fetch {
+                block_requests.push(ProviderRequestData::GetBlockWithTxHashes(
+                    GetBlockWithTxHashesRequest {
+                        block_id: BlockId::Number(*block_number),
+                    },
+                ));
+            }
+
+            let block_results = self.chunked_batch_requests(&block_requests).await?;
+            
+            for (block_number, result) in head_blocks_to_fetch.iter().zip(block_results) {
+                match result {
+                    ProviderResponseData::GetBlockWithTxHashes(block) => {
+                        let timestamp = match block {
+                            MaybePreConfirmedBlockWithTxHashes::Block(block) => block.timestamp,
+                            _ => unreachable!(),
+                        };
+                        blocks
+                            .get_mut(block_number)
+                            .expect("Block should exist.")
+                            .timestamp = timestamp;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+
+            // Update cursor timestamps
+            for (_, cursor) in cursors.iter_mut() {
+                if let Some(head) = &cursor.head {
+                    let timestamp = blocks.get(head).expect("Block should exist.").timestamp;
+                    cursor.last_block_timestamp = Some(timestamp);
+>>>>>>> Stashed changes
                 }
             }
         }
 
         trace!(target: LOG_TARGET, "Blocks: {}", blocks.len());
+
+        // Track cursor heads for monitoring sync status per contract
+        for (contract_address, cursor) in &cursors {
+            if let Some(head) = cursor.head {
+                gauge!("torii_fetcher_cursor_head", 
+                    "contract" => format!("{:#x}", contract_address)
+                ).set(head as f64);
+            }
+        }
 
         Ok((
             FetchRangeResult { blocks },
@@ -450,6 +511,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 cursor.last_block_timestamp = Some(timestamp);
             }
 
+            // No per-contract metrics needed - aggregate is more useful
+
             debug!(
                 target: LOG_TARGET,
                 contract = format!("{:#x}", contract_address),
@@ -461,6 +524,15 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
         // Only keep transactions that have events
         transactions.retain(|_, tx| !tx.events.is_empty());
+
+        // Record metrics for preconfirmed block - focus on what matters
+        if !transactions.is_empty() {
+            let total_events: usize = transactions.values().map(|tx| tx.events.len()).sum();
+            counter!("torii_fetcher_preconfirmed_events_total")
+                .increment(total_events as u64);
+            counter!("torii_fetcher_preconfirmed_transactions_total")
+                .increment(transactions.len() as u64);
+        }
 
         Ok((
             Some(FetchPreconfirmedBlockResult {
