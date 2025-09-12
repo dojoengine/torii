@@ -235,8 +235,11 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                             _ => unreachable!(),
                         };
                         blocks
-                            .get_mut(block_number)
-                            .expect("Block should exist.")
+                            .entry(*block_number)
+                            .or_insert_with(|| FetchRangeBlock {
+                                timestamp,
+                                transactions: IndexMap::new(),
+                            })
                             .timestamp = timestamp;
                     }
                     _ => unreachable!(),
