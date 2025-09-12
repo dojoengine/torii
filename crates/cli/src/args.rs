@@ -260,7 +260,7 @@ mod test {
             torii_args.indexing.events_chunk_size,
             DEFAULT_EVENTS_CHUNK_SIZE
         );
-        assert!(torii_args.indexing.pending);
+        assert!(torii_args.indexing.preconfirmed);
         assert_eq!(
             torii_args.indexing.polling_interval,
             DEFAULT_POLLING_INTERVAL
@@ -360,7 +360,7 @@ mod test {
         );
         assert_eq!(torii_args.indexing.events_chunk_size, 9999);
         assert_eq!(torii_args.indexing.blocks_chunk_size, 10240);
-        assert!(torii_args.indexing.pending);
+        assert!(torii_args.indexing.preconfirmed);
         assert_eq!(torii_args.indexing.polling_interval, 500);
         assert_eq!(torii_args.indexing.max_concurrent_tasks, 1000);
         assert!(!torii_args.indexing.transactions);

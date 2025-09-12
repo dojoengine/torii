@@ -36,7 +36,7 @@ impl Client {
     }
 
     /// Returns a initialized [Client] with custom max message size.
-    /// 
+    ///
     /// # Arguments
     /// * `torii_url` - The URL of the Torii server
     /// * `world` - The world address
