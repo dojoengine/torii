@@ -45,10 +45,6 @@ impl Default for FetcherConfig {
 
 #[derive(Debug, Clone)]
 pub struct FetchRangeBlock {
-    // For pending blocks, this is None.
-    // We check the parent hash of the pending block to the latest block
-    // to see if we need to re fetch the pending block.
-    pub block_hash: Option<Felt>,
     pub transactions: IndexMap<Felt, FetchTransaction>,
 }
 

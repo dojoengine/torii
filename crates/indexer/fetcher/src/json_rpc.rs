@@ -144,14 +144,12 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         for event in events {
             let block_number = event.block_number.unwrap();
 
-            // Create block entry if it doesn't exist
-            let block = blocks.entry(block_number).or_insert_with(|| FetchRangeBlock {
-                block_hash: None,
-                transactions: IndexMap::new(),
-            });
-
             // Create transaction entry if it doesn't exist (no ordering)
-            block
+            blocks
+                .entry(block_number)
+                .or_insert_with(|| FetchRangeBlock {
+                    transactions: IndexMap::new(),
+                })
                 .transactions
                 .entry(event.transaction_hash)
                 .or_insert_with(|| FetchTransaction {
@@ -216,7 +214,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 head_blocks_to_fetch.insert(head);
             }
         }
-        
+
         if !head_blocks_to_fetch.is_empty() {
             let mut block_requests = Vec::new();
             for block_number in &head_blocks_to_fetch {
@@ -226,10 +224,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     },
                 ));
             }
-            
+
             let block_results = self.chunked_batch_requests(&block_requests).await?;
             let mut block_timestamps = HashMap::new();
-            
+
             for (block_number, result) in head_blocks_to_fetch.iter().zip(block_results) {
                 match result {
                     ProviderResponseData::GetBlockWithTxHashes(block) => {
@@ -242,7 +240,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     _ => unreachable!(),
                 }
             }
-            
+
             // Update cursor timestamps
             for (_, cursor) in cursors.iter_mut() {
                 if let Some(head) = cursor.head {

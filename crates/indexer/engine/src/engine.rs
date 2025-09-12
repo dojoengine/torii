@@ -348,9 +348,11 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         // Fetch timestamps for all blocks we need to process
         let block_numbers: Vec<u64> = range.blocks.keys().copied().collect();
         if !block_numbers.is_empty() {
-            use starknet::core::types::{BlockId, requests::GetBlockWithTxHashesRequest, MaybePreConfirmedBlockWithTxHashes};
+            use starknet::core::types::{
+                requests::GetBlockWithTxHashesRequest, BlockId, MaybePreConfirmedBlockWithTxHashes,
+            };
             use starknet::providers::{ProviderRequestData, ProviderResponseData};
-            
+
             let mut requests = Vec::new();
             for block_number in &block_numbers {
                 requests.push(ProviderRequestData::GetBlockWithTxHashes(
@@ -359,7 +361,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     },
                 ));
             }
-            
+
             let results = self.provider.batch_requests(&requests).await?;
             for (block_number, result) in block_numbers.iter().zip(results) {
                 match result {
@@ -377,8 +379,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
 
         // Process all transactions in the chunk
         for (block_number, block) in &range.blocks {
-            let timestamp = *block_timestamps.get(block_number).expect("Block timestamp should exist");
-            
+            let timestamp = *block_timestamps
+                .get(block_number)
+                .expect("Block timestamp should exist");
+
             for (transaction_hash, tx) in &block.transactions {
                 if tx.events.is_empty() {
                     continue;
