@@ -343,9 +343,42 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
 
     pub async fn process_range(&mut self, range: &FetchRangeResult) -> Result<(), ProcessError> {
         let mut processed_blocks = HashSet::new();
+        let mut block_timestamps = HashMap::new();
+
+        // Fetch timestamps for all blocks we need to process
+        let block_numbers: Vec<u64> = range.blocks.keys().copied().collect();
+        if !block_numbers.is_empty() {
+            use starknet::core::types::{BlockId, requests::GetBlockWithTxHashesRequest, MaybePreConfirmedBlockWithTxHashes};
+            use starknet::providers::{ProviderRequestData, ProviderResponseData};
+            
+            let mut requests = Vec::new();
+            for block_number in &block_numbers {
+                requests.push(ProviderRequestData::GetBlockWithTxHashes(
+                    GetBlockWithTxHashesRequest {
+                        block_id: BlockId::Number(*block_number),
+                    },
+                ));
+            }
+            
+            let results = self.provider.batch_requests(&requests).await?;
+            for (block_number, result) in block_numbers.iter().zip(results) {
+                match result {
+                    ProviderResponseData::GetBlockWithTxHashes(block) => {
+                        let timestamp = match block {
+                            MaybePreConfirmedBlockWithTxHashes::Block(block) => block.timestamp,
+                            _ => unreachable!(),
+                        };
+                        block_timestamps.insert(*block_number, timestamp);
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
 
         // Process all transactions in the chunk
         for (block_number, block) in &range.blocks {
+            let timestamp = *block_timestamps.get(block_number).expect("Block timestamp should exist");
+            
             for (transaction_hash, tx) in &block.transactions {
                 if tx.events.is_empty() {
                     continue;
@@ -357,7 +390,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     *transaction_hash,
                     tx.events.as_slice(),
                     *block_number,
-                    block.timestamp,
+                    timestamp,
                     &tx.transaction,
                 )
                 .await?;
@@ -365,7 +398,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
 
             // Process block
             if !processed_blocks.contains(&block_number) {
-                self.process_block(*block_number, block.timestamp).await?;
+                self.process_block(*block_number, timestamp).await?;
                 processed_blocks.insert(block_number);
             }
         }

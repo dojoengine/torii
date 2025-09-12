@@ -49,7 +49,6 @@ pub struct FetchRangeBlock {
     // We check the parent hash of the pending block to the latest block
     // to see if we need to re fetch the pending block.
     pub block_hash: Option<Felt>,
-    pub timestamp: u64,
     pub transactions: IndexMap<Felt, FetchTransaction>,
 }
 
