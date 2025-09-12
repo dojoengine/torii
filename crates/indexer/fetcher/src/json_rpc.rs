@@ -281,48 +281,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Step 8: Update cursor timestamps
         for (_, cursor) in cursors.iter_mut() {
             if let Some(head) = cursor.head {
-<<<<<<< Updated upstream
                 if let Some(block) = blocks.get(&head) {
                     cursor.last_block_timestamp = Some(block.timestamp);
-=======
-                head_blocks_to_fetch.insert(head);
-            }
-        }
-
-        if !head_blocks_to_fetch.is_empty() {
-            let mut block_requests = Vec::new();
-            for block_number in &head_blocks_to_fetch {
-                block_requests.push(ProviderRequestData::GetBlockWithTxHashes(
-                    GetBlockWithTxHashesRequest {
-                        block_id: BlockId::Number(*block_number),
-                    },
-                ));
-            }
-
-            let block_results = self.chunked_batch_requests(&block_requests).await?;
-            
-            for (block_number, result) in head_blocks_to_fetch.iter().zip(block_results) {
-                match result {
-                    ProviderResponseData::GetBlockWithTxHashes(block) => {
-                        let timestamp = match block {
-                            MaybePreConfirmedBlockWithTxHashes::Block(block) => block.timestamp,
-                            _ => unreachable!(),
-                        };
-                        blocks
-                            .get_mut(block_number)
-                            .expect("Block should exist.")
-                            .timestamp = timestamp;
-                    }
-                    _ => unreachable!(),
-                }
-            }
-
-            // Update cursor timestamps
-            for (_, cursor) in cursors.iter_mut() {
-                if let Some(head) = &cursor.head {
-                    let timestamp = blocks.get(head).expect("Block should exist.").timestamp;
-                    cursor.last_block_timestamp = Some(timestamp);
->>>>>>> Stashed changes
                 }
             }
         }
