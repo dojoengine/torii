@@ -608,7 +608,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                         debug!(target: LOG_TARGET, duration = ?duration, num_controllers = num_controllers, "Synced controllers in background.");
                     }
                     Err(e) => {
-                        counter!("torii_indexer_errors_total", "operation" => "controller_sync").increment(1);
+                        counter!("torii_indexer_errors_total", "operation" => "controller_sync")
+                            .increment(1);
                         error!(target: LOG_TARGET, error = ?e, duration = ?duration, "Syncing controllers failed in background.");
                     }
                 }
