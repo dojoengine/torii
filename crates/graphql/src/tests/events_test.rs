@@ -96,7 +96,7 @@ mod tests {
             provider.clone(),
         ));
 
-        let schema = build_schema(&pool, messaging, storage).await?;
+        let schema = build_schema(messaging, storage).await?;
 
         let result = events_query(&schema, "(keys: [\"0x1\"])").await;
         let connection: Connection<Event> = serde_json::from_value(result.clone())?;
