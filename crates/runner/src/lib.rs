@@ -433,6 +433,7 @@ impl Runner {
                 http2_keepalive_timeout: Duration::from_secs(
                     self.args.grpc.http2_keepalive_timeout,
                 ),
+                max_message_size: self.args.grpc.max_message_size,
             },
             Some(grpc_bind_addr),
         )

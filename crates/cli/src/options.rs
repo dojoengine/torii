@@ -30,6 +30,7 @@ pub const DEFAULT_GRPC_SUBSCRIPTION_BUFFER_SIZE: usize = 256;
 pub const DEFAULT_GRPC_TCP_KEEPALIVE_SECS: u64 = 60;
 pub const DEFAULT_GRPC_HTTP2_KEEPALIVE_INTERVAL_SECS: u64 = 30;
 pub const DEFAULT_GRPC_HTTP2_KEEPALIVE_TIMEOUT_SECS: u64 = 10;
+pub const DEFAULT_GRPC_MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 
 pub const DEFAULT_ERC_MAX_METADATA_TASKS: usize = 100;
 pub const DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT: u64 = 10000;
@@ -642,6 +643,14 @@ pub struct GrpcOptions {
         help = "HTTP/2 keepalive timeout in seconds for gRPC connections. How long to wait for keepalive ping responses."
     )]
     pub http2_keepalive_timeout: u64,
+
+    /// Maximum size in bytes for gRPC messages (both incoming and outgoing).
+    #[arg(
+        long = "grpc.max_message_size",
+        default_value_t = DEFAULT_GRPC_MAX_MESSAGE_SIZE,
+        help = "Maximum size in bytes for gRPC messages (both incoming and outgoing). Default is 16MB."
+    )]
+    pub max_message_size: usize,
 }
 
 impl GrpcOptions {
@@ -681,6 +690,7 @@ impl Default for GrpcOptions {
             tcp_keepalive_interval: DEFAULT_GRPC_TCP_KEEPALIVE_SECS,
             http2_keepalive_interval: DEFAULT_GRPC_HTTP2_KEEPALIVE_INTERVAL_SECS,
             http2_keepalive_timeout: DEFAULT_GRPC_HTTP2_KEEPALIVE_TIMEOUT_SECS,
+            max_message_size: DEFAULT_GRPC_MAX_MESSAGE_SIZE,
         }
     }
 }
