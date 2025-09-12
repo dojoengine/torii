@@ -25,7 +25,7 @@ use tokio_rustls::TlsAcceptor;
 use torii_storage::Storage;
 use tower::ServiceBuilder;
 use tower_http::cors::{AllowOrigin, CorsLayer};
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 
 use crate::handlers::graphql::GraphQLHandler;
 use crate::handlers::grpc::GrpcHandler;
@@ -259,7 +259,9 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
                                                 .with_upgrades() // Enable connection upgrades for WebSocket over TLS
                                                 .await
                                             {
-                                                error!(target: LOG_TARGET, error = ?e, "Serving connection.");
+                                                // Connection errors are common in production (client disconnects, timeouts, etc.)
+                                                // Log at debug level to reduce noise, but include remote address for debugging
+                                                debug!(target: LOG_TARGET, remote_addr = %remote_addr, error = ?e, "Serving connection.");
                                             }
                                         }
                                         Err(_) => {
