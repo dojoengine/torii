@@ -94,7 +94,6 @@ where
             "Store set record.",
         );
 
-
         let mut entity = model.schema;
         let mut keys = event.keys.clone();
         let mut values = event.values.clone();
