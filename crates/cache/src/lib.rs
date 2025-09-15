@@ -172,7 +172,7 @@ impl Cache for InMemoryCache {
         // Schema:
         // - ERC-20: total_supply at contract level (sum of all tokens)
         // - ERC-721: total_supply at contract level (count of unique NFTs)
-        // - ERC-1155: total_supply per token ID only (contract-level will be computed differently)
+        // - ERC-1155: total_supply per token ID
 
         if token_id.contains(':') {
             // This is an NFT token (ERC721/ERC1155)
@@ -183,48 +183,38 @@ impl Cache for InMemoryCache {
             // Track supply changes
             if from == Felt::ZERO && to != Felt::ZERO {
                 // Minting
-                // Track supply per token_id (the full token_id string)
+                // For ERC-1155: track supply per token_id (the full token_id string)
+                // For ERC-721: each token has supply of 1, track count at contract level
                 self.erc_cache
                     .total_supply_diff
                     .entry(token_id.to_string())
                     .and_modify(|supply| *supply += value_i256)
                     .or_insert(value_i256);
 
-                // For contract-level supply:
-                // - ERC-721: count of unique NFTs (value is always 1)
-                // - ERC-1155: Don't track at contract level in cache, will be computed from DB
-                if value == U256::from(1u8) {
-                    // ERC-721: always increment by 1
-                    self.erc_cache
-                        .total_supply_diff
-                        .entry(contract_address.to_string())
-                        .and_modify(|supply| *supply += value_i256)
-                        .or_insert(value_i256);
-                }
-                // ERC-1155: Contract-level supply will be computed as COUNT of unique token IDs
-                // directly from the database, not tracked as a diffg
+                // Also track contract-level supply
+                // For ERC-721: count of unique NFTs (value is always 1)
+                // For ERC-1155: total sum of all token supplies
+                self.erc_cache
+                    .total_supply_diff
+                    .entry(contract_address.to_string())
+                    .and_modify(|supply| *supply += value_i256)
+                    .or_insert(value_i256);
             } else if from != Felt::ZERO && to == Felt::ZERO {
                 // Burning
-                // Track supply per token_id
                 self.erc_cache
                     .total_supply_diff
                     .entry(token_id.to_string())
                     .and_modify(|supply| *supply -= value_i256)
                     .or_insert(negative_value_i256);
 
-                // For contract-level supply:
-                // - ERC-721: count of unique NFTs (value is always 1)
-                // - ERC-1155: Don't track at contract level in cache, will be computed from DB
-                if value == U256::from(1u8) {
-                    // ERC-721: always decrement by 1
-                    self.erc_cache
-                        .total_supply_diff
-                        .entry(contract_address.to_string())
-                        .and_modify(|supply| *supply -= value_i256)
-                        .or_insert(negative_value_i256);
-                }
-                // ERC-1155: Contract-level supply will be computed as COUNT of unique token IDs
-                // directly from the database, not tracked as a diff
+                // Also track contract-level supply
+                // For ERC-721: count of unique NFTs (value is always 1)
+                // For ERC-1155: total sum of all token supplies
+                self.erc_cache
+                    .total_supply_diff
+                    .entry(contract_address.to_string())
+                    .and_modify(|supply| *supply -= value_i256)
+                    .or_insert(negative_value_i256);
             }
         } else {
             // This is an ERC20 token, track supply changes at contract level
