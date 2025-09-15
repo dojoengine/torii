@@ -48,7 +48,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         let tx = self.transaction.as_mut().unwrap();
         for (token_id, supply_diff) in apply_balance_diff.total_supply_diff.iter() {
             // Determine if this is a contract-level or token-level supply update
-            // Contract-level: ERC-20 (no colon) and ERC-721 contract totals
+            // Contract-level: ERC-20 (no colon) and contract totals (handled in registration)
             // Token-level: ERC-721/ERC-1155 specific token IDs (has colon)
 
             // Get current total supply
