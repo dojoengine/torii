@@ -1877,8 +1877,9 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
     let expected_token1_supply = U256::from(120u64);
     let expected_token2_supply = U256::from(200u64);
 
-    // Check contract-level total supply (sum of all token supplies)
-    let expected_contract_total = expected_token1_supply + expected_token2_supply;
+    // Check contract-level total supply (count of unique token IDs)
+    // We have 2 unique token IDs with non-zero supply
+    let expected_contract_total = U256::from(2u64);
 
     let contract_token: Token = sqlx::query_as(
         format!(
