@@ -460,7 +460,9 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
     // We can't distinguish ERC-721 vs ERC-1155 here, but ERC-721 will also increment by 1
     // which is correct since each ERC-721 token has supply of 1
     let contract_id = format!("{:#x}", contract_address);
-    cache.update_balance_diff(&contract_id, Felt::ZERO, Felt::from(1u8), U256::from(1u8)).await;
+    cache
+        .update_balance_diff(&contract_id, Felt::ZERO, Felt::from(1u8), U256::from(1u8))
+        .await;
 
     Ok(())
 }

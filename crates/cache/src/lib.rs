@@ -59,7 +59,6 @@ pub trait Cache: ReadOnlyCache + Send + Sync + std::fmt::Debug {
 
     /// Update the balances diff.
     async fn update_balance_diff(&self, token_id: &str, from: Felt, to: Felt, value: U256);
-
 }
 
 #[derive(Debug)]
@@ -212,7 +211,6 @@ impl Cache for InMemoryCache {
             }
         }
     }
-
 }
 
 #[derive(Debug)]
