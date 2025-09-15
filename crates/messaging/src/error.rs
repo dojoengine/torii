@@ -39,7 +39,7 @@ pub enum MessagingError {
     StorageError(#[from] torii_storage::StorageError),
 
     #[error(transparent)]
-    SqliteError(#[from] torii_sqlite::error::Error),
+    SqliteError(#[from] Box<torii_sqlite::error::Error>),
 
     #[error(transparent)]
     ProviderError(#[from] starknet::providers::ProviderError),
@@ -62,3 +62,4 @@ pub enum MessagingError {
     #[error("Timestamp is older than the entity timestamp")]
     InvalidTimestamp,
 }
+
