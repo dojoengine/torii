@@ -35,19 +35,20 @@ debug = true
 inherits = "release"
 
 [workspace.dependencies]
-cainome = { git = "https://github.com/cartridge-gg/cainome", rev = "7d60de1" }
-cainome-cairo-serde = { git = "https://github.com/cartridge-gg/cainome", rev = "7d60de1" }
-cainome-cairo-serde-derive = { git = "https://github.com/cartridge-gg/cainome", rev = "7d60de1" }
+cainome = { version = "0.10.0", features = [ "abigen-rs" ] }
+cainome-cairo-serde = { version = "0.4.0" }
+cainome-cairo-serde-derive = { version = "0.1.0" }
+
 
 # dojo
-dojo-utils = { git = "https://github.com/dojoengine/dojo", branch = "primitive-from-sql" }
-dojo-types = { git = "https://github.com/dojoengine/dojo", branch = "primitive-from-sql" }
-dojo-world = { git = "https://github.com/dojoengine/dojo", branch = "primitive-from-sql" }
-dojo-test-utils = { git = "https://github.com/dojoengine/dojo", branch = "primitive-from-sql" }
-dojo-metrics = { git = "https://github.com/dojoengine/dojo", branch = "primitive-from-sql" }
-scarb-metadata-ext = { git = "https://github.com/dojoengine/dojo", branch = "primitive-from-sql" }
-scarb-interop = { git = "https://github.com/dojoengine/dojo", branch = "primitive-from-sql" }
-sozo-ops = { git = "https://github.com/dojoengine/dojo", branch = "primitive-from-sql" }
+dojo-utils = { git = "https://github.com/dojoengine/dojo", rev = "8e9127d" }
+dojo-types = { git = "https://github.com/dojoengine/dojo", rev = "8e9127d" }
+dojo-world = { git = "https://github.com/dojoengine/dojo", rev = "8e9127d" }
+dojo-test-utils = { git = "https://github.com/dojoengine/dojo", rev = "8e9127d" }
+dojo-metrics = { git = "https://github.com/dojoengine/dojo", rev = "8e9127d" }
+scarb-metadata-ext = { git = "https://github.com/dojoengine/dojo", rev = "8e9127d" }
+scarb-interop = { git = "https://github.com/dojoengine/dojo", rev = "8e9127d" }
+sozo-ops = { git = "https://github.com/dojoengine/dojo", rev = "8e9127d" }
 
 # katana
 katana-runner = { git = "https://github.com/dojoengine/katana", rev = "266fb96" }
@@ -130,7 +131,7 @@ toml = "0.8"
 tower = "0.4.13"
 tower-http = "0.4.4"
 tracing = { version = "0.1.38", features = ["log"], default-features = false }
-tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter", "json"] }
 # indicatif
 tracing-indicatif = "0.3.9"
 indicatif = "0.17.9"
@@ -173,9 +174,10 @@ wasm-tonic-build = { version = "0.12", default-features = false, features = [
 	"prost",
 ], package = "tonic-build" }
 
-starknet-core = "0.12.3"
-starknet = "0.17.0-rc.2"
-starknet-crypto = "0.7"
+starknet = "0.17"
+starknet-crypto = "0.8"
+starknet-core = "0.16.0"
+
 
 dashmap = "6.1.0"
 

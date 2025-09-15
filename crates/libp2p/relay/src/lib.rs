@@ -1,10 +1,10 @@
 use std::collections::hash_map::DefaultHasher;
+use std::fs;
 use std::hash::{Hash, Hasher};
 use std::net::Ipv4Addr;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{fs, io};
 
 use events::BehaviourEvent;
 use futures::StreamExt;
@@ -146,7 +146,6 @@ impl<P: Provider + Sync> Relay<P> {
                     // TODO: Use this once we incorporate nonces in the message model?
                     // .message_id_fn(message_id_fn) // content-address messages. No two messages of the same content will be propagated.
                     .build()
-                    .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
                     .unwrap(); // Temporary hack because `build` does not return a proper `std::error::Error`.
 
                 Behaviour {

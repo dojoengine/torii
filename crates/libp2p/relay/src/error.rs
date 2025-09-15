@@ -44,7 +44,7 @@ pub enum Error {
     ProviderError(#[from] ProviderError),
 
     #[error(transparent)]
-    Messaging(#[from] torii_messaging::MessagingError),
+    Messaging(#[from] Box<torii_messaging::MessagingError>),
 
     #[error(transparent)]
     TypedDataError(#[from] TypedDataError),
