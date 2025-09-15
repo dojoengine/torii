@@ -202,7 +202,7 @@ impl Cache for InMemoryCache {
                         .or_insert(value_i256);
                 }
                 // ERC-1155: Contract-level supply will be computed as COUNT of unique token IDs
-                // directly from the database, not tracked as a diff
+                // directly from the database, not tracked as a diffg
             } else if from != Felt::ZERO && to == Felt::ZERO {
                 // Burning
                 // Track supply per token_id
