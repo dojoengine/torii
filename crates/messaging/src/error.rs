@@ -62,4 +62,3 @@ pub enum MessagingError {
     #[error("Timestamp is older than the entity timestamp")]
     InvalidTimestamp,
 }
-

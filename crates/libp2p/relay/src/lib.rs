@@ -1,10 +1,10 @@
 use std::collections::hash_map::DefaultHasher;
+use std::fs;
 use std::hash::{Hash, Hasher};
 use std::net::Ipv4Addr;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use std::fs;
 
 use events::BehaviourEvent;
 use futures::StreamExt;
