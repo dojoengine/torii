@@ -47,15 +47,15 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
     ) -> Result<(), Error> {
         // Update total supply for all token types
         let tx = self.transaction.as_mut().unwrap();
-        
+
         // Track which ERC-1155 contracts need their supply recalculated
         let mut erc1155_contracts = HashSet::new();
-        
+
         for (token_id, supply_diff) in apply_balance_diff.total_supply_diff.iter() {
             // Determine if this is a contract-level or token-level supply update
             // Contract-level: ERC-20 (no colon) and ERC-721 contract totals
             // Token-level: ERC-721/ERC-1155 specific token IDs (has colon)
-            
+
             // Check if this is an ERC-1155 token (has colon and value != 1)
             if token_id.contains(':') && supply_diff.value != U256::from(1u8) {
                 // This is likely an ERC-1155 token, track its contract
@@ -109,7 +109,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, token_id = ?token_id, total_supply = ?total_supply, "Updated total supply");
             }
         }
-        
+
         // Update ERC-1155 contract-level supplies by counting unique token IDs
         for contract_address in erc1155_contracts {
             // Count unique token IDs with non-zero supply for this contract
@@ -119,16 +119,16 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             .bind(&contract_address)
             .fetch_one(&mut **tx)
             .await?;
-            
+
             let total_supply = U256::from(count as u64);
-            
+
             // Update the contract-level total supply
             sqlx::query("UPDATE tokens SET total_supply = ? WHERE id = ? AND token_id IS NULL")
                 .bind(u256_to_sql_string(&total_supply))
                 .bind(&contract_address)
                 .execute(&mut **tx)
                 .await?;
-                
+
             debug!(target: LOG_TARGET, contract_address = ?contract_address, unique_tokens = ?count, "Updated ERC-1155 contract total supply");
         }
 
