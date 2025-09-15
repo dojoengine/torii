@@ -173,9 +173,10 @@ wasm-tonic-build = { version = "0.12", default-features = false, features = [
 	"prost",
 ], package = "tonic-build" }
 
-starknet-core = "0.12.3"
-starknet = "0.17.0-rc.2"
-starknet-crypto = "0.7"
+starknet = "0.17"
+starknet-crypto = "0.8"
+starknet-core = "0.16.0"
+
 
 dashmap = "6.1.0"
 
