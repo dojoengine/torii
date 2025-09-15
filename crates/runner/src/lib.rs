@@ -137,6 +137,7 @@ impl Runner {
             self.args.indexing.contracts.push(ContractDefinition {
                 address: world_address,
                 r#type: ContractType::WORLD,
+                starting_block: None,
             });
         }
 
@@ -609,7 +610,7 @@ async fn verify_contracts_deployed(
 ) -> anyhow::Result<Vec<ContractDefinition>> {
     // Create a future for each contract verification
     let verification_futures = contracts.iter().map(|contract| {
-        let contract = *contract;
+        let contract = contract.clone();
         async move {
             let result = provider
                 .get_class_at(BlockId::Tag(BlockTag::PreConfirmed), contract.address)

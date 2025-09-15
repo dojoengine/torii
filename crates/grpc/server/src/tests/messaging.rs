@@ -65,6 +65,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
             &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
+                starting_block: None,
             }],
         )
         .await
@@ -320,6 +321,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
             &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
+                starting_block: None,
             }],
         )
         .await
@@ -343,6 +345,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
             &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
+                starting_block: None,
             }],
         )
         .await
@@ -577,6 +580,7 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
             &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
+                starting_block: None,
             }],
         )
         .await
@@ -762,6 +766,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
             &[ContractDefinition {
                 address: Felt::ZERO,
                 r#type: ContractType::WORLD,
+                starting_block: None,
             }],
         )
         .await

@@ -76,6 +76,7 @@ impl Sql {
                     Argument::FieldElement(contract.address),
                     Argument::FieldElement(contract.address),
                     Argument::String(contract.r#type.to_string()),
+                    Argument::Int(contract.starting_block.map_or(0, |b| b - 1) as i64),
                 ],
             )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
         }

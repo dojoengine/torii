@@ -83,10 +83,11 @@ impl std::fmt::Display for ContractType {
 }
 
 /// Simple contract representation for CLI and basic usage
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct ContractDefinition {
     pub address: Felt,
     pub r#type: ContractType,
+    pub starting_block: Option<u64>,
 }
 
 /// Full contract representation with metadata for storage/indexing
@@ -104,7 +105,11 @@ pub struct Contract {
 
 impl std::fmt::Display for ContractDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{:#x}", self.r#type, self.address)
+        if let Some(starting_block) = self.starting_block {
+            write!(f, "{}:{:#x}:{}", self.r#type, self.address, starting_block)
+        } else {
+            write!(f, "{}:{:#x}", self.r#type, self.address)
+        }
     }
 }
 
@@ -130,6 +135,7 @@ impl From<Contract> for ContractDefinition {
         Self {
             address: contract.contract_address,
             r#type: contract.contract_type,
+            starting_block: contract.head,
         }
     }
 }
