@@ -94,10 +94,12 @@ where
             "Store set record.",
         );
 
-        let mut keys_and_unpacked = [event.keys.clone(), event.values].concat();
-
         let mut entity = model.schema;
-        entity.deserialize(&mut keys_and_unpacked, model.use_legacy_store)?;
+        let mut keys = event.keys.clone();
+        let mut values = event.values.clone();
+        // Keys are always deserialized as legacy store
+        entity.deserialize(&mut keys, true)?;
+        entity.deserialize(&mut values, model.use_legacy_store)?;
 
         ctx.storage
             .set_entity(
