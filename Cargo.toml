@@ -130,7 +130,7 @@ toml = "0.8"
 tower = "0.4.13"
 tower-http = "0.4.4"
 tracing = { version = "0.1.38", features = ["log"], default-features = false }
-tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter", "json"] }
 # indicatif
 tracing-indicatif = "0.3.9"
 indicatif = "0.17.9"
