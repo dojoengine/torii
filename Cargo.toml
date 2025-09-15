@@ -35,9 +35,10 @@ debug = true
 inherits = "release"
 
 [workspace.dependencies]
-cainome = { git = "https://github.com/cartridge-gg/cainome", rev = "7d60de1" }
-cainome-cairo-serde = { git = "https://github.com/cartridge-gg/cainome", rev = "7d60de1" }
-cainome-cairo-serde-derive = { git = "https://github.com/cartridge-gg/cainome", rev = "7d60de1" }
+cainome = { version = "0.10.0", features = [ "abigen-rs" ] }
+cainome-cairo-serde = { version = "0.4.0" }
+cainome-cairo-serde-derive = { version = "0.1.0" }
+
 
 # dojo
 dojo-utils = { git = "https://github.com/dojoengine/dojo", rev = "8e9127d" }
