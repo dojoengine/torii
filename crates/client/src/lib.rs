@@ -8,14 +8,14 @@ use torii_grpc_client::{
 };
 use torii_proto::proto::world::{
     RetrieveContractsResponse, RetrieveControllersResponse, RetrieveEntitiesResponse,
-    RetrieveEventsResponse, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsResponse,
+    RetrieveEventsResponse, RetrieveTokenBalancesResponse, RetrieveTokenContractsResponse,
     RetrieveTokensResponse, RetrieveTransactionsResponse,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Contract, ContractQuery, Controller, ControllerQuery, Event, EventQuery, KeysClause,
-    Message, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction,
-    TransactionFilter, TransactionQuery, World,
+    Message, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract,
+    TokenContractQuery, TokenQuery, Transaction, TransactionFilter, TransactionQuery, World,
 };
 
 use crate::error::Error;
@@ -147,18 +147,21 @@ impl Client {
         })
     }
 
-    /// Retrieves tokens matching contract addresses.
-    pub async fn token_collections(&self, query: TokenBalanceQuery) -> Result<Page<Token>, Error> {
+    /// Retrieves token contracts matching the query parameters.
+    pub async fn token_contracts(
+        &self,
+        query: TokenContractQuery,
+    ) -> Result<Page<TokenContract>, Error> {
         let mut grpc_client = self.inner.clone();
-        let RetrieveTokenCollectionsResponse {
-            tokens,
+        let RetrieveTokenContractsResponse {
+            token_contracts,
             next_cursor,
-        } = grpc_client.retrieve_token_collections(query).await?;
+        } = grpc_client.retrieve_token_contracts(query).await?;
         Ok(Page {
-            items: tokens
+            items: token_contracts
                 .into_iter()
                 .map(TryInto::try_into)
-                .collect::<Result<Vec<Token>, _>>()?,
+                .collect::<Result<Vec<TokenContract>, _>>()?,
             next_cursor: if next_cursor.is_empty() {
                 None
             } else {

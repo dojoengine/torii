@@ -14,8 +14,9 @@ use torii_math::I256;
 use torii_proto::{
     schema::Entity, CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery,
     Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy,
-    OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection,
-    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
+    OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract,
+    TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
+    TransactionCall, TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{ReadOnlyStorage, Storage, StorageError};
@@ -248,7 +249,9 @@ impl ReadOnlyStorage for Sql {
 
     async fn tokens(&self, query: &TokenQuery) -> Result<Page<Token>, StorageError> {
         let executor = PaginationExecutor::new(self.pool.clone());
-        let mut query_builder = QueryBuilder::new("tokens").select(&["*".to_string()]);
+        let mut query_builder = QueryBuilder::new("tokens")
+            .select(&["*".to_string()])
+            .where_clause("token_id != '' AND token_id IS NOT NULL");
 
         if !query.contract_addresses.is_empty() {
             let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
@@ -353,35 +356,26 @@ impl ReadOnlyStorage for Sql {
         })
     }
 
-    async fn token_collections(
+    async fn token_contracts(
         &self,
-        query: &TokenBalanceQuery,
-    ) -> Result<Page<TokenCollection>, StorageError> {
+        query: &TokenContractQuery,
+    ) -> Result<Page<TokenContract>, StorageError> {
         use crate::query::{PaginationExecutor, QueryBuilder};
 
         let executor = PaginationExecutor::new(self.pool.clone());
         let mut query_builder = QueryBuilder::new("tokens")
             .alias("t")
             .select(&[
-                "t.id as id".to_string(),
                 "t.contract_address as contract_address".to_string(),
+                "c.contract_type as contract_type".to_string(),
                 "t.name as name".to_string(),
                 "t.symbol as symbol".to_string(),
                 "t.decimals as decimals".to_string(),
                 "t.metadata as metadata".to_string(),
-                "count(t.token_id) as count".to_string(),
+                "t.total_supply as total_supply".to_string(),
             ])
-            .group_by("t.contract_address");
-
-        if !query.account_addresses.is_empty() {
-            query_builder = query_builder.join("JOIN token_balances tb ON tb.token_id = CONCAT(t.contract_address, ':', t.token_id)");
-            let placeholders = vec!["?"; query.account_addresses.len()].join(", ");
-            query_builder =
-                query_builder.where_clause(&format!("tb.account_address IN ({})", placeholders));
-            for addr in &query.account_addresses {
-                query_builder = query_builder.bind_value(format!("{:#x}", addr));
-            }
-        }
+            .join("JOIN contracts c ON c.contract_address = t.contract_address")
+            .where_clause("t.token_id = '' OR t.token_id IS NULL");
 
         if !query.contract_addresses.is_empty() {
             let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
@@ -392,13 +386,12 @@ impl ReadOnlyStorage for Sql {
             }
         }
 
-        if !query.token_ids.is_empty() {
-            let placeholders = vec!["?"; query.token_ids.len()].join(", ");
+        if !query.contract_types.is_empty() {
+            let placeholders = vec!["?"; query.contract_types.len()].join(", ");
             query_builder =
-                query_builder.where_clause(&format!("t.token_id IN ({})", placeholders));
-            for token_id in &query.token_ids {
-                query_builder =
-                    query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
+                query_builder.where_clause(&format!("c.contract_type IN ({})", placeholders));
+            for contract_type in &query.contract_types {
+                query_builder = query_builder.bind_value(contract_type.to_string());
             }
         }
 
@@ -407,17 +400,17 @@ impl ReadOnlyStorage for Sql {
                 query_builder,
                 &query.pagination,
                 &OrderBy {
-                    field: "id".to_string(),
+                    field: "contract_address".to_string(),
                     direction: OrderDirection::Desc,
                 },
             )
             .await?;
-        let items: Vec<TokenCollection> = page
+        let items: Vec<TokenContract> = page
             .items
             .into_iter()
             .map(|row| {
-                Result::<TokenCollection, Error>::Ok(
-                    torii_sqlite_types::TokenCollection::from_row(&row)?.into(),
+                Result::<TokenContract, Error>::Ok(
+                    torii_sqlite_types::TokenContract::from_row(&row)?.into(),
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
