@@ -48,9 +48,11 @@ pub fn extract_traits_from_metadata(
         serde_json::from_str(existing_traits).unwrap_or_default();
 
     let metadata_json: serde_json::Value = serde_json::from_str(metadata)?;
-    
+
     if let Some(attributes) = metadata_json.get("attributes") {
-        if let Ok(attributes_array) = serde_json::from_value::<Vec<serde_json::Value>>(attributes.clone()) {
+        if let Ok(attributes_array) =
+            serde_json::from_value::<Vec<serde_json::Value>>(attributes.clone())
+        {
             // Extract traits from this token's attributes
             for attr in attributes_array {
                 if let (Some(trait_type), Some(trait_value)) =
@@ -70,9 +72,8 @@ pub fn extract_traits_from_metadata(
                                 .iter()
                                 .any(|v| v.as_str() == Some(trait_value_str))
                             {
-                                trait_values_array.push(serde_json::Value::String(
-                                    trait_value_str.to_string(),
-                                ));
+                                trait_values_array
+                                    .push(serde_json::Value::String(trait_value_str.to_string()));
                             }
                         }
                     }
