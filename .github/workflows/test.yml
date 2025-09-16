@@ -56,7 +56,7 @@ jobs:
 
       - uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "nightly-2025-05-08"
+          scarb-version: "2.12.2"
 
       # This puts Katana in the path for integration tests.
       - name: Download Katana for integration tests
