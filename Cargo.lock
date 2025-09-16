@@ -4101,8 +4101,8 @@ dependencies = [
 
 [[package]]
 name = "katana-node-bindings"
-version = "1.7.0-alpha.1"
-source = "git+https://github.com/dojoengine/katana?rev=266fb96#266fb96f72527854cdcf353ae44c623f80d83dd9"
+version = "1.7.0-alpha.3"
+source = "git+https://github.com/dojoengine/katana?rev=eba352a#eba352aa5f12c474732c7db04d9d8369d6f4d4ac"
 dependencies = [
  "regex",
  "serde",
@@ -4115,8 +4115,8 @@ dependencies = [
 
 [[package]]
 name = "katana-runner"
-version = "1.7.0-alpha.1"
-source = "git+https://github.com/dojoengine/katana?rev=266fb96#266fb96f72527854cdcf353ae44c623f80d83dd9"
+version = "1.7.0-alpha.3"
+source = "git+https://github.com/dojoengine/katana?rev=eba352a#eba352aa5f12c474732c7db04d9d8369d6f4d4ac"
 dependencies = [
  "anyhow",
  "assert_fs",
@@ -4129,8 +4129,8 @@ dependencies = [
 
 [[package]]
 name = "katana-runner-macro"
-version = "1.7.0-alpha.1"
-source = "git+https://github.com/dojoengine/katana?rev=266fb96#266fb96f72527854cdcf353ae44c623f80d83dd9"
+version = "1.7.0-alpha.3"
+source = "git+https://github.com/dojoengine/katana?rev=eba352a#eba352aa5f12c474732c7db04d9d8369d6f4d4ac"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7679,33 +7679,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sozo-ops"
-version = "1.7.0-alpha.4"
-source = "git+https://github.com/dojoengine/dojo?rev=40b6af8#40b6af82ac7256f52cded45323e07240c3b3cfb8"
-dependencies = [
- "anyhow",
- "async-trait",
- "cainome",
- "colored",
- "colored_json",
- "dojo-types",
- "dojo-utils",
- "dojo-world",
- "futures",
- "num-traits",
- "scarb-interop",
- "serde",
- "serde_json",
- "serde_with",
- "spinoff",
- "starknet",
- "starknet-crypto",
- "thiserror 1.0.63",
- "toml 0.8.19",
- "tracing",
-]
-
-[[package]]
 name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7718,17 +7691,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 dependencies = [
  "lock_api",
-]
-
-[[package]]
-name = "spinoff"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20aa2ed67fbb202e7b716ff8bfc6571dd9301617767380197d701c31124e88f6"
-dependencies = [
- "colored",
- "once_cell",
- "paste",
 ]
 
 [[package]]
@@ -11212,23 +11174,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7d8a75eaf6557bb84a65ace8609883db44a29951042ada9b393151532e41fcb"
 dependencies = [
  "xml-rs",
-]
-
-[[package]]
-name = "xtask-generate-test-db"
-version = "1.7.0-alpha.6"
-dependencies = [
- "anyhow",
- "dojo-test-utils",
- "dojo-utils",
- "dojo-world",
- "katana-runner",
- "reqwest 0.11.27",
- "scarb-interop",
- "scarb-metadata-ext",
- "sozo-ops",
- "starknet",
- "tokio",
 ]
 
 [[package]]
