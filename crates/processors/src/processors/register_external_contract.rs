@@ -98,11 +98,7 @@ where
 
         // Register the contract in storage
         ctx.storage
-            .register_contract(
-                event.contract_address.0,
-                contract_type,
-                event.block_number,
-            )
+            .register_contract(event.contract_address.0, contract_type, event.block_number)
             .await?;
 
         // Record successful contract registration with context
