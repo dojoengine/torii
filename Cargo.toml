@@ -9,7 +9,6 @@ members = [
 	"crates/messaging",
 	"crates/server",
 	"crates/sqlite/types",
-	"xtask/generate-test-db",
 	"crates/task-network",
 	"crates/storage",
 	"crates/cache",
@@ -51,7 +50,7 @@ scarb-interop = { git = "https://github.com/dojoengine/dojo", rev = "40b6af8" }
 sozo-ops = { git = "https://github.com/dojoengine/dojo", rev = "40b6af8" }
 
 # katana
-katana-runner = { git = "https://github.com/dojoengine/katana", rev = "266fb96" }
+katana-runner = { git = "https://github.com/dojoengine/katana", rev = "eba352a" }
 
 # torii
 torii-broker = { path = "crates/broker" }
