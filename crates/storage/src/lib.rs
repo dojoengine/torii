@@ -14,8 +14,9 @@ use torii_proto::schema::Entity;
 
 use torii_proto::{
     Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, Model,
-    Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenQuery,
-    TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
+    Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection, TokenContract,
+    TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall,
+    TransactionQuery,
 };
 
 pub mod utils;
@@ -58,6 +59,12 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
         &self,
         query: &TokenBalanceQuery,
     ) -> Result<Page<TokenCollection>, StorageError>;
+
+    /// Returns the token contracts for the storage.
+    async fn token_contracts(
+        &self,
+        query: &TokenContractQuery,
+    ) -> Result<Page<TokenContract>, StorageError>;
 
     /// Returns token transfers for the storage.
     async fn token_transfers(

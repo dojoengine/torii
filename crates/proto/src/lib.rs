@@ -576,6 +576,13 @@ pub struct TokenBalanceQuery {
     pub pagination: Pagination,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct TokenContractQuery {
+    pub contract_addresses: Vec<Felt>,
+    pub contract_types: Vec<ContractType>,
+    pub pagination: Pagination,
+}
+
 impl From<TokenBalanceQuery> for proto::types::TokenBalanceQuery {
     fn from(value: TokenBalanceQuery) -> Self {
         Self {
@@ -618,6 +625,49 @@ impl TryFrom<proto::types::TokenBalanceQuery> for TokenBalanceQuery {
                 .into_iter()
                 .map(|id| U256::from_be_slice(&id))
                 .collect(),
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
+        })
+    }
+}
+
+impl From<TokenContractQuery> for proto::types::TokenContractQuery {
+    fn from(value: TokenContractQuery) -> Self {
+        Self {
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().into())
+                .collect(),
+            contract_types: value.contract_types.into_iter().map(|t| t as i32).collect(),
+            pagination: Some(value.pagination.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::TokenContractQuery> for TokenContractQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::TokenContractQuery) -> Result<Self, Self::Error> {
+        let contract_types = value
+            .contract_types
+            .into_iter()
+            .map(|t| match t {
+                0 => Ok(ContractType::WORLD),
+                1 => Ok(ContractType::ERC20),
+                2 => Ok(ContractType::ERC721),
+                3 => Ok(ContractType::ERC1155),
+                4 => Ok(ContractType::UDC),
+                5 => Ok(ContractType::OTHER),
+                _ => Err(ProtoError::InvalidContractType(t.to_string())),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Self {
+            contract_addresses: value
+                .contract_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
+            contract_types,
             pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
         })
     }

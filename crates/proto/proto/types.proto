@@ -224,6 +224,16 @@ message TokenBalanceQuery {
     Pagination pagination = 4;
 }
 
+// A request to retrieve token contracts
+message TokenContractQuery {
+    // The list of contract addresses to retrieve token contracts for
+    repeated bytes contract_addresses = 1;
+    // The list of contract types to filter by
+    repeated int32 contract_types = 2;
+    // Pagination
+    Pagination pagination = 3;
+}
+
 // A token transfer record
 message TokenTransfer {
     // Unique identifier for the transfer (event_id:token_id key)
