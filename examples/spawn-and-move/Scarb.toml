@@ -15,8 +15,8 @@ starknet = "2.12"
 
 armory = { path = "../game-lib/armory" }
 bestiary = { path = "../game-lib/bestiary" }
-dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.3" }
-dojo_macros = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.3" }
+dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.4" }
+dojo_macros = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.4" }
 
 [[target.starknet-contract]]
 build-external-contracts = [

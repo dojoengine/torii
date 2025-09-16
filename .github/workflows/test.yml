@@ -61,12 +61,12 @@ jobs:
       # This puts Katana in the path for integration tests.
       - name: Download Katana for integration tests
         run: |
-          curl -L https://github.com/dojoengine/katana/releases/download/v1.7.0-alpha.2/katana_v1.7.0-alpha.2_linux_amd64.tar.gz -o katana.tar.gz;
+          swcurl -L https://github.com/dojoengine/katana/releases/download/v1.7.0-alpha.2/katana_v1.7.0-alpha.2_linux_amd64.tar.gz -o katana.tar.gz;
           tar -C /usr/local/bin -xzf katana.tar.gz
 
       - name: Setup for integration tests
         run: |
-          curl -L https://github.com/dojoengine/dojo/releases/download/v1.7.0-alpha.3/dojo_v1.7.0-alpha.3_linux_amd64.tar.gz -o dojo.tar.gz
+          curl -L https://github.com/dojoengine/dojo/releases/download/v1.7.0-alpha.4/dojo_v1.7.0-alpha.4_linux_amd64.tar.gz -o dojo.tar.gz
           tar -C /usr/local/bin -xzf dojo.tar.gz
           sozo build --manifest-path examples/spawn-and-move/Scarb.toml
           sozo build --manifest-path crates/types-test/Scarb.toml
