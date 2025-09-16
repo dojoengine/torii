@@ -19,8 +19,8 @@ dependencies = [
 
 [[package]]
 name = "dojo"
-version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?tag=v1.7.0-alpha.1#67aeb9f49c6b8c30b1850badd065c9192617c3b2"
+version = "1.7.0-alpha.4"
+source = "git+https://github.com/dojoengine/dojo?tag=v1.7.0-alpha.4#7b78108ce7aea7753c0a9e34cb83465a76bbf2e4"
 dependencies = [
  "dojo_macros",
 ]
@@ -38,8 +38,8 @@ dependencies = [
 
 [[package]]
 name = "dojo_macros"
-version = "1.6.0-alpha.1"
-source = "git+https://github.com/dojoengine/dojo?tag=v1.7.0-alpha.1#67aeb9f49c6b8c30b1850badd065c9192617c3b2"
+version = "1.7.0-alpha.4"
+source = "git+https://github.com/dojoengine/dojo?tag=v1.7.0-alpha.4#7b78108ce7aea7753c0a9e34cb83465a76bbf2e4"
 
 [[package]]
 name = "openzeppelin"
