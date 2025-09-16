@@ -373,6 +373,7 @@ impl ReadOnlyStorage for Sql {
                 "t.decimals as decimals".to_string(),
                 "t.metadata as metadata".to_string(),
                 "t.total_supply as total_supply".to_string(),
+                "t.traits as traits".to_string(),
             ])
             .join("JOIN contracts c ON c.contract_address = t.contract_address")
             .where_clause("t.token_id = '' OR t.token_id IS NULL");

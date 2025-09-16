@@ -342,6 +342,7 @@ pub struct TokenContract {
     pub decimals: u8,
     pub metadata: String,
     pub total_supply: Option<U256>,
+    pub traits: String,
 }
 
 impl From<TokenContract> for proto::types::TokenContract {
@@ -354,6 +355,7 @@ impl From<TokenContract> for proto::types::TokenContract {
             decimals: value.decimals as u32,
             metadata: value.metadata.into_bytes(),
             total_supply: value.total_supply.map(|s| s.to_be_bytes().to_vec()),
+            traits: value.traits,
         }
     }
 }
@@ -369,6 +371,7 @@ impl TryFrom<proto::types::TokenContract> for TokenContract {
             decimals: value.decimals as u8,
             metadata: String::from_utf8(value.metadata).map_err(ProtoError::FromUtf8)?,
             total_supply: value.total_supply.map(|s| U256::from_be_slice(&s)),
+            traits: value.traits,
         })
     }
 }
