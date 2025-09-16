@@ -81,7 +81,7 @@ pub fn extract_traits_from_metadata(
         }
     }
 
-    Ok(serde_json::to_string(&current_traits)?)
+    serde_json::to_string(&current_traits)
 }
 
 /// Helper function to extract traits from NFT metadata and update the token contract's traits
