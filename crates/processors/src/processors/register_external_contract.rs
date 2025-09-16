@@ -14,21 +14,6 @@ use metrics::counter;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::register_external_contract";
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, PartialEq, Debug)]
-pub struct ExternalContractRegistered {
-    pub namespace: cainome::cairo_serde::ByteArray,
-    pub contract_name: cainome::cairo_serde::ByteArray,
-    pub instance_name: cainome::cairo_serde::ByteArray,
-    pub contract_selector: starknet::core::types::Felt,
-    pub class_hash: cainome::cairo_serde::ClassHash,
-    pub contract_address: cainome::cairo_serde::ContractAddress,
-    #[serde(
-        serialize_with = "cainome::cairo_serde::serialize_as_hex",
-        deserialize_with = "cainome::cairo_serde::deserialize_from_hex"
-    )]
-    pub block_number: u64,
-}
-
 #[derive(Default, Debug)]
 pub struct RegisterExternalContractProcessor;
 
