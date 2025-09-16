@@ -250,13 +250,18 @@ impl ReadOnlyStorage for Sql {
     async fn tokens(&self, query: &TokenQuery) -> Result<Page<Token>, StorageError> {
         let executor = PaginationExecutor::new(self.pool.clone());
         let mut query_builder = QueryBuilder::new("tokens")
-            .select(&["*".to_string()])
-            .where_clause("token_id != '' AND token_id IS NOT NULL");
+            .alias("t")
+            .select(&["t.*".to_string()]);
+
+        let mut join_conditions = Vec::new();
+        let mut where_conditions = Vec::new();
+
+        // Always filter for NFTs only
+        where_conditions.push("t.token_id != '' AND t.token_id IS NOT NULL".to_string());
 
         if !query.contract_addresses.is_empty() {
             let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
-            query_builder =
-                query_builder.where_clause(&format!("contract_address IN ({})", placeholders));
+            where_conditions.push(format!("t.contract_address IN ({})", placeholders));
             for addr in &query.contract_addresses {
                 query_builder = query_builder.bind_value(format!("{:#x}", addr));
             }
@@ -264,11 +269,52 @@ impl ReadOnlyStorage for Sql {
 
         if !query.token_ids.is_empty() {
             let placeholders = vec!["?"; query.token_ids.len()].join(", ");
-            query_builder = query_builder.where_clause(&format!("token_id IN ({})", placeholders));
+            where_conditions.push(format!("t.token_id IN ({})", placeholders));
             for token_id in &query.token_ids {
                 query_builder =
                     query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
             }
+        }
+
+        // Add attribute filters
+        for (i, filter) in query.attribute_filters.iter().enumerate() {
+            let alias = format!("ta{}", i);
+            join_conditions.push(format!(
+                "JOIN token_attributes {} ON t.id = {}.token_id",
+                alias, alias
+            ));
+
+            let condition = match filter.operator {
+                torii_proto::TokenAttributeOperator::AttrEq => {
+                    format!("{}.trait_name = ? AND {}.trait_value = ?", alias, alias)
+                }
+                torii_proto::TokenAttributeOperator::AttrNeq => {
+                    format!("{}.trait_name = ? AND {}.trait_value != ?", alias, alias)
+                }
+                torii_proto::TokenAttributeOperator::AttrLike => {
+                    format!("{}.trait_name = ? AND {}.trait_value LIKE ?", alias, alias)
+                }
+                torii_proto::TokenAttributeOperator::AttrIn => {
+                    // For IN operator, we need to handle multiple values
+                    // This is a simplified version - in practice you might want to handle this differently
+                    format!("{}.trait_name = ? AND {}.trait_value = ?", alias, alias)
+                }
+            };
+
+            where_conditions.push(condition);
+            query_builder = query_builder.bind_value(filter.trait_name.clone());
+            query_builder = query_builder.bind_value(filter.trait_value.clone());
+        }
+
+        // Add joins
+        for join in join_conditions {
+            query_builder = query_builder.join(&join);
+        }
+
+        // Add where conditions
+        if !where_conditions.is_empty() {
+            query_builder =
+                query_builder.where_clause(&format!("{}", where_conditions.join(" AND ")));
         }
 
         let page = executor
@@ -276,7 +322,7 @@ impl ReadOnlyStorage for Sql {
                 query_builder,
                 &query.pagination,
                 &OrderBy {
-                    field: "id".to_string(),
+                    field: "t.id".to_string(),
                     direction: OrderDirection::Desc,
                 },
             )

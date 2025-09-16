@@ -86,6 +86,58 @@ pub fn extract_traits_from_metadata(
     serde_json::to_string(&current_traits)
 }
 
+/// Extract and store individual token attributes in the normalized table
+pub async fn store_token_attributes(
+    metadata: &str,
+    token_id: &str,
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+) -> Result<(), sqlx::Error> {
+    let metadata_json: serde_json::Value = match serde_json::from_str(metadata) {
+        Ok(json) => json,
+        Err(_) => return Ok(()), // Skip invalid JSON
+    };
+
+    // Clear existing attributes for this token
+    sqlx::query("DELETE FROM token_attributes WHERE token_id = ?")
+        .bind(token_id)
+        .execute(&mut **tx)
+        .await?;
+
+    if let Some(attributes) = metadata_json.get("attributes") {
+        if let Ok(attributes_array) =
+            serde_json::from_value::<Vec<serde_json::Value>>(attributes.clone())
+        {
+            for attr in attributes_array {
+                // Handle both "trait_type" and "trait" field names
+                let trait_type = attr.get("trait_type").or_else(|| attr.get("trait"));
+
+                if let (Some(trait_type), Some(trait_value)) = (trait_type, attr.get("value")) {
+                    if let (Some(trait_type_str), Some(trait_value_str)) =
+                        (trait_type.as_str(), trait_value.as_str())
+                    {
+                        // Generate a predictable ID using token_id + trait_name + trait_value
+                        let id = format!("{}:{}:{}", token_id, trait_type_str, trait_value_str);
+
+                        // Store the attribute
+                        sqlx::query(
+                            "INSERT INTO token_attributes (id, token_id, trait_name, trait_value) 
+                             VALUES (?, ?, ?, ?)",
+                        )
+                        .bind(id)
+                        .bind(token_id)
+                        .bind(trait_type_str)
+                        .bind(trait_value_str)
+                        .execute(&mut **tx)
+                        .await?;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Helper function to extract traits from NFT metadata and update the token contract's traits
 pub async fn update_contract_traits_from_metadata(
     metadata: &str,

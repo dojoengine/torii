@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
-use erc::{update_contract_traits_from_metadata, UpdateTokenMetadataQuery};
+use erc::{store_token_attributes, update_contract_traits_from_metadata, UpdateTokenMetadataQuery};
 use metrics::{counter, histogram};
 use serde_json;
 use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
@@ -758,6 +758,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
                 let token = query.fetch_one(&mut **tx).await?;
 
+                // Store individual token attributes for fast filtering
+                store_token_attributes(&register_nft_token.metadata, &token.id, &mut *tx).await?;
+
                 // Extract traits from metadata and update the token contract's traits
                 update_contract_traits_from_metadata(
                     &register_nft_token.metadata,
@@ -816,8 +819,12 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .fetch_one(&mut **tx)
                 .await?;
 
-                // If this is an individual token (has token_id), update the contract's traits
+                // If this is an individual token (has token_id), update attributes and contract's traits
                 if update_metadata.token_id.is_some() {
+                    // Update individual token attributes
+                    store_token_attributes(&update_metadata.metadata, &token.id, &mut *tx).await?;
+
+                    // Update contract's traits
                     update_contract_traits_from_metadata(
                         &update_metadata.metadata,
                         &update_metadata.contract_address,

@@ -542,10 +542,68 @@ impl TryFrom<proto::types::ControllerQuery> for ControllerQuery {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub struct TokenAttributeFilter {
+    pub trait_name: String,
+    pub trait_value: String,
+    pub operator: TokenAttributeOperator,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+pub enum TokenAttributeOperator {
+    AttrEq,
+    AttrNeq,
+    AttrLike,
+    AttrIn,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct TokenQuery {
     pub contract_addresses: Vec<Felt>,
     pub token_ids: Vec<U256>,
+    pub attribute_filters: Vec<TokenAttributeFilter>,
     pub pagination: Pagination,
+}
+
+impl From<TokenAttributeFilter> for proto::types::TokenAttributeFilter {
+    fn from(value: TokenAttributeFilter) -> Self {
+        Self {
+            trait_name: value.trait_name,
+            trait_value: value.trait_value,
+            operator: value.operator as i32,
+        }
+    }
+}
+
+impl From<TokenAttributeOperator> for proto::types::TokenAttributeOperator {
+    fn from(value: TokenAttributeOperator) -> Self {
+        match value {
+            TokenAttributeOperator::AttrEq => proto::types::TokenAttributeOperator::AttrEq,
+            TokenAttributeOperator::AttrNeq => proto::types::TokenAttributeOperator::AttrNeq,
+            TokenAttributeOperator::AttrLike => proto::types::TokenAttributeOperator::AttrLike,
+            TokenAttributeOperator::AttrIn => proto::types::TokenAttributeOperator::AttrIn,
+        }
+    }
+}
+
+impl From<proto::types::TokenAttributeFilter> for TokenAttributeFilter {
+    fn from(value: proto::types::TokenAttributeFilter) -> Self {
+        Self {
+            trait_name: value.trait_name.clone(),
+            trait_value: value.trait_value.clone(),
+            operator: value.operator().into(),
+        }
+    }
+}
+
+impl From<proto::types::TokenAttributeOperator> for TokenAttributeOperator {
+    fn from(value: proto::types::TokenAttributeOperator) -> Self {
+        match value {
+            proto::types::TokenAttributeOperator::AttrEq => TokenAttributeOperator::AttrEq,
+            proto::types::TokenAttributeOperator::AttrNeq => TokenAttributeOperator::AttrNeq,
+            proto::types::TokenAttributeOperator::AttrLike => TokenAttributeOperator::AttrLike,
+            proto::types::TokenAttributeOperator::AttrIn => TokenAttributeOperator::AttrIn,
+        }
+    }
 }
 
 impl From<TokenQuery> for proto::types::TokenQuery {
@@ -560,6 +618,11 @@ impl From<TokenQuery> for proto::types::TokenQuery {
                 .token_ids
                 .into_iter()
                 .map(|id| id.to_be_bytes().to_vec())
+                .collect(),
+            attribute_filters: value
+                .attribute_filters
+                .into_iter()
+                .map(|f| f.into())
                 .collect(),
             pagination: Some(value.pagination.into()),
         }
@@ -579,6 +642,11 @@ impl TryFrom<proto::types::TokenQuery> for TokenQuery {
                 .token_ids
                 .into_iter()
                 .map(|id| U256::from_be_slice(&id))
+                .collect(),
+            attribute_filters: value
+                .attribute_filters
+                .into_iter()
+                .map(|f| f.into())
                 .collect(),
             pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
         })
