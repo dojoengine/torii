@@ -55,9 +55,10 @@ pub fn extract_traits_from_metadata(
         {
             // Extract traits from this token's attributes
             for attr in attributes_array {
-                if let (Some(trait_type), Some(trait_value)) =
-                    (attr.get("trait_type"), attr.get("value"))
-                {
+                // Handle both "trait_type" and "trait" field names
+                let trait_type = attr.get("trait_type").or_else(|| attr.get("trait"));
+
+                if let (Some(trait_type), Some(trait_value)) = (trait_type, attr.get("value")) {
                     if let (Some(trait_type_str), Some(trait_value_str)) =
                         (trait_type.as_str(), trait_value.as_str())
                     {
