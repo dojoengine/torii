@@ -357,3 +357,20 @@ message ContractQuery {
     // The list of contract types to filter by
     repeated ContractType contract_types = 2;
 }
+
+message TokenContract {
+    // The contract address
+    bytes contract_address = 1;
+    // The type of contract
+    ContractType contract_type = 2;
+    // The name of the contract
+    string name = 3;
+    // The symbol of the contract
+    string symbol = 4;
+    // The decimals of the contract
+    uint32 decimals = 5;
+    // The metadata of the contract
+    bytes metadata = 6;
+    // The total supply of the contract
+    optional bytes total_supply = 7;
+}

@@ -318,54 +318,43 @@ impl TryFrom<proto::types::Token> for Token {
         })
     }
 }
-impl TryFrom<proto::types::TokenCollection> for Token {
-    type Error = ProtoError;
-    fn try_from(value: proto::types::TokenCollection) -> Result<Self, Self::Error> {
-        Ok(Self {
-            token_id: None,
-            contract_address: Felt::from_bytes_be_slice(&value.contract_address),
-            name: value.name,
-            symbol: value.symbol,
-            decimals: value.decimals as u8,
-            metadata: String::from_utf8(value.metadata).map_err(ProtoError::FromUtf8)?,
-            total_supply: None,
-        })
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
-pub struct TokenCollection {
+pub struct TokenContract {
     pub contract_address: Felt,
+    pub r#type: ContractType,
     pub name: String,
     pub symbol: String,
     pub decimals: u8,
-    pub count: u32,
     pub metadata: String,
+    pub total_supply: Option<U256>,
 }
 
-impl From<TokenCollection> for proto::types::TokenCollection {
-    fn from(value: TokenCollection) -> Self {
+impl From<TokenContract> for proto::types::TokenContract {
+    fn from(value: TokenContract) -> Self {
         Self {
             contract_address: value.contract_address.to_bytes_be().into(),
+            contract_type: value.r#type as i32,
             name: value.name,
             symbol: value.symbol,
             decimals: value.decimals as u32,
-            count: value.count,
             metadata: value.metadata.into_bytes(),
+            total_supply: value.total_supply.map(|s| s.to_be_bytes().to_vec()),
         }
     }
 }
 
-impl TryFrom<proto::types::TokenCollection> for TokenCollection {
+impl TryFrom<proto::types::TokenContract> for TokenContract {
     type Error = ProtoError;
-    fn try_from(value: proto::types::TokenCollection) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::types::TokenContract) -> Result<Self, Self::Error> {
         Ok(Self {
             contract_address: Felt::from_bytes_be_slice(&value.contract_address),
+            r#type: value.contract_type as ContractType,
             name: value.name,
             symbol: value.symbol,
             decimals: value.decimals as u8,
-            count: value.count,
             metadata: String::from_utf8(value.metadata).map_err(ProtoError::FromUtf8)?,
+            total_supply: value.total_supply.map(|s| U256::from_be_slice(&s)),
         })
     }
 }
