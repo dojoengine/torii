@@ -314,7 +314,7 @@ impl ReadOnlyStorage for Sql {
         // Add where conditions
         if !where_conditions.is_empty() {
             query_builder =
-                query_builder.where_clause(&format!("{}", where_conditions.join(" AND ")));
+                query_builder.where_clause(&where_conditions.join(" AND ").to_string());
         }
 
         let page = executor
