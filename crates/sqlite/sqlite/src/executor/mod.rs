@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
-use erc::{UpdateTokenMetadataQuery, update_contract_traits_from_metadata};
+use erc::{update_contract_traits_from_metadata, UpdateTokenMetadataQuery};
 use metrics::{counter, histogram};
 use serde_json;
 use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
@@ -115,7 +115,6 @@ pub struct UpdateCursorsQuery {
     pub cursors: HashMap<Felt, ContractCursor>,
     pub cursor_transactions: HashMap<Felt, HashSet<Felt>>,
 }
-
 
 #[derive(Debug, Clone)]
 pub enum QueryType {
@@ -760,7 +759,12 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 let token = query.fetch_one(&mut **tx).await?;
 
                 // Extract traits from metadata and update the token contract's traits
-                update_contract_traits_from_metadata(&register_nft_token.metadata, &register_nft_token.contract_address, &mut *tx).await?;
+                update_contract_traits_from_metadata(
+                    &register_nft_token.metadata,
+                    &register_nft_token.contract_address,
+                    &mut *tx,
+                )
+                .await?;
 
                 info!(target: LOG_TARGET, name = %name, symbol = %symbol, contract_address = %token.contract_address, token_id = %register_nft_token.token_id, "NFT token registered.");
                 self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));
@@ -814,7 +818,12 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
                 // If this is an individual token (has token_id), update the contract's traits
                 if update_metadata.token_id.is_some() {
-                    update_contract_traits_from_metadata(&update_metadata.metadata, &update_metadata.contract_address, &mut *tx).await?;
+                    update_contract_traits_from_metadata(
+                        &update_metadata.metadata,
+                        &update_metadata.contract_address,
+                        &mut *tx,
+                    )
+                    .await?;
                 }
 
                 info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = ?update_metadata.token_id, "Token metadata updated.");

@@ -47,7 +47,9 @@ pub async fn update_contract_traits_from_metadata(
 ) -> Result<(), sqlx::Error> {
     if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata) {
         if let Some(attributes) = metadata_json.get("attributes") {
-            if let Ok(attributes_array) = serde_json::from_value::<Vec<serde_json::Value>>(attributes.clone()) {
+            if let Ok(attributes_array) =
+                serde_json::from_value::<Vec<serde_json::Value>>(attributes.clone())
+            {
                 // Get current traits for the contract
                 let contract_id = felt_to_sql_string(contract_address);
                 let current_traits_result = sqlx::query_as::<_, (String,)>(
@@ -58,13 +60,17 @@ pub async fn update_contract_traits_from_metadata(
                 .await;
 
                 if let Ok((current_traits_str,)) = current_traits_result {
-                    let mut current_traits: serde_json::Map<String, serde_json::Value> = 
+                    let mut current_traits: serde_json::Map<String, serde_json::Value> =
                         serde_json::from_str(&current_traits_str).unwrap_or_default();
 
                     // Extract traits from this token's attributes
                     for attr in attributes_array {
-                        if let (Some(trait_type), Some(trait_value)) = (attr.get("trait_type"), attr.get("value")) {
-                            if let (Some(trait_type_str), Some(trait_value_str)) = (trait_type.as_str(), trait_value.as_str()) {
+                        if let (Some(trait_type), Some(trait_value)) =
+                            (attr.get("trait_type"), attr.get("value"))
+                        {
+                            if let (Some(trait_type_str), Some(trait_value_str)) =
+                                (trait_type.as_str(), trait_value.as_str())
+                            {
                                 // Get or create the trait type array
                                 let trait_values = current_traits
                                     .entry(trait_type_str.to_string())
@@ -72,8 +78,13 @@ pub async fn update_contract_traits_from_metadata(
 
                                 if let Some(trait_values_array) = trait_values.as_array_mut() {
                                     // Add the value if it's not already present
-                                    if !trait_values_array.iter().any(|v| v.as_str() == Some(trait_value_str)) {
-                                        trait_values_array.push(serde_json::Value::String(trait_value_str.to_string()));
+                                    if !trait_values_array
+                                        .iter()
+                                        .any(|v| v.as_str() == Some(trait_value_str))
+                                    {
+                                        trait_values_array.push(serde_json::Value::String(
+                                            trait_value_str.to_string(),
+                                        ));
                                     }
                                 }
                             }
@@ -81,7 +92,8 @@ pub async fn update_contract_traits_from_metadata(
                     }
 
                     // Update the contract's traits
-                    let updated_traits = serde_json::to_string(&current_traits).unwrap_or_else(|_| "{}".to_string());
+                    let updated_traits =
+                        serde_json::to_string(&current_traits).unwrap_or_else(|_| "{}".to_string());
                     sqlx::query("UPDATE tokens SET traits = ? WHERE contract_address = ? AND (token_id = '' OR token_id IS NULL)")
                         .bind(&updated_traits)
                         .bind(&contract_id)
