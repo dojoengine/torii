@@ -48,14 +48,14 @@ use torii_proto::proto::world::{
     PublishMessageResponse, RetrieveContractsRequest, RetrieveContractsResponse,
     RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEventMessagesRequest,
     RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
-    RetrieveTokenCollectionsResponse, RetrieveTokenTransfersRequest,
-    RetrieveTokenTransfersResponse, RetrieveTokensRequest, RetrieveTokensResponse,
-    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeContractsRequest,
-    SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
-    SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeTokenBalancesRequest,
-    SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
-    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
-    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    RetrieveTokenCollectionsResponse, RetrieveTokenContractsRequest,
+    RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse,
+    RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest,
+    RetrieveTransactionsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
+    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
     UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
     UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
     WorldMetadataResponse,
@@ -456,6 +456,28 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
                 .map(Into::into)
                 .collect(),
             next_cursor: token_collections.next_cursor.unwrap_or_default(),
+        }))
+    }
+
+    async fn retrieve_token_contracts(
+        &self,
+        request: Request<RetrieveTokenContractsRequest>,
+    ) -> Result<Response<RetrieveTokenContractsResponse>, Status> {
+        let RetrieveTokenContractsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+
+        let token_contracts = self
+            .storage
+            .token_contracts(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(RetrieveTokenContractsResponse {
+            token_contracts: token_contracts.items.into_iter().map(Into::into).collect(),
+            next_cursor: token_contracts.next_cursor.unwrap_or_default(),
         }))
     }
 

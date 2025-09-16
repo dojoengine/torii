@@ -79,6 +79,9 @@ service World {
     // Retrieve tokens collections
     rpc RetrieveTokenCollections (RetrieveTokenCollectionsRequest) returns (RetrieveTokenCollectionsResponse);
 
+    // Retrieve token contracts
+    rpc RetrieveTokenContracts (RetrieveTokenContractsRequest) returns (RetrieveTokenContractsResponse);
+
     // Publish a torii offchain message
     rpc PublishMessage (PublishMessageRequest) returns (PublishMessageResponse);
 
@@ -209,6 +212,17 @@ message RetrieveTokenCollectionsRequest {
 message RetrieveTokenCollectionsResponse {
     string next_cursor = 1;
     repeated types.TokenCollection tokens = 2;
+}
+
+// A request to retrieve token contracts
+message RetrieveTokenContractsRequest {
+    types.TokenContractQuery query = 1;
+}
+
+// A response containing token contracts
+message RetrieveTokenContractsResponse {
+    string next_cursor = 1;
+    repeated types.TokenContract token_contracts = 2;
 }
 
 // A request to subscribe to contract updates.

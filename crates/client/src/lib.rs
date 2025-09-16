@@ -9,13 +9,13 @@ use torii_grpc_client::{
 use torii_proto::proto::world::{
     RetrieveContractsResponse, RetrieveControllersResponse, RetrieveEntitiesResponse,
     RetrieveEventsResponse, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsResponse,
-    RetrieveTokensResponse, RetrieveTransactionsResponse,
+    RetrieveTokenContractsResponse, RetrieveTokensResponse, RetrieveTransactionsResponse,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Contract, ContractQuery, Controller, ControllerQuery, Event, EventQuery, KeysClause,
-    Message, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction,
-    TransactionFilter, TransactionQuery, World,
+    Message, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract,
+    TokenContractQuery, TokenQuery, Transaction, TransactionFilter, TransactionQuery, World,
 };
 
 use crate::error::Error;
@@ -159,6 +159,29 @@ impl Client {
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<Token>, _>>()?,
+            next_cursor: if next_cursor.is_empty() {
+                None
+            } else {
+                Some(next_cursor)
+            },
+        })
+    }
+
+    /// Retrieves token contracts matching the query parameters.
+    pub async fn token_contracts(
+        &self,
+        query: TokenContractQuery,
+    ) -> Result<Page<TokenContract>, Error> {
+        let mut grpc_client = self.inner.clone();
+        let RetrieveTokenContractsResponse {
+            token_contracts,
+            next_cursor,
+        } = grpc_client.retrieve_token_contracts(query).await?;
+        Ok(Page {
+            items: token_contracts
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<TokenContract>, _>>()?,
             next_cursor: if next_cursor.is_empty() {
                 None
             } else {

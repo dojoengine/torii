@@ -23,7 +23,8 @@ use torii_proto::proto::world::{
     RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventMessagesRequest,
     RetrieveEventsRequest, RetrieveEventsResponse, RetrieveTokenBalancesRequest,
     RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
-    RetrieveTokenCollectionsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
+    RetrieveTokenCollectionsResponse, RetrieveTokenContractsRequest,
+    RetrieveTokenContractsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
     RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeContractsRequest,
     SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
     SubscribeEventMessagesRequest, SubscribeEventsRequest, SubscribeEventsResponse,
@@ -35,8 +36,8 @@ use torii_proto::proto::world::{
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message,
-    Query, Token, TokenBalance, TokenBalanceQuery, TokenQuery, Transaction, TransactionFilter,
-    TransactionQuery,
+    Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenQuery,
+    Transaction, TransactionFilter, TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -285,6 +286,19 @@ impl WorldClient {
     ) -> Result<RetrieveTokenCollectionsResponse, Error> {
         self.inner
             .retrieve_token_collections(RetrieveTokenCollectionsRequest {
+                query: Some(query.into()),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
+    }
+
+    pub async fn retrieve_token_contracts(
+        &mut self,
+        query: TokenContractQuery,
+    ) -> Result<RetrieveTokenContractsResponse, Error> {
+        self.inner
+            .retrieve_token_contracts(RetrieveTokenContractsRequest {
                 query: Some(query.into()),
             })
             .await

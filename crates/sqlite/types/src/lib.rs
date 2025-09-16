@@ -237,7 +237,10 @@ impl From<TokenContract> for torii_proto::TokenContract {
     fn from(value: TokenContract) -> Self {
         Self {
             contract_address: Felt::from_str(&value.contract_address).unwrap(),
-            r#type: value.contract_type.parse().unwrap_or(torii_proto::ContractType::OTHER),
+            r#type: value
+                .contract_type
+                .parse()
+                .unwrap_or(torii_proto::ContractType::OTHER),
             name: value.name,
             symbol: value.symbol,
             decimals: value.decimals,
