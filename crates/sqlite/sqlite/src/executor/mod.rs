@@ -126,6 +126,7 @@ pub enum QueryType {
     RegisterNftToken(RegisterNftTokenQuery),
     RegisterTokenContract(RegisterTokenContractQuery),
     RegisterModel,
+    RegisterContract,
     StoreEvent,
     StoreTokenTransfer,
     UpdateTokenMetadata(UpdateTokenMetadataQuery),
@@ -149,6 +150,7 @@ impl std::fmt::Display for QueryType {
                 QueryType::RegisterNftToken(_) => "RegisterNftToken",
                 QueryType::RegisterTokenContract(_) => "RegisterTokenContract",
                 QueryType::RegisterModel => "RegisterModel",
+                QueryType::RegisterContract => "RegisterContract",
                 QueryType::StoreEvent => "StoreEvent",
                 QueryType::StoreTokenTransfer => "StoreTokenTransfer",
                 QueryType::UpdateTokenMetadata(_) => "UpdateTokenMetadata",
@@ -555,6 +557,13 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 let model_registered = torii_sqlite_types::Model::from_row(&row)?;
                 self.publish_optimistic_and_queue(BrokerMessage::ModelRegistered(
                     model_registered.into(),
+                ));
+            }
+            QueryType::RegisterContract => {
+                let row = query.fetch_one(&mut **tx).await?;
+                let contract_registered = torii_sqlite_types::Contract::from_row(&row)?;
+                self.publish_optimistic_and_queue(BrokerMessage::ContractUpdate(
+                    contract_registered.into(),
                 ));
             }
             QueryType::EventMessage(em_query) => {

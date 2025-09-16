@@ -116,6 +116,15 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         legacy_store: bool,
     ) -> Result<(), StorageError>;
 
+    /// Registers a contract with the storage.
+    /// This is used when a new contract is registered in the world.
+    async fn register_contract(
+        &self,
+        address: Felt,
+        contract_type: torii_proto::ContractType,
+        block_number: u64,
+    ) -> Result<(), StorageError>;
+
     /// Sets an entity with the storage.
     /// It should insert or update the entity if it already exists.
     /// Along with its model state in the model table.

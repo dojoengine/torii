@@ -895,6 +895,35 @@ impl Storage for Sql {
         Ok(())
     }
 
+    /// Registers a contract with the storage.
+    /// This is used when a new contract is registered in the world.
+    async fn register_contract(
+        &self,
+        address: Felt,
+        contract_type: torii_proto::ContractType,
+        block_number: u64,
+    ) -> Result<(), StorageError> {
+        let head = block_number - 1;
+        let insert_contract = "INSERT INTO contracts (id, contract_address, contract_type, head, updated_at, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET contract_type=EXCLUDED.contract_type, head=EXCLUDED.head, updated_at=CURRENT_TIMESTAMP RETURNING *";
+        
+        let arguments = vec![
+            Argument::FieldElement(address),
+            Argument::FieldElement(address),
+            Argument::String(contract_type.to_string()),
+            Argument::Int(head as i64),
+        ];
+        
+        self.executor
+            .send(QueryMessage::new(
+                insert_contract.to_string(),
+                arguments,
+                QueryType::RegisterContract,
+            ))
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+
+        Ok(())
+    }
+
     /// Sets an entity with the storage.
     /// It should insert or update the entity if it already exists.
     /// Along with its model state in the model table.
