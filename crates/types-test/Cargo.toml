@@ -6,7 +6,7 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
-starknet = "2.11.4"
+starknet = "2.12"
 
 [package.metadata.release]
 pre-release-replacements = [

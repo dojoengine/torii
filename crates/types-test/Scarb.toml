@@ -1,5 +1,5 @@
 [package]
-cairo-version = "=2.11.4"
+cairo-version = "2.12"
 edition = "2024_07"
 name = "types_test"
 version = "1.7.0-alpha.1"
@@ -8,7 +8,7 @@ version = "1.7.0-alpha.1"
 sierra-replace-ids = true
 
 [dependencies]
-starknet = "2.11.4"
+starknet = "2.12"
 
 dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.3" }
 dojo_macros = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.3" }
