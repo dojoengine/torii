@@ -76,9 +76,6 @@ service World {
     // Retrieve contracts
     rpc RetrieveContracts (RetrieveContractsRequest) returns (RetrieveContractsResponse);
 
-    // Retrieve tokens collections
-    rpc RetrieveTokenCollections (RetrieveTokenCollectionsRequest) returns (RetrieveTokenCollectionsResponse);
-
     // Retrieve token contracts
     rpc RetrieveTokenContracts (RetrieveTokenContractsRequest) returns (RetrieveTokenContractsResponse);
 
@@ -201,17 +198,6 @@ message RetrieveTransactionsRequest {
 message RetrieveTransactionsResponse {
     string next_cursor = 1;
     repeated types.Transaction transactions = 2;
-}
-
-// A request to retrieve token collections 
-message RetrieveTokenCollectionsRequest {
-    types.TokenBalanceQuery query = 1;
-}
-
-// A response containing token balances
-message RetrieveTokenCollectionsResponse {
-    string next_cursor = 1;
-    repeated types.TokenCollection tokens = 2;
 }
 
 // A request to retrieve token contracts

@@ -14,8 +14,8 @@ use torii_math::I256;
 use torii_proto::{
     schema::Entity, CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery,
     Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy,
-    OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenCollection,
-    TokenContract, TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
+    OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract,
+    TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
     TransactionCall, TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};

@@ -47,8 +47,7 @@ use torii_proto::proto::world::{
     PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest,
     PublishMessageResponse, RetrieveContractsRequest, RetrieveContractsResponse,
     RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEventMessagesRequest,
-    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
-    RetrieveTokenCollectionsResponse, RetrieveTokenContractsRequest,
+    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest,
     RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse,
     RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest,
     RetrieveTransactionsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
@@ -430,32 +429,6 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         Ok(Response::new(RetrieveTokensResponse {
             tokens: tokens.items.into_iter().map(Into::into).collect(),
             next_cursor: tokens.next_cursor.unwrap_or_default(),
-        }))
-    }
-
-    async fn retrieve_token_collections(
-        &self,
-        request: Request<RetrieveTokenCollectionsRequest>,
-    ) -> Result<Response<RetrieveTokenCollectionsResponse>, Status> {
-        let RetrieveTokenCollectionsRequest { query } = request.into_inner();
-        let query = query
-            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
-            .try_into()
-            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
-
-        let token_collections = self
-            .storage
-            .token_collections(&query)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        Ok(Response::new(RetrieveTokenCollectionsResponse {
-            tokens: token_collections
-                .items
-                .into_iter()
-                .map(Into::into)
-                .collect(),
-            next_cursor: token_collections.next_cursor.unwrap_or_default(),
         }))
     }
 

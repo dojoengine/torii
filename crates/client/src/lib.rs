@@ -8,8 +8,8 @@ use torii_grpc_client::{
 };
 use torii_proto::proto::world::{
     RetrieveContractsResponse, RetrieveControllersResponse, RetrieveEntitiesResponse,
-    RetrieveEventsResponse, RetrieveTokenBalancesResponse, RetrieveTokenCollectionsResponse,
-    RetrieveTokenContractsResponse, RetrieveTokensResponse, RetrieveTransactionsResponse,
+    RetrieveEventsResponse, RetrieveTokenBalancesResponse, RetrieveTokenContractsResponse,
+    RetrieveTokensResponse, RetrieveTransactionsResponse,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
@@ -139,26 +139,6 @@ impl Client {
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<TokenBalance>, _>>()?,
-            next_cursor: if next_cursor.is_empty() {
-                None
-            } else {
-                Some(next_cursor)
-            },
-        })
-    }
-
-    /// Retrieves tokens matching contract addresses.
-    pub async fn token_collections(&self, query: TokenBalanceQuery) -> Result<Page<Token>, Error> {
-        let mut grpc_client = self.inner.clone();
-        let RetrieveTokenCollectionsResponse {
-            tokens,
-            next_cursor,
-        } = grpc_client.retrieve_token_collections(query).await?;
-        Ok(Page {
-            items: tokens
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<Vec<Token>, _>>()?,
             next_cursor: if next_cursor.is_empty() {
                 None
             } else {

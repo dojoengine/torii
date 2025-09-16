@@ -53,6 +53,34 @@ pub enum ContractType {
     OTHER,
 }
 
+impl From<proto::types::ContractType> for ContractType {
+    fn from(value: proto::types::ContractType) -> Self {
+        match value {
+            proto::types::ContractType::World => ContractType::WORLD,
+            proto::types::ContractType::Erc20 => ContractType::ERC20,
+            proto::types::ContractType::Erc721 => ContractType::ERC721,
+            proto::types::ContractType::Erc1155 => ContractType::ERC1155,
+            proto::types::ContractType::Udc => ContractType::UDC,
+            proto::types::ContractType::Other => ContractType::OTHER,
+        }
+    }
+}
+
+impl TryFrom<i32> for ContractType {
+    type Error = ProtoError;
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(ContractType::WORLD),
+            1 => Ok(ContractType::ERC20),
+            2 => Ok(ContractType::ERC721),
+            3 => Ok(ContractType::ERC1155),
+            4 => Ok(ContractType::UDC),
+            5 => Ok(ContractType::OTHER),
+            _ => Err(ProtoError::InvalidContractType(value.to_string())),
+        }
+    }
+}
+
 impl FromStr for ContractType {
     type Err = ProtoError;
 
@@ -160,23 +188,9 @@ impl From<Contract> for proto::types::Contract {
 impl TryFrom<proto::types::Contract> for Contract {
     type Error = ProtoError;
     fn try_from(value: proto::types::Contract) -> Result<Self, Self::Error> {
-        let contract_type = match value.contract_type {
-            0 => ContractType::WORLD,
-            1 => ContractType::ERC20,
-            2 => ContractType::ERC721,
-            3 => ContractType::ERC1155,
-            4 => ContractType::UDC,
-            5 => ContractType::OTHER,
-            _ => {
-                return Err(ProtoError::InvalidContractType(
-                    value.contract_type.to_string(),
-                ))
-            }
-        };
-
         Ok(Self {
             contract_address: Felt::from_bytes_be_slice(&value.contract_address),
-            contract_type,
+            contract_type: value.contract_type().into(),
             head: value.head,
             tps: value.tps,
             last_block_timestamp: value.last_block_timestamp,
@@ -319,7 +333,7 @@ impl TryFrom<proto::types::Token> for Token {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct TokenContract {
     pub contract_address: Felt,
     pub r#type: ContractType,
@@ -349,7 +363,7 @@ impl TryFrom<proto::types::TokenContract> for TokenContract {
     fn try_from(value: proto::types::TokenContract) -> Result<Self, Self::Error> {
         Ok(Self {
             contract_address: Felt::from_bytes_be_slice(&value.contract_address),
-            r#type: value.contract_type as ContractType,
+            r#type: value.contract_type().into(),
             name: value.name,
             symbol: value.symbol,
             decimals: value.decimals as u8,
@@ -650,15 +664,7 @@ impl TryFrom<proto::types::TokenContractQuery> for TokenContractQuery {
         let contract_types = value
             .contract_types
             .into_iter()
-            .map(|t| match t {
-                0 => Ok(ContractType::WORLD),
-                1 => Ok(ContractType::ERC20),
-                2 => Ok(ContractType::ERC721),
-                3 => Ok(ContractType::ERC1155),
-                4 => Ok(ContractType::UDC),
-                5 => Ok(ContractType::OTHER),
-                _ => Err(ProtoError::InvalidContractType(t.to_string())),
-            })
+            .map(|t| t.try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Self {
@@ -698,15 +704,7 @@ impl TryFrom<proto::types::ContractQuery> for ContractQuery {
         let contract_types = value
             .contract_types
             .into_iter()
-            .map(|t| match t {
-                0 => Ok(ContractType::WORLD),
-                1 => Ok(ContractType::ERC20),
-                2 => Ok(ContractType::ERC721),
-                3 => Ok(ContractType::ERC1155),
-                4 => Ok(ContractType::UDC),
-                5 => Ok(ContractType::OTHER),
-                _ => Err(ProtoError::InvalidContractType(t.to_string())),
-            })
+            .map(|t| t.try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Self {

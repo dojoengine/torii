@@ -22,22 +22,21 @@ use torii_proto::proto::world::{
     RetrieveContractsResponse, RetrieveControllersRequest, RetrieveControllersResponse,
     RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventMessagesRequest,
     RetrieveEventsRequest, RetrieveEventsResponse, RetrieveTokenBalancesRequest,
-    RetrieveTokenBalancesResponse, RetrieveTokenCollectionsRequest,
-    RetrieveTokenCollectionsResponse, RetrieveTokenContractsRequest,
-    RetrieveTokenContractsResponse, RetrieveTokensRequest, RetrieveTokensResponse,
-    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeContractsRequest,
-    SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
-    SubscribeEventMessagesRequest, SubscribeEventsRequest, SubscribeEventsResponse,
-    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
-    UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
-    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest, WorldMetadataRequest,
+    RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
+    RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest,
+    RetrieveTransactionsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsRequest, SubscribeEventsResponse, SubscribeTokenBalancesRequest,
+    SubscribeTokenBalancesResponse, SubscribeTokensRequest, SubscribeTokensResponse,
+    SubscribeTransactionsRequest, SubscribeTransactionsResponse, UpdateEntitiesSubscriptionRequest,
+    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
+    UpdateTokenSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message,
-    Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenQuery,
-    Transaction, TransactionFilter, TransactionQuery,
+    Query, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery, Transaction,
+    TransactionFilter, TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -280,19 +279,6 @@ impl WorldClient {
             .map(|res| res.into_inner())
     }
 
-    pub async fn retrieve_token_collections(
-        &mut self,
-        query: TokenBalanceQuery,
-    ) -> Result<RetrieveTokenCollectionsResponse, Error> {
-        self.inner
-            .retrieve_token_collections(RetrieveTokenCollectionsRequest {
-                query: Some(query.into()),
-            })
-            .await
-            .map_err(Error::Grpc)
-            .map(|res| res.into_inner())
-    }
-
     pub async fn retrieve_token_contracts(
         &mut self,
         query: TokenContractQuery,
@@ -305,6 +291,7 @@ impl WorldClient {
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())
     }
+
     pub async fn retrieve_entities(
         &mut self,
         query: Query,

@@ -199,30 +199,6 @@ impl From<Token> for torii_proto::Token {
 
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct TokenCollection {
-    pub contract_address: String,
-    pub name: String,
-    pub symbol: String,
-    pub decimals: u8,
-    pub count: u32,
-    pub metadata: String,
-}
-
-impl From<TokenCollection> for torii_proto::TokenCollection {
-    fn from(value: TokenCollection) -> Self {
-        Self {
-            contract_address: Felt::from_str(&value.contract_address).unwrap(),
-            name: value.name,
-            symbol: value.symbol,
-            decimals: value.decimals,
-            count: value.count,
-            metadata: value.metadata,
-        }
-    }
-}
-
-#[derive(FromRow, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct TokenContract {
     pub contract_address: String,
     pub contract_type: String,
