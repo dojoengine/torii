@@ -18,7 +18,7 @@ use torii_processors::{
     BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors,
     TransactionProcessorContext,
 };
-use torii_storage::proto::{ContractCursor, ContractDefinition, ContractQuery, ContractType};
+use torii_storage::proto::{Contract, ContractCursor, ContractQuery, ContractType};
 use torii_storage::utils::format_event_id;
 use torii_storage::Storage;
 use tracing::{debug, error, info, trace};
@@ -60,9 +60,9 @@ pub struct Engine<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static>
     config: EngineConfig,
     shutdown_tx: Sender<()>,
     task_manager: TaskManager<P>,
-    contracts: HashMap<Felt, ContractType>,
     contract_class_cache: Arc<ContractClassCache<P>>,
     controllers: Option<Arc<ControllersSync>>,
+    contracts: HashMap<Felt, Contract>,
     fetcher: Fetcher<P>,
     nft_metadata_semaphore: Arc<Semaphore>,
     // The last fetch result & cursors, in case the processing fails, but not fetching.
@@ -97,7 +97,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         processors: Arc<Processors<P>>,
         config: EngineConfig,
         shutdown_tx: Sender<()>,
-        contracts: &[ContractDefinition],
     ) -> Self {
         Self::new_with_controllers(
             storage,
@@ -106,7 +105,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             processors,
             config,
             shutdown_tx,
-            contracts,
             None,
         )
     }
@@ -119,13 +117,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         processors: Arc<Processors<P>>,
         config: EngineConfig,
         shutdown_tx: Sender<()>,
-        contracts: &[ContractDefinition],
         controllers: Option<Arc<ControllersSync>>,
     ) -> Self {
-        let contracts = contracts
-            .iter()
-            .map(|contract| (contract.address, contract.r#type))
-            .collect();
         let max_concurrent_tasks = config.max_concurrent_tasks;
         let event_processor_config = config.event_processor_config.clone();
         let fetcher_config = config.fetcher_config.clone();
@@ -139,7 +132,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             processors: processors.clone(),
             config,
             shutdown_tx,
-            contracts,
             task_manager: TaskManager::new(
                 storage,
                 cache,
@@ -153,23 +145,21 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             fetcher: Fetcher::new(provider.clone(), fetcher_config),
             nft_metadata_semaphore,
             cached_fetch: None,
+            contracts: HashMap::new(),
         }
     }
 
-    async fn get_cursors(&self) -> Result<HashMap<Felt, ContractCursor>, Error> {
+    async fn get_contracts(&self) -> Result<HashMap<Felt, Contract>, Error> {
         let query = ContractQuery {
             contract_addresses: vec![],
             contract_types: vec![],
         };
         let contracts = self.storage.contracts(&query).await?;
-        let cursors = contracts
+        let contracts = contracts
             .into_iter()
-            .map(|contract| {
-                let cursor: ContractCursor = contract.into();
-                (cursor.contract_address, cursor)
-            })
+            .map(|contract| (contract.contract_address, contract))
             .collect();
-        Ok(cursors)
+        Ok(contracts)
     }
 
     pub async fn start(&mut self) -> Result<(), Error> {
@@ -195,8 +185,9 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     let fetch_result = if let Some(last_fetch_result) = self.cached_fetch.as_ref() {
                         Result::<_, Error>::Ok(last_fetch_result.clone())
                     } else {
-                        let cursors = self.get_cursors().await?;
-                        let fetch_result = self.fetcher.fetch(&cursors).await?;
+                        let contracts = self.get_contracts().await?;
+                        self.contracts = contracts.clone();
+                        let fetch_result = self.fetcher.fetch(&contracts.iter().map(|(_, contract)| (contract.contract_address, ContractCursor::from(contract.clone()))).collect()).await?;
                         Ok(Box::new(fetch_result))
                     };
 
@@ -410,7 +401,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 event_idx as u64,
             );
 
-            let Some(&contract_type) = self.contracts.get(&event.from_address) else {
+            let contract_type = if let Some(ref contract) = self.contracts.get(&event.from_address)
+            {
+                contract.contract_type
+            } else {
                 continue;
             };
 

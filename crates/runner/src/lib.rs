@@ -387,7 +387,6 @@ impl Runner {
                 world_block: self.args.indexing.world_block,
             },
             shutdown_tx.clone(),
-            &self.args.indexing.contracts,
             controllers,
         );
 

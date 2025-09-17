@@ -85,7 +85,7 @@ impl FromStr for ContractType {
     type Err = ProtoError;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        match input.to_lowercase().as_str() {
+        match input.to_lowercase().trim_end_matches("token") {
             "world" => Ok(ContractType::WORLD),
             "erc20" => Ok(ContractType::ERC20),
             "erc721" => Ok(ContractType::ERC721),
