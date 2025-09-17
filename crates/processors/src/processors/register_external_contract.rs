@@ -57,6 +57,19 @@ where
         let contract_name = event.contract_name.to_string().unwrap();
         let instance_name = event.instance_name.to_string().unwrap();
 
+        // Check if external contract indexing is enabled and if this instance is whitelisted
+        if !ctx.config.should_index_external_contract(&instance_name) {
+            debug!(
+                target: LOG_TARGET,
+                namespace = %namespace,
+                contract_name = %contract_name,
+                instance_name = %instance_name,
+                contract_address = %format!("{:#x}", event.contract_address.0),
+                "Skipping external contract registration - not enabled or not whitelisted."
+            );
+            return Ok(());
+        }
+
         // Parse contract type from contract name
         let contract_type = ContractType::from_str(&contract_name).unwrap_or(ContractType::OTHER);
 

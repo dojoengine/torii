@@ -42,6 +42,8 @@ pub struct EventProcessorConfig {
     pub historical_models: HashSet<Felt>,
     pub max_metadata_tasks: usize,
     pub models: HashSet<String>,
+    pub external_contracts: bool,
+    pub external_contract_whitelist: HashSet<String>,
 }
 
 impl Default for EventProcessorConfig {
@@ -52,6 +54,8 @@ impl Default for EventProcessorConfig {
             historical_models: HashSet::new(),
             max_metadata_tasks: 10,
             models: HashSet::new(),
+            external_contracts: true,
+            external_contract_whitelist: HashSet::new(),
         }
     }
 }
@@ -66,6 +70,12 @@ impl EventProcessorConfig {
 
     pub fn is_historical(&self, selector: &Felt) -> bool {
         self.historical_models.contains(selector)
+    }
+
+    pub fn should_index_external_contract(&self, instance_name: &str) -> bool {
+        self.external_contracts
+            && (self.external_contract_whitelist.is_empty()
+                || self.external_contract_whitelist.contains(instance_name))
     }
 }
 

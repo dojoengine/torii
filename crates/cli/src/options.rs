@@ -224,6 +224,23 @@ pub struct IndexingOptions {
         help = "The chunk size to use for batch requests. This is used to split the requests into smaller chunks to avoid overwhelming the provider and potentially running into issues."
     )]
     pub batch_chunk_size: usize,
+
+    /// Whether or not to index external contract registration events.
+    #[arg(
+        long = "indexing.external_contracts",
+        default_value_t = true,
+        help = "Whether or not to index external contract registration events."
+    )]
+    pub external_contracts: bool,
+
+    /// Comma separated list of external contract instance names to index.
+    /// If empty, all external contracts will be indexed (when external_contracts is enabled).
+    #[arg(
+        long = "indexing.external_contract_whitelist",
+        value_delimiter = ',',
+        help = "Comma separated list of external contract instance names to index. If empty, all external contracts will be indexed (when external_contracts is enabled)."
+    )]
+    pub external_contract_whitelist: Vec<String>,
 }
 
 impl Default for IndexingOptions {
@@ -242,6 +259,8 @@ impl Default for IndexingOptions {
             world_block: 0,
             controllers: false,
             strict_model_reader: false,
+            external_contracts: true,
+            external_contract_whitelist: vec![],
         }
     }
 }
