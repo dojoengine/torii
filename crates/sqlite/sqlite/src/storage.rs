@@ -901,9 +901,8 @@ impl Storage for Sql {
         &self,
         address: Felt,
         contract_type: torii_proto::ContractType,
-        block_number: u64,
+        head: u64,
     ) -> Result<(), StorageError> {
-        let head = block_number - 1;
         let insert_contract = "INSERT INTO contracts (id, contract_address, contract_type, head, updated_at, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET contract_type=EXCLUDED.contract_type, head=EXCLUDED.head, updated_at=CURRENT_TIMESTAMP RETURNING *";
 
         let arguments = vec![

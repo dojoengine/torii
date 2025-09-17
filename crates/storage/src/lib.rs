@@ -122,7 +122,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         &self,
         address: Felt,
         contract_type: torii_proto::ContractType,
-        block_number: u64,
+        head: u64,
     ) -> Result<(), StorageError>;
 
     /// Sets an entity with the storage.
