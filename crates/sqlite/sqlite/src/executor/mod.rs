@@ -325,10 +325,13 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 let mut updates = Vec::with_capacity(update_cursors.cursors.len());
 
                 for cursor in &mut contracts {
-                    let new_cursor = update_cursors
+                    let new_cursor = match update_cursors
                         .cursors
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
-                        .expect("update cursor not found");
+                    {
+                        Some(cursor) => cursor,
+                        None => continue, // Skip if no cursor found
+                    };
                     let num_transactions = update_cursors
                         .cursor_transactions
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
