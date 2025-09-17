@@ -72,10 +72,11 @@ impl EventProcessorConfig {
         self.historical_models.contains(selector)
     }
 
-    pub fn should_index_external_contract(&self, instance_name: &str) -> bool {
-        self.external_contracts
-            && (self.external_contract_whitelist.is_empty()
-                || self.external_contract_whitelist.contains(instance_name))
+    pub fn should_index_external_contract(&self, namespace: &str, instance_name: &str) -> bool {
+        (self.namespaces.is_empty() || self.namespaces.contains(namespace))
+            && (self.external_contracts
+                && (self.external_contract_whitelist.is_empty()
+                    || self.external_contract_whitelist.contains(instance_name)))
     }
 }
 

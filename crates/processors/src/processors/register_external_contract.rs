@@ -58,7 +58,10 @@ where
         let instance_name = event.instance_name.to_string().unwrap();
 
         // Check if external contract indexing is enabled and if this instance is whitelisted
-        if !ctx.config.should_index_external_contract(&instance_name) {
+        if !ctx
+            .config
+            .should_index_external_contract(&namespace, &instance_name)
+        {
             debug!(
                 target: LOG_TARGET,
                 namespace = %namespace,
