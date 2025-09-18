@@ -18,7 +18,7 @@ use torii_processors::{
     BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors,
     TransactionProcessorContext,
 };
-use torii_storage::proto::{Contract, ContractCursor, ContractQuery, ContractType};
+use torii_storage::proto::{Contract, ContractCursor, ContractDefinition, ContractQuery, ContractType};
 use torii_storage::utils::format_event_id;
 use torii_storage::Storage;
 use tracing::{debug, error, info, trace};
@@ -62,7 +62,7 @@ pub struct Engine<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static>
     task_manager: TaskManager<P>,
     contract_class_cache: Arc<ContractClassCache<P>>,
     controllers: Option<Arc<ControllersSync>>,
-    contracts: HashMap<Felt, Contract>,
+    contracts: HashMap<Felt, ContractDefinition>,
     fetcher: Fetcher<P>,
     nft_metadata_semaphore: Arc<Semaphore>,
     // The last fetch result & cursors, in case the processing fails, but not fetching.
@@ -97,6 +97,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         processors: Arc<Processors<P>>,
         config: EngineConfig,
         shutdown_tx: Sender<()>,
+        contracts: &[ContractDefinition],
     ) -> Self {
         Self::new_with_controllers(
             storage,
@@ -106,6 +107,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             config,
             shutdown_tx,
             None,
+            contracts,
         )
     }
 
@@ -118,6 +120,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         config: EngineConfig,
         shutdown_tx: Sender<()>,
         controllers: Option<Arc<ControllersSync>>,
+        contracts: &[ContractDefinition],
     ) -> Self {
         let max_concurrent_tasks = config.max_concurrent_tasks;
         let event_processor_config = config.event_processor_config.clone();
@@ -145,7 +148,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             fetcher: Fetcher::new(provider.clone(), fetcher_config),
             nft_metadata_semaphore,
             cached_fetch: None,
-            contracts: HashMap::new(),
+            contracts: contracts.iter().map(|contract| (contract.address, contract.into())).collect(),
         }
     }
 
