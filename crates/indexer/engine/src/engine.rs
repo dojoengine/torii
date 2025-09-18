@@ -62,7 +62,6 @@ pub struct Engine<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static>
     task_manager: TaskManager<P>,
     contract_class_cache: Arc<ContractClassCache<P>>,
     controllers: Option<Arc<ControllersSync>>,
-    contracts: HashMap<Felt, Contract>,
     fetcher: Fetcher<P>,
     nft_metadata_semaphore: Arc<Semaphore>,
     // The last fetch result & cursors, in case the processing fails, but not fetching.
@@ -145,7 +144,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             fetcher: Fetcher::new(provider.clone(), fetcher_config),
             nft_metadata_semaphore,
             cached_fetch: None,
-            contracts: HashMap::new(),
         }
     }
 
@@ -186,7 +184,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                         Result::<_, Error>::Ok(last_fetch_result.clone())
                     } else {
                         let contracts = self.get_contracts().await?;
-                        self.contracts = contracts.clone();
                         let fetch_result = self.fetcher.fetch(&contracts.values().map(|contract| (contract.contract_address, ContractCursor::from(contract.clone()))).collect()).await?;
                         Ok(Box::new(fetch_result))
                     };
@@ -285,9 +282,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             cursors,
         } = fetch_result;
 
-        self.process_range(range).await?;
+        self.process_range(range, &cursors.cursors).await?;
         if let Some(preconfirmed_block) = preconfirmed_block {
-            self.process_pending(preconfirmed_block).await?;
+            self.process_pending(preconfirmed_block, &cursors.cursors)
+                .await?;
         }
 
         // Process parallelized events
@@ -319,7 +317,11 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         Ok(())
     }
 
-    pub async fn process_range(&mut self, range: &FetchRangeResult) -> Result<(), ProcessError> {
+    pub async fn process_range(
+        &mut self,
+        range: &FetchRangeResult,
+        cursors: &HashMap<Felt, ContractCursor>,
+    ) -> Result<(), ProcessError> {
         let mut processed_blocks = HashSet::new();
 
         // Process all transactions in the chunk
@@ -337,6 +339,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     *block_number,
                     block.timestamp,
                     &tx.transaction,
+                    cursors,
                 )
                 .await?;
             }
@@ -354,6 +357,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
     pub async fn process_pending(
         &mut self,
         data: &FetchPreconfirmedBlockResult,
+        cursors: &HashMap<Felt, ContractCursor>,
     ) -> Result<(), ProcessError> {
         for (tx_hash, tx) in &data.transactions {
             if tx.events.is_empty() {
@@ -367,6 +371,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     data.block_number,
                     data.timestamp,
                     &tx.transaction,
+                    cursors,
                 )
                 .await
             {
@@ -387,6 +392,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         block_number: u64,
         block_timestamp: u64,
         transaction: &Option<TransactionContent>,
+        cursors: &HashMap<Felt, ContractCursor>,
     ) -> Result<(), ProcessError> {
         let mut unique_contracts = HashSet::new();
         let mut unique_models = HashSet::new();
@@ -401,7 +407,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 event_idx as u64,
             );
 
-            let contract_type = if let Some(contract) = self.contracts.get(&event.from_address) {
+            let contract_type = if let Some(contract) = cursors.get(&event.from_address) {
                 contract.contract_type
             } else {
                 continue;
