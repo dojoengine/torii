@@ -41,12 +41,10 @@ pub struct ContractCursor {
     pub head: Option<u64>,
     pub last_block_timestamp: Option<u64>,
     pub last_pending_block_tx: Option<Felt>,
-    pub contract_type: ContractType,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Copy, Hash, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Copy, Hash, PartialEq, Eq)]
 pub enum ContractType {
-    #[default]
     WORLD,
     ERC20,
     ERC721,
@@ -156,7 +154,6 @@ impl From<Contract> for ContractCursor {
             head: contract.head,
             last_block_timestamp: contract.last_block_timestamp,
             last_pending_block_tx: contract.last_pending_block_tx,
-            contract_type: contract.contract_type,
         }
     }
 }
