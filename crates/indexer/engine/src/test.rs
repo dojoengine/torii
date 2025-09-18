@@ -25,7 +25,7 @@ use torii_sqlite::executor::Executor;
 use torii_sqlite::types::Token;
 use torii_sqlite::utils::u256_to_sql_string;
 use torii_sqlite::Sql;
-use torii_storage::proto::{ContractDefinition, ContractType};
+use torii_storage::proto::{ContractCursor, ContractDefinition, ContractType};
 use torii_storage::Storage;
 
 use crate::engine::{Engine, EngineConfig};
@@ -55,7 +55,18 @@ where
 
     let cursors = contracts
         .iter()
-        .map(|c| (c.address, Default::default()))
+        .map(|c| {
+            (
+                c.address,
+                ContractCursor {
+                    contract_address: c.address,
+                    head: c.starting_block,
+                    last_block_timestamp: None,
+                    last_pending_block_tx: None,
+                    contract_type: c.r#type,
+                },
+            )
+        })
         .collect();
 
     let fetcher = Fetcher::new(Arc::new(provider), FetcherConfig::default());
