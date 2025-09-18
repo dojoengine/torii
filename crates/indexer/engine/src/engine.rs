@@ -187,7 +187,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     } else {
                         let contracts = self.get_contracts().await?;
                         self.contracts = contracts.clone();
-                        let fetch_result = self.fetcher.fetch(&contracts.iter().map(|(_, contract)| (contract.contract_address, ContractCursor::from(contract.clone()))).collect()).await?;
+                        let fetch_result = self.fetcher.fetch(&contracts.values().map(|contract| (contract.contract_address, ContractCursor::from(contract.clone()))).collect()).await?;
                         Ok(Box::new(fetch_result))
                     };
 
@@ -401,8 +401,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 event_idx as u64,
             );
 
-            let contract_type = if let Some(ref contract) = self.contracts.get(&event.from_address)
-            {
+            let contract_type = if let Some(contract) = self.contracts.get(&event.from_address) {
                 contract.contract_type
             } else {
                 continue;

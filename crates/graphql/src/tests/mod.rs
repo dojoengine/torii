@@ -420,7 +420,6 @@ pub async fn spinup_types_test(
         }),
         EngineConfig::default(),
         shutdown_tx,
-        contracts,
     );
 
     let cursors = contracts
