@@ -126,6 +126,7 @@ pub enum QueryType {
     RegisterNftToken(RegisterNftTokenQuery),
     RegisterTokenContract(RegisterTokenContractQuery),
     RegisterModel,
+    RegisterContract,
     StoreEvent,
     StoreTokenTransfer,
     UpdateTokenMetadata(UpdateTokenMetadataQuery),
@@ -149,6 +150,7 @@ impl std::fmt::Display for QueryType {
                 QueryType::RegisterNftToken(_) => "RegisterNftToken",
                 QueryType::RegisterTokenContract(_) => "RegisterTokenContract",
                 QueryType::RegisterModel => "RegisterModel",
+                QueryType::RegisterContract => "RegisterContract",
                 QueryType::StoreEvent => "StoreEvent",
                 QueryType::StoreTokenTransfer => "StoreTokenTransfer",
                 QueryType::UpdateTokenMetadata(_) => "UpdateTokenMetadata",
@@ -323,10 +325,13 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 let mut updates = Vec::with_capacity(update_cursors.cursors.len());
 
                 for cursor in &mut contracts {
-                    let new_cursor = update_cursors
+                    let new_cursor = match update_cursors
                         .cursors
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
-                        .expect("update cursor not found");
+                    {
+                        Some(cursor) => cursor,
+                        None => continue, // Skip if no cursor found
+                    };
                     let num_transactions = update_cursors
                         .cursor_transactions
                         .get(&Felt::from_str(&cursor.contract_address).unwrap())
@@ -555,6 +560,13 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 let model_registered = torii_sqlite_types::Model::from_row(&row)?;
                 self.publish_optimistic_and_queue(BrokerMessage::ModelRegistered(
                     model_registered.into(),
+                ));
+            }
+            QueryType::RegisterContract => {
+                let row = query.fetch_one(&mut **tx).await?;
+                let contract_registered = torii_sqlite_types::Contract::from_row(&row)?;
+                self.publish_optimistic_and_queue(BrokerMessage::ContractUpdate(
+                    contract_registered.into(),
                 ));
             }
             QueryType::EventMessage(em_query) => {

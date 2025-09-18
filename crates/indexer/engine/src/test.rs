@@ -51,7 +51,6 @@ where
         }),
         EngineConfig::default(),
         shutdown_tx,
-        contracts,
     );
 
     let cursors = contracts

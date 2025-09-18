@@ -375,11 +375,18 @@ impl Runner {
                     historical_models,
                     max_metadata_tasks: self.args.erc.max_metadata_tasks,
                     models: self.args.indexing.models.clone().into_iter().collect(),
+                    external_contracts: self.args.indexing.external_contracts,
+                    external_contract_whitelist: self
+                        .args
+                        .indexing
+                        .external_contract_whitelist
+                        .clone()
+                        .into_iter()
+                        .collect(),
                 },
                 world_block: self.args.indexing.world_block,
             },
             shutdown_tx.clone(),
-            &self.args.indexing.contracts,
             controllers,
         );
 

@@ -137,7 +137,6 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         }),
         EngineConfig::default(),
         shutdown_tx,
-        contracts,
     );
 
     let cursors = contracts
