@@ -547,7 +547,6 @@ pub struct TokenAttributeFilter {
     pub trait_value: String,
 }
 
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct TokenQuery {
     pub contract_addresses: Vec<Felt>,
@@ -565,7 +564,6 @@ impl From<TokenAttributeFilter> for proto::types::TokenAttributeFilter {
     }
 }
 
-
 impl From<proto::types::TokenAttributeFilter> for TokenAttributeFilter {
     fn from(value: proto::types::TokenAttributeFilter) -> Self {
         Self {
@@ -574,7 +572,6 @@ impl From<proto::types::TokenAttributeFilter> for TokenAttributeFilter {
         }
     }
 }
-
 
 impl From<TokenQuery> for proto::types::TokenQuery {
     fn from(value: TokenQuery) -> Self {

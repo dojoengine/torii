@@ -61,7 +61,13 @@ where
     let fetcher = Fetcher::new(Arc::new(provider), FetcherConfig::default());
 
     let data = fetcher.fetch(&cursors).await.unwrap();
-    engine.process(&data, &contracts.iter().map(|c| (c.address, c.r#type)).collect()).await.unwrap();
+    engine
+        .process(
+            &data,
+            &contracts.iter().map(|c| (c.address, c.r#type)).collect(),
+        )
+        .await
+        .unwrap();
 
     db.apply_balances_diff(
         cache.balances_diff().await,
