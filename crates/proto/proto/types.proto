@@ -193,14 +193,24 @@ message ControllerQuery {
     Pagination pagination = 3;
 }
 
+// Token attribute filter for filtering tokens by their metadata attributes
+message TokenAttributeFilter {
+    // The name of the trait/attribute to filter by
+    string trait_name = 1;
+    // The value of the trait/attribute to filter by
+    string trait_value = 2;
+}
+
 // A request to retrieve tokens
 message TokenQuery {
     // The list of contract addresses to retrieve tokens for
     repeated bytes contract_addresses = 1;
     // The list of token IDs to retrieve tokens for
     repeated bytes token_ids = 2;
+    // The list of attribute filters to apply
+    repeated TokenAttributeFilter attribute_filters = 3;
     // Pagination
-    Pagination pagination = 3;
+    Pagination pagination = 4;
 }
 
 // A request to retrieve token balances
@@ -374,4 +384,6 @@ message TokenContract {
     bytes metadata = 6;
     // The total supply of the contract
     optional bytes total_supply = 7;
+    // The traits of the contract (JSON object with trait types and possible values)
+    string traits = 8;
 }

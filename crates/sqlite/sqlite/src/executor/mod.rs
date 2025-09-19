@@ -4,8 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
-use erc::UpdateTokenMetadataQuery;
+use erc::{store_token_attributes, update_contract_traits_from_metadata, UpdateTokenMetadataQuery};
 use metrics::{counter, histogram};
+use serde_json;
 use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
@@ -740,7 +741,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
                 let query = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "INSERT INTO tokens (id, contract_address, token_id, name, symbol, decimals, \
-                     metadata, total_supply) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
+                     metadata, total_supply, traits) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
                 )
                 .bind(felt_and_u256_to_sql_string(
                     &register_nft_token.contract_address,
@@ -752,17 +753,29 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .bind(&symbol)
                 .bind(0)
                 .bind(&register_nft_token.metadata)
-                .bind(u256_to_sql_string(&U256::from(0u8))); // Default to 0, will be updated on mint
+                .bind(u256_to_sql_string(&U256::from(0u8))) // Default to 0, will be updated on mint
+                .bind("{}"); // Initialize traits as empty JSON object for individual tokens
 
                 let token = query.fetch_one(&mut **tx).await?;
+
+                // Store individual token attributes for fast filtering
+                store_token_attributes(&register_nft_token.metadata, &token.id, &mut *tx).await?;
+
+                // Extract traits from metadata and update the token contract's traits
+                update_contract_traits_from_metadata(
+                    &register_nft_token.metadata,
+                    &register_nft_token.contract_address,
+                    &mut *tx,
+                )
+                .await?;
 
                 info!(target: LOG_TARGET, name = %name, symbol = %symbol, contract_address = %token.contract_address, token_id = %register_nft_token.token_id, "NFT token registered.");
                 self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));
             }
             QueryType::RegisterTokenContract(register_token_contract) => {
                 let query = sqlx::query_as::<_, torii_sqlite_types::Token>(
-                    "INSERT INTO tokens (id, contract_address, name, symbol, decimals, metadata, total_supply) VALUES (?, \
-                     ?, ?, ?, ?, ?, ?) RETURNING *",
+                    "INSERT INTO tokens (id, contract_address, name, symbol, decimals, metadata, total_supply, traits) VALUES (?, \
+                     ?, ?, ?, ?, ?, ?, ?) RETURNING *",
                 )
                 .bind(felt_to_sql_string(&register_token_contract.contract_address))
                 .bind(felt_to_sql_string(&register_token_contract.contract_address))
@@ -770,7 +783,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .bind(&register_token_contract.symbol)
                 .bind(register_token_contract.decimals)
                 .bind(&register_token_contract.metadata)
-                .bind(u256_to_sql_string(&U256::from(0u8))); // Initialize total_supply to 0 for all contracts
+                .bind(u256_to_sql_string(&U256::from(0u8))) // Initialize total_supply to 0 for all contracts
+                .bind("{}"); // Initialize traits as empty JSON object
 
                 let token = query.fetch_one(&mut **tx).await?;
                 info!(target: LOG_TARGET, name = %register_token_contract.name, symbol = %register_token_contract.symbol, contract_address = %token.contract_address, "Registered token contract.");
@@ -804,6 +818,20 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .bind(&id)
                 .fetch_one(&mut **tx)
                 .await?;
+
+                // If this is an individual token (has token_id), update attributes and contract's traits
+                if update_metadata.token_id.is_some() {
+                    // Update individual token attributes
+                    store_token_attributes(&update_metadata.metadata, &token.id, &mut *tx).await?;
+
+                    // Update contract's traits
+                    update_contract_traits_from_metadata(
+                        &update_metadata.metadata,
+                        &update_metadata.contract_address,
+                        &mut *tx,
+                    )
+                    .await?;
+                }
 
                 info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = ?update_metadata.token_id, "Token metadata updated.");
                 self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));

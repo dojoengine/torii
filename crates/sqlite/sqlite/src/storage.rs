@@ -250,13 +250,18 @@ impl ReadOnlyStorage for Sql {
     async fn tokens(&self, query: &TokenQuery) -> Result<Page<Token>, StorageError> {
         let executor = PaginationExecutor::new(self.pool.clone());
         let mut query_builder = QueryBuilder::new("tokens")
-            .select(&["*".to_string()])
-            .where_clause("token_id != '' AND token_id IS NOT NULL");
+            .alias("t")
+            .select(&["t.*".to_string()]);
+
+        let mut join_conditions = Vec::new();
+        let mut where_conditions = Vec::new();
+
+        // Always filter for NFTs only
+        where_conditions.push("t.token_id != '' AND t.token_id IS NOT NULL".to_string());
 
         if !query.contract_addresses.is_empty() {
             let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
-            query_builder =
-                query_builder.where_clause(&format!("contract_address IN ({})", placeholders));
+            where_conditions.push(format!("t.contract_address IN ({})", placeholders));
             for addr in &query.contract_addresses {
                 query_builder = query_builder.bind_value(format!("{:#x}", addr));
             }
@@ -264,11 +269,36 @@ impl ReadOnlyStorage for Sql {
 
         if !query.token_ids.is_empty() {
             let placeholders = vec!["?"; query.token_ids.len()].join(", ");
-            query_builder = query_builder.where_clause(&format!("token_id IN ({})", placeholders));
+            where_conditions.push(format!("t.token_id IN ({})", placeholders));
             for token_id in &query.token_ids {
                 query_builder =
                     query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
             }
+        }
+
+        // Add attribute filters
+        for (i, filter) in query.attribute_filters.iter().enumerate() {
+            let alias = format!("ta{}", i);
+            join_conditions.push(format!(
+                "JOIN token_attributes {} ON t.id = {}.token_id",
+                alias, alias
+            ));
+
+            // Simple equality matching for trait name and value
+            let condition = format!("{}.trait_name = ? AND {}.trait_value = ?", alias, alias);
+            where_conditions.push(condition);
+            query_builder = query_builder.bind_value(filter.trait_name.clone());
+            query_builder = query_builder.bind_value(filter.trait_value.clone());
+        }
+
+        // Add joins
+        for join in join_conditions {
+            query_builder = query_builder.join(&join);
+        }
+
+        // Add where conditions
+        if !where_conditions.is_empty() {
+            query_builder = query_builder.where_clause(&where_conditions.join(" AND ").to_string());
         }
 
         let page = executor
@@ -276,7 +306,7 @@ impl ReadOnlyStorage for Sql {
                 query_builder,
                 &query.pagination,
                 &OrderBy {
-                    field: "id".to_string(),
+                    field: "t.id".to_string(),
                     direction: OrderDirection::Desc,
                 },
             )
@@ -373,6 +403,7 @@ impl ReadOnlyStorage for Sql {
                 "t.decimals as decimals".to_string(),
                 "t.metadata as metadata".to_string(),
                 "t.total_supply as total_supply".to_string(),
+                "t.traits as traits".to_string(),
             ])
             .join("JOIN contracts c ON c.contract_address = t.contract_address")
             .where_clause("t.token_id = '' OR t.token_id IS NULL");

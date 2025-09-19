@@ -207,6 +207,7 @@ pub struct TokenContract {
     pub decimals: u8,
     pub metadata: String,
     pub total_supply: Option<String>,
+    pub traits: String,
 }
 
 impl From<TokenContract> for torii_proto::TokenContract {
@@ -224,6 +225,7 @@ impl From<TokenContract> for torii_proto::TokenContract {
             total_supply: value
                 .total_supply
                 .map(|s| U256::from_be_hex(s.trim_start_matches("0x"))),
+            traits: value.traits,
         }
     }
 }
