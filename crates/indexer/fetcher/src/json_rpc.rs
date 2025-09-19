@@ -27,6 +27,14 @@ use crate::{
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::fetcher";
 
+/// Represents raw fetched events for a contract with metadata needed for processing
+struct ContractEventBatch {
+    contract_address: Felt,
+    events: Vec<EmittedEvent>,
+    from_block: u64,
+    to_block: u64,
+}
+
 #[derive(Debug)]
 pub struct Fetcher<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> {
     pub provider: P,
@@ -137,7 +145,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Step 2: Fetch all events recursively
         let events_start = Instant::now();
         let fetched_events = self
-            .fetch_events(event_requests, &mut cursors, latest_block.block_number)
+            .fetch_and_preprocess_events(event_requests, &mut cursors, latest_block.block_number)
             .await?;
         histogram!("torii_fetcher_events_duration_seconds")
             .record(events_start.elapsed().as_secs_f64());
@@ -506,19 +514,25 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         ))
     }
 
-    async fn fetch_events(
+    /// Fetches all event pages from the RPC provider without any processing
+    ///
+    /// This is a pure fetching function that:
+    /// - Handles pagination by following continuation tokens
+    /// - Batches multiple contract requests for efficiency
+    /// - Returns raw unfiltered events grouped by contract
+    ///
+    /// No cursor updates or event filtering happens here - this function only
+    /// retrieves data from the RPC provider.
+    async fn fetch_all_event_pages(
         &self,
         initial_requests: Vec<(Felt, u64, u64, ProviderRequestData)>,
-        cursors: &mut HashMap<Felt, ContractCursor>,
         latest_block_number: u64,
-    ) -> Result<Vec<EmittedEvent>, Error> {
-        let mut all_events = Vec::new();
+    ) -> Result<Vec<ContractEventBatch>, Error> {
+        let mut all_batches = Vec::new();
         let mut current_requests = initial_requests;
-        let mut old_cursors = cursors.clone();
 
         while !current_requests.is_empty() {
             let mut next_requests = Vec::new();
-            let mut events = Vec::new();
 
             // Log details about each request in the batch
             for (contract_address, from, to, _) in &current_requests {
@@ -566,14 +580,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     contract = format!("{:#x}", contract_address),
                     from_block = from,
                     to_block = to,
-                    "Processing events for contract"
+                    "Processing events page for contract"
                 );
-
-                let old_cursor = old_cursors.get_mut(&contract_address).unwrap();
-                let new_cursor = cursors.get_mut(&contract_address).unwrap();
-                let mut last_pending_block_tx_tmp = old_cursor.last_pending_block_tx;
-                let mut done = false;
-                let mut contract_events_count = 0;
 
                 match result {
                     ProviderResponseData::GetEvents(events_page) => {
@@ -585,64 +593,36 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                             "Received events page for contract"
                         );
 
-                        // Process events for this page, only including events up to our target
-                        // block
-                        for event in events_page.events.clone() {
-                            if from == 0 {
+                        // Determine actual from/to blocks from events if needed
+                        let mut page_events = Vec::new();
+                        let mut done = false;
+
+                        for event in events_page.events {
+                            if from == 0 && event.block_number.is_some() {
                                 from = event.block_number.unwrap();
                                 to =
                                     (from + self.config.blocks_chunk_size).min(latest_block_number);
                             }
 
+                            // Stop if we've exceeded our target block range
                             if event.block_number.unwrap() > to {
                                 done = true;
                                 break;
                             }
 
-                            // Then we skip all transactions until we reach the last pending
-                            // processed transaction (if any)
-                            if let Some(last_pending_block_tx) = last_pending_block_tx_tmp {
-                                if event.transaction_hash != last_pending_block_tx {
-                                    continue;
-                                }
-                                last_pending_block_tx_tmp = None;
-                            }
-
-                            // Skip the latest pending block transaction events
-                            // * as we might have multiple events for the same transaction
-                            if let Some(last_pending_block_tx) = old_cursor.last_pending_block_tx {
-                                if event.transaction_hash == last_pending_block_tx {
-                                    continue;
-                                }
-                            }
-
-                            events.push(event);
-                            contract_events_count += 1;
+                            page_events.push(event);
                         }
 
-                        debug!(
-                            target: LOG_TARGET,
-                            contract = format!("{:#x}", contract_address),
-                            processed_events = contract_events_count,
-                            from_block = from,
-                            to_block = to,
-                            "Processed {} events for contract from block {} to {}",
-                            contract_events_count, from, to
-                        );
-
-                        if new_cursor.head != Some(to) {
-                            new_cursor.last_pending_block_tx = None;
+                        if !page_events.is_empty() {
+                            all_batches.push(ContractEventBatch {
+                                contract_address,
+                                events: page_events,
+                                from_block: from,
+                                to_block: to,
+                            });
                         }
-                        new_cursor.head = Some(to);
-                        debug!(
-                            target: LOG_TARGET,
-                            contract = format!("{:#x}", contract_address),
-                            new_head = to,
-                            last_pending_block_tx = new_cursor.last_pending_block_tx.map(|tx| format!("{:#x}", tx)),
-                            "Updated cursor head."
-                        );
 
-                        // Add continuation request to next_requests instead of recursing
+                        // Add continuation request if there are more pages
                         if events_page.continuation_token.is_some() && !done {
                             debug!(
                                 target: LOG_TARGET,
@@ -671,20 +651,203 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
             debug!(
                 target: LOG_TARGET,
-                events_in_batch = events.len(),
-                total_events = all_events.len() + events.len(),
+                batches_count = all_batches.len(),
                 next_requests = next_requests.len(),
-                "Batch processing complete: {} events in this batch, {} total events, {} continuation requests",
-                events.len(),
-                all_events.len() + events.len(),
+                "Batch fetching complete: {} total batches, {} continuation requests",
+                all_batches.len(),
                 next_requests.len()
             );
 
-            all_events.extend(events);
             current_requests = next_requests;
         }
 
-        Ok(all_events)
+        Ok(all_batches)
+    }
+
+    /// Preprocesses raw fetched events by filtering and updating cursors
+    ///
+    /// This function takes raw event batches and:
+    /// 1. Validates that cursor's last_pending_block_tx exists in the events
+    /// 2. Filters out events that have already been processed (based on cursor state)
+    /// 3. Updates cursor positions to mark progress
+    /// 4. Returns only the new, unprocessed events
+    ///
+    /// The filtering logic handles:
+    /// - Validating cursor consistency with fetched events
+    /// - Skipping events before the last processed transaction (if valid)
+    /// - Handling pending block transaction boundaries
+    /// - Updating cursor heads to the latest processed block
+    fn preprocess_fetched_events(
+        &self,
+        event_batches: Vec<ContractEventBatch>,
+        cursors: &mut HashMap<Felt, ContractCursor>,
+    ) -> Vec<EmittedEvent> {
+        let mut processed_events = Vec::new();
+        let old_cursors = cursors.clone();
+
+        for batch in event_batches {
+            let contract_address = batch.contract_address;
+            let from = batch.from_block;
+            let to = batch.to_block;
+
+            let old_cursor = match old_cursors.get(&contract_address) {
+                Some(cursor) => cursor,
+                None => continue,
+            };
+
+            let new_cursor = match cursors.get_mut(&contract_address) {
+                Some(cursor) => cursor,
+                None => continue,
+            };
+
+            debug!(
+                target: LOG_TARGET,
+                contract = format!("{:#x}", contract_address),
+                events_count = batch.events.len(),
+                from_block = from,
+                to_block = to,
+                last_pending_tx = old_cursor.last_pending_block_tx.map(|tx| format!("{:#x}", tx)),
+                "Processing events for contract"
+            );
+
+            // Check if the last_pending_block_tx exists in the current batch
+            let should_skip_to_last_pending = if let Some(last_pending_tx) =
+                old_cursor.last_pending_block_tx
+            {
+                let tx_exists = batch
+                    .events
+                    .iter()
+                    .any(|e| e.transaction_hash == last_pending_tx);
+                if !tx_exists {
+                    debug!(
+                        target: LOG_TARGET,
+                        contract = format!("{:#x}", contract_address),
+                        last_pending_tx = format!("{:#x}", last_pending_tx),
+                        "Last pending transaction not found in events batch - processing all events without skipping"
+                    );
+                }
+                tx_exists
+            } else {
+                false
+            };
+
+            let mut last_pending_block_tx_tmp = if should_skip_to_last_pending {
+                old_cursor.last_pending_block_tx
+            } else {
+                None
+            };
+            let mut contract_events_count = 0;
+            let mut found_last_pending = false;
+
+            for event in batch.events {
+                // Skip all transactions until we reach the last pending processed transaction (if any)
+                if let Some(last_pending_block_tx) = last_pending_block_tx_tmp {
+                    if event.transaction_hash != last_pending_block_tx {
+                        continue;
+                    }
+                    found_last_pending = true;
+                    last_pending_block_tx_tmp = None;
+                }
+
+                // Skip the latest pending block transaction events
+                // as we might have multiple events for the same transaction
+                if should_skip_to_last_pending {
+                    if let Some(last_pending_block_tx) = old_cursor.last_pending_block_tx {
+                        if event.transaction_hash == last_pending_block_tx {
+                            continue;
+                        }
+                    }
+                }
+
+                processed_events.push(event);
+                contract_events_count += 1;
+            }
+
+            debug!(
+                target: LOG_TARGET,
+                contract = format!("{:#x}", contract_address),
+                processed_events = contract_events_count,
+                from_block = from,
+                to_block = to,
+                found_last_pending = found_last_pending || !should_skip_to_last_pending,
+                "Processed {} events for contract from block {} to {}",
+                contract_events_count, from, to
+            );
+
+            // Update cursor
+            if new_cursor.head != Some(to) {
+                new_cursor.last_pending_block_tx = None;
+            }
+            new_cursor.head = Some(to);
+
+            debug!(
+                target: LOG_TARGET,
+                contract = format!("{:#x}", contract_address),
+                new_head = to,
+                last_pending_block_tx = new_cursor.last_pending_block_tx.map(|tx| format!("{:#x}", tx)),
+                "Updated cursor head"
+            );
+        }
+
+        processed_events
+    }
+
+    /// Fetches and processes events for multiple contracts
+    ///
+    /// This function coordinates the event fetching process:
+    /// 1. Fetches all event pages from the RPC provider (handles pagination)
+    /// 2. Filters events based on cursor state (skips already processed events)
+    /// 3. Updates cursors to track progress
+    ///
+    /// # Arguments
+    /// * `initial_requests` - Initial event requests for each contract with their block ranges
+    /// * `cursors` - Mutable cursor state that tracks processed events per contract
+    /// * `latest_block_number` - The latest block number to fetch events up to
+    ///
+    /// # Returns
+    /// Filtered list of events that haven't been processed yet
+    async fn fetch_and_preprocess_events(
+        &self,
+        initial_requests: Vec<(Felt, u64, u64, ProviderRequestData)>,
+        cursors: &mut HashMap<Felt, ContractCursor>,
+        latest_block_number: u64,
+    ) -> Result<Vec<EmittedEvent>, Error> {
+        debug!(
+            target: LOG_TARGET,
+            contracts_count = initial_requests.len(),
+            latest_block = latest_block_number,
+            "Starting event fetch for {} contracts",
+            initial_requests.len()
+        );
+
+        // Step 1: Fetch all event pages from RPC provider
+        // This handles pagination automatically and returns raw unfiltered events
+        let event_batches = self
+            .fetch_all_event_pages(initial_requests, latest_block_number)
+            .await?;
+
+        debug!(
+            target: LOG_TARGET,
+            batches_count = event_batches.len(),
+            total_raw_events = event_batches.iter().map(|b| b.events.len()).sum::<usize>(),
+            "Fetched {} event batches with {} total raw events",
+            event_batches.len(),
+            event_batches.iter().map(|b| b.events.len()).sum::<usize>()
+        );
+
+        // Step 2: Process the fetched events
+        // - Filter out already processed events based on cursor state
+        // - Update cursors to mark the new head position
+        let processed_events = self.preprocess_fetched_events(event_batches, cursors);
+
+        debug!(
+            target: LOG_TARGET,
+            processed_events_count = processed_events.len(),
+            "Completed event fetch: {} new events after filtering",
+            processed_events.len()
+        );
+
+        Ok(processed_events)
     }
 
     async fn chunked_batch_requests(
