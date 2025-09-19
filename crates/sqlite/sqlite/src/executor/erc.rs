@@ -590,10 +590,10 @@ mod tests {
         }"#;
 
         let existing_traits = r#"{
-            "Weapon Type": ["Bow", "Staff"],
-            "Damage": ["Low", "Medium"],
-            "Rarity": ["Common", "Rare"],
-            "Element": ["Water", "Earth"]
+            "Weapon Type": {"Bow": 0, "Staff": 0},
+            "Damage": {"Low": 0, "Medium": 0},
+            "Rarity": {"Common": 0, "Rare": 0},
+            "Element": {"Water": 0, "Earth": 0}
         }"#;
 
         let result = extract_traits_from_metadata(metadata, existing_traits).unwrap();
