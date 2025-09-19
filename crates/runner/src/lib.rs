@@ -246,6 +246,14 @@ impl Runner {
             self.args.sql.wal_autocheckpoint.to_string(),
         );
         options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
+        options = options.pragma(
+            "soft_heap_limit",
+            self.args.sql.soft_memory_limit.to_string(),
+        );
+        options = options.pragma(
+            "hard_heap_limit",
+            self.args.sql.hard_memory_limit.to_string(),
+        );
 
         let write_pool = SqlitePoolOptions::new()
             .min_connections(1)
