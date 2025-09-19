@@ -515,12 +515,12 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
     }
 
     /// Fetches all event pages from the RPC provider without any processing
-    /// 
+    ///
     /// This is a pure fetching function that:
     /// - Handles pagination by following continuation tokens
     /// - Batches multiple contract requests for efficiency
     /// - Returns raw unfiltered events grouped by contract
-    /// 
+    ///
     /// No cursor updates or event filtering happens here - this function only
     /// retrieves data from the RPC provider.
     async fn fetch_all_event_pages(
@@ -596,11 +596,12 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                         // Determine actual from/to blocks from events if needed
                         let mut page_events = Vec::new();
                         let mut done = false;
-                        
+
                         for event in events_page.events {
                             if from == 0 && event.block_number.is_some() {
                                 from = event.block_number.unwrap();
-                                to = (from + self.config.blocks_chunk_size).min(latest_block_number);
+                                to =
+                                    (from + self.config.blocks_chunk_size).min(latest_block_number);
                             }
 
                             // Stop if we've exceeded our target block range
@@ -664,13 +665,13 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
     }
 
     /// Processes raw fetched events by filtering and updating cursors
-    /// 
+    ///
     /// This function takes raw event batches and:
     /// 1. Validates that cursor's last_pending_block_tx exists in the events
     /// 2. Filters out events that have already been processed (based on cursor state)
     /// 3. Updates cursor positions to mark progress
     /// 4. Returns only the new, unprocessed events
-    /// 
+    ///
     /// The filtering logic handles:
     /// - Validating cursor consistency with fetched events
     /// - Skipping events before the last processed transaction (if valid)
@@ -688,12 +689,12 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             let contract_address = batch.contract_address;
             let from = batch.from_block;
             let to = batch.to_block;
-            
+
             let old_cursor = match old_cursors.get(&contract_address) {
                 Some(cursor) => cursor,
                 None => continue,
             };
-            
+
             let new_cursor = match cursors.get_mut(&contract_address) {
                 Some(cursor) => cursor,
                 None => continue,
@@ -710,8 +711,13 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             );
 
             // Check if the last_pending_block_tx exists in the current batch
-            let should_skip_to_last_pending = if let Some(last_pending_tx) = old_cursor.last_pending_block_tx {
-                let tx_exists = batch.events.iter().any(|e| e.transaction_hash == last_pending_tx);
+            let should_skip_to_last_pending = if let Some(last_pending_tx) =
+                old_cursor.last_pending_block_tx
+            {
+                let tx_exists = batch
+                    .events
+                    .iter()
+                    .any(|e| e.transaction_hash == last_pending_tx);
                 if !tx_exists {
                     debug!(
                         target: LOG_TARGET,
@@ -773,7 +779,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 new_cursor.last_pending_block_tx = None;
             }
             new_cursor.head = Some(to);
-            
+
             debug!(
                 target: LOG_TARGET,
                 contract = format!("{:#x}", contract_address),
@@ -787,7 +793,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
     }
 
     /// Fetches and processes events for multiple contracts
-    /// 
+    ///
     /// This function coordinates the event fetching process:
     /// 1. Fetches all event pages from the RPC provider (handles pagination)
     /// 2. Filters events based on cursor state (skips already processed events)
@@ -816,8 +822,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
         // Step 1: Fetch all event pages from RPC provider
         // This handles pagination automatically and returns raw unfiltered events
-        let event_batches = self.fetch_all_event_pages(initial_requests, latest_block_number).await?;
-        
+        let event_batches = self
+            .fetch_all_event_pages(initial_requests, latest_block_number)
+            .await?;
+
         debug!(
             target: LOG_TARGET,
             batches_count = event_batches.len(),
@@ -826,19 +834,19 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             event_batches.len(),
             event_batches.iter().map(|b| b.events.len()).sum::<usize>()
         );
-        
+
         // Step 2: Process the fetched events
         // - Filter out already processed events based on cursor state
         // - Update cursors to mark the new head position
         let processed_events = self.process_fetched_events(event_batches, cursors);
-        
+
         debug!(
             target: LOG_TARGET,
             processed_events_count = processed_events.len(),
             "Completed event fetch: {} new events after filtering",
             processed_events.len()
         );
-        
+
         Ok(processed_events)
     }
 
