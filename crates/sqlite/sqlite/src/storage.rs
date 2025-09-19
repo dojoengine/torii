@@ -306,7 +306,7 @@ impl ReadOnlyStorage for Sql {
                 query_builder,
                 &query.pagination,
                 &OrderBy {
-                    field: "t.id".to_string(),
+                    field: "id".to_string(),
                     direction: OrderDirection::Desc,
                 },
             )
