@@ -145,7 +145,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Step 2: Fetch all events recursively
         let events_start = Instant::now();
         let fetched_events = self
-            .fetch_and_process_events(event_requests, &mut cursors, latest_block.block_number)
+            .fetch_and_preprocess_events(event_requests, &mut cursors, latest_block.block_number)
             .await?;
         histogram!("torii_fetcher_events_duration_seconds")
             .record(events_start.elapsed().as_secs_f64());
@@ -664,7 +664,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         Ok(all_batches)
     }
 
-    /// Processes raw fetched events by filtering and updating cursors
+    /// Preprocesses raw fetched events by filtering and updating cursors
     ///
     /// This function takes raw event batches and:
     /// 1. Validates that cursor's last_pending_block_tx exists in the events
@@ -677,7 +677,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
     /// - Skipping events before the last processed transaction (if valid)
     /// - Handling pending block transaction boundaries
     /// - Updating cursor heads to the latest processed block
-    fn process_fetched_events(
+    fn preprocess_fetched_events(
         &self,
         event_batches: Vec<ContractEventBatch>,
         cursors: &mut HashMap<Felt, ContractCursor>,
@@ -806,7 +806,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
     ///
     /// # Returns
     /// Filtered list of events that haven't been processed yet
-    async fn fetch_and_process_events(
+    async fn fetch_and_preprocess_events(
         &self,
         initial_requests: Vec<(Felt, u64, u64, ProviderRequestData)>,
         cursors: &mut HashMap<Felt, ContractCursor>,
@@ -838,7 +838,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         // Step 2: Process the fetched events
         // - Filter out already processed events based on cursor state
         // - Update cursors to mark the new head position
-        let processed_events = self.process_fetched_events(event_batches, cursors);
+        let processed_events = self.preprocess_fetched_events(event_batches, cursors);
 
         debug!(
             target: LOG_TARGET,
