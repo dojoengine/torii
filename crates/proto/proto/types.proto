@@ -199,16 +199,6 @@ message TokenAttributeFilter {
     string trait_name = 1;
     // The value of the trait/attribute to filter by
     string trait_value = 2;
-    // The operator to use for comparison
-    TokenAttributeOperator operator = 3;
-}
-
-// Operators for token attribute filtering
-enum TokenAttributeOperator {
-    ATTR_EQ = 0;    // Equal
-    ATTR_NEQ = 1;   // Not equal
-    ATTR_LIKE = 2;  // Like (pattern matching)
-    ATTR_IN = 3;    // In (multiple values)
 }
 
 // A request to retrieve tokens

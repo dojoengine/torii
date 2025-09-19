@@ -284,23 +284,8 @@ impl ReadOnlyStorage for Sql {
                 alias, alias
             ));
 
-            let condition = match filter.operator {
-                torii_proto::TokenAttributeOperator::AttrEq => {
-                    format!("{}.trait_name = ? AND {}.trait_value = ?", alias, alias)
-                }
-                torii_proto::TokenAttributeOperator::AttrNeq => {
-                    format!("{}.trait_name = ? AND {}.trait_value != ?", alias, alias)
-                }
-                torii_proto::TokenAttributeOperator::AttrLike => {
-                    format!("{}.trait_name = ? AND {}.trait_value LIKE ?", alias, alias)
-                }
-                torii_proto::TokenAttributeOperator::AttrIn => {
-                    // For IN operator, we need to handle multiple values
-                    // This is a simplified version - in practice you might want to handle this differently
-                    format!("{}.trait_name = ? AND {}.trait_value = ?", alias, alias)
-                }
-            };
-
+            // Simple equality matching for trait name and value
+            let condition = format!("{}.trait_name = ? AND {}.trait_value = ?", alias, alias);
             where_conditions.push(condition);
             query_builder = query_builder.bind_value(filter.trait_name.clone());
             query_builder = query_builder.bind_value(filter.trait_value.clone());
