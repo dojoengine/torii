@@ -438,6 +438,10 @@ pub const DEFAULT_DATABASE_PAGE_SIZE: u64 = 32_768;
 /// Negative value is used to determine number of KiB to use for cache. Currently set as 512MB, 25%
 /// of the RAM of the smallest slot instance.
 pub const DEFAULT_DATABASE_CACHE_SIZE: i64 = -500_000;
+/// Default soft memory limit in bytes (1GB)
+pub const DEFAULT_DATABASE_SOFT_MEMORY_LIMIT: u64 = 1024 * 1024 * 1024;
+/// Default hard memory limit in bytes (2GB)
+pub const DEFAULT_DATABASE_HARD_MEMORY_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
@@ -549,6 +553,26 @@ pub struct SqlOptions {
                 controls how many concurrent read operations can be performed."
     )]
     pub max_connections: u32,
+
+    /// Soft memory limit in bytes for SQLite operations. When exceeded, SQLite will try to free
+    /// memory by reducing cache size and other optimizations.
+    #[arg(
+        long = "sql.soft_memory_limit",
+        default_value_t = DEFAULT_DATABASE_SOFT_MEMORY_LIMIT,
+        help = "Soft memory limit in bytes for SQLite operations. When exceeded, SQLite will try \
+                to free memory by reducing cache size and other optimizations."
+    )]
+    pub soft_memory_limit: u64,
+
+    /// Hard memory limit in bytes for SQLite operations. When exceeded, SQLite will abort
+    /// operations to prevent excessive memory usage.
+    #[arg(
+        long = "sql.hard_memory_limit",
+        default_value_t = DEFAULT_DATABASE_HARD_MEMORY_LIMIT,
+        help = "Hard memory limit in bytes for SQLite operations. When exceeded, SQLite will \
+                abort operations to prevent excessive memory usage."
+    )]
+    pub hard_memory_limit: u64,
 }
 
 impl Default for SqlOptions {
@@ -564,6 +588,8 @@ impl Default for SqlOptions {
             acquire_timeout: DEFAULT_DATABASE_ACQUIRE_TIMEOUT,
             idle_timeout: DEFAULT_DATABASE_IDLE_TIMEOUT,
             max_connections: DEFAULT_DATABASE_MAX_CONNECTIONS,
+            soft_memory_limit: DEFAULT_DATABASE_SOFT_MEMORY_LIMIT,
+            hard_memory_limit: DEFAULT_DATABASE_HARD_MEMORY_LIMIT,
             hooks: vec![],
             migrations: None,
         }
