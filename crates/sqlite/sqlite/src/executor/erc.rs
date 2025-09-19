@@ -73,7 +73,9 @@ pub fn extract_traits_from_metadata(
                                 if let Some(count_num) = existing_count.as_u64() {
                                     trait_values_obj.insert(
                                         trait_value_str.to_string(),
-                                        serde_json::Value::Number(serde_json::Number::from(count_num + 1)),
+                                        serde_json::Value::Number(serde_json::Number::from(
+                                            count_num + 1,
+                                        )),
                                     );
                                 }
                             } else {
