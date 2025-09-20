@@ -85,7 +85,7 @@ mod tests {
             provider.clone(),
         ));
 
-        let schema = build_schema(&pool, messaging, Arc::new(db.clone()))
+        let schema = build_schema(messaging, Arc::new(db.clone()))
             .await
             .unwrap();
 
@@ -180,7 +180,7 @@ mod tests {
             provider.clone(),
         ));
 
-        let schema = build_schema(&pool, messaging, Arc::new(db.clone()))
+        let schema = build_schema(messaging, Arc::new(db.clone()))
             .await
             .unwrap();
 
