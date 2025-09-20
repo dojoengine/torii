@@ -62,19 +62,27 @@ pub fn extract_traits_from_metadata(
                     if let (Some(trait_type_str), Some(trait_value_str)) =
                         (trait_type.as_str(), trait_value.as_str())
                     {
-                        // Get or create the trait type array
+                        // Get or create the trait type object
                         let trait_values = current_traits
                             .entry(trait_type_str.to_string())
-                            .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+                            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
 
-                        if let Some(trait_values_array) = trait_values.as_array_mut() {
-                            // Add the value if it's not already present
-                            if !trait_values_array
-                                .iter()
-                                .any(|v| v.as_str() == Some(trait_value_str))
-                            {
-                                trait_values_array
-                                    .push(serde_json::Value::String(trait_value_str.to_string()));
+                        if let Some(trait_values_obj) = trait_values.as_object_mut() {
+                            // Increment count if trait value exists, otherwise set to 1
+                            if let Some(existing_count) = trait_values_obj.get(trait_value_str) {
+                                if let Some(count_num) = existing_count.as_u64() {
+                                    trait_values_obj.insert(
+                                        trait_value_str.to_string(),
+                                        serde_json::Value::Number(serde_json::Number::from(
+                                            count_num + 1,
+                                        )),
+                                    );
+                                }
+                            } else {
+                                trait_values_obj.insert(
+                                    trait_value_str.to_string(),
+                                    serde_json::Value::Number(serde_json::Number::from(1)),
+                                );
                             }
                         }
                     }
@@ -156,14 +164,14 @@ pub async fn update_contract_traits_from_metadata(
     if let Ok((current_traits_str,)) = current_traits_result {
         match extract_traits_from_metadata(metadata, &current_traits_str) {
             Ok(updated_traits) => {
-                // Update the contract's traits
+                // Update the contract's traits with counts
                 sqlx::query("UPDATE tokens SET traits = ? WHERE contract_address = ? AND (token_id = '' OR token_id IS NULL)")
                     .bind(&updated_traits)
                     .bind(&contract_id)
                     .execute(&mut **tx)
                     .await?;
 
-                debug!(target: LOG_TARGET, contract_address = %contract_id, traits = %updated_traits, "Updated token contract traits");
+                debug!(target: LOG_TARGET, contract_address = %contract_id, traits = %updated_traits, "Updated token contract traits with counts");
             }
             Err(e) => {
                 warn!(target: LOG_TARGET, contract_address = %contract_id, error = %e, "Failed to extract traits from metadata");
@@ -407,8 +415,8 @@ mod tests {
         let result = extract_traits_from_metadata(metadata, existing_traits).unwrap();
 
         let expected = json!({
-            "Resource": ["Steel", "Wood"],
-            "Rarity": ["Common"]
+            "Resource": {"Steel": 1, "Wood": 1},
+            "Rarity": {"Common": 1}
         });
 
         assert_eq!(result, expected.to_string());
@@ -426,15 +434,15 @@ mod tests {
         }"#;
 
         let existing_traits = r#"{
-            "Resource": ["Steel", "Wood"],
-            "Rarity": ["Common"]
+            "Resource": {"Steel": 5, "Wood": 3},
+            "Rarity": {"Common": 8}
         }"#;
 
         let result = extract_traits_from_metadata(metadata, existing_traits).unwrap();
 
         let expected = json!({
-            "Resource": ["Steel", "Wood", "Gold"],
-            "Rarity": ["Common", "Rare"]
+            "Resource": {"Steel": 5, "Wood": 3, "Gold": 1},
+            "Rarity": {"Common": 8, "Rare": 1}
         });
 
         assert_eq!(result, expected.to_string());
@@ -452,15 +460,15 @@ mod tests {
         }"#;
 
         let existing_traits = r#"{
-            "Resource": ["Steel", "Wood"],
-            "Rarity": ["Common"]
+            "Resource": {"Steel": 5, "Wood": 3},
+            "Rarity": {"Common": 8}
         }"#;
 
         let result = extract_traits_from_metadata(metadata, existing_traits).unwrap();
 
         let expected = json!({
-            "Resource": ["Steel", "Wood"],
-            "Rarity": ["Common"]
+            "Resource": {"Steel": 6, "Wood": 3},
+            "Rarity": {"Common": 9}
         });
 
         assert_eq!(result, expected.to_string());
@@ -474,16 +482,16 @@ mod tests {
         }"#;
 
         let existing_traits = r#"{
-            "Resource": ["Steel", "Wood"],
-            "Rarity": ["Common"]
+            "Resource": {"Steel": 5, "Wood": 3},
+            "Rarity": {"Common": 8}
         }"#;
 
         let result = extract_traits_from_metadata(metadata, existing_traits).unwrap();
 
         // Should return existing traits unchanged (but compacted)
         let expected = json!({
-            "Resource": ["Steel", "Wood"],
-            "Rarity": ["Common"]
+            "Resource": {"Steel": 5, "Wood": 3},
+            "Rarity": {"Common": 8}
         });
         assert_eq!(result, expected.to_string());
     }
@@ -497,16 +505,16 @@ mod tests {
         }"#;
 
         let existing_traits = r#"{
-            "Resource": ["Steel", "Wood"],
-            "Rarity": ["Common"]
+            "Resource": {"Steel": 5, "Wood": 3},
+            "Rarity": {"Common": 8}
         }"#;
 
         let result = extract_traits_from_metadata(metadata, existing_traits).unwrap();
 
         // Should return existing traits unchanged (but compacted)
         let expected = json!({
-            "Resource": ["Steel", "Wood"],
-            "Rarity": ["Common"]
+            "Resource": {"Steel": 5, "Wood": 3},
+            "Rarity": {"Common": 8}
         });
         assert_eq!(result, expected.to_string());
     }
@@ -537,7 +545,7 @@ mod tests {
 
         // Should only extract valid attributes
         let expected = json!({
-            "Rarity": ["Common"]
+            "Rarity": {"Common": 1}
         });
 
         assert_eq!(result, expected.to_string());
@@ -560,7 +568,7 @@ mod tests {
 
         // Should only extract string values
         let expected = json!({
-            "Resource": ["Steel"]
+            "Resource": {"Steel": 1}
         });
 
         assert_eq!(result, expected.to_string());
@@ -582,20 +590,20 @@ mod tests {
         }"#;
 
         let existing_traits = r#"{
-            "Weapon Type": ["Bow", "Staff"],
-            "Damage": ["Low", "Medium"],
-            "Rarity": ["Common", "Rare"],
-            "Element": ["Water", "Earth"]
+            "Weapon Type": {"Bow": 0, "Staff": 0},
+            "Damage": {"Low": 0, "Medium": 0},
+            "Rarity": {"Common": 0, "Rare": 0},
+            "Element": {"Water": 0, "Earth": 0}
         }"#;
 
         let result = extract_traits_from_metadata(metadata, existing_traits).unwrap();
 
         let expected = json!({
-            "Weapon Type": ["Bow", "Staff", "Sword"],
-            "Damage": ["Low", "Medium", "High"],
-            "Rarity": ["Common", "Rare", "Legendary"],
-            "Element": ["Water", "Earth", "Fire"],
-            "Durability": ["100"]
+            "Weapon Type": {"Bow": 0, "Staff": 0, "Sword": 1},
+            "Damage": {"Low": 0, "Medium": 0, "High": 1},
+            "Rarity": {"Common": 0, "Rare": 0, "Legendary": 1},
+            "Element": {"Water": 0, "Earth": 0, "Fire": 1},
+            "Durability": {"100": 1}
         });
 
         assert_eq!(result, expected.to_string());
@@ -615,7 +623,7 @@ mod tests {
 
         // Should treat invalid existing traits as empty and still work
         let expected = json!({
-            "Resource": ["Steel"]
+            "Resource": {"Steel": 1}
         });
 
         assert_eq!(result, expected.to_string());
