@@ -102,7 +102,11 @@ where
             .register_contract(
                 event.contract_address.0,
                 contract_type,
-                (event.block_number as i64 - 1).max(0) as u64,
+                if event.block_number > 0 {
+                    event.block_number - 1
+                } else {
+                    0
+                },
             )
             .await?;
 
