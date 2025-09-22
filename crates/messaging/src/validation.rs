@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use dojo_types::naming::is_valid_tag;
+use dojo_types::naming::try_compute_selector_from_tag;
 use dojo_types::schema::Ty;
-use dojo_world::contracts::naming::compute_selector_from_tag;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall};
 use starknet::macros::selector;
 use starknet::providers::Provider;
@@ -42,11 +41,9 @@ pub async fn validate_message(
     message: &TypedData,
 ) -> Result<Ty, MessagingError> {
     let tag = message.primary_type().signature_ref_repr();
-    if !is_valid_tag(&tag) {
-        return Err(MessagingError::InvalidModelTag(tag));
-    }
 
-    let selector = compute_selector_from_tag(&tag);
+    let selector =
+        try_compute_selector_from_tag(&tag).map_err(|_| MessagingError::InvalidModelTag(tag))?;
 
     let mut ty = storage
         .model(selector)
