@@ -102,7 +102,11 @@ where
             .register_contract(
                 event.contract_address.0,
                 contract_type,
-                event.block_number - 1,
+                if event.block_number > 0 {
+                    event.block_number - 1
+                } else {
+                    0
+                },
             )
             .await?;
 
