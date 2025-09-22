@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use dojo_types::naming::is_valid_tag;
+use dojo_types::naming::try_compute_selector_from_tag;
 use dojo_types::schema::Ty;
-use dojo_world::contracts::naming::compute_selector_from_tag;
 use starknet::core::types::Felt;
 use torii_storage::Storage;
 
@@ -28,11 +27,8 @@ pub fn ty_keys(ty: &Ty) -> Result<Vec<Felt>, MessagingError> {
 pub fn ty_model_id(ty: &Ty) -> Result<Felt, MessagingError> {
     let namespaced_name = ty.name();
 
-    if !is_valid_tag(&namespaced_name) {
-        return Err(MessagingError::InvalidModelTag(namespaced_name));
-    }
-
-    let selector = compute_selector_from_tag(&namespaced_name);
+    let selector = try_compute_selector_from_tag(&namespaced_name)
+        .map_err(|_| MessagingError::InvalidModelTag(namespaced_name.clone()))?;
     Ok(selector)
 }
 

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use dojo_types::naming::compute_selector_from_tag;
+use dojo_types::naming::try_compute_selector_from_tag;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::str::FromStr;
 use torii_proto::schema::Entity;
@@ -22,7 +22,7 @@ use starknet::core::types::Felt;
 
 use super::error::{self, Error};
 use crate::constants::SQL_MAX_JOINS;
-use crate::error::ParseError;
+use crate::error::{ParseError, QueryError};
 use crate::utils::build_keys_pattern;
 use crate::Sql;
 
@@ -425,7 +425,17 @@ fn map_row_to_entity(
 
     let models = schemas
         .iter()
-        .filter(|schema| model_ids.contains(&compute_selector_from_tag(&schema.name())))
+        .try_fold(Vec::new(), |mut acc, schema| {
+            let selector = try_compute_selector_from_tag(&schema.name())
+                .map_err(|_| QueryError::InvalidNamespacedModel(schema.name().to_string()))?;
+
+            if model_ids.contains(&selector) {
+                acc.push(schema);
+            }
+
+            Ok::<Vec<&dojo_types::schema::Ty>, Error>(acc)
+        })?
+        .into_iter()
         .map(|schema| {
             let mut ty = schema.clone();
             map_row_to_ty("", &schema.name(), &mut ty, row)?;
@@ -473,11 +483,13 @@ fn build_composite_clause(
             Clause::Keys(keys) => {
                 let keys_pattern = build_keys_pattern(keys);
                 bind_values.push(keys_pattern);
-                let model_selectors: Vec<String> = keys
-                    .models
-                    .iter()
-                    .map(|model| format!("{:#x}", compute_selector_from_tag(model)))
-                    .collect();
+                let model_selectors: Vec<String> =
+                    keys.models.iter().try_fold(Vec::new(), |mut acc, model| {
+                        let selector = try_compute_selector_from_tag(model)
+                            .map_err(|_| QueryError::InvalidNamespacedModel(model.to_string()))?;
+                        acc.push(format!("{:#x}", selector));
+                        Ok::<Vec<String>, Error>(acc)
+                    })?;
 
                 if model_selectors.is_empty() {
                     where_clauses.push(format!("({table}.keys REGEXP ?)"));
@@ -627,10 +639,13 @@ impl Sql {
         models: Vec<String>,
         historical: bool,
     ) -> Result<Page<Entity>, Error> {
-        let models = models
-            .iter()
-            .map(|model| compute_selector_from_tag(model))
-            .collect::<Vec<_>>();
+        let models = models.iter().try_fold(Vec::new(), |mut acc, model| {
+            let selector = try_compute_selector_from_tag(model)
+                .map_err(|_| QueryError::InvalidNamespacedModel(model.to_string()))?;
+            acc.push(selector);
+            Ok::<Vec<Felt>, Error>(acc)
+        })?;
+
         let schemas = self
             .models(&models)
             .await?

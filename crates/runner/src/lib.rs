@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use camino::Utf8PathBuf;
 use dojo_metrics::exporters::prometheus::PrometheusRecorder;
-use dojo_types::naming::compute_selector_from_tag;
+use dojo_types::naming::try_compute_selector_from_tag;
 use futures::future::join_all;
 use sqlx::sqlite::{
     SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
@@ -31,6 +31,7 @@ use sqlx::SqlitePool;
 use starknet::core::types::{BlockId, BlockTag};
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
+use starknet_crypto::Felt;
 use tempfile::{NamedTempFile, TempDir};
 use terminal_size::{terminal_size, Height, Width};
 use tokio::fs::File;
@@ -314,14 +315,15 @@ impl Runner {
             );
         }
 
-        let historical_models = self
-            .args
-            .sql
-            .historical
-            .clone()
-            .into_iter()
-            .map(|tag| compute_selector_from_tag(&tag))
-            .collect::<HashSet<_>>();
+        let historical_models = self.args.sql.historical.clone().into_iter().try_fold(
+            HashSet::new(),
+            |mut acc, tag| {
+                let selector = try_compute_selector_from_tag(&tag)
+                    .map_err(|_| anyhow::anyhow!("Invalid model tag: {}", tag))?;
+                acc.insert(selector);
+                Ok::<HashSet<Felt>, anyhow::Error>(acc)
+            },
+        )?;
 
         let db = Sql::new_with_config(
             readonly_pool.clone(),
