@@ -31,7 +31,7 @@ use crate::{
     executor::{erc::UpdateTokenMetadataQuery, RegisterNftTokenQuery, RegisterTokenContractQuery},
     model::map_row_to_ty,
     query::{PaginationExecutor, QueryBuilder},
-    utils::{build_keys_pattern, u256_to_sql_string},
+    utils::{build_keys_pattern, build_keys_prefix_pattern, build_keys_exact_pattern, u256_to_sql_string},
 };
 use crate::{
     error::{Error, ParseError},
@@ -613,10 +613,24 @@ impl ReadOnlyStorage for Sql {
         ]);
 
         if let Some(keys) = &query.keys {
-            let keys_pattern = build_keys_pattern(keys);
-            if !keys_pattern.is_empty() {
-                query_builder = query_builder.where_clause("keys REGEXP ?");
-                query_builder = query_builder.bind_value(keys_pattern);
+            // Try to use optimized LIKE patterns first, fall back to REGEXP if needed
+            let optimized_pattern = if keys.pattern_matching == torii_proto::PatternMatching::FixedLen {
+                build_keys_exact_pattern(keys)
+            } else {
+                build_keys_prefix_pattern(keys)
+            };
+
+            if let Some(pattern) = optimized_pattern {
+                // Use LIKE for much better performance with indexes
+                query_builder = query_builder.where_clause("keys LIKE ?");
+                query_builder = query_builder.bind_value(pattern);
+            } else {
+                // Fall back to REGEXP for complex patterns with wildcards
+                let keys_pattern = build_keys_pattern(keys);
+                if !keys_pattern.is_empty() {
+                    query_builder = query_builder.where_clause("keys REGEXP ?");
+                    query_builder = query_builder.bind_value(keys_pattern);
+                }
             }
         }
 

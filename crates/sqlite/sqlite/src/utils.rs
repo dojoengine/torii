@@ -73,6 +73,63 @@ pub fn build_keys_pattern(clause: &torii_proto::KeysClause) -> String {
     keys_pattern
 }
 
+/// Builds an optimized keys pattern for prefix matching using LIKE instead of REGEXP
+/// This is much faster as it can leverage indexes
+pub fn build_keys_prefix_pattern(clause: &torii_proto::KeysClause) -> Option<String> {
+    if clause.keys.is_empty() {
+        return None;
+    }
+
+    let keys: Vec<String> = clause
+        .keys
+        .iter()
+        .map(|felt| {
+            if let Some(felt) = felt {
+                Some(format!("{:#x}", felt))
+            } else {
+                None // Can't optimize with wildcards
+            }
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    if keys.is_empty() {
+        return None;
+    }
+
+    let prefix = keys.join("/");
+    
+    if clause.pattern_matching == torii_proto::PatternMatching::VariableLen {
+        Some(format!("{}/%", prefix))
+    } else {
+        Some(format!("{}/", prefix))
+    }
+}
+
+/// Builds exact keys pattern for precise matching
+pub fn build_keys_exact_pattern(clause: &torii_proto::KeysClause) -> Option<String> {
+    if clause.keys.is_empty() {
+        return None;
+    }
+
+    let keys: Vec<String> = clause
+        .keys
+        .iter()
+        .map(|felt| {
+            if let Some(felt) = felt {
+                Some(format!("{:#x}", felt))
+            } else {
+                None // Can't optimize with wildcards
+            }
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    if keys.is_empty() {
+        return None;
+    }
+
+    Some(format!("{}/", keys.join("/")))
+}
+
 pub fn sql_string_to_felts(sql_string: &str) -> Vec<Felt> {
     sql_string
         .split(SQL_FELT_DELIMITER)

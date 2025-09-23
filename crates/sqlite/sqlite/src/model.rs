@@ -23,7 +23,7 @@ use starknet::core::types::Felt;
 use super::error::{self, Error};
 use crate::constants::SQL_MAX_JOINS;
 use crate::error::{ParseError, QueryError};
-use crate::utils::build_keys_pattern;
+use crate::utils::{build_keys_pattern, build_keys_prefix_pattern, build_keys_exact_pattern};
 use crate::Sql;
 
 /// Helper function to parse array index from field name like "field[0]"
@@ -481,8 +481,6 @@ fn build_composite_clause(
                 where_clauses.push(format!("({table}.id IN ({}))", ids));
             }
             Clause::Keys(keys) => {
-                let keys_pattern = build_keys_pattern(keys);
-                bind_values.push(keys_pattern);
                 let model_selectors: Vec<String> =
                     keys.models.iter().try_fold(Vec::new(), |mut acc, model| {
                         let selector = try_compute_selector_from_tag(model)
@@ -491,19 +489,50 @@ fn build_composite_clause(
                         Ok::<Vec<String>, Error>(acc)
                     })?;
 
-                if model_selectors.is_empty() {
-                    where_clauses.push(format!("({table}.keys REGEXP ?)"));
+                // Try to use optimized LIKE patterns first, fall back to REGEXP if needed
+                let optimized_pattern = if keys.pattern_matching == torii_proto::PatternMatching::FixedLen {
+                    build_keys_exact_pattern(keys)
                 } else {
-                    // Add bind value placeholders for each model selector
-                    let placeholders = vec!["?"; model_selectors.len()].join(", ");
-                    where_clauses.push(format!(
-                        "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
-                         {model_relation_table}.model_id NOT IN ({}))",
-                        placeholders, placeholders
-                    ));
-                    // Add each model selector twice (once for IN and once for NOT IN)
-                    bind_values.extend(model_selectors.clone());
-                    bind_values.extend(model_selectors);
+                    build_keys_prefix_pattern(keys)
+                };
+
+                if let Some(pattern) = optimized_pattern {
+                    // Use LIKE for much better performance with indexes
+                    if model_selectors.is_empty() {
+                        where_clauses.push(format!("({table}.keys LIKE ?)"));
+                        bind_values.push(pattern);
+                    } else {
+                        // Add bind value placeholders for each model selector
+                        let placeholders = vec!["?"; model_selectors.len()].join(", ");
+                        where_clauses.push(format!(
+                            "(({table}.keys LIKE ? AND {model_relation_table}.model_id IN ({})) OR \
+                             {model_relation_table}.model_id NOT IN ({}))",
+                            placeholders, placeholders
+                        ));
+                        bind_values.push(pattern);
+                        // Add each model selector twice (once for IN and once for NOT IN)
+                        bind_values.extend(model_selectors.clone());
+                        bind_values.extend(model_selectors);
+                    }
+                } else {
+                    // Fall back to REGEXP for complex patterns with wildcards
+                    let keys_pattern = build_keys_pattern(keys);
+                    bind_values.push(keys_pattern);
+                    
+                    if model_selectors.is_empty() {
+                        where_clauses.push(format!("({table}.keys REGEXP ?)"));
+                    } else {
+                        // Add bind value placeholders for each model selector
+                        let placeholders = vec!["?"; model_selectors.len()].join(", ");
+                        where_clauses.push(format!(
+                            "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
+                             {model_relation_table}.model_id NOT IN ({}))",
+                            placeholders, placeholders
+                        ));
+                        // Add each model selector twice (once for IN and once for NOT IN)
+                        bind_values.extend(model_selectors.clone());
+                        bind_values.extend(model_selectors);
+                    }
                 }
             }
             Clause::Member(member) => {
