@@ -404,6 +404,16 @@ impl ReadOnlyStorage for Sql {
                 "t.metadata as metadata".to_string(),
                 "t.total_supply as total_supply".to_string(),
                 "t.traits as traits".to_string(),
+                "COALESCE((
+                    SELECT metadata 
+                    FROM tokens tk 
+                    WHERE tk.contract_address = t.contract_address 
+                    AND tk.token_id != '' 
+                    AND tk.token_id IS NOT NULL
+                    ORDER BY tk.token_id 
+                    LIMIT 1
+                ), '') as token_metadata"
+                    .to_string(),
             ])
             .join("JOIN contracts c ON c.contract_address = t.contract_address")
             .where_clause("t.token_id = '' OR t.token_id IS NULL");
