@@ -23,20 +23,22 @@ use torii_proto::proto::world::{
     RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventMessagesRequest,
     RetrieveEventsRequest, RetrieveEventsResponse, RetrieveTokenBalancesRequest,
     RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
-    RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest,
-    RetrieveTransactionsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
-    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
-    SubscribeEventsRequest, SubscribeEventsResponse, SubscribeTokenBalancesRequest,
-    SubscribeTokenBalancesResponse, SubscribeTokensRequest, SubscribeTokensResponse,
-    SubscribeTransactionsRequest, SubscribeTransactionsResponse, UpdateEntitiesSubscriptionRequest,
-    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
-    UpdateTokenSubscriptionRequest, WorldMetadataRequest,
+    RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse, RetrieveTokensRequest,
+    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
+    SubscribeContractsRequest, SubscribeContractsResponse, SubscribeEntitiesRequest,
+    SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsRequest,
+    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
+    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
+    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
+    UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message,
-    Query, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery, Transaction,
-    TransactionFilter, TransactionQuery,
+    Query, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery, TokenTransfer,
+    TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -287,6 +289,84 @@ impl WorldClient {
             .retrieve_token_contracts(RetrieveTokenContractsRequest {
                 query: Some(query.into()),
             })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
+    }
+
+    pub async fn retrieve_token_transfers(
+        &mut self,
+        query: TokenTransferQuery,
+    ) -> Result<RetrieveTokenTransfersResponse, Error> {
+        self.inner
+            .retrieve_token_transfers(RetrieveTokenTransfersRequest {
+                query: Some(query.into()),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
+    }
+
+    pub async fn subscribe_token_transfers(
+        &mut self,
+        contract_addresses: Vec<Felt>,
+        account_addresses: Vec<Felt>,
+        token_ids: Vec<U256>,
+    ) -> Result<TokenTransferUpdateStreaming, Error> {
+        let request = SubscribeTokenTransfersRequest {
+            contract_addresses: contract_addresses
+                .into_iter()
+                .map(|c| c.to_bytes_be().to_vec())
+                .collect(),
+            account_addresses: account_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().to_vec())
+                .collect(),
+            token_ids: token_ids
+                .into_iter()
+                .map(|id| id.to_be_bytes().to_vec())
+                .collect(),
+        };
+        let stream = self
+            .inner
+            .subscribe_token_transfers(request)
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())?;
+        Ok(TokenTransferUpdateStreaming(stream.map_ok(Box::new(
+            |res| {
+                res.transfer.map_or(TokenTransfer::default(), |t| {
+                    t.try_into().expect("must able to serialize")
+                })
+            },
+        ))))
+    }
+
+    pub async fn update_token_transfers_subscription(
+        &mut self,
+        subscription_id: u64,
+        contract_addresses: Vec<Felt>,
+        account_addresses: Vec<Felt>,
+        token_ids: Vec<U256>,
+    ) -> Result<(), Error> {
+        let request = UpdateTokenTransfersSubscriptionRequest {
+            subscription_id,
+            contract_addresses: contract_addresses
+                .into_iter()
+                .map(|c| c.to_bytes_be().to_vec())
+                .collect(),
+            account_addresses: account_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().to_vec())
+                .collect(),
+            token_ids: token_ids
+                .into_iter()
+                .map(|id| id.to_be_bytes().to_vec())
+                .collect(),
+        };
+
+        self.inner
+            .update_token_transfers_subscription(request)
             .await
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())
@@ -596,6 +676,24 @@ pub struct TokenBalanceStreaming(TokenBalanceMappedStream);
 
 impl Stream for TokenBalanceStreaming {
     type Item = <TokenBalanceMappedStream as Stream>::Item;
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.poll_next_unpin(cx)
+    }
+}
+
+type TokenTransferMappedStream = MapOk<
+    tonic::Streaming<SubscribeTokenTransfersResponse>,
+    Box<dyn Fn(SubscribeTokenTransfersResponse) -> TokenTransfer + Send>,
+>;
+
+#[derive(Debug)]
+pub struct TokenTransferUpdateStreaming(TokenTransferMappedStream);
+
+impl Stream for TokenTransferUpdateStreaming {
+    type Item = <TokenTransferMappedStream as Stream>::Item;
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,

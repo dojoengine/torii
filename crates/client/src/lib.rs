@@ -4,18 +4,19 @@ use crypto_bigint::U256;
 use starknet::core::types::Felt;
 use torii_grpc_client::{
     ContractUpdateStreaming, EntityUpdateStreaming, EventUpdateStreaming, TokenBalanceStreaming,
-    TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
+    TokenTransferUpdateStreaming, TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
 };
 use torii_proto::proto::world::{
     RetrieveContractsResponse, RetrieveControllersResponse, RetrieveEntitiesResponse,
     RetrieveEventsResponse, RetrieveTokenBalancesResponse, RetrieveTokenContractsResponse,
-    RetrieveTokensResponse, RetrieveTransactionsResponse,
+    RetrieveTokenTransfersResponse, RetrieveTokensResponse, RetrieveTransactionsResponse,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Contract, ContractQuery, Controller, ControllerQuery, Event, EventQuery, KeysClause,
     Message, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract,
-    TokenContractQuery, TokenQuery, Transaction, TransactionFilter, TransactionQuery, World,
+    TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
+    TransactionFilter, TransactionQuery, World,
 };
 
 use crate::error::Error;
@@ -162,6 +163,29 @@ impl Client {
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<TokenContract>, _>>()?,
+            next_cursor: if next_cursor.is_empty() {
+                None
+            } else {
+                Some(next_cursor)
+            },
+        })
+    }
+
+    /// Retrieves token transfers matching query parameter.
+    pub async fn token_transfers(
+        &self,
+        query: TokenTransferQuery,
+    ) -> Result<Page<TokenTransfer>, Error> {
+        let mut grpc_client = self.inner.clone();
+        let RetrieveTokenTransfersResponse {
+            transfers,
+            next_cursor,
+        } = grpc_client.retrieve_token_transfers(query).await?;
+        Ok(Page {
+            items: transfers
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<TokenTransfer>, _>>()?,
             next_cursor: if next_cursor.is_empty() {
                 None
             } else {
@@ -395,6 +419,40 @@ impl Client {
         let mut grpc_client = self.inner.clone();
         grpc_client
             .update_tokens_subscription(subscription_id, contract_addresses, token_ids)
+            .await?;
+        Ok(())
+    }
+
+    /// A direct stream to grpc subscribe token transfers
+    pub async fn on_token_transfer_updated(
+        &self,
+        contract_addresses: Vec<Felt>,
+        account_addresses: Vec<Felt>,
+        token_ids: Vec<U256>,
+    ) -> Result<TokenTransferUpdateStreaming, Error> {
+        let mut grpc_client = self.inner.clone();
+        let stream = grpc_client
+            .subscribe_token_transfers(contract_addresses, account_addresses, token_ids)
+            .await?;
+        Ok(stream)
+    }
+
+    /// Update the token transfers subscription
+    pub async fn update_token_transfer_subscription(
+        &self,
+        subscription_id: u64,
+        contract_addresses: Vec<Felt>,
+        account_addresses: Vec<Felt>,
+        token_ids: Vec<U256>,
+    ) -> Result<(), Error> {
+        let mut grpc_client = self.inner.clone();
+        grpc_client
+            .update_token_transfers_subscription(
+                subscription_id,
+                contract_addresses,
+                account_addresses,
+                token_ids,
+            )
             .await?;
         Ok(())
     }
