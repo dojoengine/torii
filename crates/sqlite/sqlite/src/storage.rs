@@ -613,20 +613,10 @@ impl ReadOnlyStorage for Sql {
         ]);
 
         if let Some(keys) = &query.keys {
-            // Try to use optimized LIKE patterns first, fall back to REGEXP if needed
-            let optimized_pattern = build_keys_like_pattern(keys);
-
-            if let Some(pattern) = optimized_pattern {
-                // Use LIKE for much better performance with indexes
+            let pattern = build_keys_like_pattern(keys);
+            if let Some(pattern) = pattern {
                 query_builder = query_builder.where_clause("keys LIKE ?");
                 query_builder = query_builder.bind_value(pattern);
-            } else {
-                // Fall back to REGEXP for complex patterns with wildcards
-                let keys_pattern = build_keys_like_pattern(keys);
-                if !keys_pattern.is_empty() {
-                    query_builder = query_builder.where_clause("keys REGEXP ?");
-                    query_builder = query_builder.bind_value(keys_pattern);
-                }
             }
         }
 

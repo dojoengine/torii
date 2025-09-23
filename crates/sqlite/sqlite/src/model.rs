@@ -23,7 +23,7 @@ use starknet::core::types::Felt;
 use super::error::{self, Error};
 use crate::constants::SQL_MAX_JOINS;
 use crate::error::{ParseError, QueryError};
-use crate::utils::{build_keys_like_pattern, build_keys_pattern};
+use crate::utils::build_keys_like_pattern;
 use crate::Sql;
 
 /// Helper function to parse array index from field name like "field[0]"
