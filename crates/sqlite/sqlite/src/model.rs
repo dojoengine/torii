@@ -490,9 +490,8 @@ fn build_composite_clause(
                     })?;
 
                 // Try to use optimized LIKE patterns first, fall back to REGEXP if needed
-                let optimized_pattern = build_keys_like_pattern(keys);
-
-                if let Some(pattern) = optimized_pattern {
+                let pattern = build_keys_like_pattern(keys);
+                if let Some(pattern) = pattern {
                     // Use LIKE for much better performance with indexes
                     if model_selectors.is_empty() {
                         where_clauses.push(format!("({table}.keys LIKE ?)"));
@@ -501,30 +500,11 @@ fn build_composite_clause(
                         // Add bind value placeholders for each model selector
                         let placeholders = vec!["?"; model_selectors.len()].join(", ");
                         where_clauses.push(format!(
-                            "(({table}.keys LIKE ? AND {model_relation_table}.model_id IN ({})) OR \
+                        "(({table}.keys LIKE ? AND {model_relation_table}.model_id IN ({})) OR \
                              {model_relation_table}.model_id NOT IN ({}))",
-                            placeholders, placeholders
-                        ));
+                        placeholders, placeholders
+                    ));
                         bind_values.push(pattern);
-                        // Add each model selector twice (once for IN and once for NOT IN)
-                        bind_values.extend(model_selectors.clone());
-                        bind_values.extend(model_selectors);
-                    }
-                } else {
-                    // Fall back to REGEXP for complex patterns with wildcards
-                    let keys_pattern = build_keys_pattern(keys);
-                    bind_values.push(keys_pattern);
-
-                    if model_selectors.is_empty() {
-                        where_clauses.push(format!("({table}.keys REGEXP ?)"));
-                    } else {
-                        // Add bind value placeholders for each model selector
-                        let placeholders = vec!["?"; model_selectors.len()].join(", ");
-                        where_clauses.push(format!(
-                            "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
-                             {model_relation_table}.model_id NOT IN ({}))",
-                            placeholders, placeholders
-                        ));
                         // Add each model selector twice (once for IN and once for NOT IN)
                         bind_values.extend(model_selectors.clone());
                         bind_values.extend(model_selectors);
