@@ -23,7 +23,7 @@ use starknet::core::types::Felt;
 use super::error::{self, Error};
 use crate::constants::SQL_MAX_JOINS;
 use crate::error::{ParseError, QueryError};
-use crate::utils::{build_keys_exact_pattern, build_keys_pattern, build_keys_prefix_pattern};
+use crate::utils::{build_keys_like_pattern, build_keys_pattern};
 use crate::Sql;
 
 /// Helper function to parse array index from field name like "field[0]"
@@ -490,12 +490,7 @@ fn build_composite_clause(
                     })?;
 
                 // Try to use optimized LIKE patterns first, fall back to REGEXP if needed
-                let optimized_pattern =
-                    if keys.pattern_matching == torii_proto::PatternMatching::FixedLen {
-                        build_keys_exact_pattern(keys)
-                    } else {
-                        build_keys_prefix_pattern(keys)
-                    };
+                let optimized_pattern = build_keys_like_pattern(keys);
 
                 if let Some(pattern) = optimized_pattern {
                     // Use LIKE for much better performance with indexes

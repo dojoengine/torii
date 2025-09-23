@@ -73,61 +73,39 @@ pub fn build_keys_pattern(clause: &torii_proto::KeysClause) -> String {
     keys_pattern
 }
 
-/// Builds an optimized keys pattern for prefix matching using LIKE instead of REGEXP
+/// Builds an optimized keys pattern using LIKE instead of REGEXP
 /// This is much faster as it can leverage indexes
-pub fn build_keys_prefix_pattern(clause: &torii_proto::KeysClause) -> Option<String> {
+///
+/// - For FixedLen: creates exact pattern like "0x123/%/0x456/"
+/// - For VariableLen: creates prefix pattern like "0x123/%/0x456/%"
+/// - None felts become "%" wildcards
+pub fn build_keys_like_pattern(clause: &torii_proto::KeysClause) -> Option<String> {
     if clause.keys.is_empty() {
         return None;
     }
 
+    // Build pattern with wildcards for None felts
     let keys: Vec<String> = clause
         .keys
         .iter()
         .map(|felt| {
-            if let Some(felt) = felt {
-                Some(format!("{:#x}", felt))
-            } else {
-                None // Can't optimize with wildcards
+            match felt {
+                Some(felt) => format!("{:#x}", felt),
+                None => "%".to_string(), // Use % as wildcard for None felts
             }
         })
-        .collect::<Option<Vec<_>>>()?;
+        .collect();
 
     if keys.is_empty() {
         return None;
     }
 
-    let prefix = keys.join("/");
+    let pattern = keys.join("/");
 
-    if clause.pattern_matching == torii_proto::PatternMatching::VariableLen {
-        Some(format!("{}/%", prefix))
-    } else {
-        Some(format!("{}/", prefix))
+    match clause.pattern_matching {
+        torii_proto::PatternMatching::FixedLen => Some(format!("{}/", pattern)),
+        torii_proto::PatternMatching::VariableLen => Some(format!("{}/%", pattern)),
     }
-}
-
-/// Builds exact keys pattern for precise matching
-pub fn build_keys_exact_pattern(clause: &torii_proto::KeysClause) -> Option<String> {
-    if clause.keys.is_empty() {
-        return None;
-    }
-
-    let keys: Vec<String> = clause
-        .keys
-        .iter()
-        .map(|felt| {
-            if let Some(felt) = felt {
-                Some(format!("{:#x}", felt))
-            } else {
-                None // Can't optimize with wildcards
-            }
-        })
-        .collect::<Option<Vec<_>>>()?;
-
-    if keys.is_empty() {
-        return None;
-    }
-
-    Some(format!("{}/", keys.join("/")))
 }
 
 pub fn sql_string_to_felts(sql_string: &str) -> Vec<Felt> {
@@ -352,5 +330,76 @@ mod tests {
         };
         let pattern = build_keys_pattern(&keys);
         assert_eq!(pattern, "^0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$");
+    }
+
+    #[test]
+    fn test_build_keys_like_pattern_with_wildcards_variable_len() {
+        let clause = torii_proto::KeysClause {
+            keys: vec![
+                Some(Felt::from_str("0x123").unwrap()),
+                None, // This should become a wildcard
+                Some(Felt::from_str("0x456").unwrap()),
+            ],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
+        };
+
+        let pattern = build_keys_like_pattern(&clause);
+        assert_eq!(pattern, Some("0x123/%/0x456/%".to_string()));
+    }
+
+    #[test]
+    fn test_build_keys_like_pattern_with_wildcards_fixed_len() {
+        let clause = torii_proto::KeysClause {
+            keys: vec![
+                Some(Felt::from_str("0x123").unwrap()),
+                None, // This should become a wildcard
+                Some(Felt::from_str("0x456").unwrap()),
+            ],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
+            models: vec![],
+        };
+
+        let pattern = build_keys_like_pattern(&clause);
+        assert_eq!(pattern, Some("0x123/%/0x456/".to_string()));
+    }
+
+    #[test]
+    fn test_build_keys_like_pattern_all_wildcards() {
+        let clause = torii_proto::KeysClause {
+            keys: vec![None, None, None],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
+        };
+
+        let pattern = build_keys_like_pattern(&clause);
+        assert_eq!(pattern, Some("%/%/%/%".to_string()));
+    }
+
+    #[test]
+    fn test_build_keys_like_pattern_no_wildcards() {
+        let clause = torii_proto::KeysClause {
+            keys: vec![
+                Some(Felt::from_str("0x123").unwrap()),
+                Some(Felt::from_str("0x456").unwrap()),
+            ],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
+        };
+
+        let pattern = build_keys_like_pattern(&clause);
+        assert_eq!(pattern, Some("0x123/0x456/%".to_string()));
+    }
+
+    #[test]
+    fn test_build_keys_like_pattern_empty_keys() {
+        let clause = torii_proto::KeysClause {
+            keys: vec![],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
+            models: vec![],
+        };
+
+        let pattern = build_keys_like_pattern(&clause);
+        assert_eq!(pattern, None);
     }
 }

@@ -31,9 +31,7 @@ use crate::{
     executor::{erc::UpdateTokenMetadataQuery, RegisterNftTokenQuery, RegisterTokenContractQuery},
     model::map_row_to_ty,
     query::{PaginationExecutor, QueryBuilder},
-    utils::{
-        build_keys_exact_pattern, build_keys_pattern, build_keys_prefix_pattern, u256_to_sql_string,
-    },
+    utils::{build_keys_like_pattern, build_keys_pattern, u256_to_sql_string},
 };
 use crate::{
     error::{Error, ParseError},
@@ -616,12 +614,7 @@ impl ReadOnlyStorage for Sql {
 
         if let Some(keys) = &query.keys {
             // Try to use optimized LIKE patterns first, fall back to REGEXP if needed
-            let optimized_pattern =
-                if keys.pattern_matching == torii_proto::PatternMatching::FixedLen {
-                    build_keys_exact_pattern(keys)
-                } else {
-                    build_keys_prefix_pattern(keys)
-                };
+            let optimized_pattern = build_keys_like_pattern(keys);
 
             if let Some(pattern) = optimized_pattern {
                 // Use LIKE for much better performance with indexes
