@@ -97,7 +97,7 @@ pub fn build_keys_prefix_pattern(clause: &torii_proto::KeysClause) -> Option<Str
     }
 
     let prefix = keys.join("/");
-    
+
     if clause.pattern_matching == torii_proto::PatternMatching::VariableLen {
         Some(format!("{}/%", prefix))
     } else {
