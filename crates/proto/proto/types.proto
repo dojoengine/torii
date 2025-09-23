@@ -386,4 +386,6 @@ message TokenContract {
     optional bytes total_supply = 7;
     // The traits of the contract (JSON object with trait types and possible values)
     string traits = 8;
+    // The first token metadata of the contract
+    bytes token_metadata = 9;
 }
