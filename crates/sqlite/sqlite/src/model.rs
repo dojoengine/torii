@@ -663,15 +663,23 @@ impl Sql {
                 .map(|model| format!("{:#x}", model))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!(" AND {model_relation_table}.model_id IN ({})", model_ids)
+            format!("{model_relation_table}.model_id IN ({})", model_ids)
+        };
+
+        // Combine WHERE clause and model filter properly
+        let combined_where_clause = match (where_clause.is_empty(), model_filter.is_empty()) {
+            (true, true) => String::new(),
+            (true, false) => model_filter,
+            (false, true) => where_clause,
+            (false, false) => format!("({}) AND ({})", where_clause, model_filter),
         };
 
         let page = if historical {
             self.fetch_historical_entities(
                 table,
                 model_relation_table,
-                &where_clause,
-                &model_filter,
+                &combined_where_clause,
+                "",
                 bind_values,
                 pagination,
             )
@@ -683,16 +691,12 @@ impl Sql {
                     table,
                     model_relation_table,
                     entity_relation_column,
-                    if where_clause.is_empty() {
+                    if combined_where_clause.is_empty() {
                         None
                     } else {
-                        Some(&where_clause)
+                        Some(&combined_where_clause)
                     },
-                    if model_filter.is_empty() {
-                        None
-                    } else {
-                        Some(&model_filter)
-                    },
+                    None, // No separate having clause needed
                     pagination,
                     bind_values,
                 )
