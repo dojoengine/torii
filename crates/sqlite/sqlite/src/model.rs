@@ -651,20 +651,24 @@ impl Sql {
         // We still need to clone for the function signature, but we can optimize the cloning
         let schemas: Vec<Ty> = model_refs.into_iter().map(|m| m.schema).collect();
 
-        let (where_clause, bind_values) =
+        let (where_clause, mut bind_values) =
             build_composite_clause(table, model_relation_table, composite, historical)?;
 
         // Replace INSTR with direct model filtering - much more efficient
-        let model_filter = if models.is_empty() {
-            String::new()
+        let (model_filter, model_bind_values) = if models.is_empty() {
+            (String::new(), Vec::new())
         } else {
-            let model_ids = models
+            let placeholders = vec!["?"; models.len()].join(", ");
+            let filter = format!("{model_relation_table}.model_id IN ({})", placeholders);
+            let values = models
                 .iter()
                 .map(|model| format!("{:#x}", model))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("{model_relation_table}.model_id IN ({})", model_ids)
+                .collect::<Vec<_>>();
+            (filter, values)
         };
+
+        // Add model bind values to the existing bind values
+        bind_values.extend(model_bind_values);
 
         // Combine WHERE clause and model filter properly
         let combined_where_clause = match (where_clause.is_empty(), model_filter.is_empty()) {
