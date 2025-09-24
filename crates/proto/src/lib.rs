@@ -44,14 +44,14 @@ impl TokenId {
     pub fn is_nft(&self) -> bool {
         matches!(self, TokenId::Nft(_, _))
     }
-    
+
     pub fn contract_address(&self) -> Felt {
         match self {
             TokenId::Contract(addr) => *addr,
             TokenId::Nft(addr, _) => *addr,
         }
     }
-    
+
     pub fn token_id(&self) -> Option<starknet::core::types::U256> {
         match self {
             TokenId::Contract(_) => None,

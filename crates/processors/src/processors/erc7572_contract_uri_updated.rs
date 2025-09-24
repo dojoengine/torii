@@ -6,10 +6,10 @@ use starknet::providers::Provider;
 use tracing::debug;
 
 use crate::erc::update_contract_metadata;
-use torii_proto::TokenId;
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
+use torii_proto::TokenId;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc7572_contract_uri_updated";
 

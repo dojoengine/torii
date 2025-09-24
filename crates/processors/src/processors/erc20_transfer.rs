@@ -6,11 +6,11 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use tracing::debug;
 
 use crate::erc::try_register_token_contract;
-use torii_proto::TokenId;
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
 use metrics::counter;
+use torii_proto::TokenId;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc20_transfer";
 

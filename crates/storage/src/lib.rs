@@ -13,7 +13,10 @@ use torii_math::I256;
 use torii_proto::schema::Entity;
 
 use torii_proto::{
-    BalanceId, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery
+    BalanceId, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event,
+    EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract,
+    TokenContractQuery, TokenId, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
+    TransactionCall, TransactionQuery,
 };
 
 pub mod utils;
@@ -35,7 +38,7 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
 
     /// Returns the IDs of all the registered tokens
     async fn token_ids(&self) -> Result<HashSet<TokenId>, StorageError>;
-    
+
     /// Returns the controllers for the storage.
     async fn controllers(&self, query: &ControllerQuery) -> Result<Page<Controller>, StorageError>;
 

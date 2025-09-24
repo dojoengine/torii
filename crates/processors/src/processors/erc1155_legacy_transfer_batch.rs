@@ -7,13 +7,11 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{
-    try_register_nft_token_metadata, try_register_token_contract,
-};
-use torii_proto::TokenId;
+use crate::erc::{try_register_nft_token_metadata, try_register_token_contract};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
+use torii_proto::TokenId;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc1155_legacy_transfer_batch";
 

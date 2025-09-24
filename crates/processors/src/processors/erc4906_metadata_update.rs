@@ -7,10 +7,10 @@ use starknet::providers::Provider;
 use tracing::debug;
 
 use crate::erc::fetch_token_metadata;
-use torii_proto::TokenId;
 use crate::error::{Error, TokenMetadataError};
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
+use torii_proto::TokenId;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc4906_metadata_update";
 #[derive(Default, Debug)]

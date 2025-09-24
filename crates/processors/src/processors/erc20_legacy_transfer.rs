@@ -7,10 +7,10 @@ use starknet::providers::Provider;
 use tracing::debug;
 
 use crate::erc::try_register_token_contract;
-use torii_proto::TokenId;
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
+use torii_proto::TokenId;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc20_legacy_transfer";
 

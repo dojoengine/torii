@@ -255,13 +255,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 BlockId::Number(cursor.head.unwrap())
             };
 
-            self.apply_balance_diff_helper(
-                balance_id,
-                balance,
-                block_id,
-                provider.clone(),
-            )
-            .await?;
+            self.apply_balance_diff_helper(balance_id, balance, block_id, provider.clone())
+                .await?;
         }
 
         Ok(())
