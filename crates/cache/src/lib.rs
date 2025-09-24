@@ -31,7 +31,7 @@ pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
     async fn model(&self, selector: Felt) -> Result<Model, CacheError>;
 
     /// Check if a token is registered.
-    async fn is_token_registered(&self, token_id: TokenId) -> bool;
+    async fn is_token_registered(&self, token_id: &TokenId) -> bool;
 
     /// Get a token registration lock for coordination.
     async fn get_token_registration_lock(&self, token_id: TokenId) -> Option<Arc<Mutex<()>>>;
@@ -92,8 +92,8 @@ impl ReadOnlyCache for InMemoryCache {
             .map_err(|e| Box::new(e) as CacheError)
     }
 
-    async fn is_token_registered(&self, token_id: TokenId) -> bool {
-        self.erc_cache.is_token_registered(&token_id).await
+    async fn is_token_registered(&self, token_id: &TokenId) -> bool {
+        self.erc_cache.is_token_registered(token_id).await
     }
 
     async fn get_token_registration_lock(&self, token_id: TokenId) -> Option<Arc<Mutex<()>>> {
@@ -139,7 +139,9 @@ impl Cache for InMemoryCache {
     }
 
     async fn update_balance_diff(&self, token_id: TokenId, from: Felt, to: Felt, value: U256) {
-        self.erc_cache.update_balance_diff(token_id, from, to, value).await
+        self.erc_cache
+            .update_balance_diff(token_id, from, to, value)
+            .await
     }
 }
 

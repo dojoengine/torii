@@ -34,3 +34,4 @@ torii-math.workspace = true
 chrono.workspace = true
 torii-proto.workspace = true
 metrics.workspace = true
+crypto-bigint.workspace = true

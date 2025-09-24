@@ -7,8 +7,9 @@ use starknet::providers::Provider;
 use tracing::debug;
 
 use crate::erc::{
-    felt_and_u256_to_sql_string, try_register_nft_token_metadata, try_register_token_contract,
+    try_register_nft_token_metadata, try_register_token_contract,
 };
+use torii_proto::TokenId;
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
@@ -64,7 +65,7 @@ where
         let value = U256Cainome::cairo_deserialize(&ctx.event.data, 5)?;
         let value = U256::from_words(value.low, value.high);
 
-        let id = felt_and_u256_to_sql_string(&token_address, &token_id);
+        let id = TokenId::Nft(token_address, token_id);
 
         // Register the contract first
         try_register_token_contract(
@@ -78,7 +79,7 @@ where
 
         // Then register the specific NFT token
         try_register_nft_token_metadata(
-            &id,
+            id.clone(),
             token_address,
             token_id,
             &ctx.provider,
@@ -88,7 +89,7 @@ where
         )
         .await?;
 
-        ctx.cache.update_balance_diff(&id, from, to, value).await;
+        ctx.cache.update_balance_diff(id, from, to, value).await;
 
         ctx.storage
             .store_erc_transfer_event(

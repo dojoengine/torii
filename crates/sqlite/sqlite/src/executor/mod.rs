@@ -22,7 +22,7 @@ use torii_broker::types::{
     TokenBalanceUpdate, TokenTransferUpdate, TokenUpdate, TransactionUpdate, Update,
 };
 use torii_math::I256;
-use torii_proto::{ContractCursor, TransactionCall};
+use torii_proto::{BalanceId, ContractCursor, TokenId, TransactionCall};
 use torii_sqlite_types::TokenTransfer as SQLTokenTransfer;
 use tracing::{debug, error, info, warn};
 
@@ -76,8 +76,8 @@ pub struct DeleteEntityQuery {
 
 #[derive(Debug, Clone)]
 pub struct ApplyBalanceDiffQuery {
-    pub balances_diff: HashMap<String, I256>,
-    pub total_supply_diff: HashMap<String, I256>,
+    pub balances_diff: HashMap<BalanceId, I256>,
+    pub total_supply_diff: HashMap<TokenId, I256>,
     pub cursors: HashMap<Felt, ContractCursor>,
 }
 

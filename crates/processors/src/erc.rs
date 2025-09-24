@@ -20,9 +20,7 @@ use crate::{
     error::{Error, ParseError, TokenMetadataError},
     fetch::{fetch_content_from_http, fetch_content_from_ipfs},
 };
-
-#[allow(dead_code)]
-const SQL_FELT_DELIMITER: &str = "/";
+use torii_proto::TokenId;
 
 // Retry configuration constants
 const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
@@ -36,28 +34,6 @@ fn is_permanent_error(error: &ProviderError) -> bool {
         // Add other permanent errors as needed
         _ => false,
     }
-}
-
-#[allow(dead_code)]
-pub fn felts_to_sql_string(felts: &[Felt]) -> String {
-    felts
-        .iter()
-        .map(|k| felt_to_sql_string(k))
-        .collect::<Vec<String>>()
-        .join(SQL_FELT_DELIMITER)
-        + SQL_FELT_DELIMITER
-}
-
-pub fn felt_to_sql_string(felt: &Felt) -> String {
-    format!("{:#064x}", felt)
-}
-
-pub fn felt_and_u256_to_sql_string(felt: &Felt, u256: &U256) -> String {
-    format!("{}:{}", felt_to_sql_string(felt), u256_to_sql_string(u256))
-}
-
-pub fn u256_to_sql_string(u256: &U256) -> String {
-    format!("{:#064x}", u256)
 }
 
 /// Try to fetch contract metadata (name, symbol, decimals) with retry logic
@@ -426,7 +402,7 @@ async fn try_fetch_token_uri_sequence<P: Provider + Sync>(
 }
 
 pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
-    id: &str,
+    id: TokenId,
     contract_address: Felt,
     actual_token_id: U256,
     provider: &P,
@@ -434,12 +410,12 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
     storage: Arc<dyn Storage>,
     nft_metadata_semaphore: Arc<Semaphore>,
 ) -> Result<(), Error> {
-    let _lock = match cache.get_token_registration_lock(id).await {
+    let _lock = match cache.get_token_registration_lock(id.clone()).await {
         Some(lock) => lock,
         None => return Ok(()), // Already registered by another thread
     };
     let _guard = _lock.lock().await;
-    if cache.is_token_registered(id).await {
+    if cache.is_token_registered(&id).await {
         return Ok(());
     }
 
@@ -459,9 +435,9 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
     // This is called when a new token is being registered, so we increment by 1
     // We can't distinguish ERC-721 vs ERC-1155 here, but ERC-721 will also increment by 1
     // which is correct since each ERC-721 token has supply of 1
-    let contract_id = felt_to_sql_string(&contract_address);
+    let contract_id = TokenId::Contract(contract_address);
     cache
-        .update_balance_diff(&contract_id, Felt::ZERO, Felt::from(1u8), U256::from(1u8))
+        .update_balance_diff(contract_id, Felt::ZERO, Felt::from(1u8), U256::from(1u8))
         .await;
 
     Ok(())
@@ -474,8 +450,8 @@ pub(crate) async fn try_register_token_contract<P: Provider + Sync>(
     cache: Arc<dyn Cache + Send + Sync>,
     is_erc20: bool,
 ) -> Result<(), Error> {
-    let token_id = felt_to_sql_string(&contract_address);
-    let _lock = match cache.get_token_registration_lock(&token_id).await {
+    let token_id = TokenId::Contract(contract_address);
+    let _lock = match cache.get_token_registration_lock(token_id.clone()).await {
         Some(lock) => lock,
         None => return Ok(()), // Already registered by another thread
     };
@@ -491,7 +467,7 @@ pub(crate) async fn try_register_token_contract<P: Provider + Sync>(
         .register_token_contract(contract_address, name, symbol, decimals, metadata)
         .await?;
 
-    cache.mark_token_registered(&token_id).await;
+    cache.mark_token_registered(token_id).await;
 
     Ok(())
 }

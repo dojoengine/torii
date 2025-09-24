@@ -6,7 +6,8 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{felt_to_sql_string, try_register_token_contract};
+use crate::erc::try_register_token_contract;
+use torii_proto::TokenId;
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
@@ -73,8 +74,9 @@ where
         .await?;
 
         // Update the balances diffs on the cache
+        let token_id = TokenId::Contract(token_address);
         ctx.cache
-            .update_balance_diff(&felt_to_sql_string(&token_address), from, to, value)
+            .update_balance_diff(token_id, from, to, value)
             .await;
 
         ctx.storage

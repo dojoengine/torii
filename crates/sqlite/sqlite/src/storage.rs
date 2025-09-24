@@ -12,7 +12,7 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy, OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery, schema::Entity
+    BalanceId, CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy, OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery, schema::Entity
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{ReadOnlyStorage, Storage, StorageError};
@@ -148,14 +148,20 @@ impl ReadOnlyStorage for Sql {
         let token_ids = sqlx::query_scalar::<_, String>("SELECT id FROM tokens")
             .fetch_all(&self.pool)
             .await?;
-        Ok(token_ids.into_iter().map(|id| {
-            let parts = id.split(':').collect::<Vec<&str>>();
-            if parts.len() == 2 {
-                TokenId::Nft(Felt::from_str(parts[0]).unwrap(), crypto_bigint::U256::from_be_hex(parts[1].trim_start_matches("0x")))
-            } else {
-                TokenId::Contract(Felt::from_str(parts[0]).unwrap())
-            }
-        }).collect())
+        Ok(token_ids
+            .into_iter()
+            .map(|id| {
+                let parts = id.split(':').collect::<Vec<&str>>();
+                if parts.len() == 2 {
+                    TokenId::Nft(
+                        Felt::from_str(parts[0]).unwrap(),
+                        crypto_bigint::U256::from_be_hex(parts[1].trim_start_matches("0x")).into(),
+                    )
+                } else {
+                    TokenId::Contract(Felt::from_str(parts[0]).unwrap())
+                }
+            })
+            .collect())
     }
 
     /// Returns the controllers for the storage.
@@ -1477,8 +1483,8 @@ impl Storage for Sql {
     /// Applies cached balance differences to the storage.
     async fn apply_balances_diff(
         &self,
-        balances_diff: HashMap<String, I256>,
-        total_supply_diff: HashMap<String, I256>,
+        balances_diff: HashMap<BalanceId, I256>,
+        total_supply_diff: HashMap<TokenId, I256>,
         cursors: HashMap<Felt, ContractCursor>,
     ) -> Result<(), StorageError> {
         self.executor

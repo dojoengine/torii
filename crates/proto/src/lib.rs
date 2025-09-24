@@ -37,7 +37,7 @@ use strum_macros::{AsRefStr, EnumIter, FromRepr};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TokenId {
     Contract(Felt),
-    Nft(Felt, U256),
+    Nft(Felt, starknet::core::types::U256),
 }
 
 impl TokenId {
@@ -52,7 +52,7 @@ impl TokenId {
         }
     }
     
-    pub fn token_id(&self) -> Option<U256> {
+    pub fn token_id(&self) -> Option<starknet::core::types::U256> {
         match self {
             TokenId::Contract(_) => None,
             TokenId::Nft(_, token_id) => Some(*token_id),

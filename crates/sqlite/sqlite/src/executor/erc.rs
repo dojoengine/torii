@@ -1,15 +1,14 @@
-use std::str::FromStr;
-
 use cainome::cairo_serde::CairoSerde;
 use serde_json;
 use starknet::core::types::{BlockId, BlockTag, FunctionCall, U256};
 use starknet::macros::selector;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
+use torii_proto::BalanceId;
 use tracing::{debug, warn};
 
 use super::{ApplyBalanceDiffQuery, BrokerMessage, Executor};
-use crate::constants::{SQL_FELT_DELIMITER, TOKEN_BALANCE_TABLE};
+use crate::constants::TOKEN_BALANCE_TABLE;
 use crate::error::Error;
 use crate::executor::LOG_TARGET;
 use crate::types::TokenBalance;
@@ -203,9 +202,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             // Token-level: ERC-721/ERC-1155 specific token IDs (has colon)
 
             // Get current total supply
+            let token_id_str = token_id.to_string();
             let current_supply: Option<String> =
                 sqlx::query_scalar("SELECT total_supply FROM tokens WHERE id = ?")
-                    .bind(token_id)
+                    .bind(&token_id_str)
                     .fetch_one(&mut **tx)
                     .await?;
 
@@ -234,7 +234,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 // Update the total supply in the database
                 sqlx::query("UPDATE tokens SET total_supply = ? WHERE id = ?")
                     .bind(u256_to_sql_string(&total_supply))
-                    .bind(token_id)
+                    .bind(&token_id_str)
                     .execute(&mut **tx)
                     .await?;
 
@@ -244,66 +244,24 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
         // Then, update individual balances
         let balances_diff = apply_balance_diff.balances_diff;
-        for (id_str, balance) in balances_diff.iter() {
-            let id = id_str.split(SQL_FELT_DELIMITER).collect::<Vec<&str>>();
-            match id.len() {
-                2 => {
-                    // account_address/contract_address:id => ERC721
-                    let account_address = id[0];
-                    let token_id = id[1];
-                    let mid = token_id.split(":").collect::<Vec<&str>>();
-                    let contract_address = mid[0];
+        for (balance_id, balance) in balances_diff.iter() {
+            let cursor = apply_balance_diff
+                .cursors
+                .get(&balance_id.token_id.contract_address())
+                .unwrap();
+            let block_id = if cursor.last_pending_block_tx.is_some() {
+                BlockId::Tag(BlockTag::PreConfirmed)
+            } else {
+                BlockId::Number(cursor.head.unwrap())
+            };
 
-                    let cursor = apply_balance_diff
-                        .cursors
-                        .get(&Felt::from_str(contract_address).unwrap())
-                        .unwrap();
-                    let block_id = if cursor.last_pending_block_tx.is_some() {
-                        BlockId::Tag(BlockTag::PreConfirmed)
-                    } else {
-                        BlockId::Number(cursor.head.unwrap())
-                    };
-
-                    self.apply_balance_diff_helper(
-                        id_str,
-                        account_address,
-                        contract_address,
-                        token_id,
-                        balance,
-                        block_id,
-                        provider.clone(),
-                    )
-                    .await?;
-                }
-                3 => {
-                    // account_address/contract_address/ => ERC20
-                    let account_address = id[0];
-                    let contract_address = id[1];
-                    let token_id = id[1];
-
-                    let cursor = apply_balance_diff
-                        .cursors
-                        .get(&Felt::from_str(contract_address).unwrap())
-                        .unwrap();
-                    let block_id = if cursor.last_pending_block_tx.is_some() {
-                        BlockId::Tag(BlockTag::PreConfirmed)
-                    } else {
-                        BlockId::Number(cursor.head.unwrap())
-                    };
-
-                    self.apply_balance_diff_helper(
-                        id_str,
-                        account_address,
-                        contract_address,
-                        token_id,
-                        balance,
-                        block_id,
-                        provider.clone(),
-                    )
-                    .await?;
-                }
-                _ => unreachable!(),
-            }
+            self.apply_balance_diff_helper(
+                balance_id,
+                balance,
+                block_id,
+                provider.clone(),
+            )
+            .await?;
         }
 
         Ok(())
@@ -312,10 +270,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
     #[allow(clippy::too_many_arguments)]
     pub async fn apply_balance_diff_helper(
         &mut self,
-        id: &str,
-        account_address: &str,
-        contract_address: &str,
-        token_id: &str,
+        id: &BalanceId,
         balance_diff: &I256,
         block_id: BlockId,
         provider: P,
@@ -324,7 +279,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         let balance: Option<String> = sqlx::query_scalar(&format!(
             "SELECT balance FROM {TOKEN_BALANCE_TABLE} WHERE id = ?"
         ))
-        .bind(id)
+        .bind(id.to_string())
         .fetch_optional(&mut **tx)
         .await?;
 
@@ -343,9 +298,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 let current_balance = if let Ok(current_balance) = provider
                     .call(
                         FunctionCall {
-                            contract_address: Felt::from_str(contract_address).unwrap(),
+                            contract_address: id.token_id.contract_address(),
                             entry_point_selector: selector!("balance_of"),
-                            calldata: vec![Felt::from_str(account_address).unwrap()],
+                            calldata: vec![id.account_address],
                         },
                         block_id,
                     )
@@ -356,9 +311,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     provider
                         .call(
                             FunctionCall {
-                                contract_address: Felt::from_str(contract_address).unwrap(),
+                                contract_address: id.token_id.contract_address(),
                                 entry_point_selector: selector!("balanceOf"),
-                                calldata: vec![Felt::from_str(account_address).unwrap()],
+                                calldata: vec![id.account_address],
                             },
                             block_id,
                         )
@@ -370,7 +325,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
                 warn!(
                     target: LOG_TARGET,
-                    id = id,
+                    id = id.to_string(),
                     "Invalid transfer event detected, overriding balance by querying RPC directly"
                 );
                 // override the balance from onchain data
@@ -387,10 +342,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             "INSERT INTO {TOKEN_BALANCE_TABLE} (id, contract_address, account_address, \
              token_id, balance) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET balance = EXCLUDED.balance RETURNING *",
         ))
-        .bind(id)
-        .bind(contract_address)
-        .bind(account_address)
-        .bind(token_id)
+        .bind(id.to_string())
+        .bind(format!("{:#064x}", id.token_id.contract_address()))
+        .bind(format!("{:#064x}", id.account_address))
+        .bind(id.token_id.to_string())
         .bind(u256_to_sql_string(&balance))
         .fetch_one(&mut **tx)
         .await?;

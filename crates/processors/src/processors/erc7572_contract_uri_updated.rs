@@ -5,7 +5,8 @@ use starknet::core::types::Event;
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{felt_to_sql_string, update_contract_metadata};
+use crate::erc::update_contract_metadata;
+use torii_proto::TokenId;
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
@@ -47,7 +48,7 @@ where
 
     async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
         let contract_address = ctx.event.from_address;
-        let token_id = felt_to_sql_string(&contract_address);
+        let token_id = TokenId::Contract(contract_address);
         if !ctx.cache.is_token_registered(&token_id).await {
             return Ok(());
         }
