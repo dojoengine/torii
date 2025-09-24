@@ -7,7 +7,7 @@ use dojo_types::schema::{Struct, Ty};
 use erc::{store_token_attributes, update_contract_traits_from_metadata, UpdateTokenMetadataQuery};
 use metrics::{counter, histogram};
 use serde_json;
-use sqlx::{Executor as SqlxExecutor, FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
+use sqlx::{FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
 use starknet::core::utils::parse_cairo_short_string;
@@ -862,9 +862,11 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         if let Some(transaction) = self.transaction.take() {
             transaction.commit().await?;
         }
-        self.pool
-            .execute("PRAGMA wal_checkpoint(TRUNCATE);")
-            .await?;
+
+        // Write & truncate the WAL file. Pretty expensive operation.
+        // self.pool
+        //     .execute("PRAGMA wal_checkpoint(TRUNCATE);")
+        //     .await?;
 
         self.transaction = Some(self.pool.begin().await?);
 
@@ -883,9 +885,11 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         if let Some(transaction) = self.transaction.take() {
             transaction.rollback().await?;
         }
-        self.pool
-            .execute("PRAGMA wal_checkpoint(TRUNCATE);")
-            .await?;
+
+        // Write & truncate the WAL file. Pretty expensive operation.
+        // self.pool
+        //     .execute("PRAGMA wal_checkpoint(TRUNCATE);")
+        //     .await?;
 
         self.transaction = Some(self.pool.begin().await?);
 
