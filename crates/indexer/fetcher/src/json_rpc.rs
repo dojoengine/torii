@@ -598,7 +598,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                         let mut done = false;
 
                         for event in events_page.events {
-                            if to - from > self.config.blocks_chunk_size
+                            if (to - from > self.config.blocks_chunk_size || from == 0)
                                 && event.block_number.is_some()
                             {
                                 from = event.block_number.unwrap();
