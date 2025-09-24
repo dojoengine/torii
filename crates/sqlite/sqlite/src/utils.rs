@@ -22,14 +22,14 @@ pub fn utc_dt_string_from_timestamp(timestamp: u64) -> String {
 pub fn felts_to_sql_string(felts: &[Felt]) -> String {
     felts
         .iter()
-        .map(|k| format!("{:#x}", k))
+        .map(|k| felt_to_sql_string(k))
         .collect::<Vec<String>>()
         .join(SQL_FELT_DELIMITER)
         + SQL_FELT_DELIMITER
 }
 
 pub fn felt_to_sql_string(felt: &Felt) -> String {
-    format!("{:#x}", felt)
+    format!("{:#064x}", felt)
 }
 
 pub fn felt_and_u256_to_sql_string(felt: &Felt, u256: &U256) -> String {
@@ -56,7 +56,7 @@ pub fn build_keys_pattern(clause: &torii_proto::KeysClause) -> String {
             .iter()
             .map(|felt| {
                 if let Some(felt) = felt {
-                    format!("{:#x}", felt)
+                    felt_to_sql_string(felt)
                 } else {
                     KEY_PATTERN.to_string()
                 }

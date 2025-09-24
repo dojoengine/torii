@@ -10,6 +10,7 @@ use tokio_stream::StreamExt;
 use torii_broker::types::TransactionUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::types::Transaction;
+use torii_sqlite::utils::felt_to_sql_string;
 
 use super::{BasicObject, ResolvableObject, TypeMapping, ValueMapping};
 use crate::constants::{
@@ -111,7 +112,7 @@ impl ResolvableObject for TransactionObject {
                             let caller = caller.clone();
                             async move {
                                 let transaction_hash =
-                                    format!("{:#x}", transaction.transaction_hash);
+                                    felt_to_sql_string(&transaction.transaction_hash);
                                 if (hash.is_none() || hash == Some(transaction_hash.clone()))
                                     && (caller.is_none()
                                         || transaction.calls.iter().any(|call| {

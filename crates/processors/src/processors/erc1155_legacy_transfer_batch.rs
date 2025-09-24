@@ -122,16 +122,15 @@ where
                 .await?;
 
                 cache
-                    .update_balance_diff(id, from_clone, to_clone, amount)
+                    .update_balance_diff(id.clone(), from_clone, to_clone, amount)
                     .await;
 
                 storage
-                    .store_erc_transfer_event(
-                        token_address,
+                    .store_token_transfer(
+                        id,
                         from_clone,
                         to_clone,
                         amount,
-                        Some(token_id_clone),
                         block_timestamp_clone,
                         &event_id_clone,
                     )

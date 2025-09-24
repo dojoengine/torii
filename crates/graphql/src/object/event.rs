@@ -8,6 +8,7 @@ use starknet_crypto::Felt;
 use tokio_stream::StreamExt;
 use torii_broker::types::{EventUpdate, InnerType};
 use torii_broker::MemoryBroker;
+use torii_sqlite::utils::felt_to_sql_string;
 
 use super::inputs::keys_input::{keys_argument, parse_keys_argument};
 use super::{resolve_many, BasicObject, ResolvableObject, TypeMapping};
@@ -75,13 +76,13 @@ impl EventObject {
             .event
             .keys
             .iter()
-            .map(|k| format!("{:#x}", k))
+            .map(|k| felt_to_sql_string(k))
             .collect();
         let data: Vec<String> = event
             .event
             .data
             .iter()
-            .map(|k| format!("{:#x}", k))
+            .map(|k| felt_to_sql_string(k))
             .collect();
         ValueMapping::from([
             (Name::new("id"), Value::from(event.id)),
@@ -89,7 +90,7 @@ impl EventObject {
             (Name::new("data"), Value::from(data)),
             (
                 Name::new("transactionHash"),
-                Value::from(format!("{:#x}", event.event.transaction_hash)),
+                Value::from(felt_to_sql_string(&event.event.transaction_hash)),
             ),
             (
                 Name::new("executedAt"),

@@ -311,7 +311,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 Argument::Int(integer) => query.bind(integer),
                 Argument::Bool(bool) => query.bind(bool),
                 Argument::String(string) => query.bind(string),
-                Argument::FieldElement(felt) => query.bind(format!("{:#064x}", felt)),
+                Argument::FieldElement(felt) => query.bind(felt_to_sql_string(felt)),
             }
         }
 
@@ -364,7 +364,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
                     cursor.last_pending_block_tx = new_cursor
                         .last_pending_block_tx
-                        .map(|tx| format!("{:#x}", tx));
+                        .map(|tx| felt_to_sql_string(&tx));
                     cursor.tps = Some(new_tps.try_into().expect("does't fit in i64"));
                     cursor.last_block_timestamp =
                         Some(new_timestamp.try_into().expect("doesn't fit in i64"));
@@ -804,30 +804,24 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, "Rolled back the transaction.");
             }
             QueryType::UpdateTokenMetadata(update_metadata) => {
-                let id = if let Some(token_id) = update_metadata.token_id {
-                    felt_and_u256_to_sql_string(&update_metadata.contract_address, &token_id)
-                } else {
-                    felt_to_sql_string(&update_metadata.contract_address)
-                };
-
                 // Update metadata and timestamp in database
                 let token = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "UPDATE tokens SET metadata = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *",
                 )
                 .bind(&update_metadata.metadata)
-                .bind(&id)
+                .bind(&update_metadata.token_id.to_string())
                 .fetch_one(&mut **tx)
                 .await?;
 
                 // If this is an individual token (has token_id), update attributes and contract's traits
-                if update_metadata.token_id.is_some() {
+                if update_metadata.token_id.token_id().is_some() {
                     // Update individual token attributes
                     store_token_attributes(&update_metadata.metadata, &token.id, &mut *tx).await?;
 
                     // Update contract's traits
                     update_contract_traits_from_metadata(
                         &update_metadata.metadata,
-                        &update_metadata.contract_address,
+                        &update_metadata.token_id.contract_address(),
                         &mut *tx,
                     )
                     .await?;

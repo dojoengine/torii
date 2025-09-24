@@ -70,9 +70,7 @@ where
 
         let metadata = fetch_token_metadata(token_address, token_id, &ctx.provider).await?;
 
-        ctx.storage
-            .update_token_metadata(token_address, Some(token_id), metadata)
-            .await?;
+        ctx.storage.update_token_metadata(id, metadata).await?;
 
         debug!(
             target: LOG_TARGET,

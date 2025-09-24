@@ -39,10 +39,7 @@ use crate::{
         error::ExecutorQueryError, ApplyBalanceDiffQuery, Argument, DeleteEntityQuery, EntityQuery,
         EventMessageQuery, QueryMessage, QueryType, StoreTransactionQuery, UpdateCursorsQuery,
     },
-    utils::{
-        felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string,
-        utc_dt_string_from_timestamp,
-    },
+    utils::{felt_to_sql_string, felts_to_sql_string, utc_dt_string_from_timestamp},
     Sql,
 };
 
@@ -69,7 +66,7 @@ impl ReadOnlyStorage for Sql {
         }
 
         let model = sqlx::query_as::<_, SQLModel>("SELECT * FROM models WHERE id = ?")
-            .bind(format!("{:#x}", selector))
+            .bind(felt_to_sql_string(&selector))
             .fetch_one(&self.pool)
             .await?;
 
@@ -113,7 +110,7 @@ impl ReadOnlyStorage for Sql {
         if !selectors.is_empty() {
             let placeholders = vec!["?"; selectors.len()].join(", ");
             query += &format!(" WHERE id IN ({})", placeholders);
-            bind_values.extend(selectors.iter().map(|s| format!("{:#x}", s)));
+            bind_values.extend(selectors.iter().map(|s| felt_to_sql_string(s)));
         }
 
         let mut query = sqlx::query_as::<_, SQLModel>(&query);
@@ -230,7 +227,7 @@ impl ReadOnlyStorage for Sql {
                 query
                     .contract_addresses
                     .iter()
-                    .map(|addr| format!("{:#x}", addr)),
+                    .map(|addr| felt_to_sql_string(addr)),
             );
         }
 
@@ -276,7 +273,7 @@ impl ReadOnlyStorage for Sql {
             let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
             where_conditions.push(format!("t.contract_address IN ({})", placeholders));
             for addr in &query.contract_addresses {
-                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
             }
         }
 
@@ -349,7 +346,7 @@ impl ReadOnlyStorage for Sql {
             query_builder =
                 query_builder.where_clause(&format!("account_address IN ({})", placeholders));
             for addr in &query.account_addresses {
-                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
             }
         }
 
@@ -358,7 +355,7 @@ impl ReadOnlyStorage for Sql {
             query_builder =
                 query_builder.where_clause(&format!("contract_address IN ({})", placeholders));
             for addr in &query.contract_addresses {
-                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
             }
         }
 
@@ -436,7 +433,7 @@ impl ReadOnlyStorage for Sql {
             query_builder =
                 query_builder.where_clause(&format!("t.contract_address IN ({})", placeholders));
             for addr in &query.contract_addresses {
-                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
             }
         }
 
@@ -503,7 +500,7 @@ impl ReadOnlyStorage for Sql {
                 query_builder = query_builder
                     .where_clause(&format!("t.transaction_hash IN ({})", placeholders));
                 for hash in &filter.transaction_hashes {
-                    query_builder = query_builder.bind_value(format!("{:#x}", hash));
+                    query_builder = query_builder.bind_value(felt_to_sql_string(hash));
                 }
             }
 
@@ -521,7 +518,7 @@ impl ReadOnlyStorage for Sql {
                     let placeholders = vec!["?"; filter.contract_addresses.len()].join(", ");
                     call_conditions.push(format!("tc.contract_address IN ({})", placeholders));
                     for addr in &filter.contract_addresses {
-                        query_builder = query_builder.bind_value(format!("{:#x}", addr));
+                        query_builder = query_builder.bind_value(felt_to_sql_string(addr));
                     }
                 }
 
@@ -537,7 +534,7 @@ impl ReadOnlyStorage for Sql {
                     let placeholders = vec!["?"; filter.caller_addresses.len()].join(", ");
                     call_conditions.push(format!("tc.caller_address IN ({})", placeholders));
                     for caller in &filter.caller_addresses {
-                        query_builder = query_builder.bind_value(format!("{:#x}", caller));
+                        query_builder = query_builder.bind_value(felt_to_sql_string(caller));
                     }
                 }
 
@@ -554,7 +551,7 @@ impl ReadOnlyStorage for Sql {
                 query_builder =
                     query_builder.where_clause(&format!("tm.model_id IN ({})", placeholders));
                 for model in &filter.model_selectors {
-                    query_builder = query_builder.bind_value(format!("{:#x}", model));
+                    query_builder = query_builder.bind_value(felt_to_sql_string(model));
                 }
             }
 
@@ -683,10 +680,10 @@ impl ReadOnlyStorage for Sql {
                 placeholders_from, placeholders_to
             ));
             for addr in &query.account_addresses {
-                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
             }
             for addr in &query.account_addresses {
-                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
             }
         }
 
@@ -695,7 +692,7 @@ impl ReadOnlyStorage for Sql {
             query_builder =
                 query_builder.where_clause(&format!("contract_address IN ({})", placeholders));
             for addr in &query.contract_addresses {
-                query_builder = query_builder.bind_value(format!("{:#x}", addr));
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
             }
         }
 
@@ -830,7 +827,7 @@ impl ReadOnlyStorage for Sql {
         let mut schema = self.model(model_selector).await?.schema;
         let query = format!("SELECT * FROM [{}] WHERE internal_id = ?", schema.name());
         let mut query = sqlx::query(&query);
-        query = query.bind(format!("{:#x}", entity_id));
+        query = query.bind(felt_to_sql_string(&entity_id));
         let row: Option<SqliteRow> = query.fetch_optional(&self.pool).await?;
         match row {
             Some(row) => {
@@ -991,8 +988,8 @@ impl Storage for Sql {
     ) -> Result<(), StorageError> {
         let namespaced_name = entity.name();
 
-        let entity_id = format!("{:#x}", entity_id);
-        let model_id = format!("{:#x}", model_selector);
+        let entity_id = felt_to_sql_string(&entity_id);
+        let model_id = felt_to_sql_string(&model_selector);
 
         let keys_str = keys.map(|keys| felts_to_sql_string(&keys));
 
@@ -1091,9 +1088,9 @@ impl Storage for Sql {
         let namespaced_name = entity.name();
         let (model_namespace, model_name) = namespaced_name.split_once('-').unwrap();
 
-        let entity_id = format!("{:#x}", poseidon_hash_many(&keys));
+        let entity_id = felt_to_sql_string(&poseidon_hash_many(&keys));
         let model_selector = compute_selector_from_names(model_namespace, model_name);
-        let model_id = format!("{:#x}", model_selector);
+        let model_id = felt_to_sql_string(&model_selector);
 
         let keys_str = felts_to_sql_string(&keys);
         let block_timestamp_str = utc_dt_string_from_timestamp(block_timestamp);
@@ -1160,8 +1157,8 @@ impl Storage for Sql {
         event_id: &str,
         block_timestamp: u64,
     ) -> Result<(), StorageError> {
-        let entity_id = format!("{:#x}", entity_id);
-        let model_id = format!("{:#x}", model_id);
+        let entity_id = felt_to_sql_string(&entity_id);
+        let model_id = felt_to_sql_string(&model_id);
         let model_table = entity.name();
 
         self.executor
@@ -1417,19 +1414,14 @@ impl Storage for Sql {
     /// Updates metadata for a token.
     async fn update_token_metadata(
         &self,
-        contract_address: Felt,
-        token_id: Option<U256>,
+        token_id: TokenId,
         metadata: String,
     ) -> Result<(), StorageError> {
         self.executor
             .send(QueryMessage::new(
                 "".to_string(),
                 vec![],
-                QueryType::UpdateTokenMetadata(UpdateTokenMetadataQuery {
-                    contract_address,
-                    token_id,
-                    metadata,
-                }),
+                QueryType::UpdateTokenMetadata(UpdateTokenMetadataQuery { token_id, metadata }),
             ))
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
 
@@ -1438,24 +1430,18 @@ impl Storage for Sql {
 
     /// Stores an ERC transfer event with the storage.
     #[allow(clippy::too_many_arguments)]
-    async fn store_erc_transfer_event(
+    async fn store_token_transfer(
         &self,
-        contract_address: Felt,
+        token_id: TokenId,
         from: Felt,
         to: Felt,
         amount: U256,
-        token_id: Option<U256>,
         block_timestamp: u64,
         event_id: &str,
     ) -> Result<(), StorageError> {
-        let token_id = if let Some(token_id) = token_id {
-            felt_and_u256_to_sql_string(&contract_address, &token_id)
-        } else {
-            felt_to_sql_string(&contract_address)
-        };
-
-        let id = format!("{}:{}", event_id, token_id);
+        let id = format!("{}:{}", event_id, token_id.to_string());
         let token_id_str = token_id.to_string();
+        let contract_address = token_id.contract_address();
         let event_id_str = event_id.to_string();
         let executed_at_str = utc_dt_string_from_timestamp(block_timestamp);
 

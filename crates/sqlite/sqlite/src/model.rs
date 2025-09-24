@@ -23,7 +23,7 @@ use starknet::core::types::Felt;
 use super::error::{self, Error};
 use crate::constants::SQL_MAX_JOINS;
 use crate::error::{ParseError, QueryError};
-use crate::utils::build_keys_pattern;
+use crate::utils::{build_keys_pattern, felt_to_sql_string};
 use crate::Sql;
 
 /// Helper function to parse array index from field name like "field[0]"
@@ -130,7 +130,7 @@ impl ModelSQLReader {
             "SELECT namespace, name, class_hash, contract_address, packed_size, unpacked_size, \
              layout FROM models WHERE id = ?",
         )
-        .bind(format!("{:#x}", selector))
+        .bind(felt_to_sql_string(&selector))
         .fetch_one(&pool)
         .await?;
 
@@ -179,7 +179,7 @@ impl ModelReader<Error> for ModelSQLReader {
 
     async fn schema(&self) -> Result<Ty, Error> {
         let schema: String = sqlx::query_scalar("SELECT schema FROM models WHERE id = ?")
-            .bind(format!("{:#x}", self.selector))
+            .bind(felt_to_sql_string(&self.selector))
             .fetch_one(&self.pool)
             .await?;
 
@@ -473,7 +473,7 @@ fn build_composite_clause(
                 let ids = hashed_keys
                     .iter()
                     .map(|id| {
-                        bind_values.push(format!("{:#x}", id));
+                        bind_values.push(felt_to_sql_string(id));
                         "?".to_string()
                     })
                     .collect::<Vec<_>>()
@@ -487,7 +487,7 @@ fn build_composite_clause(
                     keys.models.iter().try_fold(Vec::new(), |mut acc, model| {
                         let selector = try_compute_selector_from_tag(model)
                             .map_err(|_| QueryError::InvalidNamespacedModel(model.to_string()))?;
-                        acc.push(format!("{:#x}", selector));
+                        acc.push(felt_to_sql_string(&selector));
                         Ok::<Vec<String>, Error>(acc)
                     })?;
 
@@ -986,7 +986,7 @@ mod tests {
             bind_values,
             hashed_keys
                 .iter()
-                .map(|k| format!("{:#x}", k))
+                .map(|k| felt_to_sql_string(k))
                 .collect::<Vec<_>>()
         );
     }

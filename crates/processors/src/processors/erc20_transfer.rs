@@ -76,16 +76,15 @@ where
         // Update the balances diffs in the cache
         let token_id = TokenId::Contract(token_address);
         ctx.cache
-            .update_balance_diff(token_id, from, to, value)
+            .update_balance_diff(token_id.clone(), from, to, value)
             .await;
 
         ctx.storage
-            .store_erc_transfer_event(
-                token_address,
+            .store_token_transfer(
+                token_id,
                 from,
                 to,
                 value,
-                None,
                 ctx.block_timestamp,
                 &ctx.event_id,
             )

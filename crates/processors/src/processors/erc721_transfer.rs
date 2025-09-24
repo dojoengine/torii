@@ -87,16 +87,15 @@ where
         .await?;
 
         ctx.cache
-            .update_balance_diff(id, from, to, U256::from(1u8))
+            .update_balance_diff(id.clone(), from, to, U256::from(1u8))
             .await;
 
         ctx.storage
-            .store_erc_transfer_event(
-                token_address,
+            .store_token_transfer(
+                id,
                 from,
                 to,
                 U256::from(1u8),
-                Some(token_id),
                 ctx.block_timestamp,
                 &ctx.event_id,
             )

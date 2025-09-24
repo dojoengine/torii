@@ -73,18 +73,12 @@ where
         )
         .await?;
 
-        ctx.cache.update_balance_diff(id, from, to, amount).await;
+        ctx.cache
+            .update_balance_diff(id.clone(), from, to, amount)
+            .await;
 
         ctx.storage
-            .store_erc_transfer_event(
-                token_address,
-                from,
-                to,
-                amount,
-                Some(token_id),
-                ctx.block_timestamp,
-                &ctx.event_id,
-            )
+            .store_token_transfer(id, from, to, amount, ctx.block_timestamp, &ctx.event_id)
             .await?;
 
         debug!(target: LOG_TARGET, from = ?from, to = ?to, token_id = ?token_id, amount = ?amount, "ERC1155 TransferSingle");

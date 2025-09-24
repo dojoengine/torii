@@ -4,7 +4,7 @@ use starknet::core::types::{BlockId, BlockTag, FunctionCall, U256};
 use starknet::macros::selector;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
-use torii_proto::BalanceId;
+use torii_proto::{BalanceId, TokenId};
 use tracing::{debug, warn};
 
 use super::{ApplyBalanceDiffQuery, BrokerMessage, Executor};
@@ -24,8 +24,7 @@ pub struct RegisterNftTokenQuery {
 
 #[derive(Debug, Clone)]
 pub struct UpdateTokenMetadataQuery {
-    pub contract_address: Felt,
-    pub token_id: Option<U256>,
+    pub token_id: TokenId,
     pub metadata: String,
 }
 
@@ -338,8 +337,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
              token_id, balance) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO UPDATE SET balance = EXCLUDED.balance RETURNING *",
         ))
         .bind(id.to_string())
-        .bind(format!("{:#064x}", id.token_id.contract_address()))
-        .bind(format!("{:#064x}", id.account_address))
+        .bind(felt_to_sql_string(&id.token_id.contract_address()))
+        .bind(felt_to_sql_string(&id.account_address))
         .bind(id.token_id.to_string())
         .bind(u256_to_sql_string(&balance))
         .fetch_one(&mut **tx)
