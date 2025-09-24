@@ -610,14 +610,14 @@ mod tests {
             &format!(
                 r#"
                     subscription {{
-                        eventEmitted (keys: ["*", "{:#x}"]) {{
+                        eventEmitted (keys: ["*", "{}"]) {{
                             keys
                             data
                             transactionHash
                         }}
                     }}
                 "#,
-                Felt::from_str("0xbeef").unwrap()
+                felt_to_sql_string(&Felt::from_str("0xbeef").unwrap())
             ),
         )
         .await;

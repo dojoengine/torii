@@ -658,7 +658,7 @@ impl Sql {
 
         let having_clause = models
             .iter()
-            .map(|model| format!("INSTR(model_ids, '{:#x}') > 0", model))
+            .map(|model| format!("INSTR(model_ids, '{}') > 0", felt_to_sql_string(model)))
             .collect::<Vec<_>>()
             .join(" OR ");
 
