@@ -13,9 +13,7 @@ use torii_math::I256;
 use torii_proto::schema::Entity;
 
 use torii_proto::{
-    Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, Model,
-    Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery,
-    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
+    BalanceId, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery
 };
 
 pub mod utils;
@@ -36,8 +34,8 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, StorageError>;
 
     /// Returns the IDs of all the registered tokens
-    async fn token_ids(&self) -> Result<HashSet<String>, StorageError>;
-
+    async fn token_ids(&self) -> Result<HashSet<TokenId>, StorageError>;
+    
     /// Returns the controllers for the storage.
     async fn controllers(&self, query: &ControllerQuery) -> Result<Page<Controller>, StorageError>;
 
@@ -262,8 +260,8 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     /// Applies cached balance differences to the storage.
     async fn apply_balances_diff(
         &self,
-        balances_diff: HashMap<String, I256>,
-        total_supply_diff: HashMap<String, I256>,
+        balances_diff: HashMap<BalanceId, I256>,
+        total_supply_diff: HashMap<TokenId, I256>,
         cursors: HashMap<Felt, ContractCursor>,
     ) -> Result<(), StorageError>;
 

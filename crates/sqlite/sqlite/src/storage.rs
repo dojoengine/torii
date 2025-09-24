@@ -12,11 +12,7 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    schema::Entity, CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery,
-    Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy,
-    OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract,
-    TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
-    TransactionCall, TransactionQuery,
+    CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy, OrderDirection, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery, schema::Entity
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{ReadOnlyStorage, Storage, StorageError};
@@ -148,11 +144,18 @@ impl ReadOnlyStorage for Sql {
         Ok(models_metadata)
     }
 
-    async fn token_ids(&self) -> Result<HashSet<String>, StorageError> {
+    async fn token_ids(&self) -> Result<HashSet<TokenId>, StorageError> {
         let token_ids = sqlx::query_scalar::<_, String>("SELECT id FROM tokens")
             .fetch_all(&self.pool)
             .await?;
-        Ok(token_ids.into_iter().collect())
+        Ok(token_ids.into_iter().map(|id| {
+            let parts = id.split(':').collect::<Vec<&str>>();
+            if parts.len() == 2 {
+                TokenId::Nft(Felt::from_str(parts[0]).unwrap(), crypto_bigint::U256::from_be_hex(parts[1].trim_start_matches("0x")))
+            } else {
+                TokenId::Contract(Felt::from_str(parts[0]).unwrap())
+            }
+        }).collect())
     }
 
     /// Returns the controllers for the storage.

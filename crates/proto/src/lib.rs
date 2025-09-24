@@ -34,6 +34,53 @@ use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
 use strum_macros::{AsRefStr, EnumIter, FromRepr};
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TokenId {
+    Contract(Felt),
+    Nft(Felt, U256),
+}
+
+impl TokenId {
+    pub fn is_nft(&self) -> bool {
+        matches!(self, TokenId::Nft(_, _))
+    }
+    
+    pub fn contract_address(&self) -> Felt {
+        match self {
+            TokenId::Contract(addr) => *addr,
+            TokenId::Nft(addr, _) => *addr,
+        }
+    }
+    
+    pub fn token_id(&self) -> Option<U256> {
+        match self {
+            TokenId::Contract(_) => None,
+            TokenId::Nft(_, token_id) => Some(*token_id),
+        }
+    }
+}
+
+impl std::fmt::Display for TokenId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenId::Contract(addr) => write!(f, "{:#064x}", addr),
+            TokenId::Nft(addr, token_id) => write!(f, "{:#064x}:{:#064x}", addr, token_id),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BalanceId {
+    pub account_address: Felt,
+    pub token_id: TokenId,
+}
+
+impl std::fmt::Display for BalanceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#064x}/{}", self.account_address, self.token_id)
+    }
+}
+
 /// Represents a cursor for tracking blockchain state
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct ContractCursor {

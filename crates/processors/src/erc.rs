@@ -459,7 +459,7 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
     // This is called when a new token is being registered, so we increment by 1
     // We can't distinguish ERC-721 vs ERC-1155 here, but ERC-721 will also increment by 1
     // which is correct since each ERC-721 token has supply of 1
-    let contract_id = format!("{:#x}", contract_address);
+    let contract_id = felt_to_sql_string(&contract_address);
     cache
         .update_balance_diff(&contract_id, Felt::ZERO, Felt::from(1u8), U256::from(1u8))
         .await;
@@ -474,7 +474,7 @@ pub(crate) async fn try_register_token_contract<P: Provider + Sync>(
     cache: Arc<dyn Cache + Send + Sync>,
     is_erc20: bool,
 ) -> Result<(), Error> {
-    let token_id = format!("{:#x}", contract_address);
+    let token_id = felt_to_sql_string(&contract_address);
     let _lock = match cache.get_token_registration_lock(&token_id).await {
         Some(lock) => lock,
         None => return Ok(()), // Already registered by another thread
