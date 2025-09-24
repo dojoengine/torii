@@ -100,6 +100,10 @@ pub async fn store_token_attributes(
     token_id: &str,
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
 ) -> Result<(), sqlx::Error> {
+    if metadata.is_empty() {
+        return Ok(());
+    }
+
     let metadata_json: serde_json::Value = match serde_json::from_str(metadata) {
         Ok(json) => json,
         Err(_) => return Ok(()), // Skip invalid JSON
@@ -152,6 +156,10 @@ pub async fn update_contract_traits_from_metadata(
     contract_address: &Felt,
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
 ) -> Result<(), sqlx::Error> {
+    if metadata.is_empty() {
+        return Ok(());
+    }
+
     // Get current traits for the contract
     let contract_id = felt_to_sql_string(contract_address);
     let current_traits_result = sqlx::query_as::<_, (String,)>(
