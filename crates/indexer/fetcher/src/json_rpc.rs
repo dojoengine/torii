@@ -597,8 +597,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                         let mut page_events = Vec::new();
                         let mut done = false;
 
-                        for event in events_page.events {
-                            if from == 0 && event.block_number.is_some() {
+                        for (index, event) in events_page.events.into_iter().enumerate() {
+                            if index == 0 && (event.block_number.unwrap() > to || from == 0) {
                                 from = event.block_number.unwrap();
                                 to =
                                     (from + self.config.blocks_chunk_size).min(latest_block_number);
