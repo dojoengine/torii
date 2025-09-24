@@ -23,7 +23,7 @@ use tokio::sync::broadcast;
 use torii_cache::{Cache, InMemoryCache};
 use torii_sqlite::executor::Executor;
 use torii_sqlite::types::Token;
-use torii_sqlite::utils::u256_to_sql_string;
+use torii_sqlite::utils::{felt_to_sql_string, u256_to_sql_string};
 use torii_sqlite::Sql;
 use torii_storage::proto::{ContractDefinition, ContractType};
 use torii_storage::Storage;
@@ -194,7 +194,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        format!("{:#x}", compute_selector_from_names("ns", "Position"))
+        felt_to_sql_string(&compute_selector_from_names("ns", "Position"))
     );
     assert_eq!(name, "Position");
     assert_eq!(namespace, "ns");
@@ -212,7 +212,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        format!("{:#x}", compute_selector_from_names("ns", "Moves"))
+        felt_to_sql_string(&compute_selector_from_names("ns", "Moves"))
     );
     assert_eq!(name, "Moves");
     assert_eq!(namespace, "ns");
@@ -230,7 +230,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        format!("{:#x}", compute_selector_from_names("ns", "PlayerConfig"))
+        felt_to_sql_string(&compute_selector_from_names("ns", "PlayerConfig"))
     );
     assert_eq!(name, "PlayerConfig");
     assert_eq!(namespace, "ns");
@@ -253,7 +253,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        format!("{:#x}", poseidon_hash_many(&[account.address()]))
+        felt_to_sql_string(&poseidon_hash_many(&[account.address()]))
     );
     assert_eq!(keys, format!("{:#x}/", account.address()));
 }
