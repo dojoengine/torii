@@ -22,7 +22,7 @@ pub fn utc_dt_string_from_timestamp(timestamp: u64) -> String {
 pub fn felts_to_sql_string(felts: &[Felt]) -> String {
     felts
         .iter()
-        .map(|k| felt_to_sql_string(k))
+        .map(felt_to_sql_string)
         .collect::<Vec<String>>()
         .join(SQL_FELT_DELIMITER)
         + SQL_FELT_DELIMITER

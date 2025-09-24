@@ -72,18 +72,8 @@ impl ResolvableObject for EventObject {
 
 impl EventObject {
     fn value_mapping(event: <EventUpdate as InnerType>::Inner) -> ValueMapping {
-        let keys: Vec<String> = event
-            .event
-            .keys
-            .iter()
-            .map(|k| felt_to_sql_string(k))
-            .collect();
-        let data: Vec<String> = event
-            .event
-            .data
-            .iter()
-            .map(|k| felt_to_sql_string(k))
-            .collect();
+        let keys: Vec<String> = event.event.keys.iter().map(felt_to_sql_string).collect();
+        let data: Vec<String> = event.event.data.iter().map(felt_to_sql_string).collect();
         ValueMapping::from([
             (Name::new("id"), Value::from(event.id)),
             (Name::new("keys"), Value::from(keys)),

@@ -809,7 +809,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     "UPDATE tokens SET metadata = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *",
                 )
                 .bind(&update_metadata.metadata)
-                .bind(&update_metadata.token_id.to_string())
+                .bind(update_metadata.token_id.to_string())
                 .fetch_one(&mut **tx)
                 .await?;
 

@@ -62,7 +62,7 @@ mod tests {
         let entity_id = felt_to_sql_string(&poseidon_hash_many(&key));
         let keys_str = key
             .iter()
-            .map(|k| felt_to_sql_string(k))
+            .map(felt_to_sql_string)
             .collect::<Vec<String>>()
             .join(",");
         let block_timestamp = 1710754478_u64;
@@ -79,8 +79,8 @@ mod tests {
                         "typeU16": 1,
                         "type_u64": "0x1",
                         "typeBool": true,
-                        "type_felt": felt_to_sql_string(&Felt::from(1u128)),
-                        "typeContractAddress": felt_to_sql_string(&Felt::ONE)
+                        "type_felt": format!("{:#x}", Felt::from(1u128)),
+                        "typeContractAddress": format!("{:#x}", Felt::ONE)
                 }]
             }
         });
@@ -239,7 +239,7 @@ mod tests {
         let block_timestamp = 1710754478_u64;
         let keys_str = key
             .iter()
-            .map(|k| felt_to_sql_string(k))
+            .map(felt_to_sql_string)
             .collect::<Vec<String>>()
             .join(",");
         let type_name = utils::type_name_from_names(&namespace, &model_name);
@@ -624,12 +624,12 @@ mod tests {
 
         let expected_value: async_graphql::Value = value!({
          "eventEmitted": { "keys": vec![
-            felt_to_sql_string(Felt::from_str("0xdead").unwrap()),
-            felt_to_sql_string(Felt::from_str("0xbeef").unwrap())
+            felt_to_sql_string(&Felt::from_str("0xdead").unwrap()),
+            felt_to_sql_string(&Felt::from_str("0xbeef").unwrap())
          ], "data": vec![
-            felt_to_sql_string(Felt::from_str("0xc0de").unwrap()),
-            felt_to_sql_string(Felt::from_str("0xface").unwrap())
-         ], "transactionHash": felt_to_sql_string(Felt::ZERO)}
+            felt_to_sql_string(&Felt::from_str("0xc0de").unwrap()),
+            felt_to_sql_string(&Felt::from_str("0xface").unwrap())
+         ], "transactionHash": felt_to_sql_string(&Felt::ZERO)}
         });
 
         assert_eq!(response_value, expected_value);

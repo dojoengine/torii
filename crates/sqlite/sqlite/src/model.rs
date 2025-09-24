@@ -986,7 +986,7 @@ mod tests {
             bind_values,
             hashed_keys
                 .iter()
-                .map(|k| felt_to_sql_string(k))
+                .map(felt_to_sql_string)
                 .collect::<Vec<_>>()
         );
     }

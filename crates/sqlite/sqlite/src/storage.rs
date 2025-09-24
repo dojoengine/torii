@@ -110,7 +110,7 @@ impl ReadOnlyStorage for Sql {
         if !selectors.is_empty() {
             let placeholders = vec!["?"; selectors.len()].join(", ");
             query += &format!(" WHERE id IN ({})", placeholders);
-            bind_values.extend(selectors.iter().map(|s| felt_to_sql_string(s)));
+            bind_values.extend(selectors.iter().map(felt_to_sql_string));
         }
 
         let mut query = sqlx::query_as::<_, SQLModel>(&query);
@@ -223,12 +223,7 @@ impl ReadOnlyStorage for Sql {
         if !query.contract_addresses.is_empty() {
             let placeholders = vec!["?"; query.contract_addresses.len()].join(", ");
             conditions.push(format!("contract_address IN ({})", placeholders));
-            bind_values.extend(
-                query
-                    .contract_addresses
-                    .iter()
-                    .map(|addr| felt_to_sql_string(addr)),
-            );
+            bind_values.extend(query.contract_addresses.iter().map(felt_to_sql_string));
         }
 
         if !query.contract_types.is_empty() {
@@ -1439,7 +1434,7 @@ impl Storage for Sql {
         block_timestamp: u64,
         event_id: &str,
     ) -> Result<(), StorageError> {
-        let id = format!("{}:{}", event_id, token_id.to_string());
+        let id = format!("{}:{}", event_id, token_id);
         let token_id_str = token_id.to_string();
         let contract_address = token_id.contract_address();
         let event_id_str = event_id.to_string();
