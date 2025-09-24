@@ -49,7 +49,7 @@ where
         let amount = U256Cainome::cairo_deserialize(&ctx.event.data, 2)?;
         let amount = U256::from_words(amount.low, amount.high);
 
-        let id = TokenId::Nft(token_address, token_id.into());
+        let id = TokenId::Nft(token_address, token_id);
 
         // Register the contract first
         try_register_token_contract(

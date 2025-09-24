@@ -485,9 +485,9 @@ pub(crate) async fn update_contract_metadata<P: Provider + Sync>(
         return Ok(());
     };
 
-    // Update metadata for the contract-level token (token_id = 0)
+    // Update metadata for the contract-level token
     storage
-        .update_token_metadata(contract_address, None, metadata)
+        .update_token_metadata(TokenId::Contract(contract_address), metadata)
         .await?;
 
     Ok(())
