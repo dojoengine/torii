@@ -311,7 +311,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 Argument::Int(integer) => query.bind(integer),
                 Argument::Bool(bool) => query.bind(bool),
                 Argument::String(string) => query.bind(string),
-                Argument::FieldElement(felt) => query.bind(format!("{:#x}", felt)),
+                Argument::FieldElement(felt) => query.bind(format!("{:#064x}", felt)),
             }
         }
 

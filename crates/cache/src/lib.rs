@@ -148,7 +148,7 @@ impl Cache for InMemoryCache {
         // Track individual balance changes
         if from != Felt::ZERO {
             // from/token_id
-            let from_balance_id = format!("{:#x}/{}", from, token_id);
+            let from_balance_id = format!("{:#064x}/{}", from, token_id);
             // Use atomic operation to avoid deadlocks
             self.erc_cache
                 .balances_diff
@@ -159,7 +159,7 @@ impl Cache for InMemoryCache {
 
         if to != Felt::ZERO {
             // to/token_id
-            let to_balance_id = format!("{:#x}/{}", to, token_id);
+            let to_balance_id = format!("{:#064x}/{}", to, token_id);
             // Use atomic operation to avoid deadlocks
             self.erc_cache
                 .balances_diff
