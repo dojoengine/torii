@@ -146,6 +146,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
+        keys: Vec<Felt>,
     ) -> Result<(), StorageError>;
 
     /// Deletes an entity with the storage.

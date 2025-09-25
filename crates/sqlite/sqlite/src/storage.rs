@@ -1064,17 +1064,8 @@ impl Storage for Sql {
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
+        keys: Vec<Felt>,
     ) -> Result<(), StorageError> {
-        let keys = if let Ty::Struct(s) = &entity {
-            let mut keys = Vec::new();
-            for m in s.keys() {
-                keys.extend(m.serialize()?);
-            }
-            keys
-        } else {
-            return Err(Box::new(Error::Parse(ParseError::InvalidTyEntity)));
-        };
-
         let namespaced_name = entity.name();
         let (model_namespace, model_name) = namespaced_name.split_once('-').unwrap();
 
