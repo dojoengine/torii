@@ -146,9 +146,11 @@ impl StaticHandler {
         let token_image_dir = if is_contract {
             self.artifacts_dir.join(contract_address)
         } else {
-            self.artifacts_dir.join(contract_address).join(token_id_part)
+            self.artifacts_dir
+                .join(contract_address)
+                .join(token_id_part)
         };
-        
+
         let token_id = if is_contract {
             contract_address.to_string()
         } else {
@@ -619,7 +621,9 @@ impl StaticHandler {
             self.artifacts_dir.join(contract_address)
         } else {
             // Token case - store in contract_address/token_id directory
-            self.artifacts_dir.join(contract_address).join(token_id_part)
+            self.artifacts_dir
+                .join(contract_address)
+                .join(token_id_part)
         };
 
         // Create directories if they don't exist
