@@ -92,13 +92,13 @@ where
             "Store event message."
         );
 
-        let mut keys_and_unpacked = [event.keys, event.values].concat();
+        let mut keys_and_unpacked = [event.keys.clone(), event.values].concat();
 
         let mut entity = model.schema.clone();
         entity.deserialize(&mut keys_and_unpacked, model.use_legacy_store)?;
 
         ctx.storage
-            .set_event_message(entity, &ctx.event_id, ctx.block_timestamp)
+            .set_event_message(entity, &ctx.event_id, ctx.block_timestamp, event.keys)
             .await?;
 
         // Record successful event message storage with context
