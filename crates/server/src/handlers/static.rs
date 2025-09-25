@@ -364,24 +364,13 @@ impl StaticHandler {
     }
 
     async fn get_token_updated_at(&self, token_id: &str) -> Result<String> {
-        // Check if token_id contains ':' to determine if it's a full token or just contract address
-        let query_result = if token_id.contains(':') {
-            // Full token ID: contract_address:token_id
-            let query_str = format!("SELECT updated_at FROM {TOKENS_TABLE} WHERE id = ?");
-            sqlx::query_as::<_, (String,)>(&query_str)
-                .bind(token_id)
-                .fetch_one(&self.pool)
-                .await
-                .context("Failed to fetch updated_at from database")?
-        } else {
-            // Contract address only - find a token from this contract
-            let query_str = format!("SELECT updated_at FROM {TOKENS_TABLE} WHERE contract_address = ? LIMIT 1");
-            sqlx::query_as::<_, (String,)>(&query_str)
-                .bind(token_id)
-                .fetch_one(&self.pool)
-                .await
-                .context("Failed to fetch updated_at from database")?
-        };
+        // For both tokens and contracts, we can use the same query since contract address is the ID for contracts
+        let query_str = format!("SELECT updated_at FROM {TOKENS_TABLE} WHERE id = ?");
+        let query_result = sqlx::query_as::<_, (String,)>(&query_str)
+            .bind(token_id)
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to fetch updated_at from database")?;
 
         Ok(query_result.0)
     }
@@ -515,22 +504,10 @@ impl StaticHandler {
         token_id: &str,
         db_timestamp: Option<&str>,
     ) -> anyhow::Result<String> {
-        // Check if token_id contains ':' to determine if it's a full token or just contract address
-        let query = if token_id.contains(':') {
-            // Full token ID: contract_address:token_id
-            sqlx::query_as::<_, (String,)>(&format!(
-                "SELECT metadata FROM {TOKENS_TABLE} WHERE id = ?"
-            ))
+        // For both tokens and contracts, we can use the same query since contract address is the ID for contracts
+        let query_str = format!("SELECT metadata FROM {TOKENS_TABLE} WHERE id = ?");
+        let query_result = sqlx::query_as::<_, (String,)>(&query_str)
             .bind(token_id)
-        } else {
-            // Contract address only - find a token from this contract
-            sqlx::query_as::<_, (String,)>(&format!(
-                "SELECT metadata FROM {TOKENS_TABLE} WHERE contract_address = ? LIMIT 1"
-            ))
-            .bind(token_id)
-        };
-        
-        let query_result = query
             .fetch_one(&self.pool)
             .await
             .context("Failed to fetch metadata from database")?;
