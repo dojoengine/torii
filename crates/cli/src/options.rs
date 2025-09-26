@@ -634,7 +634,7 @@ pub struct RunnerOptions {
 
     /// Number of threads for the query runtime (GraphQL/gRPC API).
     #[arg(
-        long = "runner.query_threads", 
+        long = "runner.query_threads",
         default_value_t = 0,
         help = "Number of threads for the query runtime handling GraphQL and gRPC API requests. \
                 If 0, uses adaptive allocation based on CPU count and workload."

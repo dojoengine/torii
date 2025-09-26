@@ -62,7 +62,6 @@ mod constants;
 
 use crate::constants::LOG_TARGET;
 
-
 #[derive(Debug, Clone)]
 pub enum AllocationStrategy {
     Adaptive,
@@ -99,36 +98,53 @@ impl RuntimeAllocation {
     ) -> Self {
         // Reserve at least 1 thread for main runtime (proxy, messaging, etc.)
         let available_threads = cpu_count.saturating_sub(1);
-        
+
         let (query_threads, indexer_threads) = match strategy {
             AllocationStrategy::QueryPriority => {
                 // 70% query, 30% indexer
                 let query = ((available_threads * 7) / 10).clamp(4, available_threads);
-                let indexer = available_threads.saturating_sub(query).clamp(2, available_threads);
+                let indexer = available_threads
+                    .saturating_sub(query)
+                    .clamp(2, available_threads);
                 (query, indexer)
             }
             AllocationStrategy::IndexerPriority => {
-                // 30% query, 70% indexer  
+                // 30% query, 70% indexer
                 let indexer = ((available_threads * 7) / 10).clamp(4, available_threads);
-                let query = available_threads.saturating_sub(indexer).clamp(2, available_threads);
+                let query = available_threads
+                    .saturating_sub(indexer)
+                    .clamp(2, available_threads);
                 (query, indexer)
             }
             AllocationStrategy::Balanced => {
                 // 50% each
                 let half = available_threads / 2;
-                (half.clamp(2, available_threads), half.clamp(2, available_threads))
+                (
+                    half.clamp(2, available_threads),
+                    half.clamp(2, available_threads),
+                )
             }
             AllocationStrategy::Adaptive => {
                 // Default: 60% query, 40% indexer (queries are user-facing)
                 let query = ((available_threads * 6) / 10).clamp(4, available_threads);
-                let indexer = available_threads.saturating_sub(query).clamp(2, available_threads);
+                let indexer = available_threads
+                    .saturating_sub(query)
+                    .clamp(2, available_threads);
                 (query, indexer)
             }
         };
 
         Self {
-            query_threads: if query_override > 0 { query_override.clamp(1, cpu_count) } else { query_threads },
-            indexer_threads: if indexer_override > 0 { indexer_override.clamp(1, cpu_count) } else { indexer_threads },
+            query_threads: if query_override > 0 {
+                query_override.clamp(1, cpu_count)
+            } else {
+                query_threads
+            },
+            indexer_threads: if indexer_override > 0 {
+                indexer_override.clamp(1, cpu_count)
+            } else {
+                indexer_threads
+            },
             main_threads: 1, // Keep main runtime lightweight
         }
     }
@@ -143,7 +159,7 @@ fn create_query_runtime(threads: usize) -> Arc<tokio::runtime::Runtime> {
             .thread_stack_size(2 * 1024 * 1024) // 2MB stack for complex queries
             .enable_all()
             .build()
-            .expect("Failed to create query runtime")
+            .expect("Failed to create query runtime"),
     )
 }
 
@@ -156,7 +172,7 @@ fn create_indexer_runtime(threads: usize) -> Arc<tokio::runtime::Runtime> {
             .thread_stack_size(1 * 1024 * 1024) // 1MB stack (less than queries)
             .enable_all()
             .build()
-            .expect("Failed to create indexer runtime")
+            .expect("Failed to create indexer runtime"),
     )
 }
 
@@ -325,22 +341,34 @@ impl Runner {
             .create_if_missing(true)
             .with_regexp();
 
-        // Set the number of threads based on CPU count
-        let thread_count = cmp::min(cpu_count, 8);
-        options = options.pragma("threads", thread_count.to_string());
+        // Optimize SQLite threading for our runtime architecture
+        // Use total available threads instead of artificial 8-thread limit
+        let sqlite_threads = cmp::min(cpu_count, allocation.query_threads + allocation.indexer_threads);
+        options = options.pragma("threads", sqlite_threads.to_string());
 
-        // Performance settings
+        // Advanced performance settings optimized for indexing + query workload
         options = options.auto_vacuum(SqliteAutoVacuum::None);
         options = options.journal_mode(SqliteJournalMode::Wal);
+        
+        // Use NORMAL for better performance during heavy indexing
+        // FULL would be safer but much slower for writes
         options = options.synchronous(SqliteSynchronous::Normal);
         options = options.optimize_on_close(true, None);
+        
+        // Performance tuning based on workload
         options = options.pragma("cache_size", self.args.sql.cache_size.to_string());
         options = options.pragma("page_size", self.args.sql.page_size.to_string());
+        
+        // Optimize WAL checkpointing for heavy write workloads
         options = options.pragma(
             "wal_autocheckpoint",
             self.args.sql.wal_autocheckpoint.to_string(),
         );
+        
+        // Increase busy timeout for concurrent access
         options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
+        
+        // Memory limits
         options = options.pragma(
             "soft_heap_limit",
             self.args.sql.soft_memory_limit.to_string(),
@@ -349,6 +377,12 @@ impl Runner {
             "hard_heap_limit",
             self.args.sql.hard_memory_limit.to_string(),
         );
+        
+        // Additional performance optimizations for indexing workload
+        options = options.pragma("temp_store", "memory"); // Store temp tables in memory
+        options = options.pragma("mmap_size", "268435456"); // 256MB memory mapping
+        options = options.pragma("journal_size_limit", "67108864"); // 64MB journal limit
+        options = options.pragma("wal_checkpoint", "TRUNCATE"); // Aggressive WAL cleanup
 
         let write_pool = SqlitePoolOptions::new()
             .min_connections(1)
@@ -359,13 +393,13 @@ impl Runner {
             .await?;
 
         let readonly_options = options.read_only(true);
-        
+
         // Use more connections for readonly pool to handle concurrent queries
         let max_readonly_connections = cmp::max(
             self.args.sql.max_connections,
-            (allocation.query_threads * 2) as u32 // 2 connections per query thread
+            (allocation.query_threads * 2) as u32, // 2 connections per query thread
         );
-        
+
         let readonly_pool = SqlitePoolOptions::new()
             .min_connections(cmp::min(4, max_readonly_connections)) // Keep some connections warm
             .max_connections(max_readonly_connections)
@@ -373,8 +407,8 @@ impl Runner {
             .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
             .connect_with(readonly_options)
             .await?;
-            
-        info!(target: LOG_TARGET, 
+
+        info!(target: LOG_TARGET,
             max_connections = max_readonly_connections,
             "Configured readonly connection pool"
         );
@@ -478,7 +512,7 @@ impl Runner {
             self.args.indexing.max_concurrent_tasks
         };
 
-        info!(target: LOG_TARGET, 
+        info!(target: LOG_TARGET,
             cpu_count = cpu_count,
             strategy = ?strategy,
             query_threads = allocation.query_threads,
