@@ -13,6 +13,7 @@ use tokio_stream::StreamExt;
 use torii_broker::types::EventMessageUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::types::Entity;
+use torii_sqlite::utils::felt_to_sql_string;
 
 use super::inputs::keys_input::keys_argument;
 use super::{BasicObject, ResolvableObject, TypeMapping, ValueMapping};
@@ -92,7 +93,7 @@ impl ResolvableObject for EventMessageObject {
                                     let entity = match sqlx::query_as::<_, Entity>(
                                         "SELECT * FROM event_messages WHERE id = ?",
                                     )
-                                    .bind(format!("{:#x}", entity.entity.hashed_keys))
+                                    .bind(felt_to_sql_string(&entity.entity.hashed_keys))
                                     .fetch_one(&mut *conn)
                                     .await
                                     {

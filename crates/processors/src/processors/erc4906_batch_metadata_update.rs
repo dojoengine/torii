@@ -5,6 +5,7 @@ use cainome::cairo_serde::{CairoSerde, U256 as U256Cainome};
 use futures_util::future::try_join_all;
 use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
+use torii_proto::TokenId;
 use tracing::debug;
 
 use crate::erc::fetch_token_metadata;
@@ -84,9 +85,8 @@ where
 
                 let metadata =
                     fetch_token_metadata(token_address_clone, current_token_id, &provider).await?;
-                storage
-                    .update_token_metadata(token_address_clone, Some(current_token_id), metadata)
-                    .await?;
+                let id = TokenId::Nft(token_address_clone, current_token_id);
+                storage.update_token_metadata(id, metadata).await?;
                 Result::<_, Error>::Ok(())
             }));
 

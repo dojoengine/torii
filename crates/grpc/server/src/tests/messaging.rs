@@ -21,6 +21,7 @@ use torii_libp2p_relay::Relay;
 use torii_messaging::{Messaging, MessagingConfig};
 use torii_proto::proto::world::PublishMessageRequest;
 use torii_sqlite::executor::Executor;
+use torii_sqlite::utils::felt_to_sql_string;
 use torii_sqlite::Sql;
 use torii_storage::proto::{ContractDefinition, ContractType};
 use torii_storage::Storage;
@@ -198,7 +199,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     // Verify the message was stored in the database by checking entities table
     let message: String =
         sqlx::query_scalar("SELECT message FROM [types_test-Message] WHERE internal_id = ?")
-            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
+            .bind(felt_to_sql_string(&Felt::from_bytes_be_slice(&entity_id)))
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -235,7 +236,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     // Verify the message was stored in the database by checking entities table
     let message: String =
         sqlx::query_scalar("SELECT message FROM [types_test-Message] WHERE internal_id = ?")
-            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
+            .bind(felt_to_sql_string(&Felt::from_bytes_be_slice(&entity_id)))
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -515,7 +516,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
 
     let entity_exists_server1: bool =
         sqlx::query_scalar("SELECT COUNT(*) > 0 FROM entities WHERE id = ?")
-            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
+            .bind(felt_to_sql_string(&Felt::from_bytes_be_slice(&entity_id)))
             .fetch_one(&pool1)
             .await
             .unwrap();
@@ -531,7 +532,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     // Verify the message was received and stored by the second server
     let entity_exists_server2: bool =
         sqlx::query_scalar("SELECT COUNT(*) > 0 FROM entities WHERE id = ?")
-            .bind(format!("{:#x}", Felt::from_bytes_be_slice(&entity_id)))
+            .bind(felt_to_sql_string(&Felt::from_bytes_be_slice(&entity_id)))
             .fetch_one(&pool2)
             .await
             .unwrap();

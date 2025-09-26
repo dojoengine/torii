@@ -8,6 +8,7 @@ use hyper::Body;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
 use torii_processors::erc::fetch_token_metadata;
+use torii_storage::proto::TokenId;
 use torii_storage::Storage;
 use tracing::{debug, error};
 
@@ -130,7 +131,7 @@ impl<P: Provider + Sync + Send + Debug, S: Storage> Handler for MetadataHandler<
         // Update metadata using storage layer
         let result = self
             .storage
-            .update_token_metadata(contract_address, Some(token_id), metadata.clone())
+            .update_token_metadata(TokenId::Nft(contract_address, token_id), metadata.clone())
             .await;
 
         match result {

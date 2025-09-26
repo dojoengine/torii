@@ -6,10 +6,11 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{felt_and_u256_to_sql_string, fetch_token_metadata};
+use crate::erc::fetch_token_metadata;
 use crate::error::{Error, TokenMetadataError};
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorConfig, EventProcessorContext, IndexingMode};
+use torii_proto::TokenId;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc4906_metadata_update";
 #[derive(Default, Debug)]
@@ -56,7 +57,7 @@ where
         let token_id = U256Cainome::cairo_deserialize(&ctx.event.keys, 1)?;
         let token_id = U256::from_words(token_id.low, token_id.high);
 
-        let id = felt_and_u256_to_sql_string(&token_address, &token_id);
+        let id = TokenId::Nft(token_address, token_id);
         if !ctx.cache.is_token_registered(&id).await {
             return Ok(());
         }
@@ -69,9 +70,7 @@ where
 
         let metadata = fetch_token_metadata(token_address, token_id, &ctx.provider).await?;
 
-        ctx.storage
-            .update_token_metadata(token_address, Some(token_id), metadata)
-            .await?;
+        ctx.storage.update_token_metadata(id, metadata).await?;
 
         debug!(
             target: LOG_TARGET,

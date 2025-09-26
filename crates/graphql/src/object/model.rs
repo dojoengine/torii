@@ -8,6 +8,7 @@ use tokio_stream::StreamExt;
 use torii_broker::types::ModelUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::types::Model;
+use torii_sqlite::utils::felt_to_sql_string;
 
 use super::{resolve_many, BasicObject, ResolvableObject, TypeMapping, ValueMapping};
 use crate::constants::{
@@ -106,7 +107,7 @@ impl ResolvableObject for ModelObject {
                                 let pool = pool.clone();
                                 let id = id.clone();
                                 async move {
-                                    let model_id = format!("{:#x}", model.selector);
+                                    let model_id = felt_to_sql_string(&model.selector);
                                     if id.is_none() || id == Some(model_id.clone()) {
                                         let mut conn = match pool.acquire().await {
                                             Ok(conn) => conn,

@@ -11,6 +11,7 @@ mod tests {
     use tokio::sync::broadcast;
     use torii_messaging::{Messaging, MessagingConfig};
     use torii_sqlite::executor::Executor;
+    use torii_sqlite::utils::felt_to_sql_string;
     use torii_sqlite::Sql;
     use torii_storage::proto::{ContractDefinition, ContractType};
 
@@ -55,7 +56,7 @@ mod tests {
         let query = format!(
             r#"
           {{
-            entity (id: "{:#x}") {{
+            entity (id: "{}") {{
               keys
               models {{
                 ... on types_test_Record {{
@@ -91,7 +92,7 @@ mod tests {
             }}
           }}
         "#,
-            id
+            felt_to_sql_string(id)
         );
 
         let result = run_graphql_query(schema, &query).await;
