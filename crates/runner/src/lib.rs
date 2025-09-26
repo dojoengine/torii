@@ -17,7 +17,6 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use camino::Utf8PathBuf;
@@ -63,17 +62,103 @@ mod constants;
 
 use crate::constants::LOG_TARGET;
 
-// Shared runtime for GraphQL and gRPC services
-// This provides performance isolation for user-facing query services
-static QUERY_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
-    let worker_threads = (num_cpus::get() / 2).clamp(2, 8);
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(worker_threads)
-        .thread_name("torii-query")
-        .enable_all()
-        .build()
-        .expect("Failed to create query runtime")
-});
+
+#[derive(Debug, Clone)]
+pub enum AllocationStrategy {
+    Adaptive,
+    QueryPriority,
+    IndexerPriority,
+    Balanced,
+}
+
+impl From<&str> for AllocationStrategy {
+    fn from(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "adaptive" => AllocationStrategy::Adaptive,
+            "query_priority" => AllocationStrategy::QueryPriority,
+            "indexer_priority" => AllocationStrategy::IndexerPriority,
+            "balanced" => AllocationStrategy::Balanced,
+            _ => AllocationStrategy::Adaptive,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct RuntimeAllocation {
+    pub query_threads: usize,
+    pub indexer_threads: usize,
+    pub main_threads: usize,
+}
+
+impl RuntimeAllocation {
+    pub fn calculate(
+        cpu_count: usize,
+        strategy: &AllocationStrategy,
+        query_override: usize,
+        indexer_override: usize,
+    ) -> Self {
+        // Reserve at least 1 thread for main runtime (proxy, messaging, etc.)
+        let available_threads = cpu_count.saturating_sub(1);
+        
+        let (query_threads, indexer_threads) = match strategy {
+            AllocationStrategy::QueryPriority => {
+                // 70% query, 30% indexer
+                let query = ((available_threads * 7) / 10).clamp(4, available_threads);
+                let indexer = available_threads.saturating_sub(query).clamp(2, available_threads);
+                (query, indexer)
+            }
+            AllocationStrategy::IndexerPriority => {
+                // 30% query, 70% indexer  
+                let indexer = ((available_threads * 7) / 10).clamp(4, available_threads);
+                let query = available_threads.saturating_sub(indexer).clamp(2, available_threads);
+                (query, indexer)
+            }
+            AllocationStrategy::Balanced => {
+                // 50% each
+                let half = available_threads / 2;
+                (half.clamp(2, available_threads), half.clamp(2, available_threads))
+            }
+            AllocationStrategy::Adaptive => {
+                // Default: 60% query, 40% indexer (queries are user-facing)
+                let query = ((available_threads * 6) / 10).clamp(4, available_threads);
+                let indexer = available_threads.saturating_sub(query).clamp(2, available_threads);
+                (query, indexer)
+            }
+        };
+
+        Self {
+            query_threads: if query_override > 0 { query_override.clamp(1, cpu_count) } else { query_threads },
+            indexer_threads: if indexer_override > 0 { indexer_override.clamp(1, cpu_count) } else { indexer_threads },
+            main_threads: 1, // Keep main runtime lightweight
+        }
+    }
+}
+
+// Function to create a configurable query runtime
+fn create_query_runtime(threads: usize) -> Arc<tokio::runtime::Runtime> {
+    Arc::new(
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(threads)
+            .thread_name("torii-query")
+            .thread_stack_size(2 * 1024 * 1024) // 2MB stack for complex queries
+            .enable_all()
+            .build()
+            .expect("Failed to create query runtime")
+    )
+}
+
+// Function to create a dedicated indexer runtime
+fn create_indexer_runtime(threads: usize) -> Arc<tokio::runtime::Runtime> {
+    Arc::new(
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(threads)
+            .thread_name("torii-indexer")
+            .thread_stack_size(1 * 1024 * 1024) // 1MB stack (less than queries)
+            .enable_all()
+            .build()
+            .expect("Failed to create indexer runtime")
+    )
+}
 
 /// Creates a responsive progress bar template based on terminal size
 fn create_progress_bar_template() -> String {
@@ -226,12 +311,21 @@ impl Runner {
             }
         }
 
+        // Calculate optimal runtime allocation early for database configuration
+        let cpu_count = num_cpus::get();
+        let strategy = AllocationStrategy::from(self.args.runner.allocation_strategy.as_str());
+        let allocation = RuntimeAllocation::calculate(
+            cpu_count,
+            &strategy,
+            self.args.runner.query_threads,
+            self.args.runner.indexer_threads,
+        );
+
         let mut options = SqliteConnectOptions::from_str(&database_path.to_string_lossy())?
             .create_if_missing(true)
             .with_regexp();
 
         // Set the number of threads based on CPU count
-        let cpu_count = std::thread::available_parallelism().unwrap().get();
         let thread_count = cmp::min(cpu_count, 8);
         options = options.pragma("threads", thread_count.to_string());
 
@@ -265,13 +359,25 @@ impl Runner {
             .await?;
 
         let readonly_options = options.read_only(true);
+        
+        // Use more connections for readonly pool to handle concurrent queries
+        let max_readonly_connections = cmp::max(
+            self.args.sql.max_connections,
+            (allocation.query_threads * 2) as u32 // 2 connections per query thread
+        );
+        
         let readonly_pool = SqlitePoolOptions::new()
-            .min_connections(1)
-            .max_connections(self.args.sql.max_connections)
+            .min_connections(cmp::min(4, max_readonly_connections)) // Keep some connections warm
+            .max_connections(max_readonly_connections)
             .acquire_timeout(Duration::from_millis(self.args.sql.acquire_timeout))
             .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
             .connect_with(readonly_options)
             .await?;
+            
+        info!(target: LOG_TARGET, 
+            max_connections = max_readonly_connections,
+            "Configured readonly connection pool"
+        );
 
         let mut migrate_handle = write_pool.acquire().await?;
         if let Some(migrations) = self.args.sql.migrations {
@@ -363,13 +469,31 @@ impl Runner {
             None
         };
 
+        // Scale max_concurrent_tasks based on indexer threads for better CPU utilization
+        let optimal_concurrent_tasks = if self.args.indexing.max_concurrent_tasks == 100 {
+            // Default value, scale with indexer threads
+            (allocation.indexer_threads * 8).clamp(50, 500) // 8 tasks per thread, reasonable bounds
+        } else {
+            // User specified, respect their choice
+            self.args.indexing.max_concurrent_tasks
+        };
+
+        info!(target: LOG_TARGET, 
+            cpu_count = cpu_count,
+            strategy = ?strategy,
+            query_threads = allocation.query_threads,
+            indexer_threads = allocation.indexer_threads,
+            max_concurrent_tasks = optimal_concurrent_tasks,
+            "Runtime allocation calculated"
+        );
+
         let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new_with_controllers(
             storage.clone(),
             cache.clone(),
             provider.clone(),
             processors.clone(),
             EngineConfig {
-                max_concurrent_tasks: self.args.indexing.max_concurrent_tasks,
+                max_concurrent_tasks: optimal_concurrent_tasks,
                 fetcher_config: FetcherConfig {
                     batch_chunk_size: self.args.indexing.batch_chunk_size,
                     blocks_chunk_size: self.args.indexing.blocks_chunk_size,
@@ -566,15 +690,20 @@ impl Runner {
             tokio::spawn(server.start(addr));
         }
 
-        let engine_handle = tokio::spawn(async move { engine.start().await });
+        // Create dedicated runtimes
+        let query_runtime = create_query_runtime(allocation.query_threads);
+        let indexer_runtime = create_indexer_runtime(allocation.indexer_threads);
+
+        // Move engine to dedicated indexer runtime for CPU isolation
+        let engine_handle = indexer_runtime.spawn(async move { engine.start().await });
 
         let proxy_server_handle =
             tokio::spawn(async move { proxy_server.start(shutdown_tx.subscribe()).await });
 
         // Spawn user-facing query services on dedicated API runtime for better performance isolation
-        let graphql_server_handle = QUERY_RUNTIME.spawn(graphql_server);
+        let graphql_server_handle = query_runtime.spawn(graphql_server);
 
-        let grpc_server_handle = QUERY_RUNTIME.spawn(grpc_server);
+        let grpc_server_handle = query_runtime.spawn(grpc_server);
 
         let libp2p_relay_server_handle =
             tokio::spawn(async move { libp2p_relay_server.run().await });
