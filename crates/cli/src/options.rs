@@ -612,7 +612,7 @@ pub struct SnapshotOptions {
     pub version: Option<String>,
 }
 
-#[derive(Default, Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
+#[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Runner options")]
 pub struct RunnerOptions {
@@ -661,6 +661,18 @@ pub struct RunnerOptions {
                 'balanced' - equal allocation between indexer and queries"
     )]
     pub allocation_strategy: String,
+}
+
+impl Default for RunnerOptions {
+    fn default() -> Self {
+        Self {
+            explorer: false,
+            check_contracts: false,
+            query_threads: 0,
+            indexer_threads: 0,
+            allocation_strategy: "adaptive".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
