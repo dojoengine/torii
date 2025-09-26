@@ -45,32 +45,39 @@ pub fn sql_string_to_u256(sql_string: &str) -> U256 {
     U256::from(crypto_bigint::U256::from_be_hex(sql_string))
 }
 
-pub fn build_keys_pattern(clause: &torii_proto::KeysClause) -> String {
-    const KEY_PATTERN: &str = "0x[0-9a-fA-F]+";
-
-    let keys = if clause.keys.is_empty() {
-        vec![KEY_PATTERN.to_string()]
-    } else {
-        clause
-            .keys
-            .iter()
-            .map(|felt| {
-                if let Some(felt) = felt {
-                    format!("{:#x}", felt)
-                } else {
-                    KEY_PATTERN.to_string()
-                }
-            })
-            .collect::<Vec<_>>()
-    };
-    let mut keys_pattern = format!("^{}", keys.join("/"));
-
-    if clause.pattern_matching == torii_proto::PatternMatching::VariableLen {
-        keys_pattern += &format!("(/{})*", KEY_PATTERN);
+/// Builds an optimized keys pattern using LIKE instead of REGEXP
+/// This is much faster as it can leverage indexes
+///
+/// - For FixedLen: creates exact pattern like "0x123/%/0x456/"
+/// - For VariableLen: creates prefix pattern like "0x123/%/0x456/%"
+/// - None felts become "%" wildcards
+pub fn build_keys_like_pattern(clause: &torii_proto::KeysClause) -> Option<String> {
+    if clause.keys.is_empty() {
+        return None;
     }
-    keys_pattern += "/$";
 
-    keys_pattern
+    // Build pattern with wildcards for None felts
+    let keys: Vec<String> = clause
+        .keys
+        .iter()
+        .map(|felt| {
+            match felt {
+                Some(felt) => format!("{:#x}", felt),
+                None => "%".to_string(), // Use % as wildcard for None felts
+            }
+        })
+        .collect();
+
+    if keys.is_empty() {
+        return None;
+    }
+
+    let pattern = keys.join("/");
+
+    match clause.pattern_matching {
+        torii_proto::PatternMatching::FixedLen => Some(format!("{}/", pattern)),
+        torii_proto::PatternMatching::VariableLen => Some(format!("{}/%", pattern)),
+    }
 }
 
 pub fn sql_string_to_felts(sql_string: &str) -> Vec<Felt> {
@@ -163,137 +170,73 @@ mod tests {
     }
 
     #[test]
-    fn test_build_keys_pattern_fixed_len_specific_keys() {
-        let keys = torii_proto::KeysClause {
-            keys: vec![Some(Felt::ONE), Some(Felt::TWO)],
-            pattern_matching: torii_proto::PatternMatching::FixedLen,
-            models: vec![],
-        };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x1/0x2/$");
-    }
-
-    #[test]
-    fn test_build_keys_pattern_fixed_len_with_wildcards() {
-        let keys = torii_proto::KeysClause {
-            keys: vec![Some(Felt::ONE), None, Some(Felt::TWO)],
-            pattern_matching: torii_proto::PatternMatching::FixedLen,
-            models: vec![],
-        };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x1/0x[0-9a-fA-F]+/0x2/$");
-    }
-
-    #[test]
-    fn test_build_keys_pattern_variable_len_specific_keys() {
-        let keys = torii_proto::KeysClause {
-            keys: vec![Some(Felt::ONE), Some(Felt::TWO)],
+    fn test_build_keys_like_pattern_with_wildcards_variable_len() {
+        let clause = torii_proto::KeysClause {
+            keys: vec![
+                Some(Felt::from_str("0x123").unwrap()),
+                None, // This should become a wildcard
+                Some(Felt::from_str("0x456").unwrap()),
+            ],
             pattern_matching: torii_proto::PatternMatching::VariableLen,
             models: vec![],
         };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x1/0x2(/0x[0-9a-fA-F]+)*/$");
+
+        let pattern = build_keys_like_pattern(&clause);
+        assert_eq!(pattern, Some("0x123/%/0x456/%".to_string()));
     }
 
     #[test]
-    fn test_build_keys_pattern_variable_len_with_wildcards() {
-        let keys = torii_proto::KeysClause {
-            keys: vec![Some(Felt::ONE), None],
-            pattern_matching: torii_proto::PatternMatching::VariableLen,
+    fn test_build_keys_like_pattern_with_wildcards_fixed_len() {
+        let clause = torii_proto::KeysClause {
+            keys: vec![
+                Some(Felt::from_str("0x123").unwrap()),
+                None, // This should become a wildcard
+                Some(Felt::from_str("0x456").unwrap()),
+            ],
+            pattern_matching: torii_proto::PatternMatching::FixedLen,
             models: vec![],
         };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x1/0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$");
+
+        let pattern = build_keys_like_pattern(&clause);
+        assert_eq!(pattern, Some("0x123/%/0x456/".to_string()));
     }
 
     #[test]
-    fn test_build_keys_pattern_all_wildcards_fixed_len() {
-        let keys = torii_proto::KeysClause {
+    fn test_build_keys_like_pattern_all_wildcards() {
+        let clause = torii_proto::KeysClause {
             keys: vec![None, None, None],
-            pattern_matching: torii_proto::PatternMatching::FixedLen,
-            models: vec![],
-        };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x[0-9a-fA-F]+/0x[0-9a-fA-F]+/0x[0-9a-fA-F]+/$");
-    }
-
-    #[test]
-    fn test_build_keys_pattern_all_wildcards_variable_len() {
-        let keys = torii_proto::KeysClause {
-            keys: vec![None, None],
             pattern_matching: torii_proto::PatternMatching::VariableLen,
             models: vec![],
         };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(
-            pattern,
-            "^0x[0-9a-fA-F]+/0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$"
-        );
+
+        let pattern = build_keys_like_pattern(&clause);
+        assert_eq!(pattern, Some("%/%/%/%".to_string()));
     }
 
     #[test]
-    fn test_build_keys_pattern_empty_keys_fixed_len() {
-        let keys = torii_proto::KeysClause {
-            keys: vec![],
-            pattern_matching: torii_proto::PatternMatching::FixedLen,
+    fn test_build_keys_like_pattern_no_wildcards() {
+        let clause = torii_proto::KeysClause {
+            keys: vec![
+                Some(Felt::from_str("0x123").unwrap()),
+                Some(Felt::from_str("0x456").unwrap()),
+            ],
+            pattern_matching: torii_proto::PatternMatching::VariableLen,
             models: vec![],
         };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x[0-9a-fA-F]+/$");
+
+        let pattern = build_keys_like_pattern(&clause);
+        assert_eq!(pattern, Some("0x123/0x456/%".to_string()));
     }
 
     #[test]
-    fn test_build_keys_pattern_empty_keys_variable_len() {
-        let keys = torii_proto::KeysClause {
+    fn test_build_keys_like_pattern_empty_keys() {
+        let clause = torii_proto::KeysClause {
             keys: vec![],
             pattern_matching: torii_proto::PatternMatching::VariableLen,
             models: vec![],
         };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$");
-    }
 
-    #[test]
-    fn test_build_keys_pattern_single_specific_key_fixed_len() {
-        let keys = torii_proto::KeysClause {
-            keys: vec![Some(Felt::from_hex("0x123").unwrap())],
-            pattern_matching: torii_proto::PatternMatching::FixedLen,
-            models: vec![],
-        };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x123/$");
-    }
-
-    #[test]
-    fn test_build_keys_pattern_single_specific_key_variable_len() {
-        let keys = torii_proto::KeysClause {
-            keys: vec![Some(Felt::from_hex("0x123").unwrap())],
-            pattern_matching: torii_proto::PatternMatching::VariableLen,
-            models: vec![],
-        };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x123(/0x[0-9a-fA-F]+)*/$");
-    }
-
-    #[test]
-    fn test_build_keys_pattern_single_wildcard_fixed_len() {
-        let keys = torii_proto::KeysClause {
-            keys: vec![None],
-            pattern_matching: torii_proto::PatternMatching::FixedLen,
-            models: vec![],
-        };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x[0-9a-fA-F]+/$");
-    }
-
-    #[test]
-    fn test_build_keys_pattern_single_wildcard_variable_len() {
-        let keys = torii_proto::KeysClause {
-            keys: vec![None],
-            pattern_matching: torii_proto::PatternMatching::VariableLen,
-            models: vec![],
-        };
-        let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$");
+        let pattern = build_keys_like_pattern(&clause);
+        assert_eq!(pattern, None);
     }
 }

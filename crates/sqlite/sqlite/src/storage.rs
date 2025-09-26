@@ -31,7 +31,7 @@ use crate::{
     executor::{erc::UpdateTokenMetadataQuery, RegisterNftTokenQuery, RegisterTokenContractQuery},
     model::map_row_to_ty,
     query::{PaginationExecutor, QueryBuilder},
-    utils::{build_keys_pattern, u256_to_sql_string},
+    utils::{build_keys_like_pattern, u256_to_sql_string},
 };
 use crate::{
     error::{Error, ParseError},
@@ -623,10 +623,10 @@ impl ReadOnlyStorage for Sql {
         ]);
 
         if let Some(keys) = &query.keys {
-            let keys_pattern = build_keys_pattern(keys);
-            if !keys_pattern.is_empty() {
-                query_builder = query_builder.where_clause("keys REGEXP ?");
-                query_builder = query_builder.bind_value(keys_pattern);
+            let pattern = build_keys_like_pattern(keys);
+            if let Some(pattern) = pattern {
+                query_builder = query_builder.where_clause("keys LIKE ?");
+                query_builder = query_builder.bind_value(pattern);
             }
         }
 
