@@ -219,7 +219,7 @@ pub async fn run_graphql_subscription<P: Provider + Sync + Send + 'static>(
         Arc::new(storage.clone()),
         provider,
     ));
-    let schema = build_schema(&storage.pool, messaging, Arc::new(storage.clone()))
+    let schema = build_schema(messaging, Arc::new(storage.clone()))
         .await
         .unwrap();
     schema

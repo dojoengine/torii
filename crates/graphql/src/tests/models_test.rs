@@ -207,7 +207,7 @@ mod tests {
             provider.clone(),
         ));
 
-        let schema = build_schema(&pool, messaging, storage).await.unwrap();
+        let schema = build_schema(messaging, storage).await.unwrap();
 
         // we need to order all the records because insertions are done in parallel
         // which can have random order

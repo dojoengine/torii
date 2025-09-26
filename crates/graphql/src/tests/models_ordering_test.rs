@@ -91,7 +91,7 @@ mod tests {
             provider.clone(),
         ));
 
-        let schema = build_schema(&pool, messaging, storage).await.unwrap();
+        let schema = build_schema(messaging, storage).await.unwrap();
 
         // default params, test entity relationship, test nested types
         let world_model = world_model_query(&schema, "").await;
