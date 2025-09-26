@@ -343,31 +343,34 @@ impl Runner {
 
         // Optimize SQLite threading for our runtime architecture
         // Use total available threads instead of artificial 8-thread limit
-        let sqlite_threads = cmp::min(cpu_count, allocation.query_threads + allocation.indexer_threads);
+        let sqlite_threads = cmp::min(
+            cpu_count,
+            allocation.query_threads + allocation.indexer_threads,
+        );
         options = options.pragma("threads", sqlite_threads.to_string());
 
         // Advanced performance settings optimized for indexing + query workload
         options = options.auto_vacuum(SqliteAutoVacuum::None);
         options = options.journal_mode(SqliteJournalMode::Wal);
-        
+
         // Use NORMAL for better performance during heavy indexing
         // FULL would be safer but much slower for writes
         options = options.synchronous(SqliteSynchronous::Normal);
         options = options.optimize_on_close(true, None);
-        
+
         // Performance tuning based on workload
         options = options.pragma("cache_size", self.args.sql.cache_size.to_string());
         options = options.pragma("page_size", self.args.sql.page_size.to_string());
-        
+
         // Optimize WAL checkpointing for heavy write workloads
         options = options.pragma(
             "wal_autocheckpoint",
             self.args.sql.wal_autocheckpoint.to_string(),
         );
-        
+
         // Increase busy timeout for concurrent access
         options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
-        
+
         // Memory limits
         options = options.pragma(
             "soft_heap_limit",
@@ -377,7 +380,7 @@ impl Runner {
             "hard_heap_limit",
             self.args.sql.hard_memory_limit.to_string(),
         );
-        
+
         // Additional performance optimizations for indexing workload
         options = options.pragma("temp_store", "memory"); // Store temp tables in memory
         options = options.pragma("mmap_size", "268435456"); // 256MB memory mapping
