@@ -94,6 +94,65 @@ pub fn extract_traits_from_metadata(
     serde_json::to_string(&current_traits)
 }
 
+/// Subtract traits from NFT metadata JSON from existing traits
+pub fn subtract_traits_from_metadata(
+    metadata: &str,
+    existing_traits: &str,
+) -> Result<String, serde_json::Error> {
+    let mut current_traits: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(existing_traits).unwrap_or_default();
+
+    let metadata_json: serde_json::Value = serde_json::from_str(metadata)?;
+
+    if let Some(attributes) = metadata_json.get("attributes") {
+        if let Ok(attributes_array) =
+            serde_json::from_value::<Vec<serde_json::Value>>(attributes.clone())
+        {
+            // Subtract traits from this token's attributes
+            for attr in attributes_array {
+                // Handle both "trait_type" and "trait" field names
+                let trait_type = attr.get("trait_type").or_else(|| attr.get("trait"));
+
+                if let (Some(trait_type), Some(trait_value)) = (trait_type, attr.get("value")) {
+                    if let (Some(trait_type_str), Some(trait_value_str)) =
+                        (trait_type.as_str(), trait_value.as_str())
+                    {
+                        // Get the trait type object if it exists
+                        if let Some(trait_values) = current_traits.get_mut(trait_type_str) {
+                            if let Some(trait_values_obj) = trait_values.as_object_mut() {
+                                // Decrement count if trait value exists
+                                if let Some(existing_count) = trait_values_obj.get(trait_value_str) {
+                                    if let Some(count_num) = existing_count.as_u64() {
+                                        if count_num > 1 {
+                                            // Decrement the count
+                                            trait_values_obj.insert(
+                                                trait_value_str.to_string(),
+                                                serde_json::Value::Number(serde_json::Number::from(
+                                                    count_num - 1,
+                                                )),
+                                            );
+                                        } else {
+                                            // Remove the trait value if count becomes 0
+                                            trait_values_obj.remove(trait_value_str);
+                                        }
+                                    }
+                                }
+                                
+                                // Remove the trait type if no values remain
+                                if trait_values_obj.is_empty() {
+                                    current_traits.remove(trait_type_str);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    serde_json::to_string(&current_traits)
+}
+
 /// Extract and store individual token attributes in the normalized table
 pub async fn store_token_attributes(
     metadata: &str,
@@ -185,6 +244,63 @@ pub async fn update_contract_traits_from_metadata(
                 warn!(target: LOG_TARGET, contract_address = %contract_id, error = %e, "Failed to extract traits from metadata");
             }
         }
+    }
+    Ok(())
+}
+
+/// Helper function to update contract traits when token metadata changes
+/// This properly handles subtracting old traits and adding new traits
+pub async fn update_contract_traits_on_metadata_change(
+    old_metadata: &str,
+    new_metadata: &str,
+    contract_address: &Felt,
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+) -> Result<(), sqlx::Error> {
+    // Get current traits for the contract
+    let contract_id = felt_to_sql_string(contract_address);
+    let current_traits_result = sqlx::query_as::<_, (String,)>(
+        "SELECT traits FROM tokens WHERE contract_address = ? AND (token_id = '' OR token_id IS NULL) LIMIT 1"
+    )
+    .bind(&contract_id)
+    .fetch_one(&mut **tx)
+    .await;
+
+    if let Ok((current_traits_str,)) = current_traits_result {
+        let mut updated_traits = current_traits_str.clone();
+
+        // First, subtract traits from old metadata if it exists and is not empty
+        if !old_metadata.is_empty() {
+            match subtract_traits_from_metadata(old_metadata, &updated_traits) {
+                Ok(traits_after_subtraction) => {
+                    updated_traits = traits_after_subtraction;
+                }
+                Err(e) => {
+                    warn!(target: LOG_TARGET, contract_address = %contract_id, error = %e, "Failed to subtract old traits from metadata");
+                }
+            }
+        }
+
+        // Then, add traits from new metadata if it's not empty
+        if !new_metadata.is_empty() {
+            match extract_traits_from_metadata(new_metadata, &updated_traits) {
+                Ok(final_traits) => {
+                    updated_traits = final_traits;
+                }
+                Err(e) => {
+                    warn!(target: LOG_TARGET, contract_address = %contract_id, error = %e, "Failed to extract new traits from metadata");
+                    return Ok(()); // Don't update if we can't parse new metadata
+                }
+            }
+        }
+
+        // Update the contract's traits with the final counts
+        sqlx::query("UPDATE tokens SET traits = ? WHERE contract_address = ? AND (token_id = '' OR token_id IS NULL)")
+            .bind(&updated_traits)
+            .bind(&contract_id)
+            .execute(&mut **tx)
+            .await?;
+
+        debug!(target: LOG_TARGET, contract_address = %contract_id, traits = %updated_traits, "Updated token contract traits after metadata change");
     }
     Ok(())
 }
