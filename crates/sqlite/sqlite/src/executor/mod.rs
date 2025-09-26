@@ -4,7 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
-use erc::{store_token_attributes, update_contract_traits_from_metadata, update_contract_traits_on_metadata_change, UpdateTokenMetadataQuery};
+use erc::{
+    store_token_attributes, update_contract_traits_from_metadata,
+    update_contract_traits_on_metadata_change, UpdateTokenMetadataQuery,
+};
 use metrics::{counter, histogram};
 use serde_json;
 use sqlx::{FromRow, Pool, Sqlite, Transaction as SqlxTransaction};

@@ -121,15 +121,16 @@ pub fn subtract_traits_from_metadata(
                         if let Some(trait_values) = current_traits.get_mut(trait_type_str) {
                             if let Some(trait_values_obj) = trait_values.as_object_mut() {
                                 // Decrement count if trait value exists
-                                if let Some(existing_count) = trait_values_obj.get(trait_value_str) {
+                                if let Some(existing_count) = trait_values_obj.get(trait_value_str)
+                                {
                                     if let Some(count_num) = existing_count.as_u64() {
                                         if count_num > 1 {
                                             // Decrement the count
                                             trait_values_obj.insert(
                                                 trait_value_str.to_string(),
-                                                serde_json::Value::Number(serde_json::Number::from(
-                                                    count_num - 1,
-                                                )),
+                                                serde_json::Value::Number(
+                                                    serde_json::Number::from(count_num - 1),
+                                                ),
                                             );
                                         } else {
                                             // Remove the trait value if count becomes 0
@@ -137,7 +138,7 @@ pub fn subtract_traits_from_metadata(
                                         }
                                     }
                                 }
-                                
+
                                 // Remove the trait type if no values remain
                                 if trait_values_obj.is_empty() {
                                     current_traits.remove(trait_type_str);
