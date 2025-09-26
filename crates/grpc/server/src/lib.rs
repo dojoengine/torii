@@ -8,7 +8,6 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::str;
 use std::sync::Arc;
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use crypto_bigint::U256;
@@ -64,18 +63,8 @@ use torii_proto::Message;
 
 use anyhow::{anyhow, Error};
 
-// Shared subscription runtime for all DojoWorld instances
-// This provides performance isolation from user-facing API requests
-// Subscriptions involve heavy polling and should not starve API response threads
-static SUBSCRIPTION_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
-    let worker_threads = (num_cpus::get() / 2).clamp(2, 8);
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(worker_threads)
-        .thread_name("torii-grpc-subscriptions")
-        .enable_all()
-        .build()
-        .expect("Failed to create subscriptions runtime")
-});
+// Note: Subscriptions now run on the main runtime to reduce overhead
+// They use try_send to avoid blocking and have built-in backpressure handling
 
 #[derive(Debug)]
 pub struct DojoWorld<P: Provider + Sync> {
@@ -111,37 +100,37 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let token_transfer_manager = Arc::new(TokenTransferManager::new(config.clone()));
         let transaction_manager = Arc::new(TransactionManager::new(config.clone()));
 
-        // Spawn subscription services on the dedicated subscription runtime
-        // These services do heavy polling and should be isolated from API request handling
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::entity::Service::new(Arc::clone(
+        // Spawn subscription services on the main runtime
+        // They use try_send and non-blocking operations to avoid starving other tasks
+        tokio::spawn(subscriptions::entity::Service::new(Arc::clone(
             &entity_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::event_message::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::event_message::Service::new(Arc::clone(
             &event_message_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::event::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::event::Service::new(Arc::clone(
             &event_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::contract::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::contract::Service::new(Arc::clone(
             &contract_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::token_balance::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::token_balance::Service::new(Arc::clone(
             &token_balance_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::token::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::token::Service::new(Arc::clone(
             &token_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::token_transfer::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::token_transfer::Service::new(Arc::clone(
             &token_transfer_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::transaction::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::transaction::Service::new(Arc::clone(
             &transaction_manager,
         )));
 

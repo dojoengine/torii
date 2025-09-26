@@ -631,6 +631,36 @@ pub struct RunnerOptions {
         help = "Check if contracts are deployed before starting torii."
     )]
     pub check_contracts: bool,
+
+    /// Number of threads for the query runtime (GraphQL/gRPC API).
+    #[arg(
+        long = "runner.query_threads",
+        default_value_t = 0,
+        help = "Number of threads for the query runtime handling GraphQL and gRPC API requests. \
+                If 0, uses adaptive allocation based on CPU count and workload."
+    )]
+    pub query_threads: usize,
+
+    /// Number of threads for the indexer runtime.
+    #[arg(
+        long = "runner.indexer_threads",
+        default_value_t = 0,
+        help = "Number of threads for the indexer runtime handling block processing and event indexing. \
+                If 0, uses adaptive allocation. During heavy indexing, more threads are allocated to indexer."
+    )]
+    pub indexer_threads: usize,
+
+    /// Runtime allocation strategy for balancing indexing vs query performance.
+    #[arg(
+        long = "runner.allocation_strategy",
+        default_value = "adaptive",
+        help = "Strategy for allocating CPU resources: \
+                'adaptive' - automatically adjusts based on workload, \
+                'query_priority' - prioritizes query responsiveness, \
+                'indexer_priority' - prioritizes indexing throughput, \
+                'balanced' - equal allocation between indexer and queries"
+    )]
+    pub allocation_strategy: String,
 }
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
