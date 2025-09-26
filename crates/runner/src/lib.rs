@@ -169,7 +169,7 @@ fn create_indexer_runtime(threads: usize) -> Arc<tokio::runtime::Runtime> {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(threads)
             .thread_name("torii-indexer")
-            .thread_stack_size(1 * 1024 * 1024) // 1MB stack (less than queries)
+            .thread_stack_size(1024 * 1024) // 1MB stack (less than queries)
             .enable_all()
             .build()
             .expect("Failed to create indexer runtime"),
@@ -410,11 +410,6 @@ impl Runner {
             .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
             .connect_with(readonly_options)
             .await?;
-
-        info!(target: LOG_TARGET,
-            max_connections = max_readonly_connections,
-            "Configured readonly connection pool"
-        );
 
         let mut migrate_handle = write_pool.acquire().await?;
         if let Some(migrations) = self.args.sql.migrations {
