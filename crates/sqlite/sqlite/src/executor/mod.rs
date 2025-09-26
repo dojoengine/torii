@@ -4,7 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
-use erc::{store_token_attributes, update_contract_traits_from_metadata, UpdateTokenMetadataQuery};
+use erc::{
+    store_token_attributes, update_contract_traits_from_metadata,
+    update_contract_traits_on_metadata_change, UpdateTokenMetadataQuery,
+};
 use metrics::{counter, histogram};
 use serde_json;
 use sqlx::{FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
@@ -810,6 +813,17 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     felt_to_sql_string(&update_metadata.contract_address)
                 };
 
+                // Get the old metadata before updating (needed for trait subtraction)
+                let old_metadata = if update_metadata.token_id.is_some() {
+                    sqlx::query_scalar::<_, String>("SELECT metadata FROM tokens WHERE id = ?")
+                        .bind(&id)
+                        .fetch_optional(&mut **tx)
+                        .await?
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+
                 // Update metadata and timestamp in database
                 let token = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "UPDATE tokens SET metadata = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *",
@@ -824,8 +838,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     // Update individual token attributes
                     store_token_attributes(&update_metadata.metadata, &token.id, &mut *tx).await?;
 
-                    // Update contract's traits
-                    update_contract_traits_from_metadata(
+                    // Update contract's traits with proper subtraction of old traits and addition of new traits
+                    update_contract_traits_on_metadata_change(
+                        &old_metadata,
                         &update_metadata.metadata,
                         &update_metadata.contract_address,
                         &mut *tx,
