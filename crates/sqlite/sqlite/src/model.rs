@@ -646,28 +646,44 @@ impl Sql {
             Ok::<Vec<Felt>, Error>(acc)
         })?;
 
-        let schemas = self
-            .models(&models)
-            .await?
-            .iter()
-            .map(|m| m.schema.clone())
-            .collect::<Vec<_>>();
+        // Get model references to avoid unnecessary cloning
+        let model_refs = self.models(&models).await?;
+        // We still need to clone for the function signature, but we can optimize the cloning
+        let schemas: Vec<Ty> = model_refs.into_iter().map(|m| m.schema).collect();
 
-        let (where_clause, bind_values) =
+        let (where_clause, mut bind_values) =
             build_composite_clause(table, model_relation_table, composite, historical)?;
 
-        let having_clause = models
-            .iter()
-            .map(|model| format!("INSTR(model_ids, '{:#x}') > 0", model))
-            .collect::<Vec<_>>()
-            .join(" OR ");
+        // Replace INSTR with direct model filtering - much more efficient
+        let (model_filter, model_bind_values) = if models.is_empty() {
+            (String::new(), Vec::new())
+        } else {
+            let placeholders = vec!["?"; models.len()].join(", ");
+            let filter = format!("{model_relation_table}.model_id IN ({})", placeholders);
+            let values = models
+                .iter()
+                .map(|model| format!("{:#x}", model))
+                .collect::<Vec<_>>();
+            (filter, values)
+        };
+
+        // Add model bind values to the existing bind values
+        bind_values.extend(model_bind_values);
+
+        // Combine WHERE clause and model filter properly
+        let combined_where_clause = match (where_clause.is_empty(), model_filter.is_empty()) {
+            (true, true) => String::new(),
+            (true, false) => model_filter,
+            (false, true) => where_clause,
+            (false, false) => format!("({}) AND ({})", where_clause, model_filter),
+        };
 
         let page = if historical {
             self.fetch_historical_entities(
                 table,
                 model_relation_table,
-                &where_clause,
-                &having_clause,
+                &combined_where_clause,
+                "",
                 bind_values,
                 pagination,
             )
@@ -679,16 +695,12 @@ impl Sql {
                     table,
                     model_relation_table,
                     entity_relation_column,
-                    if where_clause.is_empty() {
+                    if combined_where_clause.is_empty() {
                         None
                     } else {
-                        Some(&where_clause)
+                        Some(&combined_where_clause)
                     },
-                    if having_clause.is_empty() {
-                        None
-                    } else {
-                        Some(&having_clause)
-                    },
+                    None, // No separate having clause needed
                     pagination,
                     bind_values,
                 )
@@ -877,7 +889,9 @@ impl Sql {
         let mut has_more_pages = false;
         let executor = PaginationExecutor::new(self.pool.clone());
 
-        for chunk in schemas.chunks(SQL_MAX_JOINS) {
+        // Optimize chunking strategy: process all schemas in a single query when possible
+        if schemas.len() <= SQL_MAX_JOINS {
+            // Single query for small schema sets - most efficient
             let mut query_builder = QueryBuilder::new(table_name);
 
             // Build selections
@@ -895,7 +909,7 @@ impl Sql {
             ];
 
             // Add schema joins and collect columns
-            for model in chunk {
+            for model in schemas {
                 let model_table = model.name();
                 query_builder = query_builder.join(&format!(
                     "LEFT JOIN [{model_table}] ON {table_name}.id = \
@@ -938,17 +952,83 @@ impl Sql {
                 )
                 .await?;
 
-            let has_more = page.next_cursor.is_some();
-            if has_more {
-                has_more_pages = true;
-                next_cursor = page.next_cursor;
-            }
+            all_rows = page.items;
+            next_cursor = page.next_cursor;
+        } else {
+            // Chunked processing for large schema sets
+            for chunk in schemas.chunks(SQL_MAX_JOINS) {
+                let mut query_builder = QueryBuilder::new(table_name);
 
-            all_rows.extend(page.items);
+                // Build selections
+                let mut selections = vec![
+                    format!("{}.id", table_name),
+                    format!("{}.keys", table_name),
+                    format!("{}.event_id", table_name),
+                    format!("{}.created_at", table_name),
+                    format!("{}.updated_at", table_name),
+                    format!("{}.executed_at", table_name),
+                    format!(
+                        "group_concat({}.model_id) as model_ids",
+                        model_relation_table
+                    ),
+                ];
 
-            // If we have more results than requested, stop processing chunks
-            if has_more {
-                break;
+                // Add schema joins and collect columns
+                for model in chunk {
+                    let model_table = model.name();
+                    query_builder = query_builder.join(&format!(
+                        "LEFT JOIN [{model_table}] ON {table_name}.id = \
+                         [{model_table}].{entity_relation_column}",
+                    ));
+                    collect_columns(&model_table, "", model, &mut selections);
+                }
+
+                query_builder = query_builder
+                    .join(&format!(
+                        "JOIN {model_relation_table} ON {table_name}.id = {model_relation_table}.entity_id",
+                    ))
+                    .select(&selections)
+                    .group_by(&format!("{}.id", table_name));
+
+                // Add where clause
+                if let Some(where_clause) = where_clause {
+                    query_builder = query_builder.where_clause(where_clause);
+                }
+
+                // Add bind values
+                for value in bind_values.iter() {
+                    query_builder = query_builder.bind_value(value.clone());
+                }
+
+                // Add having clause
+                if let Some(having_clause) = having_clause {
+                    query_builder = query_builder.having(having_clause);
+                }
+
+                // Execute paginated query
+                let page = executor
+                    .execute_paginated_query(
+                        query_builder,
+                        &pagination,
+                        &OrderBy {
+                            field: "event_id".to_string(),
+                            direction: OrderDirection::Desc,
+                        },
+                    )
+                    .await?;
+
+                let has_more = page.next_cursor.is_some();
+                if has_more {
+                    has_more_pages = true;
+                    next_cursor = page.next_cursor;
+                }
+
+                all_rows.extend(page.items);
+
+                // If we have more results than requested, stop processing chunks
+                if has_more {
+                    break;
+                }
             }
         }
 
