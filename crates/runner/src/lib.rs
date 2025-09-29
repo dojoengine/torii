@@ -755,44 +755,29 @@ impl Runner {
         let libp2p_relay_server_handle =
             tokio::spawn(async move { libp2p_relay_server.run().await });
 
-        // Wait for shutdown signal or task completion
+        // Macro to handle task results uniformly
+        macro_rules! handle_task {
+            ($result:expr, $name:literal) => {
+                match $result {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(e)) => Err(anyhow::anyhow!("{} failed: {}", $name, e)),
+                    Err(e) => Err(anyhow::anyhow!("{} task panicked: {}", $name, e)),
+                }
+            };
+            // For tasks that return () directly (no inner Result)
+            ($result:expr, $name:literal, void) => {
+                $result.map_err(|e| anyhow::anyhow!("{} task panicked: {}", $name, e)).map(|_| ())
+            };
+        }
+
+        // Wait for shutdown signal or any task completion
         let result = tokio::select! {
-            res = engine_handle => {
-                match res {
-                    Ok(engine_result) => engine_result.map_err(|e| anyhow::anyhow!("Engine failed: {}", e)),
-                    Err(e) => Err(anyhow::anyhow!("Engine task failed: {}", e)),
-                }
-            },
-            res = executor_handle => {
-                match res {
-                    Ok(executor_result) => executor_result.map_err(|e| anyhow::anyhow!("Executor failed: {}", e)),
-                    Err(e) => Err(anyhow::anyhow!("Executor task failed: {}", e)),
-                }
-            },
-            res = proxy_server_handle => {
-                match res {
-                    Ok(proxy_result) => proxy_result.map_err(|e| anyhow::anyhow!("Proxy server failed: {}", e)),
-                    Err(e) => Err(anyhow::anyhow!("Proxy server task failed: {}", e)),
-                }
-            },
-            res = graphql_server_handle => {
-                match res {
-                    Ok(_) => Ok(()), // GraphQL server doesn't return a result
-                    Err(e) => Err(anyhow::anyhow!("GraphQL server task failed: {}", e)),
-                }
-            },
-            res = grpc_server_handle => {
-                match res {
-                    Ok(grpc_result) => grpc_result.map_err(|e| anyhow::anyhow!("gRPC server failed: {}", e)),
-                    Err(e) => Err(anyhow::anyhow!("gRPC server task failed: {}", e)),
-                }
-            },
-            res = libp2p_relay_server_handle => {
-                match res {
-                    Ok(_) => Ok(()), // LibP2P relay returns ()
-                    Err(e) => Err(anyhow::anyhow!("LibP2P relay task failed: {}", e)),
-                }
-            },
+            res = engine_handle => handle_task!(res, "Engine"),
+            res = executor_handle => handle_task!(res, "Executor"),
+            res = proxy_server_handle => handle_task!(res, "Proxy server"),
+            res = graphql_server_handle => handle_task!(res, "GraphQL server", void),
+            res = grpc_server_handle => handle_task!(res, "gRPC server"),
+            res = libp2p_relay_server_handle => handle_task!(res, "LibP2P relay", void),
             _ = dojo_utils::signal::wait_signals() => {
                 info!(target: LOG_TARGET, "Shutdown signal received, cleaning up...");
                 Ok(())
