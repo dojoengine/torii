@@ -975,7 +975,7 @@ fn parse_leaderboard_config(part: &str) -> anyhow::Result<LeaderboardConfig> {
         // Simple format: leaderboard_id:model_tag:target_path:score_strategy:order
         let strategy = match parts[3] {
             "+1" | "increment" | "count" => ScoreStrategy::Increment,
-            field_path => ScoreStrategy::Replace(field_path.to_string()),
+            field_path => ScoreStrategy::Latest(field_path.to_string()),
         };
         (strategy, 4)
     } else {
