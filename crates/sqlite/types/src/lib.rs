@@ -420,9 +420,23 @@ impl From<Contract> for torii_proto::Contract {
 pub struct LeaderboardConfig {
     pub leaderboard_id: String,
     pub model_tag: String,
-    pub entity_field_path: String,
-    pub score_field_path: String,
+    pub target_path: String,
+    pub score_strategy: ScoreStrategy,
     pub order: LeaderboardOrder,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ScoreStrategy {
+    /// Increment by 1 for each update (useful for counting events like wins, kills, etc.)
+    Increment,
+    /// Keep the maximum value seen from the field (useful for high scores, best combo)
+    Max(String),
+    /// Keep the minimum value seen from the field (useful for fastest times, speedruns)
+    Min(String),
+    /// Sum/accumulate values from the field (useful for total XP, total gold earned)
+    Sum(String),
+    /// Keep the latest score with the current field value (useful for current score, level, rank)
+    Latest(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -438,7 +452,6 @@ pub struct LeaderboardEntry {
     pub leaderboard_id: String,
     pub entity_id: String,
     pub score: String,
-    pub position: i64,
     pub model_id: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

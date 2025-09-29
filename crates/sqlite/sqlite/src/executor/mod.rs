@@ -519,17 +519,22 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
                 // Update leaderboards if this model is part of any leaderboard configuration
                 let model_tag = entity.ty.name();
-                let leaderboard_configs: Vec<_> = self.config.get_leaderboard_for_model(&model_tag)
+                let leaderboard_configs: Vec<_> = self
+                    .config
+                    .get_leaderboard_for_model(&model_tag)
                     .into_iter()
                     .cloned()
                     .collect();
                 for leaderboard_config in leaderboard_configs {
-                    if let Err(e) = self.update_leaderboard(
-                        &leaderboard_config,
-                        &entity.ty,
-                        &entity.entity_id,
-                        &entity.model_id,
-                    ).await {
+                    if let Err(e) = self
+                        .update_leaderboard(
+                            &leaderboard_config,
+                            &entity.ty,
+                            &entity.entity_id,
+                            &entity.model_id,
+                        )
+                        .await
+                    {
                         error!(
                             target: LOG_TARGET,
                             leaderboard_id = %leaderboard_config.leaderboard_id,
@@ -962,96 +967,277 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
     ) -> QueryResult<()> {
         let tx = self.transaction.as_mut().unwrap();
 
-        // Extract entity_id field (player address) from the model
-        let player_entity_id = match extract_field_value(entity, &leaderboard_config.entity_field_path) {
+        // Extract target field (e.g., player address) from the model
+        let target_id = match extract_field_value(entity, &leaderboard_config.target_path) {
             Some(val) => val,
             None => {
                 warn!(
                     target: LOG_TARGET,
-                    entity_field = %leaderboard_config.entity_field_path,
+                    target_path = %leaderboard_config.target_path,
                     model = %entity.name(),
-                    "Could not extract entity field from model for leaderboard"
+                    "Could not extract target field from model for leaderboard"
                 );
                 return Ok(());
             }
         };
 
-        // Extract score field from the model
-        let score = match extract_field_value(entity, &leaderboard_config.score_field_path) {
-            Some(val) => val,
-            None => {
-                warn!(
-                    target: LOG_TARGET,
-                    score_field = %leaderboard_config.score_field_path,
-                    model = %entity.name(),
-                    "Could not extract score field from model for leaderboard"
-                );
-                return Ok(());
-            }
-        };
+        let leaderboard_entry_id = format!("{}:{}", leaderboard_config.leaderboard_id, target_id);
 
-        let leaderboard_entry_id = format!("{}:{}", leaderboard_config.leaderboard_id, player_entity_id);
+        // Handle score based on strategy
+        match &leaderboard_config.score_strategy {
+            torii_sqlite_types::ScoreStrategy::Latest(field_path) => {
+                // Extract score from a field in the model and replace previous value
+                let score = match extract_field_value(entity, field_path) {
+                    Some(val) => val,
+                    None => {
+                        warn!(
+                            target: LOG_TARGET,
+                            field_path = %field_path,
+                            model = %entity.name(),
+                            "Could not extract field from model for leaderboard"
+                        );
+                        return Ok(());
+                    }
+                };
 
-        // Upsert the leaderboard entry
-        sqlx::query(
-            "INSERT INTO leaderboard (id, leaderboard_id, entity_id, score, model_id, position) \
-             VALUES (?, ?, ?, ?, ?, 0) \
-             ON CONFLICT(id) DO UPDATE SET \
-             score=EXCLUDED.score, \
-             model_id=EXCLUDED.model_id, \
-             updated_at=CURRENT_TIMESTAMP"
-        )
-        .bind(&leaderboard_entry_id)
-        .bind(&leaderboard_config.leaderboard_id)
-        .bind(&player_entity_id)
-        .bind(&score)
-        .bind(model_id)
-        .execute(&mut **tx)
-        .await?;
-
-        // Recalculate positions for this leaderboard
-        self.recalculate_leaderboard_positions(leaderboard_config).await?;
-
-        info!(
-            target: LOG_TARGET,
-            leaderboard_id = %leaderboard_config.leaderboard_id,
-            entity = %player_entity_id,
-            score = %score,
-            "Updated leaderboard entry"
-        );
-
-        Ok(())
-    }
-
-    async fn recalculate_leaderboard_positions(
-        &mut self,
-        leaderboard_config: &torii_sqlite_types::LeaderboardConfig,
-    ) -> QueryResult<()> {
-        let tx = self.transaction.as_mut().unwrap();
-
-        // Get all entries for this leaderboard ordered by score
-        let order_clause = match leaderboard_config.order {
-            torii_sqlite_types::LeaderboardOrder::Desc => "DESC",
-            torii_sqlite_types::LeaderboardOrder::Asc => "ASC",
-        };
-
-        let query_str = format!(
-            "SELECT id FROM leaderboard WHERE leaderboard_id = ? ORDER BY score {}",
-            order_clause
-        );
-
-        let entries: Vec<(String,)> = sqlx::query_as(&query_str)
-            .bind(&leaderboard_config.leaderboard_id)
-            .fetch_all(&mut **tx)
-            .await?;
-
-        // Update positions
-        for (position, (id,)) in entries.iter().enumerate() {
-            sqlx::query("UPDATE leaderboard SET position = ? WHERE id = ?")
-                .bind((position + 1) as i64)
-                .bind(id)
+                sqlx::query(
+                    "INSERT INTO leaderboard (id, leaderboard_id, entity_id, score, model_id) \
+                     VALUES (?, ?, ?, ?, ?) \
+                     ON CONFLICT(id) DO UPDATE SET \
+                     score=EXCLUDED.score, \
+                     model_id=EXCLUDED.model_id, \
+                     updated_at=CURRENT_TIMESTAMP",
+                )
+                .bind(&leaderboard_entry_id)
+                .bind(&leaderboard_config.leaderboard_id)
+                .bind(&target_id)
+                .bind(&score)
+                .bind(model_id)
                 .execute(&mut **tx)
                 .await?;
+
+                info!(
+                    target: LOG_TARGET,
+                    leaderboard_id = %leaderboard_config.leaderboard_id,
+                    target = %target_id,
+                    score = %score,
+                    strategy = "replace",
+                    "Updated leaderboard entry"
+                );
+            }
+            torii_sqlite_types::ScoreStrategy::Increment => {
+                // Increment by 1 on each update
+                let existing_score: Option<String> =
+                    sqlx::query_scalar("SELECT score FROM leaderboard WHERE id = ?")
+                        .bind(&leaderboard_entry_id)
+                        .fetch_optional(&mut **tx)
+                        .await?;
+
+                let new_score = if let Some(score_str) = existing_score {
+                    let current: i64 = score_str.parse().unwrap_or(0);
+                    (current + 1).to_string()
+                } else {
+                    "1".to_string()
+                };
+
+                sqlx::query(
+                    "INSERT INTO leaderboard (id, leaderboard_id, entity_id, score, model_id) \
+                     VALUES (?, ?, ?, ?, ?) \
+                     ON CONFLICT(id) DO UPDATE SET \
+                     score=EXCLUDED.score, \
+                     model_id=EXCLUDED.model_id, \
+                     updated_at=CURRENT_TIMESTAMP",
+                )
+                .bind(&leaderboard_entry_id)
+                .bind(&leaderboard_config.leaderboard_id)
+                .bind(&target_id)
+                .bind(&new_score)
+                .bind(model_id)
+                .execute(&mut **tx)
+                .await?;
+
+                info!(
+                    target: LOG_TARGET,
+                    leaderboard_id = %leaderboard_config.leaderboard_id,
+                    target = %target_id,
+                    score = %new_score,
+                    strategy = "increment",
+                    "Updated leaderboard entry"
+                );
+            }
+            torii_sqlite_types::ScoreStrategy::Max(field_path) => {
+                // Keep the maximum value
+                let new_value = match extract_field_value(entity, field_path) {
+                    Some(val) => val,
+                    None => {
+                        warn!(
+                            target: LOG_TARGET,
+                            field_path = %field_path,
+                            model = %entity.name(),
+                            "Could not extract field from model for leaderboard"
+                        );
+                        return Ok(());
+                    }
+                };
+
+                let existing_score: Option<String> =
+                    sqlx::query_scalar("SELECT score FROM leaderboard WHERE id = ?")
+                        .bind(&leaderboard_entry_id)
+                        .fetch_optional(&mut **tx)
+                        .await?;
+
+                let final_score = if let Some(existing) = existing_score {
+                    // Compare and keep the max
+                    let existing_val: f64 = existing.parse().unwrap_or(f64::MIN);
+                    let new_val: f64 = new_value.parse().unwrap_or(f64::MIN);
+                    if new_val > existing_val {
+                        new_value
+                    } else {
+                        existing
+                    }
+                } else {
+                    new_value
+                };
+
+                sqlx::query(
+                    "INSERT INTO leaderboard (id, leaderboard_id, entity_id, score, model_id) \
+                     VALUES (?, ?, ?, ?, ?) \
+                     ON CONFLICT(id) DO UPDATE SET \
+                     score=EXCLUDED.score, \
+                     model_id=EXCLUDED.model_id, \
+                     updated_at=CURRENT_TIMESTAMP",
+                )
+                .bind(&leaderboard_entry_id)
+                .bind(&leaderboard_config.leaderboard_id)
+                .bind(&target_id)
+                .bind(&final_score)
+                .bind(model_id)
+                .execute(&mut **tx)
+                .await?;
+
+                info!(
+                    target: LOG_TARGET,
+                    leaderboard_id = %leaderboard_config.leaderboard_id,
+                    target = %target_id,
+                    score = %final_score,
+                    strategy = "max",
+                    "Updated leaderboard entry"
+                );
+            }
+            torii_sqlite_types::ScoreStrategy::Min(field_path) => {
+                // Keep the minimum value
+                let new_value = match extract_field_value(entity, field_path) {
+                    Some(val) => val,
+                    None => {
+                        warn!(
+                            target: LOG_TARGET,
+                            field_path = %field_path,
+                            model = %entity.name(),
+                            "Could not extract field from model for leaderboard"
+                        );
+                        return Ok(());
+                    }
+                };
+
+                let existing_score: Option<String> =
+                    sqlx::query_scalar("SELECT score FROM leaderboard WHERE id = ?")
+                        .bind(&leaderboard_entry_id)
+                        .fetch_optional(&mut **tx)
+                        .await?;
+
+                let final_score = if let Some(existing) = existing_score {
+                    // Compare and keep the min
+                    let existing_val: f64 = existing.parse().unwrap_or(f64::MAX);
+                    let new_val: f64 = new_value.parse().unwrap_or(f64::MAX);
+                    if new_val < existing_val {
+                        new_value
+                    } else {
+                        existing
+                    }
+                } else {
+                    new_value
+                };
+
+                sqlx::query(
+                    "INSERT INTO leaderboard (id, leaderboard_id, entity_id, score, model_id) \
+                     VALUES (?, ?, ?, ?, ?) \
+                     ON CONFLICT(id) DO UPDATE SET \
+                     score=EXCLUDED.score, \
+                     model_id=EXCLUDED.model_id, \
+                     updated_at=CURRENT_TIMESTAMP",
+                )
+                .bind(&leaderboard_entry_id)
+                .bind(&leaderboard_config.leaderboard_id)
+                .bind(&target_id)
+                .bind(&final_score)
+                .bind(model_id)
+                .execute(&mut **tx)
+                .await?;
+
+                info!(
+                    target: LOG_TARGET,
+                    leaderboard_id = %leaderboard_config.leaderboard_id,
+                    target = %target_id,
+                    score = %final_score,
+                    strategy = "min",
+                    "Updated leaderboard entry"
+                );
+            }
+            torii_sqlite_types::ScoreStrategy::Sum(field_path) => {
+                // Accumulate values
+                let new_value = match extract_field_value(entity, field_path) {
+                    Some(val) => val,
+                    None => {
+                        warn!(
+                            target: LOG_TARGET,
+                            field_path = %field_path,
+                            model = %entity.name(),
+                            "Could not extract field from model for leaderboard"
+                        );
+                        return Ok(());
+                    }
+                };
+
+                let existing_score: Option<String> =
+                    sqlx::query_scalar("SELECT score FROM leaderboard WHERE id = ?")
+                        .bind(&leaderboard_entry_id)
+                        .fetch_optional(&mut **tx)
+                        .await?;
+
+                let final_score = if let Some(existing) = existing_score {
+                    // Add to existing
+                    let existing_val: f64 = existing.parse().unwrap_or(0.0);
+                    let new_val: f64 = new_value.parse().unwrap_or(0.0);
+                    (existing_val + new_val).to_string()
+                } else {
+                    new_value
+                };
+
+                sqlx::query(
+                    "INSERT INTO leaderboard (id, leaderboard_id, entity_id, score, model_id) \
+                     VALUES (?, ?, ?, ?, ?) \
+                     ON CONFLICT(id) DO UPDATE SET \
+                     score=EXCLUDED.score, \
+                     model_id=EXCLUDED.model_id, \
+                     updated_at=CURRENT_TIMESTAMP",
+                )
+                .bind(&leaderboard_entry_id)
+                .bind(&leaderboard_config.leaderboard_id)
+                .bind(&target_id)
+                .bind(&final_score)
+                .bind(model_id)
+                .execute(&mut **tx)
+                .await?;
+
+                info!(
+                    target: LOG_TARGET,
+                    leaderboard_id = %leaderboard_config.leaderboard_id,
+                    target = %target_id,
+                    score = %final_score,
+                    strategy = "sum",
+                    "Updated leaderboard entry"
+                );
+            }
         }
 
         Ok(())

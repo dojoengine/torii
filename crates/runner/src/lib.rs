@@ -482,8 +482,13 @@ impl Runner {
             leaderboards: self.args.leaderboard.configs.clone(),
         };
 
-        let (mut executor, sender) =
-            Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone(), sql_config.clone()).await?;
+        let (mut executor, sender) = Executor::new(
+            write_pool.clone(),
+            shutdown_tx.clone(),
+            provider.clone(),
+            sql_config.clone(),
+        )
+        .await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
 
         let db = Sql::new_with_config(
