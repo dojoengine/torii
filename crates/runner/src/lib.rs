@@ -457,10 +457,6 @@ impl Runner {
         }
         drop(migrate_handle);
 
-        let (mut executor, sender) =
-            Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
-        let executor_handle = tokio::spawn(async move { executor.run().await });
-
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
             warn!(
                 target: LOG_TARGET,
@@ -478,17 +474,23 @@ impl Runner {
             },
         )?;
 
+        let sql_config = SqlConfig {
+            all_model_indices: self.args.sql.all_model_indices,
+            model_indices: self.args.sql.model_indices.clone(),
+            historical_models: historical_models.clone(),
+            hooks: self.args.sql.hooks.clone(),
+            leaderboards: self.args.leaderboard.configs.clone(),
+        };
+
+        let (mut executor, sender) =
+            Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone(), sql_config.clone()).await?;
+        let executor_handle = tokio::spawn(async move { executor.run().await });
+
         let db = Sql::new_with_config(
             readonly_pool.clone(),
             sender.clone(),
             &self.args.indexing.contracts,
-            SqlConfig {
-                all_model_indices: self.args.sql.all_model_indices,
-                model_indices: self.args.sql.model_indices.clone(),
-                historical_models: historical_models.clone(),
-                hooks: self.args.sql.hooks.clone(),
-                leaderboards: self.args.leaderboard.configs.clone(),
-            },
+            sql_config,
         )
         .await?;
         let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());

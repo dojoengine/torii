@@ -250,6 +250,11 @@ impl QueryMessage {
 }
 
 impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
+    #[cfg(test)]
+    pub fn default_test_config() -> crate::SqlConfig {
+        crate::SqlConfig::default()
+    }
+
     pub async fn new(
         pool: Pool<Sqlite>,
         shutdown_tx: Sender<()>,
@@ -514,10 +519,13 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
                 // Update leaderboards if this model is part of any leaderboard configuration
                 let model_tag = entity.ty.name();
-                let leaderboard_configs = self.config.get_leaderboard_for_model(&model_tag);
+                let leaderboard_configs: Vec<_> = self.config.get_leaderboard_for_model(&model_tag)
+                    .into_iter()
+                    .cloned()
+                    .collect();
                 for leaderboard_config in leaderboard_configs {
                     if let Err(e) = self.update_leaderboard(
-                        leaderboard_config,
+                        &leaderboard_config,
                         &entity.ty,
                         &entity.entity_id,
                         &entity.model_id,
@@ -949,7 +957,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         &mut self,
         leaderboard_config: &torii_sqlite_types::LeaderboardConfig,
         entity: &Ty,
-        entity_id_str: &str,
+        _entity_id_str: &str,
         model_id: &str,
     ) -> QueryResult<()> {
         let tx = self.transaction.as_mut().unwrap();
@@ -1069,7 +1077,7 @@ fn extract_field_value_recursive(ty: &Ty, parts: &[&str], index: usize) -> Optio
                 if member.name == current_part {
                     if index == parts.len() - 1 {
                         // Last part, return the value
-                        return Some(member.ty.to_sql_value());
+                        return ty_to_sql_string(&member.ty);
                     } else {
                         // Continue traversing
                         return extract_field_value_recursive(&member.ty, parts, index + 1);
@@ -1078,9 +1086,16 @@ fn extract_field_value_recursive(ty: &Ty, parts: &[&str], index: usize) -> Optio
             }
             None
         }
-        Ty::Primitive(_) => {
+        Ty::Primitive(p) => {
             if index == parts.len() - 1 {
-                Some(ty.to_sql_value())
+                Some(p.to_sql_value())
+            } else {
+                None
+            }
+        }
+        Ty::Enum(e) => {
+            if index == parts.len() - 1 {
+                Some(e.to_sql_value())
             } else {
                 None
             }
@@ -1092,6 +1107,16 @@ fn extract_field_value_recursive(ty: &Ty, parts: &[&str], index: usize) -> Optio
                 None
             }
         }
+        _ => None,
+    }
+}
+
+// Helper to convert Ty to SQL string
+fn ty_to_sql_string(ty: &Ty) -> Option<String> {
+    match ty {
+        Ty::Primitive(p) => Some(p.to_sql_value()),
+        Ty::Enum(e) => Some(e.to_sql_value()),
+        Ty::ByteArray(b) => Some(b.clone()),
         _ => None,
     }
 }
