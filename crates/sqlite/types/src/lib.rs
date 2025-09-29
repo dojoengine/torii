@@ -415,3 +415,31 @@ impl From<Contract> for torii_proto::Contract {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LeaderboardConfig {
+    pub leaderboard_id: String,
+    pub model_tag: String,
+    pub entity_field_path: String,
+    pub score_field_path: String,
+    pub order: LeaderboardOrder,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum LeaderboardOrder {
+    Desc,
+    Asc,
+}
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaderboardEntry {
+    pub id: String,
+    pub leaderboard_id: String,
+    pub entity_id: String,
+    pub score: String,
+    pub position: i64,
+    pub model_id: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}

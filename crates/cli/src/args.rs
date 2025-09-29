@@ -90,6 +90,10 @@ pub struct ToriiArgs {
     #[command(flatten)]
     #[merge]
     pub messaging: MessagingOptions,
+
+    #[command(flatten)]
+    #[merge]
+    pub leaderboard: LeaderboardOptions,
 }
 
 impl Default for ToriiArgs {
@@ -116,6 +120,7 @@ impl Default for ToriiArgs {
             grpc: GrpcOptions::default(),
             #[cfg(feature = "server")]
             messaging: MessagingOptions::default(),
+            leaderboard: LeaderboardOptions::default(),
         }
     }
 }

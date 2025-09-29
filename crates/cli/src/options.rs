@@ -10,7 +10,7 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
 use torii_proto::{ContractDefinition, ContractType};
-use torii_sqlite_types::{Hook, HookEvent, ModelIndices};
+use torii_sqlite_types::{Hook, HookEvent, LeaderboardConfig, ModelIndices};
 
 pub const DEFAULT_HTTP_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 pub const DEFAULT_HTTP_PORT: u16 = 8080;
@@ -925,4 +925,54 @@ where
     }
 
     seq.end()
+}
+
+#[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
+#[serde(default)]
+#[command(next_help_heading = "Leaderboard options")]
+pub struct LeaderboardOptions {
+    /// Leaderboard configurations
+    /// Format: "leaderboard_id:model_tag:entity_field_path:score_field_path:order"
+    /// Example: "top_players:dojo_examples-player:player:score:desc"
+    #[arg(
+        long = "leaderboard.configs",
+        value_delimiter = ';',
+        value_parser = parse_leaderboard_config,
+        help = "Leaderboard configurations. Format: \"leaderboard_id:model_tag:entity_field_path:score_field_path:order\". Order can be 'asc' or 'desc'. Multiple configs separated by ';'"
+    )]
+    pub configs: Vec<LeaderboardConfig>,
+}
+
+impl Default for LeaderboardOptions {
+    fn default() -> Self {
+        Self { configs: vec![] }
+    }
+}
+
+// Parses clap cli argument which is expected to be in the format:
+// - leaderboard_id:model_tag:entity_field_path:score_field_path:order
+fn parse_leaderboard_config(part: &str) -> anyhow::Result<LeaderboardConfig> {
+    let parts: Vec<&str> = part.split(':').collect();
+    if parts.len() != 5 {
+        return Err(anyhow::anyhow!(
+            "Invalid leaderboard config format. Expected \
+             'leaderboard_id:model_tag:entity_field_path:score_field_path:order'"
+        ));
+    }
+
+    let order = match parts[4].to_lowercase().as_str() {
+        "desc" => torii_sqlite_types::LeaderboardOrder::Desc,
+        "asc" => torii_sqlite_types::LeaderboardOrder::Asc,
+        _ => {
+            return Err(anyhow::anyhow!("Invalid order. Expected 'asc' or 'desc'"));
+        }
+    };
+
+    Ok(LeaderboardConfig {
+        leaderboard_id: parts[0].to_string(),
+        model_tag: parts[1].to_string(),
+        entity_field_path: parts[2].to_string(),
+        score_field_path: parts[3].to_string(),
+        order,
+    })
 }

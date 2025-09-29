@@ -487,6 +487,7 @@ impl Runner {
                 model_indices: self.args.sql.model_indices.clone(),
                 historical_models: historical_models.clone(),
                 hooks: self.args.sql.hooks.clone(),
+                leaderboards: self.args.leaderboard.configs.clone(),
             },
         )
         .await?;

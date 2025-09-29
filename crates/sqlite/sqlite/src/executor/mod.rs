@@ -177,6 +177,8 @@ pub struct Executor<'c, P: Provider + Sync + Send + Clone + 'static> {
     shutdown_rx: Receiver<()>,
     // It is used to make RPC calls to fetch erc contracts
     provider: P,
+    // SQL configuration including leaderboard configs
+    config: crate::SqlConfig,
 }
 
 #[derive(Debug)]
@@ -252,6 +254,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         pool: Pool<Sqlite>,
         shutdown_tx: Sender<()>,
         provider: P,
+        config: crate::SqlConfig,
     ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
         let (tx, rx) = unbounded_channel();
         let transaction = pool.begin().await?;
@@ -266,6 +269,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 rx,
                 shutdown_rx,
                 provider,
+                config,
             },
             tx,
         ))
@@ -507,6 +511,25 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .bind(entity_counter)
                 .execute(&mut **tx)
                 .await?;
+
+                // Update leaderboards if this model is part of any leaderboard configuration
+                let model_tag = entity.ty.name();
+                let leaderboard_configs = self.config.get_leaderboard_for_model(&model_tag);
+                for leaderboard_config in leaderboard_configs {
+                    if let Err(e) = self.update_leaderboard(
+                        leaderboard_config,
+                        &entity.ty,
+                        &entity.entity_id,
+                        &entity.model_id,
+                    ).await {
+                        error!(
+                            target: LOG_TARGET,
+                            leaderboard_id = %leaderboard_config.leaderboard_id,
+                            error = ?e,
+                            "Failed to update leaderboard"
+                        );
+                    }
+                }
 
                 self.publish_optimistic_and_queue(BrokerMessage::EntityUpdate(
                     entity_updated.into(),
@@ -920,6 +943,156 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
     fn publish_optimistic_and_queue(&mut self, message: BrokerMessage) {
         send_broker_message(message.clone(), true);
         self.publish_queue.push(message);
+    }
+
+    async fn update_leaderboard(
+        &mut self,
+        leaderboard_config: &torii_sqlite_types::LeaderboardConfig,
+        entity: &Ty,
+        entity_id_str: &str,
+        model_id: &str,
+    ) -> QueryResult<()> {
+        let tx = self.transaction.as_mut().unwrap();
+
+        // Extract entity_id field (player address) from the model
+        let player_entity_id = match extract_field_value(entity, &leaderboard_config.entity_field_path) {
+            Some(val) => val,
+            None => {
+                warn!(
+                    target: LOG_TARGET,
+                    entity_field = %leaderboard_config.entity_field_path,
+                    model = %entity.name(),
+                    "Could not extract entity field from model for leaderboard"
+                );
+                return Ok(());
+            }
+        };
+
+        // Extract score field from the model
+        let score = match extract_field_value(entity, &leaderboard_config.score_field_path) {
+            Some(val) => val,
+            None => {
+                warn!(
+                    target: LOG_TARGET,
+                    score_field = %leaderboard_config.score_field_path,
+                    model = %entity.name(),
+                    "Could not extract score field from model for leaderboard"
+                );
+                return Ok(());
+            }
+        };
+
+        let leaderboard_entry_id = format!("{}:{}", leaderboard_config.leaderboard_id, player_entity_id);
+
+        // Upsert the leaderboard entry
+        sqlx::query(
+            "INSERT INTO leaderboard (id, leaderboard_id, entity_id, score, model_id, position) \
+             VALUES (?, ?, ?, ?, ?, 0) \
+             ON CONFLICT(id) DO UPDATE SET \
+             score=EXCLUDED.score, \
+             model_id=EXCLUDED.model_id, \
+             updated_at=CURRENT_TIMESTAMP"
+        )
+        .bind(&leaderboard_entry_id)
+        .bind(&leaderboard_config.leaderboard_id)
+        .bind(&player_entity_id)
+        .bind(&score)
+        .bind(model_id)
+        .execute(&mut **tx)
+        .await?;
+
+        // Recalculate positions for this leaderboard
+        self.recalculate_leaderboard_positions(leaderboard_config).await?;
+
+        info!(
+            target: LOG_TARGET,
+            leaderboard_id = %leaderboard_config.leaderboard_id,
+            entity = %player_entity_id,
+            score = %score,
+            "Updated leaderboard entry"
+        );
+
+        Ok(())
+    }
+
+    async fn recalculate_leaderboard_positions(
+        &mut self,
+        leaderboard_config: &torii_sqlite_types::LeaderboardConfig,
+    ) -> QueryResult<()> {
+        let tx = self.transaction.as_mut().unwrap();
+
+        // Get all entries for this leaderboard ordered by score
+        let order_clause = match leaderboard_config.order {
+            torii_sqlite_types::LeaderboardOrder::Desc => "DESC",
+            torii_sqlite_types::LeaderboardOrder::Asc => "ASC",
+        };
+
+        let query_str = format!(
+            "SELECT id FROM leaderboard WHERE leaderboard_id = ? ORDER BY score {}",
+            order_clause
+        );
+
+        let entries: Vec<(String,)> = sqlx::query_as(&query_str)
+            .bind(&leaderboard_config.leaderboard_id)
+            .fetch_all(&mut **tx)
+            .await?;
+
+        // Update positions
+        for (position, (id,)) in entries.iter().enumerate() {
+            sqlx::query("UPDATE leaderboard SET position = ? WHERE id = ?")
+                .bind((position + 1) as i64)
+                .bind(id)
+                .execute(&mut **tx)
+                .await?;
+        }
+
+        Ok(())
+    }
+}
+
+// Helper function to extract a field value from a Ty by path (e.g., "player" or "stats.score")
+fn extract_field_value(ty: &Ty, path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('.').collect();
+    extract_field_value_recursive(ty, &parts, 0)
+}
+
+fn extract_field_value_recursive(ty: &Ty, parts: &[&str], index: usize) -> Option<String> {
+    if index >= parts.len() {
+        return None;
+    }
+
+    let current_part = parts[index];
+
+    match ty {
+        Ty::Struct(s) => {
+            for member in &s.children {
+                if member.name == current_part {
+                    if index == parts.len() - 1 {
+                        // Last part, return the value
+                        return Some(member.ty.to_sql_value());
+                    } else {
+                        // Continue traversing
+                        return extract_field_value_recursive(&member.ty, parts, index + 1);
+                    }
+                }
+            }
+            None
+        }
+        Ty::Primitive(_) => {
+            if index == parts.len() - 1 {
+                Some(ty.to_sql_value())
+            } else {
+                None
+            }
+        }
+        Ty::ByteArray(b) => {
+            if index == parts.len() - 1 {
+                Some(b.clone())
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
