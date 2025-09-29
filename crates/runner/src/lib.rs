@@ -150,30 +150,45 @@ impl RuntimeAllocation {
     }
 }
 
-// Function to create a configurable query runtime
-fn create_query_runtime(threads: usize) -> Arc<tokio::runtime::Runtime> {
-    Arc::new(
-        tokio::runtime::Builder::new_multi_thread()
+// Structure to hold runtime and its handle for proper shutdown
+struct ManagedRuntime {
+    runtime: tokio::runtime::Runtime,
+    handle: tokio::runtime::Handle,
+}
+
+impl ManagedRuntime {
+    fn new(threads: usize, name: &str, stack_size: usize) -> Self {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(threads)
-            .thread_name("torii-query")
-            .thread_stack_size(2 * 1024 * 1024) // 2MB stack for complex queries
+            .thread_name(name)
+            .thread_stack_size(stack_size)
             .enable_all()
             .build()
-            .expect("Failed to create query runtime"),
-    )
+            .expect("Failed to create runtime");
+
+        let handle = runtime.handle().clone();
+
+        Self { runtime, handle }
+    }
+
+    fn handle(&self) -> &tokio::runtime::Handle {
+        &self.handle
+    }
+
+    // Shutdown runtime in a blocking context to avoid the panic
+    fn shutdown(self) {
+        self.runtime.shutdown_background();
+    }
+}
+
+// Function to create a configurable query runtime
+fn create_query_runtime(threads: usize) -> ManagedRuntime {
+    ManagedRuntime::new(threads, "torii-query", 2 * 1024 * 1024) // 2MB stack for complex queries
 }
 
 // Function to create a dedicated indexer runtime
-fn create_indexer_runtime(threads: usize) -> Arc<tokio::runtime::Runtime> {
-    Arc::new(
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(threads)
-            .thread_name("torii-indexer")
-            .thread_stack_size(1024 * 1024) // 1MB stack (less than queries)
-            .enable_all()
-            .build()
-            .expect("Failed to create indexer runtime"),
-    )
+fn create_indexer_runtime(threads: usize) -> ManagedRuntime {
+    ManagedRuntime::new(threads, "torii-indexer", 1024 * 1024) // 1MB stack (less than queries)
 }
 
 /// Creates a responsive progress bar template based on terminal size
@@ -727,30 +742,75 @@ impl Runner {
         let indexer_runtime = create_indexer_runtime(allocation.indexer_threads);
 
         // Move engine to dedicated indexer runtime for CPU isolation
-        let engine_handle = indexer_runtime.spawn(async move { engine.start().await });
+        let engine_handle = indexer_runtime
+            .handle()
+            .spawn(async move { engine.start().await });
 
         let proxy_server_handle =
             tokio::spawn(async move { proxy_server.start(shutdown_tx.subscribe()).await });
 
         // Spawn user-facing query services on dedicated API runtime for better performance isolation
-        let graphql_server_handle = query_runtime.spawn(graphql_server);
+        let graphql_server_handle = query_runtime.handle().spawn(graphql_server);
 
-        let grpc_server_handle = query_runtime.spawn(grpc_server);
+        let grpc_server_handle = query_runtime.handle().spawn(grpc_server);
 
         let libp2p_relay_server_handle =
             tokio::spawn(async move { libp2p_relay_server.run().await });
 
-        tokio::select! {
-            res = engine_handle => res??,
-            res = executor_handle => res??,
-            res = proxy_server_handle => res??,
-            res = graphql_server_handle => res?,
-            res = grpc_server_handle => res??,
-            res = libp2p_relay_server_handle => res?,
-            _ = dojo_utils::signal::wait_signals() => {},
+        // Macro to handle task results uniformly
+        macro_rules! handle_task {
+            ($result:expr, $name:literal) => {
+                match $result {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(e)) => Err(anyhow::anyhow!("{} failed: {}", $name, e)),
+                    Err(e) => Err(anyhow::anyhow!("{} task panicked: {}", $name, e)),
+                }
+            };
+            // For tasks that return () directly (no inner Result)
+            ($result:expr, $name:literal, void) => {
+                $result
+                    .map_err(|e| anyhow::anyhow!("{} task panicked: {}", $name, e))
+                    .map(|_| ())
+            };
+        }
+
+        // Wait for shutdown signal or any task completion
+        let result = tokio::select! {
+            res = engine_handle => handle_task!(res, "Engine"),
+            res = executor_handle => handle_task!(res, "Executor"),
+            res = proxy_server_handle => handle_task!(res, "Proxy server"),
+            res = graphql_server_handle => handle_task!(res, "GraphQL server", void),
+            res = grpc_server_handle => handle_task!(res, "gRPC server"),
+            res = libp2p_relay_server_handle => handle_task!(res, "LibP2P relay", void),
+            _ = dojo_utils::signal::wait_signals() => {
+                info!(target: LOG_TARGET, "Shutdown signal received, cleaning up...");
+                Ok(())
+            },
         };
 
-        Ok(())
+        // Properly shutdown runtimes in blocking context to avoid panic
+        info!(target: LOG_TARGET, "Shutting down dedicated runtimes...");
+
+        // Use spawn_blocking to shutdown runtimes outside async context
+        let query_shutdown = tokio::task::spawn_blocking(move || {
+            query_runtime.shutdown();
+        });
+
+        let indexer_shutdown = tokio::task::spawn_blocking(move || {
+            indexer_runtime.shutdown();
+        });
+
+        // Wait for runtime shutdowns to complete
+        if let Err(e) = query_shutdown.await {
+            warn!(target: LOG_TARGET, error = ?e, "Failed to shutdown query runtime cleanly");
+        }
+
+        if let Err(e) = indexer_shutdown.await {
+            warn!(target: LOG_TARGET, error = ?e, "Failed to shutdown indexer runtime cleanly");
+        }
+
+        info!(target: LOG_TARGET, "Shutdown complete");
+        result
     }
 }
 
