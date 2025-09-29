@@ -788,26 +788,11 @@ impl Runner {
             },
         };
 
-        // Properly shutdown runtimes in blocking context to avoid panic
+        // Properly shutdown runtimes
         info!(target: LOG_TARGET, "Shutting down dedicated runtimes...");
 
-        // Use spawn_blocking to shutdown runtimes outside async context
-        let query_shutdown = tokio::task::spawn_blocking(move || {
-            query_runtime.shutdown();
-        });
-
-        let indexer_shutdown = tokio::task::spawn_blocking(move || {
-            indexer_runtime.shutdown();
-        });
-
-        // Wait for runtime shutdowns to complete
-        if let Err(e) = query_shutdown.await {
-            warn!(target: LOG_TARGET, error = ?e, "Failed to shutdown query runtime cleanly");
-        }
-
-        if let Err(e) = indexer_shutdown.await {
-            warn!(target: LOG_TARGET, error = ?e, "Failed to shutdown indexer runtime cleanly");
-        }
+        query_runtime.shutdown();
+        indexer_runtime.shutdown();
 
         info!(target: LOG_TARGET, "Shutdown complete");
         result
