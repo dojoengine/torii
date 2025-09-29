@@ -165,16 +165,16 @@ impl ManagedRuntime {
             .enable_all()
             .build()
             .expect("Failed to create runtime");
-        
+
         let handle = runtime.handle().clone();
-        
+
         Self { runtime, handle }
     }
-    
+
     fn handle(&self) -> &tokio::runtime::Handle {
         &self.handle
     }
-    
+
     // Shutdown runtime in a blocking context to avoid the panic
     fn shutdown(self) {
         self.runtime.shutdown_background();
@@ -742,7 +742,9 @@ impl Runner {
         let indexer_runtime = create_indexer_runtime(allocation.indexer_threads);
 
         // Move engine to dedicated indexer runtime for CPU isolation
-        let engine_handle = indexer_runtime.handle().spawn(async move { engine.start().await });
+        let engine_handle = indexer_runtime
+            .handle()
+            .spawn(async move { engine.start().await });
 
         let proxy_server_handle =
             tokio::spawn(async move { proxy_server.start(shutdown_tx.subscribe()).await });
@@ -766,7 +768,9 @@ impl Runner {
             };
             // For tasks that return () directly (no inner Result)
             ($result:expr, $name:literal, void) => {
-                $result.map_err(|e| anyhow::anyhow!("{} task panicked: {}", $name, e)).map(|_| ())
+                $result
+                    .map_err(|e| anyhow::anyhow!("{} task panicked: {}", $name, e))
+                    .map(|_| ())
             };
         }
 
@@ -786,12 +790,12 @@ impl Runner {
 
         // Properly shutdown runtimes in blocking context to avoid panic
         info!(target: LOG_TARGET, "Shutting down dedicated runtimes...");
-        
+
         // Use spawn_blocking to shutdown runtimes outside async context
         let query_shutdown = tokio::task::spawn_blocking(move || {
             query_runtime.shutdown();
         });
-        
+
         let indexer_shutdown = tokio::task::spawn_blocking(move || {
             indexer_runtime.shutdown();
         });
@@ -800,7 +804,7 @@ impl Runner {
         if let Err(e) = query_shutdown.await {
             warn!(target: LOG_TARGET, error = ?e, "Failed to shutdown query runtime cleanly");
         }
-        
+
         if let Err(e) = indexer_shutdown.await {
             warn!(target: LOG_TARGET, error = ?e, "Failed to shutdown indexer runtime cleanly");
         }
