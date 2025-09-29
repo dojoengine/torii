@@ -25,6 +25,7 @@
 
 ## Testing Guidelines
 - Prefer `cargo nextest`; drop to `cargo test -p <crate>` when debugging locally.
+- Use `bash scripts/selective_test.sh <base_branch>` to run only the impacted crates' nextest suites; pass `--dry-run` to preview and `--force-all` when you need a full sweep.
 - Reset Katana snapshots by clearing `tmp/` and rerunning the rebuild script.
 - Name integration tests after behaviors (e.g., `sync_failure.rs`) and store shared payloads beneath `tests/fixtures`.
 
