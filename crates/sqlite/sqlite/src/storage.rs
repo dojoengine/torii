@@ -846,9 +846,9 @@ impl Storage for Sql {
             }),
         );
 
-        self.executor
-            .send(query)
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+        self.executor.send(query).map_err(|e| {
+            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+        })?;
 
         recv.await
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?
@@ -909,7 +909,9 @@ impl Storage for Sql {
                 arguments,
                 QueryType::RegisterModel,
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         self.build_model_query(
             vec![namespaced_name.clone()],
@@ -927,7 +929,9 @@ impl Storage for Sql {
                             vec![Argument::FieldElement(selector)],
                         ))
                         .map_err(|e| {
-                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(
+                                e,
+                            ))))
                         })?;
                 }
             }
@@ -959,7 +963,9 @@ impl Storage for Sql {
                 arguments,
                 QueryType::RegisterContract,
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         Ok(())
     }
@@ -1018,7 +1024,9 @@ impl Storage for Sql {
                     is_historical: self.config.is_historical(&model_selector),
                 }),
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         self.executor.send(QueryMessage::other(
             "INSERT INTO entity_model (entity_id, model_id) VALUES (?, ?) ON CONFLICT(entity_id, \
@@ -1028,7 +1036,7 @@ impl Storage for Sql {
                 Argument::String(entity_id.clone()),
                 Argument::String(model_id.clone()),
             ],
-        )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+        )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e)))))?;
 
         self.set_entity_model(
             &namespaced_name,
@@ -1047,7 +1055,9 @@ impl Storage for Sql {
                             vec![Argument::String(entity_id.clone())],
                         ))
                         .map_err(|e| {
-                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(
+                                e,
+                            ))))
                         })?;
                 }
             }
@@ -1099,7 +1109,9 @@ impl Storage for Sql {
                     is_historical: self.config.is_historical(&model_selector),
                 }),
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         self.set_entity_model(
             &namespaced_name,
@@ -1118,7 +1130,9 @@ impl Storage for Sql {
                             vec![Argument::String(entity_id.clone())],
                         ))
                         .map_err(|e| {
-                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(
+                                e,
+                            ))))
                         })?;
                 }
             }
@@ -1154,7 +1168,9 @@ impl Storage for Sql {
                     ty: entity.clone(),
                 }),
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         for hook in self.config.hooks.iter() {
             if let HookEvent::ModelDeleted { model_tag } = &hook.event {
@@ -1165,7 +1181,9 @@ impl Storage for Sql {
                             vec![Argument::String(entity_id.clone())],
                         ))
                         .map_err(|e| {
-                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(
+                                e,
+                            ))))
                         })?;
                 }
             }
@@ -1195,7 +1213,9 @@ impl Storage for Sql {
                     .to_string(),
                 vec![resource, uri, executed_at],
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         Ok(())
     }
@@ -1231,7 +1251,9 @@ impl Storage for Sql {
 
         self.executor
             .send(QueryMessage::other(statement, arguments))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         Ok(())
     }
@@ -1280,7 +1302,7 @@ impl Storage for Sql {
                     unique_models: unique_models.clone(),
                 }),
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e)))))?;
 
         Ok(())
     }
@@ -1307,7 +1329,9 @@ impl Storage for Sql {
                 vec![id, keys, data, hash, executed_at],
                 QueryType::StoreEvent,
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         Ok(())
     }
@@ -1340,7 +1364,9 @@ impl Storage for Sql {
                 insert_controller.to_string(),
                 arguments,
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         Ok(())
     }
@@ -1366,7 +1392,9 @@ impl Storage for Sql {
                     metadata,
                 }),
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
         Ok(())
     }
 
@@ -1387,7 +1415,9 @@ impl Storage for Sql {
                     metadata,
                 }),
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         Ok(())
     }
@@ -1409,7 +1439,9 @@ impl Storage for Sql {
                     metadata,
                 }),
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         Ok(())
     }
@@ -1457,7 +1489,9 @@ impl Storage for Sql {
                 ],
                 QueryType::StoreTokenTransfer,
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         Ok(())
     }
@@ -1479,16 +1513,18 @@ impl Storage for Sql {
                     cursors,
                 }),
             ))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
         Ok(())
     }
 
     /// Executes pending operations and commits the current transaction.
     async fn execute(&self) -> Result<(), StorageError> {
         let (execute, recv) = QueryMessage::execute_recv();
-        self.executor
-            .send(execute)
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+        self.executor.send(execute).map_err(|e| {
+            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+        })?;
         let res = recv
             .await
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?;
@@ -1499,9 +1535,9 @@ impl Storage for Sql {
     /// Rolls back the current transaction and starts a new one.
     async fn rollback(&self) -> Result<(), StorageError> {
         let (rollback, recv) = QueryMessage::rollback_recv();
-        self.executor
-            .send(rollback)
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+        self.executor.send(rollback).map_err(|e| {
+            Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+        })?;
         let res = recv
             .await
             .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::RecvError(e))))?;

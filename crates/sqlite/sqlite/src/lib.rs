@@ -86,7 +86,7 @@ impl Sql {
                     Argument::String(contract.r#type.to_string()),
                     Argument::Int(contract.starting_block.map_or(0, |b| b - 1) as i64),
                 ],
-            )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e)))))?;
         }
 
         let db = Self {
@@ -222,7 +222,9 @@ impl Sql {
         // Execute the single query
         self.executor
             .send(QueryMessage::other(insert_statement, arguments))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         Ok(())
     }
@@ -292,20 +294,24 @@ impl Sql {
                 self.executor
                     .send(QueryMessage::other(alter_query, vec![]))
                     .map_err(|e| {
-                        Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                        Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
                     })?;
             }
         } else {
             self.executor
                 .send(QueryMessage::other(create_table_query, vec![]))
-                .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+                .map_err(|e| {
+                    Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+                })?;
         }
 
         // Create indices
         for index_query in indices {
             self.executor
                 .send(QueryMessage::other(index_query, vec![]))
-                .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+                .map_err(|e| {
+                    Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+                })?;
         }
 
         Ok(())

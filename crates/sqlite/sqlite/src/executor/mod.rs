@@ -251,12 +251,15 @@ impl QueryMessage {
 }
 
 impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
-    #[cfg(test)]
-    pub fn default_test_config() -> crate::SqlConfig {
-        crate::SqlConfig::default()
+    pub async fn new(
+        pool: Pool<Sqlite>,
+        shutdown_tx: Sender<()>,
+        provider: P,
+    ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
+        Self::new_with_config(pool, shutdown_tx, provider, crate::SqlConfig::default()).await
     }
 
-    pub async fn new(
+    pub async fn new_with_config(
         pool: Pool<Sqlite>,
         shutdown_tx: Sender<()>,
         provider: P,
@@ -675,7 +678,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, "Applying balance diff.");
                 let instant = Instant::now();
                 self.apply_balance_diff(apply_balance_diff, self.provider.clone())
-                    .await?;
+                    .await
+                    .map_err(Box::new)?;
                 debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied balance diff.");
             }
             QueryType::RegisterNftToken(register_nft_token) => {

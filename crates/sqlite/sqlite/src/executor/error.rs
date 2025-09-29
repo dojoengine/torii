@@ -11,7 +11,7 @@ pub enum ExecutorError {
 #[derive(Error, Debug)]
 pub enum ExecutorQueryError {
     #[error(transparent)]
-    Sqlite(#[from] crate::error::Error),
+    Sqlite(#[from] Box<crate::error::Error>),
     #[error(transparent)]
     Provider(#[from] starknet::providers::ProviderError),
     #[error(transparent)]
@@ -23,7 +23,7 @@ pub enum ExecutorQueryError {
     #[error(transparent)]
     Executor(#[from] ExecutorError),
     #[error(transparent)]
-    SendError(#[from] tokio::sync::mpsc::error::SendError<crate::executor::QueryMessage>),
+    SendError(#[from] Box<tokio::sync::mpsc::error::SendError<crate::executor::QueryMessage>>),
     #[error(transparent)]
     RecvError(#[from] tokio::sync::oneshot::error::RecvError),
     #[error("Leaderboard field extraction failed: {0}")]

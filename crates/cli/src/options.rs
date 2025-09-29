@@ -510,6 +510,19 @@ pub struct SqlOptions {
     )]
     pub migrations: Option<PathBuf>,
 
+    /// Leaderboard configurations
+    /// Format: "leaderboard_id:model_tag:target_path:score_strategy:order"
+    #[arg(
+        long = "sql.leaderboards",
+        value_delimiter = ';',
+        value_parser = parse_leaderboard_config,
+        help = "Leaderboard configurations. Format: \"leaderboard_id:model_tag:target_path:score_strategy:order\". \
+                Strategy can be: field_name (latest value), +1 (count events), max:field (highest), min:field (lowest), sum:field (accumulate). \
+                Order can be 'asc' or 'desc'. Multiple configs separated by ';'. \
+                Examples: 'top_scores:ns-Player:player:score:desc' or 'most_wins:ns-GameWon:player:+1:desc'"
+    )]
+    pub leaderboards: Vec<LeaderboardConfig>,
+
     /// The pages interval to autocheckpoint.
     #[arg(
         long = "sql.wal_autocheckpoint",
@@ -592,6 +605,7 @@ impl Default for SqlOptions {
             hard_memory_limit: DEFAULT_DATABASE_HARD_MEMORY_LIMIT,
             hooks: vec![],
             migrations: None,
+            leaderboards: vec![],
         }
     }
 }
@@ -925,35 +939,6 @@ where
     }
 
     seq.end()
-}
-
-#[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
-#[serde(default)]
-#[command(next_help_heading = "Leaderboard options")]
-pub struct LeaderboardOptions {
-    /// Leaderboard configurations
-    /// Format: "leaderboard_id:model_tag:target_path:score_strategy:order"
-    /// Examples:
-    ///   - "top_scores:ns-Player:player:score:desc" (replace - uses current value)
-    ///   - "most_wins:ns-GameWon:player:+1:desc" (increment - count events)
-    ///   - "high_scores:ns-GameResult:player:max:score:desc" (max - keep highest)
-    ///   - "best_times:ns-RaceResult:racer:min:time:asc" (min - keep lowest)
-    ///   - "total_xp:ns-XpGained:player:sum:amount:desc" (sum - accumulate)
-    #[arg(
-        long = "leaderboard.configs",
-        value_delimiter = ';',
-        value_parser = parse_leaderboard_config,
-        help = "Leaderboard configurations. Format: \"leaderboard_id:model_tag:target_path:score_strategy:order\". \
-                Strategy can be: field_name (direct), +1 (count), latest:field (newest), max:field (highest), min:field (lowest), sum:field (accumulate). \
-                Order can be 'asc' or 'desc'. Multiple configs separated by ';'"
-    )]
-    pub configs: Vec<LeaderboardConfig>,
-}
-
-impl Default for LeaderboardOptions {
-    fn default() -> Self {
-        Self { configs: vec![] }
-    }
 }
 
 // Parses clap cli argument which is expected to be in the format:
