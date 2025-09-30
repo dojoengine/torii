@@ -463,8 +463,14 @@ impl Runner {
             ..Default::default()
         };
 
-        let (mut executor, sender) =
-            Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone(), temp_config, database_path.clone()).await?;
+        let (mut executor, sender) = Executor::new(
+            write_pool.clone(),
+            shutdown_tx.clone(),
+            provider.clone(),
+            temp_config,
+            database_path.clone(),
+        )
+        .await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
 
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {

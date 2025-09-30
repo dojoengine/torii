@@ -922,11 +922,11 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
     async fn check_and_truncate_wal(&mut self) -> Result<()> {
         let wal_path = self.db_path.with_extension("db-wal");
-        
+
         // Check if WAL file exists and get its size
         if let Ok(metadata) = tokio::fs::metadata(&wal_path).await {
             let wal_size = metadata.len();
-            
+
             if wal_size > self.config.wal_truncate_size_threshold {
                 debug!(
                     target: LOG_TARGET,
@@ -939,12 +939,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
                     .execute(&self.pool)
                     .await?;
-                
-                counter!("torii_executor_wal_checkpoint_truncate_total")
-                    .increment(1);
 
-                histogram!("torii_executor_wal_size_at_truncate_bytes")
-                    .record(wal_size as f64);
+                counter!("torii_executor_wal_checkpoint_truncate_total").increment(1);
+
+                histogram!("torii_executor_wal_size_at_truncate_bytes").record(wal_size as f64);
             }
         }
 
