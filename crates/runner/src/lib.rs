@@ -457,22 +457,6 @@ impl Runner {
         }
         drop(migrate_handle);
 
-        // Create a temporary SqlConfig for the executor (will be replaced with full config later)
-        let temp_config = SqlConfig {
-            wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
-            ..Default::default()
-        };
-
-        let (mut executor, sender) = Executor::new_with_config(
-            write_pool.clone(),
-            shutdown_tx.clone(),
-            provider.clone(),
-            temp_config,
-            database_path.clone(),
-        )
-        .await?;
-        let executor_handle = tokio::spawn(async move { executor.run().await });
-
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
             warn!(
                 target: LOG_TARGET,
@@ -497,6 +481,16 @@ impl Runner {
             hooks: self.args.sql.hooks.clone(),
             wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
         };
+
+        let (mut executor, sender) = Executor::new_with_config(
+            write_pool.clone(),
+            shutdown_tx.clone(),
+            provider.clone(),
+            sql_config.clone(),
+            database_path.clone(),
+        )
+        .await?;
+        let executor_handle = tokio::spawn(async move { executor.run().await });
 
         let db = Sql::new_with_config(
             readonly_pool.clone(),
