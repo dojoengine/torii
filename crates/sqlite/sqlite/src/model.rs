@@ -656,18 +656,23 @@ impl Sql {
         let (where_clause, bind_values) =
             build_composite_clause(table, model_relation_table, composite, historical)?;
 
-        let having_clause = models
-            .iter()
-            .map(|model| format!("INSTR(model_ids, '{:#x}') > 0", model))
-            .collect::<Vec<_>>()
-            .join(" OR ");
+        // OPTIMIZATION: HAVING clause is redundant since we already filter by model_id in WHERE
+        // The WHERE clause on entity_model.model_id already ensures we only get entities
+        // that have the requested models. The HAVING with INSTR would:
+        // 1. Be slower (string search vs indexed lookup)
+        // 2. Be redundant (checking same condition twice)
+        // 3. Have potential false positives (substring matching)
+        //
+        // Only use HAVING if we need to filter on aggregated data that isn't in WHERE
+        // For example: HAVING COUNT(DISTINCT model_id) > 1 (entity must have multiple models)
+        // But for simple "entity must have model X OR Y", WHERE is sufficient.
 
         let page = if historical {
             self.fetch_historical_entities(
                 table,
                 model_relation_table,
                 &where_clause,
-                &having_clause,
+                "", // No HAVING needed - filtered by WHERE
                 bind_values,
                 pagination,
             )
@@ -684,11 +689,7 @@ impl Sql {
                     } else {
                         Some(&where_clause)
                     },
-                    if having_clause.is_empty() {
-                        None
-                    } else {
-                        Some(&having_clause)
-                    },
+                    None, // No HAVING needed - filtered by WHERE
                     pagination,
                     bind_values,
                 )
