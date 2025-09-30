@@ -19,12 +19,8 @@ CREATE INDEX IF NOT EXISTS idx_entities_executed_at_id ON entities (executed_at 
 -- Index for updated_at with id for pagination support
 CREATE INDEX IF NOT EXISTS idx_entities_updated_at_id ON entities (updated_at DESC, id);
 
--- Composite index for entities_historical for better performance
+-- CRITICAL: Composite index for entities_historical filtering by model_id
+-- This is essential because entities_historical can be huge and we always filter by model_id
 CREATE INDEX IF NOT EXISTS idx_entities_historical_model_event ON entities_historical (model_id, event_id DESC);
 CREATE INDEX IF NOT EXISTS idx_entities_historical_id_model ON entities_historical (id, model_id);
-
--- Add statistics for query planner
-ANALYZE entity_model;
-ANALYZE entities;
-ANALYZE entities_historical;
-
+CREATE INDEX IF NOT EXISTS idx_entities_historical_model_id ON entities_historical (model_id);

@@ -657,10 +657,8 @@ impl Sql {
             build_composite_clause(table, model_relation_table, composite, historical)?;
 
         // Convert model Felts to hex strings for SQL binding
-        let model_selectors: Vec<String> = models
-            .iter()
-            .map(|model| format!("{:#x}", model))
-            .collect();
+        let model_selectors: Vec<String> =
+            models.iter().map(|model| format!("{:#x}", model)).collect();
 
         let page = if historical {
             self.fetch_historical_entities(
@@ -737,10 +735,14 @@ impl Sql {
         // entities_historical.model_id is a direct column, so we can filter on it
         // This dramatically reduces the working set before applying other filters
         if !model_selectors.is_empty() {
-            let placeholders = model_selectors.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let placeholders = model_selectors
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(", ");
             let model_filter = format!("{}.model_id IN ({})", table, placeholders);
             query_builder = query_builder.where_clause(&model_filter);
-            
+
             // Add model selector bind values
             for selector in &model_selectors {
                 query_builder = query_builder.bind_value(selector.clone());
@@ -894,10 +896,10 @@ impl Sql {
 
         for chunk in schemas.chunks(SQL_MAX_JOINS) {
             // Strategy: Start from model_relation_table and use index hints for optimal performance
-            // The composite index (model_id, entity_id) dramatically reduces the scan size 
+            // The composite index (model_id, entity_id) dramatically reduces the scan size
             // when filtering by model_id on a large entity set
             let mut query_builder = QueryBuilder::new(model_relation_table);
-            
+
             // Build selections
             let mut selections = vec![
                 format!("{}.id", table_name),
@@ -932,18 +934,20 @@ impl Sql {
                 .group_by(&format!("{}.id", table_name));
 
             // CRITICAL OPTIMIZATION: Pre-filter by model_id
-            // This is the most important filter as it uses the composite index 
-            // idx_entity_model_model_entity (model_id, entity_id) to dramatically 
+            // This is the most important filter as it uses the composite index
+            // idx_entity_model_model_entity (model_id, entity_id) to dramatically
             // reduce the working set before joining to the large entities table
             if !model_selectors.is_empty() {
-                let placeholders = model_selectors.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                let model_filter = format!("{}.model_id IN ({})", 
-                    model_relation_table, 
-                    placeholders
-                );
-                
+                let placeholders = model_selectors
+                    .iter()
+                    .map(|_| "?")
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let model_filter =
+                    format!("{}.model_id IN ({})", model_relation_table, placeholders);
+
                 query_builder = query_builder.where_clause(&model_filter);
-                
+
                 // Add model selector bind values
                 for selector in &model_selectors {
                     query_builder = query_builder.bind_value(selector.clone());
