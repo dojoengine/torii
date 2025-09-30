@@ -888,10 +888,11 @@ impl Sql {
             .collect();
 
         for chunk in schemas.chunks(SQL_MAX_JOINS) {
-            // Start from model_relation_table instead of entities table for better performance
-            // This dramatically reduces the initial scan size when there are many entities
+            // Strategy: Start from model_relation_table and use index hints for optimal performance
+            // The composite index (model_id, entity_id) dramatically reduces the scan size 
+            // when filtering by model_id on a large entity set
             let mut query_builder = QueryBuilder::new(model_relation_table);
-
+            
             // Build selections
             let mut selections = vec![
                 format!("{}.id", table_name),
@@ -906,7 +907,7 @@ impl Sql {
                 ),
             ];
 
-            // Join to entities table
+            // Join to entities table - SQLite will use idx_entities_event_id_id for ordering
             query_builder = query_builder.join(&format!(
                 "JOIN {table_name} ON {model_relation_table}.entity_id = {table_name}.id",
             ));
@@ -925,10 +926,16 @@ impl Sql {
                 .select(&selections)
                 .group_by(&format!("{}.id", table_name));
 
-            // Pre-filter by model_id to reduce the scan size
+            // CRITICAL OPTIMIZATION: Pre-filter by model_id
+            // This is the most important filter as it uses the composite index 
+            // idx_entity_model_model_entity (model_id, entity_id) to dramatically 
+            // reduce the working set before joining to the large entities table
             if !model_selectors.is_empty() {
                 let placeholders = model_selectors.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                let model_filter = format!("{}.model_id IN ({})", model_relation_table, placeholders);
+                let model_filter = format!("{}.model_id IN ({})", 
+                    model_relation_table, 
+                    placeholders
+                );
                 
                 query_builder = query_builder.where_clause(&model_filter);
                 
@@ -938,7 +945,7 @@ impl Sql {
                 }
             }
 
-            // Add user where clause
+            // Add user where clause (these filters are applied on the already-reduced set)
             if let Some(where_clause) = where_clause {
                 // Combine with existing where clause using AND
                 query_builder = query_builder.where_clause(&format!("({})", where_clause));
@@ -949,7 +956,7 @@ impl Sql {
                 query_builder = query_builder.bind_value(value.clone());
             }
 
-            // Add having clause
+            // Add having clause for filtering on aggregated model_ids
             if let Some(having_clause) = having_clause {
                 query_builder = query_builder.having(having_clause);
             }
