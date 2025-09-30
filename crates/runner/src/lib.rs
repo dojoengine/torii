@@ -457,8 +457,14 @@ impl Runner {
         }
         drop(migrate_handle);
 
+        // Create a temporary SqlConfig for the executor (will be replaced with full config later)
+        let temp_config = SqlConfig {
+            wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
+            ..Default::default()
+        };
+
         let (mut executor, sender) =
-            Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
+            Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone(), temp_config, database_path.clone()).await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
 
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
@@ -478,16 +484,19 @@ impl Runner {
             },
         )?;
 
+        let sql_config = SqlConfig {
+            all_model_indices: self.args.sql.all_model_indices,
+            model_indices: self.args.sql.model_indices.clone(),
+            historical_models: historical_models.clone(),
+            hooks: self.args.sql.hooks.clone(),
+            wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
+        };
+
         let db = Sql::new_with_config(
             readonly_pool.clone(),
             sender.clone(),
             &self.args.indexing.contracts,
-            SqlConfig {
-                all_model_indices: self.args.sql.all_model_indices,
-                model_indices: self.args.sql.model_indices.clone(),
-                historical_models: historical_models.clone(),
-                hooks: self.args.sql.hooks.clone(),
-            },
+            sql_config.clone(),
         )
         .await?;
         let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
