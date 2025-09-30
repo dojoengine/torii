@@ -934,10 +934,22 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             transaction.commit().await?;
         }
 
-        // Run PRAGMA optimize after committing transaction
+        // Run PRAGMA optimize after committing transaction if interval has elapsed
         // This is the optimal time since the transaction is closed and tables may have changed
-        if let Err(e) = self.pool.execute("PRAGMA optimize").await {
-            debug!(target: LOG_TARGET, error = ?e, "Failed to run optimization after commit");
+        if self.config.optimize_interval > 0 {
+            let should_optimize = match self.last_optimization {
+                None => true, // Never optimized, do it now
+                Some(last) => last.elapsed().as_secs() >= self.config.optimize_interval,
+            };
+
+            if should_optimize {
+                if let Err(e) = self.pool.execute("PRAGMA optimize").await {
+                    debug!(target: LOG_TARGET, error = ?e, "Failed to run optimization after commit");
+                } else {
+                    debug!(target: LOG_TARGET, "Ran PRAGMA optimize after commit");
+                    self.last_optimization = Some(Instant::now());
+                }
+            }
         }
 
         // Check WAL size and truncate if it exceeds threshold

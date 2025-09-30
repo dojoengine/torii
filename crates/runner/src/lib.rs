@@ -502,6 +502,7 @@ impl Runner {
             hooks: self.args.sql.hooks.clone(),
             aggregators: self.args.sql.aggregators.clone(),
             wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
+            optimize_interval: self.args.sql.optimize_interval,
         };
 
         let (mut executor, sender) = Executor::new_with_config(
