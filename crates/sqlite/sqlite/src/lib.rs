@@ -38,6 +38,7 @@ pub struct SqlConfig {
     pub hooks: Vec<Hook>,
     pub aggregators: Vec<AggregatorConfig>,
     pub wal_truncate_size_threshold: u64,
+    pub optimize_interval: u64,
 }
 
 impl SqlConfig {

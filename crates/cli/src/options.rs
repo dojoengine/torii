@@ -36,6 +36,8 @@ pub const DEFAULT_ERC_MAX_METADATA_TASKS: usize = 100;
 pub const DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT: u64 = 10000;
 /// Default WAL size threshold for TRUNCATE checkpoint (100MB in bytes)
 pub const DEFAULT_DATABASE_WAL_TRUNCATE_SIZE_THRESHOLD: u64 = 100 * 1024 * 1024;
+/// Default interval in seconds between PRAGMA optimize runs after commits (1 hour)
+pub const DEFAULT_DATABASE_OPTIMIZE_INTERVAL: u64 = 3600;
 pub const DEFAULT_DATABASE_BUSY_TIMEOUT: u64 = 60_000;
 pub const DEFAULT_DATABASE_ACQUIRE_TIMEOUT: u64 = 30_000;
 pub const DEFAULT_DATABASE_IDLE_TIMEOUT: u64 = 600_000;
@@ -542,6 +544,15 @@ pub struct SqlOptions {
     )]
     pub wal_truncate_size_threshold: u64,
 
+    /// Interval in seconds between PRAGMA optimize runs after transaction commits.
+    /// This intelligently updates query planner statistics for better performance.
+    #[arg(
+        long = "sql.optimize_interval",
+        default_value_t = DEFAULT_DATABASE_OPTIMIZE_INTERVAL,
+        help = "Interval in seconds between PRAGMA optimize runs after transaction commits. Set to 0 to disable automatic optimization. Default is 3600 seconds (1 hour)."
+    )]
+    pub optimize_interval: u64,
+
     /// The timeout before the database is considered busy.
     #[arg(
         long = "sql.busy_timeout",
@@ -609,6 +620,7 @@ impl Default for SqlOptions {
             cache_size: DEFAULT_DATABASE_CACHE_SIZE,
             wal_autocheckpoint: DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT,
             wal_truncate_size_threshold: DEFAULT_DATABASE_WAL_TRUNCATE_SIZE_THRESHOLD,
+            optimize_interval: DEFAULT_DATABASE_OPTIMIZE_INTERVAL,
             busy_timeout: DEFAULT_DATABASE_BUSY_TIMEOUT,
             acquire_timeout: DEFAULT_DATABASE_ACQUIRE_TIMEOUT,
             idle_timeout: DEFAULT_DATABASE_IDLE_TIMEOUT,
