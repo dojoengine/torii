@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
@@ -298,11 +298,24 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
     }
 
     pub async fn run(&mut self) -> Result<()> {
+        // Periodic optimization timer (recommended for long-lived database connections)
+        let mut optimize_interval = tokio::time::interval(Duration::from_secs(3600)); // Every hour
+        optimize_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
         loop {
             tokio::select! {
                 _ = self.shutdown_rx.recv() => {
                     debug!(target: LOG_TARGET, "Shutting down executor");
                     break Ok(());
+                }
+                _ = optimize_interval.tick() => {
+                    // Run PRAGMA optimize periodically for long-lived connections
+                    // This intelligently analyzes tables that have changed significantly
+                    if let Err(e) = self.pool.execute("PRAGMA optimize").await {
+                        error!(target: LOG_TARGET, error = ?e, "Failed to run periodic optimization");
+                    } else {
+                        info!(target: LOG_TARGET, "Periodic database optimization completed");
+                    }
                 }
                 Some(mut msg) = self.rx.recv() => {
                     let query_type = msg.query_type.clone();
