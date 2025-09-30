@@ -428,16 +428,6 @@ impl Runner {
             .max_connections(max_readonly_connections)
             .acquire_timeout(Duration::from_millis(self.args.sql.acquire_timeout))
             .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
-            .after_connect(|conn, _meta| {
-                Box::pin(async move {
-                    // For long-lived connections: run PRAGMA optimize=0x10002 on open
-                    // This checks for large table changes and optimizes accordingly
-                    sqlx::query("PRAGMA optimize=0x10002")
-                        .execute(&mut *conn)
-                        .await?;
-                    Ok(())
-                })
-            })
             .connect_with(readonly_options)
             .await?;
 
