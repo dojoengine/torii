@@ -55,7 +55,7 @@ use torii_sqlite::executor::Executor;
 use torii_sqlite::{Sql, SqlConfig};
 use torii_storage::proto::{ContractDefinition, ContractType};
 use torii_storage::ReadOnlyStorage;
-use tracing::{error, info, info_span, warn, Instrument, Span};
+use tracing::{debug, error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
 
@@ -428,6 +428,16 @@ impl Runner {
             .max_connections(max_readonly_connections)
             .acquire_timeout(Duration::from_millis(self.args.sql.acquire_timeout))
             .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
+            .after_connect(|conn, _meta| {
+                Box::pin(async move {
+                    // For long-lived connections: run PRAGMA optimize=0x10002 on open
+                    // This checks for large table changes and optimizes accordingly
+                    sqlx::query("PRAGMA optimize=0x10002")
+                        .execute(&mut *conn)
+                        .await?;
+                    Ok(())
+                })
+            })
             .connect_with(readonly_options)
             .await?;
 
@@ -460,6 +470,12 @@ impl Runner {
                 .run(&mut migrate_handle)
                 .await?;
         }
+
+        // Optimize database after schema changes (migrations/indexes)
+        sqlx::query("PRAGMA optimize")
+            .execute(&mut *migrate_handle)
+            .await?;
+
         drop(migrate_handle);
 
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
@@ -540,7 +556,7 @@ impl Runner {
             self.args.indexing.max_concurrent_tasks
         };
 
-        info!(target: LOG_TARGET,
+        debug!(target: LOG_TARGET,
             cpu_count = cpu_count,
             strategy = ?strategy,
             query_threads = allocation.query_threads,
@@ -675,7 +691,7 @@ impl Runner {
                         (Some(cert_path), Some(key_path))
                     }
                     Err(e) => {
-                        error!(target: LOG_TARGET, error = ?e, "Failed to generate mkcert certificates. Falling back to HTTP.");
+                        warn!(target: LOG_TARGET, error = ?e, "Failed to generate mkcert certificates. Falling back to HTTP.");
                         (None, None)
                     }
                 }
@@ -737,7 +753,7 @@ impl Runner {
 
         if self.args.runner.explorer {
             if let Err(e) = webbrowser::open(&explorer_url) {
-                error!(target: LOG_TARGET, error = ?e, "Opening World Explorer in the browser.");
+                error!(target: LOG_TARGET, error = ?e, "Failed to open World Explorer in browser.");
             }
         }
 
@@ -804,8 +820,6 @@ impl Runner {
         };
 
         // Properly shutdown runtimes
-        info!(target: LOG_TARGET, "Shutting down dedicated runtimes...");
-
         query_runtime.shutdown();
         indexer_runtime.shutdown();
 
