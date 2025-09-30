@@ -10,7 +10,7 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
 use torii_proto::{ContractDefinition, ContractType};
-use torii_sqlite_types::{Hook, HookEvent, ModelIndices};
+use torii_sqlite_types::{Aggregation, AggregatorConfig, Hook, HookEvent, ModelIndices, SortOrder};
 
 pub const DEFAULT_HTTP_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 pub const DEFAULT_HTTP_PORT: u16 = 8080;
@@ -512,6 +512,19 @@ pub struct SqlOptions {
     )]
     pub migrations: Option<PathBuf>,
 
+    /// Aggregator configurations
+    /// Format: "aggregator_id:model_tag:group_by:aggregation:order"
+    #[arg(
+        long = "sql.aggregators",
+        value_delimiter = ';',
+        value_parser = parse_aggregator_config,
+        help = "Aggregator configurations. Format: \"aggregator_id:model_tag:group_by:aggregation:order\". \
+                Aggregation can be: field_name (latest value), +1/count (count events), max:field (highest), min:field (lowest), sum:field (accumulate), avg:field (average). \
+                Order can be 'asc' or 'desc'. Multiple configs separated by ';'. \
+                Examples: 'top_scores:ns-Player:player:score:desc' or 'most_wins:ns-GameWon:player:+1:desc' or 'avg_score:ns-Game:player:avg:score:desc'"
+    )]
+    pub aggregators: Vec<AggregatorConfig>,
+
     /// The pages interval to autocheckpoint.
     #[arg(
         long = "sql.wal_autocheckpoint",
@@ -604,6 +617,7 @@ impl Default for SqlOptions {
             hard_memory_limit: DEFAULT_DATABASE_HARD_MEMORY_LIMIT,
             hooks: vec![],
             migrations: None,
+            aggregators: vec![],
         }
     }
 }
@@ -937,4 +951,59 @@ where
     }
 
     seq.end()
+}
+
+// Parses clap cli argument which is expected to be in the format:
+// - aggregator_id:model_tag:group_by:aggregation:order
+// - aggregator_id:model_tag:group_by:aggregation_type:field_path:order (for aggregations with field)
+fn parse_aggregator_config(part: &str) -> anyhow::Result<AggregatorConfig> {
+    let parts: Vec<&str> = part.split(':').collect();
+
+    // Can be 5 parts (simple field or count) or 6 parts (aggregation:field)
+    if parts.len() != 5 && parts.len() != 6 {
+        return Err(anyhow::anyhow!(
+            "Invalid aggregator config format. Expected \
+             'aggregator_id:model_tag:group_by:aggregation:order' or \
+             'aggregator_id:model_tag:group_by:aggregation_type:field:order'"
+        ));
+    }
+
+    let (aggregation, order_idx) = if parts.len() == 5 {
+        // Simple format: aggregator_id:model_tag:group_by:aggregation:order
+        let agg = match parts[3] {
+            "+1" | "increment" | "count" => Aggregation::Count,
+            field_path => Aggregation::Latest(field_path.to_string()),
+        };
+        (agg, 4)
+    } else {
+        // Extended format: aggregator_id:model_tag:group_by:aggregation_type:field:order
+        let agg = match parts[3].to_lowercase().as_str() {
+            "max" => Aggregation::Max(parts[4].to_string()),
+            "min" => Aggregation::Min(parts[4].to_string()),
+            "sum" => Aggregation::Sum(parts[4].to_string()),
+            "avg" | "average" => Aggregation::Avg(parts[4].to_string()),
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Invalid aggregation type. Expected 'max', 'min', 'sum', or 'avg'"
+                ));
+            }
+        };
+        (agg, 5)
+    };
+
+    let order = match parts[order_idx].to_lowercase().as_str() {
+        "desc" => SortOrder::Desc,
+        "asc" => SortOrder::Asc,
+        _ => {
+            return Err(anyhow::anyhow!("Invalid order. Expected 'asc' or 'desc'"));
+        }
+    };
+
+    Ok(AggregatorConfig {
+        id: parts[0].to_string(),
+        model_tag: parts[1].to_string(),
+        group_by: parts[2].to_string(),
+        aggregation,
+        order,
+    })
 }

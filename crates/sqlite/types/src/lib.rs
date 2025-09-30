@@ -415,3 +415,50 @@ impl From<Contract> for torii_proto::Contract {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AggregatorConfig {
+    pub id: String,
+    pub model_tag: String,
+    pub group_by: String,
+    pub aggregation: Aggregation,
+    pub order: SortOrder,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Aggregation {
+    /// Count occurrences by incrementing by 1 for each update (useful for counting events like wins, kills, etc.)
+    Count,
+    /// Keep the latest value from the field (useful for current score, level, rank)
+    Latest(String),
+    /// Keep the maximum value seen from the field (useful for high scores, best combo)
+    Max(String),
+    /// Keep the minimum value seen from the field (useful for fastest times, speedruns)
+    Min(String),
+    /// Sum/accumulate values from the field (useful for total XP, total gold earned)
+    Sum(String),
+    /// Calculate the average value from the field (useful for average score, average time)
+    Avg(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SortOrder {
+    Desc,
+    Asc,
+}
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregationEntry {
+    pub id: String,
+    pub aggregator_id: String,
+    pub entity_id: String,
+    pub value: String,
+    pub display_value: String,
+    pub model_id: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    /// Only used for Avg aggregation to track sum and count
+    #[sqlx(default)]
+    pub metadata: Option<String>,
+}

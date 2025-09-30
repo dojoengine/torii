@@ -26,6 +26,7 @@ use futures::future::join_all;
 use sqlx::sqlite::{
     SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
 };
+use sqlx::Executor as SqlxExecutor;
 use sqlx::SqlitePool;
 use starknet::core::types::{BlockId, BlockTag};
 use starknet::providers::jsonrpc::HttpTransport;
@@ -57,7 +58,6 @@ use torii_storage::ReadOnlyStorage;
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
-use sqlx::Executor as SqlxExecutor;
 
 mod constants;
 
@@ -411,7 +411,9 @@ impl Runner {
             .await?;
 
         // Aggressive WAL cleanup
-        write_pool.execute("PRAGMA wal_checkpoint(TRUNCATE);").await?;
+        write_pool
+            .execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            .await?;
 
         let readonly_options = options.read_only(true);
 
@@ -482,6 +484,7 @@ impl Runner {
             model_indices: self.args.sql.model_indices.clone(),
             historical_models: historical_models.clone(),
             hooks: self.args.sql.hooks.clone(),
+            aggregators: self.args.sql.aggregators.clone(),
             wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
         };
 

@@ -39,6 +39,7 @@ use crate::utils::{
 use crate::SqlConfig;
 use torii_broker::MemoryBroker;
 
+pub mod aggregator;
 pub mod erc;
 pub mod error;
 pub use erc::{RegisterNftTokenQuery, RegisterTokenContractQuery};
@@ -180,7 +181,8 @@ pub struct Executor<'c, P: Provider + Sync + Send + Clone + 'static> {
     shutdown_rx: Receiver<()>,
     // It is used to make RPC calls to fetch erc contracts
     provider: P,
-    config: SqlConfig,
+    // SQL configuration
+    config: crate::SqlConfig,
     db_path: PathBuf,
 }
 
@@ -532,6 +534,32 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .execute(&mut **tx)
                 .await?;
 
+                // Update aggregations if this model is part of any aggregator configuration
+                let model_tag = entity.ty.name();
+                let aggregator_configs: Vec<_> = self
+                    .config
+                    .get_aggregator_for_model(&model_tag)
+                    .into_iter()
+                    .cloned()
+                    .collect();
+                for aggregator_config in aggregator_configs {
+                    if let Err(e) = aggregator::update_aggregation(
+                        tx,
+                        &aggregator_config,
+                        &entity.ty,
+                        &entity.model_id,
+                    )
+                    .await
+                    {
+                        error!(
+                            target: LOG_TARGET,
+                            aggregator_id = %aggregator_config.id,
+                            error = ?e,
+                            "Failed to update aggregation"
+                        );
+                    }
+                }
+
                 self.publish_optimistic_and_queue(BrokerMessage::EntityUpdate(
                     entity_updated.into(),
                 ));
@@ -663,7 +691,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, "Applying balance diff.");
                 let instant = Instant::now();
                 self.apply_balance_diff(apply_balance_diff, self.provider.clone())
-                    .await?;
+                    .await
+                    .map_err(Box::new)?;
                 debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied balance diff.");
             }
             QueryType::RegisterNftToken(register_nft_token) => {
