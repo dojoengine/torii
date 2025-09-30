@@ -908,7 +908,7 @@ impl Sql {
                 })
                 .collect();
 
-            // PRE-OPTIMIZATION: Check which models actually exist in entity_model
+            // STEP 1: Check which models actually exist in entity_model
             // This lets us skip LEFT JOINs for models with no data
             let placeholders = chunk_selectors.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
             let check_query = format!(
@@ -945,20 +945,32 @@ impl Sql {
                 })
                 .collect();
 
-            // Build entity subquery using only existing models
+            // STEP 2: Get all entity IDs that have any of the existing models
             let existing_placeholders = existing_model_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-            let entity_subquery = format!(
-                "(SELECT DISTINCT entity_id FROM {} WHERE model_id IN ({}))",
+            let entity_ids_query = format!(
+                "SELECT DISTINCT entity_id FROM {} WHERE model_id IN ({})",
                 model_relation_table, existing_placeholders
             );
+            
+            let mut entity_ids_stmt = sqlx::query(&entity_ids_query);
+            for selector in &existing_model_ids {
+                entity_ids_stmt = entity_ids_stmt.bind(selector);
+            }
+            
+            let entity_ids: Vec<String> = entity_ids_stmt
+                .fetch_all(&self.pool)
+                .await?
+                .into_iter()
+                .map(|row| row.get::<String, _>(0))
+                .collect();
 
-            let mut query_builder = QueryBuilder::new(&entity_subquery);
-            query_builder = query_builder.alias("filtered_entities");
+            if entity_ids.is_empty() {
+                // No entities found for these models
+                continue;
+            }
 
-            // Join to entities table for metadata
-            query_builder = query_builder.join(&format!(
-                "JOIN {table_name} ON filtered_entities.entity_id = {table_name}.id",
-            ));
+            // STEP 3: Build main query starting from entities table, filtered by entity IDs
+            let mut query_builder = QueryBuilder::new(table_name);
 
             // Build selections - start with entity metadata
             let mut selections = vec![
@@ -1012,9 +1024,12 @@ impl Sql {
 
             query_builder = query_builder.select(&selections);
 
-            // Add bind values for the subquery's IN clause (only existing models)
-            for selector in &existing_model_ids {
-                query_builder = query_builder.bind_value(selector.clone());
+            // Filter by entity IDs from step 2
+            let entity_placeholders = entity_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            query_builder = query_builder.where_clause(&format!("{}.id IN ({})", table_name, entity_placeholders));
+            
+            for entity_id in &entity_ids {
+                query_builder = query_builder.bind_value(entity_id.clone());
             }
 
             // Add user where clause
