@@ -215,7 +215,6 @@ impl Cache for InMemoryCache {
 
 #[derive(Debug)]
 pub struct ModelCache {
-    storage: Arc<dyn ReadOnlyStorage>,
     model_cache: RwLock<HashMap<Felt, Model>>,
 }
 
@@ -229,10 +228,7 @@ impl ModelCache {
             model_cache.insert(selector, model);
         }
 
-        Ok(Self {
-            storage,
-            model_cache: RwLock::new(model_cache),
-        })
+        Ok(Self { model_cache: RwLock::new(model_cache) })
     }
 
     pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, Error> {
@@ -249,24 +245,11 @@ impl ModelCache {
     }
 
     pub async fn model(&self, selector: Felt) -> Result<Model, Error> {
-        {
-            let cache = self.model_cache.read().await;
-            if let Some(model) = cache.get(&selector).cloned() {
-                return Ok(model);
-            }
-        }
-
-        self.update_model(selector).await
-    }
-
-    async fn update_model(&self, selector: Felt) -> Result<Model, Error> {
-        let model = self.storage.model(selector).await?;
-
-        let mut cache = self.model_cache.write().await;
-        let s = naming::compute_selector_from_names(&model.namespace, &model.name);
-        cache.insert(s, model.clone());
-
-        Ok(model)
+        let cache = self.model_cache.read().await;
+        cache
+            .get(&selector)
+            .cloned()
+            .ok_or_else(|| Error::ModelNotFound(selector))
     }
 
     pub async fn set(&self, selector: Felt, model: Model) {

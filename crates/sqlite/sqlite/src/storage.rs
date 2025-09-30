@@ -90,6 +90,12 @@ impl ReadOnlyStorage for Sql {
             layout,
             use_legacy_store: model.legacy_store,
         };
+
+        // Update cache to prevent repeated cache misses
+        if let Some(cache) = &self.cache {
+            cache.register_model(selector, model_metadata.clone()).await;
+        }
+
         Ok(model_metadata)
     }
 
@@ -143,6 +149,13 @@ impl ReadOnlyStorage for Sql {
             };
 
             models_metadata.push(model_metadata);
+        }
+
+        // Update cache to prevent repeated cache misses
+        if let Some(cache) = &self.cache {
+            for model in &models_metadata {
+                cache.register_model(model.selector, model.clone()).await;
+            }
         }
 
         Ok(models_metadata)
