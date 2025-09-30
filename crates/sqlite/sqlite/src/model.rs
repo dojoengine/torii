@@ -817,7 +817,7 @@ impl Sql {
         model_relation_table: &str,
         entity_relation_column: &str,
         where_clause: Option<&str>,
-        _having_clause: Option<&str>,
+        having_clause: Option<&str>,
         pagination: Pagination,
         bind_values: Vec<String>,
     ) -> Result<Page<SqliteRow>, Error> {
@@ -871,108 +871,28 @@ impl Sql {
             }
         }
 
-        if schemas.is_empty() {
-            return Ok(Page {
-                items: vec![],
-                next_cursor: None,
-            });
-        }
-
         // Process schemas in chunks
         let mut all_rows = Vec::new();
         let mut next_cursor = None;
         let mut has_more_pages = false;
         let executor = PaginationExecutor::new(self.pool.clone());
 
-        // Compute model selectors for constructing model_ids
-        let model_selectors: Vec<(String, String)> = schemas
+        // Compute model selectors for filtering
+        let model_selectors: Vec<String> = schemas
             .iter()
             .filter_map(|schema| {
                 try_compute_selector_from_tag(&schema.name())
                     .ok()
-                    .map(|selector| (schema.name(), format!("{:#x}", selector)))
+                    .map(|selector| format!("{:#x}", selector))
             })
             .collect();
 
         for chunk in schemas.chunks(SQL_MAX_JOINS) {
-            if chunk.is_empty() {
-                continue;
-            }
+            // Start from model_relation_table instead of entities table for better performance
+            // This dramatically reduces the initial scan size when there are many entities
+            let mut query_builder = QueryBuilder::new(model_relation_table);
 
-            let chunk_selectors: Vec<String> = chunk
-                .iter()
-                .filter_map(|schema| {
-                    try_compute_selector_from_tag(&schema.name())
-                        .ok()
-                        .map(|selector| format!("{:#x}", selector))
-                })
-                .collect();
-
-            // STEP 1: Check which models actually exist in entity_model
-            // This lets us skip LEFT JOINs for models with no data
-            let placeholders = chunk_selectors.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-            let check_query = format!(
-                "SELECT DISTINCT model_id FROM {} WHERE model_id IN ({})",
-                model_relation_table, placeholders
-            );
-            
-            let mut check_stmt = sqlx::query(&check_query);
-            for selector in &chunk_selectors {
-                check_stmt = check_stmt.bind(selector);
-            }
-            
-            let existing_model_ids: Vec<String> = check_stmt
-                .fetch_all(&self.pool)
-                .await?
-                .into_iter()
-                .map(|row| row.get::<String, _>(0))
-                .collect();
-
-            if existing_model_ids.is_empty() {
-                // None of the models in this chunk have any data
-                continue;
-            }
-
-            // Filter chunk to only models that actually exist
-            let existing_schemas: Vec<&Ty> = chunk
-                .iter()
-                .filter(|schema| {
-                    if let Ok(selector) = try_compute_selector_from_tag(&schema.name()) {
-                        existing_model_ids.contains(&format!("{:#x}", selector))
-                    } else {
-                        false
-                    }
-                })
-                .collect();
-
-            // STEP 2: Get all entity IDs that have any of the existing models
-            let existing_placeholders = existing_model_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-            let entity_ids_query = format!(
-                "SELECT DISTINCT entity_id FROM {} WHERE model_id IN ({})",
-                model_relation_table, existing_placeholders
-            );
-            
-            let mut entity_ids_stmt = sqlx::query(&entity_ids_query);
-            for selector in &existing_model_ids {
-                entity_ids_stmt = entity_ids_stmt.bind(selector);
-            }
-            
-            let entity_ids: Vec<String> = entity_ids_stmt
-                .fetch_all(&self.pool)
-                .await?
-                .into_iter()
-                .map(|row| row.get::<String, _>(0))
-                .collect();
-
-            if entity_ids.is_empty() {
-                // No entities found for these models
-                continue;
-            }
-
-            // STEP 3: Build main query starting from entities table, filtered by entity IDs
-            let mut query_builder = QueryBuilder::new(table_name);
-
-            // Build selections - start with entity metadata
+            // Build selections
             let mut selections = vec![
                 format!("{}.id", table_name),
                 format!("{}.keys", table_name),
@@ -980,61 +900,48 @@ impl Sql {
                 format!("{}.created_at", table_name),
                 format!("{}.updated_at", table_name),
                 format!("{}.executed_at", table_name),
+                format!(
+                    "group_concat({}.model_id) as model_ids",
+                    model_relation_table
+                ),
             ];
 
-            // Build model_ids by checking which model tables have non-NULL data
-            // Only include models that actually exist
-            let model_id_parts: Vec<String> = model_selectors
-                .iter()
-                .filter(|(_, selector)| existing_model_ids.contains(selector))
-                .map(|(model_name, selector)| {
-                    format!("CASE WHEN [{model_name}].{entity_relation_column} IS NOT NULL THEN '{selector}' ELSE NULL END")
-                })
-                .collect();
-            
-            // Use || operator to concatenate with commas, filtering out NULLs
-            let model_ids_expr = if model_id_parts.is_empty() {
-                "'' as model_ids".to_string()
-            } else if model_id_parts.len() == 1 {
-                format!("COALESCE({}, '') as model_ids", model_id_parts[0])
-            } else {
-                let concat_parts: Vec<String> = model_id_parts
-                    .iter()
-                    .enumerate()
-                    .map(|(i, part)| {
-                        if i == 0 {
-                            format!("COALESCE({}, '')", part)
-                        } else {
-                            format!("CASE WHEN {} IS NOT NULL THEN ',' || {} ELSE '' END", part, part)
-                        }
-                    })
-                    .collect();
-                format!("({}) as model_ids", concat_parts.join(" || "))
-            };
-            selections.push(model_ids_expr);
+            // Join to entities table
+            query_builder = query_builder.join(&format!(
+                "JOIN {table_name} ON {model_relation_table}.entity_id = {table_name}.id",
+            ));
 
-            // LEFT JOIN only model tables that actually have data
-            for schema in existing_schemas.iter() {
-                let model_table = schema.name();
+            // Add schema joins and collect columns
+            for model in chunk {
+                let model_table = model.name();
                 query_builder = query_builder.join(&format!(
-                    "LEFT JOIN [{model_table}] ON {table_name}.id = [{model_table}].{entity_relation_column}",
+                    "LEFT JOIN [{model_table}] ON {table_name}.id = \
+                     [{model_table}].{entity_relation_column}",
                 ));
-                collect_columns(&model_table, "", schema, &mut selections);
+                collect_columns(&model_table, "", model, &mut selections);
             }
 
-            query_builder = query_builder.select(&selections);
+            query_builder = query_builder
+                .select(&selections)
+                .group_by(&format!("{}.id", table_name));
 
-            // Filter by entity IDs from step 2
-            let entity_placeholders = entity_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-            query_builder = query_builder.where_clause(&format!("{}.id IN ({})", table_name, entity_placeholders));
-            
-            for entity_id in &entity_ids {
-                query_builder = query_builder.bind_value(entity_id.clone());
+            // Pre-filter by model_id to reduce the scan size
+            if !model_selectors.is_empty() {
+                let placeholders = model_selectors.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let model_filter = format!("{}.model_id IN ({})", model_relation_table, placeholders);
+                
+                query_builder = query_builder.where_clause(&model_filter);
+                
+                // Add model selector bind values
+                for selector in &model_selectors {
+                    query_builder = query_builder.bind_value(selector.clone());
+                }
             }
 
             // Add user where clause
             if let Some(where_clause) = where_clause {
-                query_builder = query_builder.where_clause(where_clause);
+                // Combine with existing where clause using AND
+                query_builder = query_builder.where_clause(&format!("({})", where_clause));
             }
 
             // Add user bind values
@@ -1042,7 +949,10 @@ impl Sql {
                 query_builder = query_builder.bind_value(value.clone());
             }
 
-            // No GROUP BY, no HAVING - keeps it simple!
+            // Add having clause
+            if let Some(having_clause) = having_clause {
+                query_builder = query_builder.having(having_clause);
+            }
 
             // Execute paginated query
             let page = executor
