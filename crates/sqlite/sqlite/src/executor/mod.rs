@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -35,11 +36,13 @@ use crate::executor::error::{ExecutorError, ExecutorQueryError};
 use crate::utils::{
     felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, u256_to_sql_string,
 };
+use crate::SqlConfig;
 use torii_broker::MemoryBroker;
 
 pub mod erc;
 pub mod error;
 pub use erc::{RegisterNftTokenQuery, RegisterTokenContractQuery};
+use sqlx::Executor as SqlxExecutor;
 
 pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor";
 
@@ -177,6 +180,8 @@ pub struct Executor<'c, P: Provider + Sync + Send + Clone + 'static> {
     shutdown_rx: Receiver<()>,
     // It is used to make RPC calls to fetch erc contracts
     provider: P,
+    config: SqlConfig,
+    db_path: PathBuf,
 }
 
 #[derive(Debug)]
@@ -253,6 +258,23 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         shutdown_tx: Sender<()>,
         provider: P,
     ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
+        Self::new_with_config(
+            pool,
+            shutdown_tx,
+            provider,
+            crate::SqlConfig::default(),
+            PathBuf::from(""),
+        )
+        .await
+    }
+
+    pub async fn new_with_config(
+        pool: Pool<Sqlite>,
+        shutdown_tx: Sender<()>,
+        provider: P,
+        config: SqlConfig,
+        db_path: PathBuf,
+    ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
         let (tx, rx) = unbounded_channel();
         let transaction = pool.begin().await?;
         let publish_queue = Vec::new();
@@ -266,6 +288,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 rx,
                 shutdown_rx,
                 provider,
+                config,
+                db_path,
             },
             tx,
         ))
@@ -878,10 +902,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             transaction.commit().await?;
         }
 
-        // Write & truncate the WAL file. Pretty expensive operation.
-        // self.pool
-        //     .execute("PRAGMA wal_checkpoint(TRUNCATE);")
-        //     .await?;
+        // Check WAL size and truncate if it exceeds threshold
+        if self.config.wal_truncate_size_threshold > 0 {
+            self.check_and_truncate_wal().await?;
+        }
 
         self.transaction = Some(self.pool.begin().await?);
 
@@ -901,11 +925,6 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             transaction.rollback().await?;
         }
 
-        // Write & truncate the WAL file. Pretty expensive operation.
-        // self.pool
-        //     .execute("PRAGMA wal_checkpoint(TRUNCATE);")
-        //     .await?;
-
         self.transaction = Some(self.pool.begin().await?);
 
         self.publish_queue.clear();
@@ -913,6 +932,35 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         // Record metrics
         counter!("torii_executor_transaction_operations_total", "operation" => "rollback", "status" => "success")
             .increment(1);
+
+        Ok(())
+    }
+
+    async fn check_and_truncate_wal(&mut self) -> Result<()> {
+        let wal_path = self.db_path.with_extension("db-wal");
+
+        // Check if WAL file exists and get its size
+        if let Ok(metadata) = tokio::fs::metadata(&wal_path).await {
+            let wal_size = metadata.len();
+
+            if wal_size > self.config.wal_truncate_size_threshold {
+                debug!(
+                    target: LOG_TARGET,
+                    wal_size = wal_size,
+                    threshold = self.config.wal_truncate_size_threshold,
+                    "WAL size exceeds threshold, performing TRUNCATE checkpoint"
+                );
+
+                // Perform TRUNCATE checkpoint
+                self.pool
+                    .execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                    .await?;
+
+                counter!("torii_executor_wal_checkpoint_truncate_total").increment(1);
+
+                histogram!("torii_executor_wal_size_at_truncate_bytes").record(wal_size as f64);
+            }
+        }
 
         Ok(())
     }

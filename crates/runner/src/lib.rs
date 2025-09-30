@@ -57,6 +57,7 @@ use torii_storage::ReadOnlyStorage;
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
+use sqlx::Executor as SqlxExecutor;
 
 mod constants;
 
@@ -400,7 +401,6 @@ impl Runner {
         options = options.pragma("temp_store", "memory"); // Store temp tables in memory
         options = options.pragma("mmap_size", "268435456"); // 256MB memory mapping
         options = options.pragma("journal_size_limit", "67108864"); // 64MB journal limit
-        options = options.pragma("wal_checkpoint", "TRUNCATE"); // Aggressive WAL cleanup
 
         let write_pool = SqlitePoolOptions::new()
             .min_connections(1)
@@ -409,6 +409,9 @@ impl Runner {
             .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
             .connect_with(options.clone())
             .await?;
+
+        // Aggressive WAL cleanup
+        write_pool.execute("PRAGMA wal_checkpoint(TRUNCATE);").await?;
 
         let readonly_options = options.read_only(true);
 
@@ -457,10 +460,6 @@ impl Runner {
         }
         drop(migrate_handle);
 
-        let (mut executor, sender) =
-            Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
-        let executor_handle = tokio::spawn(async move { executor.run().await });
-
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
             warn!(
                 target: LOG_TARGET,
@@ -478,16 +477,29 @@ impl Runner {
             },
         )?;
 
+        let sql_config = SqlConfig {
+            all_model_indices: self.args.sql.all_model_indices,
+            model_indices: self.args.sql.model_indices.clone(),
+            historical_models: historical_models.clone(),
+            hooks: self.args.sql.hooks.clone(),
+            wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
+        };
+
+        let (mut executor, sender) = Executor::new_with_config(
+            write_pool.clone(),
+            shutdown_tx.clone(),
+            provider.clone(),
+            sql_config.clone(),
+            database_path.clone(),
+        )
+        .await?;
+        let executor_handle = tokio::spawn(async move { executor.run().await });
+
         let db = Sql::new_with_config(
             readonly_pool.clone(),
             sender.clone(),
             &self.args.indexing.contracts,
-            SqlConfig {
-                all_model_indices: self.args.sql.all_model_indices,
-                model_indices: self.args.sql.model_indices.clone(),
-                historical_models: historical_models.clone(),
-                hooks: self.args.sql.hooks.clone(),
-            },
+            sql_config.clone(),
         )
         .await?;
         let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
