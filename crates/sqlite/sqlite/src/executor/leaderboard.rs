@@ -81,7 +81,7 @@ fn calculate_latest_score(entity: &Ty, field_path: &str) -> QueryResult<(String,
             entity.name()
         ))
     })?;
-    
+
     let normalized_score = extract_field_value(entity, field_path, true).ok_or_else(|| {
         ExecutorQueryError::LeaderboardFieldExtraction(format!(
             "Could not extract field '{}' from model '{}'",
@@ -89,7 +89,7 @@ fn calculate_latest_score(entity: &Ty, field_path: &str) -> QueryResult<(String,
             entity.name()
         ))
     })?;
-    
+
     Ok((normalized_score, display_score))
 }
 
@@ -111,10 +111,10 @@ async fn calculate_incremented_score(
     } else {
         1
     };
-    
+
     let display_score = new_count.to_string();
     let normalized_score = normalize_score_to_hex(&display_score);
-    
+
     Ok((normalized_score, display_score))
 }
 
@@ -221,10 +221,10 @@ async fn calculate_sum_score(
     } else {
         parse_display_to_i128(&new_display).unwrap_or(0)
     };
-    
+
     let display_score = sum_value.to_string();
     let normalized_score = normalize_score_to_hex(&display_score);
-    
+
     Ok((normalized_score, display_score))
 }
 
@@ -278,7 +278,12 @@ fn extract_field_value(ty: &Ty, path: &str, normalize: bool) -> Option<String> {
     extract_field_value_recursive(ty, &parts, 0, normalize)
 }
 
-fn extract_field_value_recursive(ty: &Ty, parts: &[&str], index: usize, normalize: bool) -> Option<String> {
+fn extract_field_value_recursive(
+    ty: &Ty,
+    parts: &[&str],
+    index: usize,
+    normalize: bool,
+) -> Option<String> {
     if index >= parts.len() {
         return None;
     }
@@ -294,7 +299,12 @@ fn extract_field_value_recursive(ty: &Ty, parts: &[&str], index: usize, normaliz
                         return ty_to_sql_string(&member.ty, normalize);
                     } else {
                         // Continue traversing
-                        return extract_field_value_recursive(&member.ty, parts, index + 1, normalize);
+                        return extract_field_value_recursive(
+                            &member.ty,
+                            parts,
+                            index + 1,
+                            normalize,
+                        );
                     }
                 }
             }
@@ -303,7 +313,11 @@ fn extract_field_value_recursive(ty: &Ty, parts: &[&str], index: usize, normaliz
         Ty::Primitive(p) => {
             if index == parts.len() - 1 {
                 let raw_value = p.to_sql_value();
-                Some(if normalize { normalize_score_to_hex(&raw_value) } else { raw_value })
+                Some(if normalize {
+                    normalize_score_to_hex(&raw_value)
+                } else {
+                    raw_value
+                })
             } else {
                 None
             }
@@ -311,7 +325,11 @@ fn extract_field_value_recursive(ty: &Ty, parts: &[&str], index: usize, normaliz
         Ty::Enum(e) => {
             if index == parts.len() - 1 {
                 let raw_value = e.to_sql_value();
-                Some(if normalize { normalize_score_to_hex(&raw_value) } else { raw_value })
+                Some(if normalize {
+                    normalize_score_to_hex(&raw_value)
+                } else {
+                    raw_value
+                })
             } else {
                 None
             }
@@ -334,11 +352,19 @@ fn ty_to_sql_string(ty: &Ty, normalize: bool) -> Option<String> {
     match ty {
         Ty::Primitive(p) => {
             let sql_value = p.to_sql_value();
-            Some(if normalize { normalize_score_to_hex(&sql_value) } else { sql_value })
+            Some(if normalize {
+                normalize_score_to_hex(&sql_value)
+            } else {
+                sql_value
+            })
         }
         Ty::Enum(e) => {
             let sql_value = e.to_sql_value();
-            Some(if normalize { normalize_score_to_hex(&sql_value) } else { sql_value })
+            Some(if normalize {
+                normalize_score_to_hex(&sql_value)
+            } else {
+                sql_value
+            })
         }
         Ty::ByteArray(b) => Some(b.clone()),
         _ => None,
@@ -351,7 +377,7 @@ fn ty_to_sql_string(ty: &Ty, normalize: bool) -> Option<String> {
 /// - Lexicographic ordering matches numerical ordering (0x0000...0009 < 0x0000...0064 < 0x0000...00ff)
 /// - No overflow issues with large numbers (u256 fits in 64 hex chars)
 /// - No precision loss from REAL conversion
-/// 
+///
 /// For signed integers, we add a bias to shift into positive range for correct lexicographic ordering:
 /// i128::MIN + bias = 0, i128::MAX + bias = u128::MAX
 fn normalize_score_to_hex(value: &str) -> String {
