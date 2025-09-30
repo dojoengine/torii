@@ -10,7 +10,7 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
 use torii_proto::{ContractDefinition, ContractType};
-use torii_sqlite_types::{Hook, HookEvent, LeaderboardConfig, ModelIndices, ScoreStrategy};
+use torii_sqlite_types::{Aggregation, AggregatorConfig, Hook, HookEvent, ModelIndices, SortOrder};
 
 pub const DEFAULT_HTTP_ADDR: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 pub const DEFAULT_HTTP_PORT: u16 = 8080;
@@ -510,18 +510,18 @@ pub struct SqlOptions {
     )]
     pub migrations: Option<PathBuf>,
 
-    /// Leaderboard configurations
-    /// Format: "leaderboard_id:model_tag:target_path:score_strategy:order"
+    /// Aggregator configurations
+    /// Format: "aggregator_id:model_tag:group_by:aggregation:order"
     #[arg(
-        long = "sql.leaderboards",
+        long = "sql.aggregators",
         value_delimiter = ';',
-        value_parser = parse_leaderboard_config,
-        help = "Leaderboard configurations. Format: \"leaderboard_id:model_tag:target_path:score_strategy:order\". \
-                Strategy can be: field_name (latest value), +1 (count events), max:field (highest), min:field (lowest), sum:field (accumulate). \
+        value_parser = parse_aggregator_config,
+        help = "Aggregator configurations. Format: \"aggregator_id:model_tag:group_by:aggregation:order\". \
+                Aggregation can be: field_name (latest value), +1/count (count events), max:field (highest), min:field (lowest), sum:field (accumulate), avg:field (average). \
                 Order can be 'asc' or 'desc'. Multiple configs separated by ';'. \
-                Examples: 'top_scores:ns-Player:player:score:desc' or 'most_wins:ns-GameWon:player:+1:desc'"
+                Examples: 'top_scores:ns-Player:player:score:desc' or 'most_wins:ns-GameWon:player:+1:desc' or 'avg_score:ns-Game:player:avg:score:desc'"
     )]
-    pub leaderboards: Vec<LeaderboardConfig>,
+    pub aggregators: Vec<AggregatorConfig>,
 
     /// The pages interval to autocheckpoint.
     #[arg(
@@ -605,7 +605,7 @@ impl Default for SqlOptions {
             hard_memory_limit: DEFAULT_DATABASE_HARD_MEMORY_LIMIT,
             hooks: vec![],
             migrations: None,
-            leaderboards: vec![],
+            aggregators: vec![],
         }
     }
 }
@@ -942,55 +942,56 @@ where
 }
 
 // Parses clap cli argument which is expected to be in the format:
-// - leaderboard_id:model_tag:target_path:score_strategy:order
-// - leaderboard_id:model_tag:target_path:strategy_type:field_path:order (for strategies with field)
-fn parse_leaderboard_config(part: &str) -> anyhow::Result<LeaderboardConfig> {
+// - aggregator_id:model_tag:group_by:aggregation:order
+// - aggregator_id:model_tag:group_by:aggregation_type:field_path:order (for aggregations with field)
+fn parse_aggregator_config(part: &str) -> anyhow::Result<AggregatorConfig> {
     let parts: Vec<&str> = part.split(':').collect();
 
-    // Can be 5 parts (simple field or increment) or 6 parts (strategy:field)
+    // Can be 5 parts (simple field or count) or 6 parts (aggregation:field)
     if parts.len() != 5 && parts.len() != 6 {
         return Err(anyhow::anyhow!(
-            "Invalid leaderboard config format. Expected \
-             'leaderboard_id:model_tag:target_path:score_strategy:order' or \
-             'leaderboard_id:model_tag:target_path:strategy_type:field:order'"
+            "Invalid aggregator config format. Expected \
+             'aggregator_id:model_tag:group_by:aggregation:order' or \
+             'aggregator_id:model_tag:group_by:aggregation_type:field:order'"
         ));
     }
 
-    let (score_strategy, order_idx) = if parts.len() == 5 {
-        // Simple format: leaderboard_id:model_tag:target_path:score_strategy:order
-        let strategy = match parts[3] {
-            "+1" | "increment" | "count" => ScoreStrategy::Increment,
-            field_path => ScoreStrategy::Latest(field_path.to_string()),
+    let (aggregation, order_idx) = if parts.len() == 5 {
+        // Simple format: aggregator_id:model_tag:group_by:aggregation:order
+        let agg = match parts[3] {
+            "+1" | "increment" | "count" => Aggregation::Count,
+            field_path => Aggregation::Latest(field_path.to_string()),
         };
-        (strategy, 4)
+        (agg, 4)
     } else {
-        // Extended format: leaderboard_id:model_tag:target_path:strategy_type:field:order
-        let strategy = match parts[3].to_lowercase().as_str() {
-            "max" => ScoreStrategy::Max(parts[4].to_string()),
-            "min" => ScoreStrategy::Min(parts[4].to_string()),
-            "sum" => ScoreStrategy::Sum(parts[4].to_string()),
+        // Extended format: aggregator_id:model_tag:group_by:aggregation_type:field:order
+        let agg = match parts[3].to_lowercase().as_str() {
+            "max" => Aggregation::Max(parts[4].to_string()),
+            "min" => Aggregation::Min(parts[4].to_string()),
+            "sum" => Aggregation::Sum(parts[4].to_string()),
+            "avg" | "average" => Aggregation::Avg(parts[4].to_string()),
             _ => {
                 return Err(anyhow::anyhow!(
-                    "Invalid strategy type. Expected 'max', 'min', or 'sum'"
+                    "Invalid aggregation type. Expected 'max', 'min', 'sum', or 'avg'"
                 ));
             }
         };
-        (strategy, 5)
+        (agg, 5)
     };
 
     let order = match parts[order_idx].to_lowercase().as_str() {
-        "desc" => torii_sqlite_types::LeaderboardOrder::Desc,
-        "asc" => torii_sqlite_types::LeaderboardOrder::Asc,
+        "desc" => SortOrder::Desc,
+        "asc" => SortOrder::Asc,
         _ => {
             return Err(anyhow::anyhow!("Invalid order. Expected 'asc' or 'desc'"));
         }
     };
 
-    Ok(LeaderboardConfig {
-        leaderboard_id: parts[0].to_string(),
+    Ok(AggregatorConfig {
+        id: parts[0].to_string(),
         model_tag: parts[1].to_string(),
-        target_path: parts[2].to_string(),
-        score_strategy,
+        group_by: parts[2].to_string(),
+        aggregation,
         order,
     })
 }

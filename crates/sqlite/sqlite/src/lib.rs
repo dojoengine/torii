@@ -14,7 +14,7 @@ use crate::error::{Error, ParseError};
 use crate::executor::error::ExecutorQueryError;
 use crate::executor::{Argument, QueryMessage};
 use crate::utils::utc_dt_string_from_timestamp;
-use torii_sqlite_types::{Hook, LeaderboardConfig, ModelIndices};
+use torii_sqlite_types::{AggregatorConfig, Hook, ModelIndices};
 
 pub mod constants;
 pub mod cursor;
@@ -36,7 +36,7 @@ pub struct SqlConfig {
     pub model_indices: Vec<ModelIndices>,
     pub historical_models: HashSet<Felt>,
     pub hooks: Vec<Hook>,
-    pub leaderboards: Vec<LeaderboardConfig>,
+    pub aggregators: Vec<AggregatorConfig>,
 }
 
 impl SqlConfig {
@@ -44,10 +44,10 @@ impl SqlConfig {
         self.historical_models.contains(selector)
     }
 
-    pub fn get_leaderboard_for_model(&self, model_tag: &str) -> Vec<&LeaderboardConfig> {
-        self.leaderboards
+    pub fn get_aggregator_for_model(&self, model_tag: &str) -> Vec<&AggregatorConfig> {
+        self.aggregators
             .iter()
-            .filter(|lb| lb.model_tag == model_tag)
+            .filter(|agg| agg.model_tag == model_tag)
             .collect()
     }
 }

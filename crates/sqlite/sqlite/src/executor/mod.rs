@@ -37,9 +37,9 @@ use crate::utils::{
 };
 use torii_broker::MemoryBroker;
 
+pub mod aggregator;
 pub mod erc;
 pub mod error;
-pub mod leaderboard;
 pub use erc::{RegisterNftTokenQuery, RegisterTokenContractQuery};
 
 pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor";
@@ -521,18 +521,18 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .execute(&mut **tx)
                 .await?;
 
-                // Update leaderboards if this model is part of any leaderboard configuration
+                // Update aggregations if this model is part of any aggregator configuration
                 let model_tag = entity.ty.name();
-                let leaderboard_configs: Vec<_> = self
+                let aggregator_configs: Vec<_> = self
                     .config
-                    .get_leaderboard_for_model(&model_tag)
+                    .get_aggregator_for_model(&model_tag)
                     .into_iter()
                     .cloned()
                     .collect();
-                for leaderboard_config in leaderboard_configs {
-                    if let Err(e) = leaderboard::update_leaderboard(
+                for aggregator_config in aggregator_configs {
+                    if let Err(e) = aggregator::update_aggregation(
                         tx,
-                        &leaderboard_config,
+                        &aggregator_config,
                         &entity.ty,
                         &entity.model_id,
                     )
@@ -540,9 +540,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     {
                         error!(
                             target: LOG_TARGET,
-                            leaderboard_id = %leaderboard_config.leaderboard_id,
+                            aggregator_id = %aggregator_config.id,
                             error = ?e,
-                            "Failed to update leaderboard"
+                            "Failed to update aggregation"
                         );
                     }
                 }

@@ -479,7 +479,7 @@ impl Runner {
             model_indices: self.args.sql.model_indices.clone(),
             historical_models: historical_models.clone(),
             hooks: self.args.sql.hooks.clone(),
-            leaderboards: self.args.sql.leaderboards.clone(),
+            aggregators: self.args.sql.aggregators.clone(),
         };
 
         let (mut executor, sender) = Executor::new_with_config(
