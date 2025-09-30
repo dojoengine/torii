@@ -814,7 +814,7 @@ impl Sql {
         &self,
         schemas: &[Ty],
         table_name: &str,
-        _model_relation_table: &str,
+        model_relation_table: &str,
         entity_relation_column: &str,
         where_clause: Option<&str>,
         _having_clause: Option<&str>,
@@ -899,14 +899,65 @@ impl Sql {
                 continue;
             }
 
-            // Start directly from the first model table - much simpler and faster!
-            // This avoids entity_model join table and entities table scan entirely
-            let first_model = chunk[0].name();
-            let mut query_builder = QueryBuilder::new(&first_model);
+            let chunk_selectors: Vec<String> = chunk
+                .iter()
+                .filter_map(|schema| {
+                    try_compute_selector_from_tag(&schema.name())
+                        .ok()
+                        .map(|selector| format!("{:#x}", selector))
+                })
+                .collect();
+
+            // PRE-OPTIMIZATION: Check which models actually exist in entity_model
+            // This lets us skip LEFT JOINs for models with no data
+            let placeholders = chunk_selectors.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let check_query = format!(
+                "SELECT DISTINCT model_id FROM {} WHERE model_id IN ({})",
+                model_relation_table, placeholders
+            );
+            
+            let mut check_stmt = sqlx::query(&check_query);
+            for selector in &chunk_selectors {
+                check_stmt = check_stmt.bind(selector);
+            }
+            
+            let existing_model_ids: Vec<String> = check_stmt
+                .fetch_all(&self.pool)
+                .await?
+                .into_iter()
+                .map(|row| row.get::<String, _>(0))
+                .collect();
+
+            if existing_model_ids.is_empty() {
+                // None of the models in this chunk have any data
+                continue;
+            }
+
+            // Filter chunk to only models that actually exist
+            let existing_schemas: Vec<&Ty> = chunk
+                .iter()
+                .filter(|schema| {
+                    if let Ok(selector) = try_compute_selector_from_tag(&schema.name()) {
+                        existing_model_ids.contains(&format!("{:#x}", selector))
+                    } else {
+                        false
+                    }
+                })
+                .collect();
+
+            // Build entity subquery using only existing models
+            let existing_placeholders = existing_model_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let entity_subquery = format!(
+                "(SELECT DISTINCT entity_id FROM {} WHERE model_id IN ({}))",
+                model_relation_table, existing_placeholders
+            );
+
+            let mut query_builder = QueryBuilder::new(&entity_subquery);
+            query_builder = query_builder.alias("filtered_entities");
 
             // Join to entities table for metadata
             query_builder = query_builder.join(&format!(
-                "JOIN {table_name} ON [{first_model}].{entity_relation_column} = {table_name}.id",
+                "JOIN {table_name} ON filtered_entities.entity_id = {table_name}.id",
             ));
 
             // Build selections - start with entity metadata
@@ -920,16 +971,19 @@ impl Sql {
             ];
 
             // Build model_ids by checking which model tables have non-NULL data
-            // This replaces the group_concat from entity_model table
+            // Only include models that actually exist
             let model_id_parts: Vec<String> = model_selectors
                 .iter()
+                .filter(|(_, selector)| existing_model_ids.contains(selector))
                 .map(|(model_name, selector)| {
                     format!("CASE WHEN [{model_name}].{entity_relation_column} IS NOT NULL THEN '{selector}' ELSE NULL END")
                 })
                 .collect();
             
             // Use || operator to concatenate with commas, filtering out NULLs
-            let model_ids_expr = if model_id_parts.len() == 1 {
+            let model_ids_expr = if model_id_parts.is_empty() {
+                "'' as model_ids".to_string()
+            } else if model_id_parts.len() == 1 {
                 format!("COALESCE({}, '') as model_ids", model_id_parts[0])
             } else {
                 let concat_parts: Vec<String> = model_id_parts
@@ -947,19 +1001,21 @@ impl Sql {
             };
             selections.push(model_ids_expr);
 
-            // Collect columns from first model
-            collect_columns(&first_model, "", &chunk[0], &mut selections);
-
-            // LEFT JOIN remaining model tables and collect their columns
-            for model in chunk.iter().skip(1) {
-                let model_table = model.name();
+            // LEFT JOIN only model tables that actually have data
+            for schema in existing_schemas.iter() {
+                let model_table = schema.name();
                 query_builder = query_builder.join(&format!(
                     "LEFT JOIN [{model_table}] ON {table_name}.id = [{model_table}].{entity_relation_column}",
                 ));
-                collect_columns(&model_table, "", model, &mut selections);
+                collect_columns(&model_table, "", schema, &mut selections);
             }
 
             query_builder = query_builder.select(&selections);
+
+            // Add bind values for the subquery's IN clause (only existing models)
+            for selector in &existing_model_ids {
+                query_builder = query_builder.bind_value(selector.clone());
+            }
 
             // Add user where clause
             if let Some(where_clause) = where_clause {
@@ -971,8 +1027,7 @@ impl Sql {
                 query_builder = query_builder.bind_value(value.clone());
             }
 
-            // No GROUP BY, no HAVING - much simpler!
-            // The having_clause parameter is now ignored as it's not needed
+            // No GROUP BY, no HAVING - keeps it simple!
 
             // Execute paginated query
             let page = executor
