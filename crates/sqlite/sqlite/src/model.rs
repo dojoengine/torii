@@ -877,8 +877,20 @@ impl Sql {
         let mut has_more_pages = false;
         let executor = PaginationExecutor::new(self.pool.clone());
 
+        // Compute model selectors for filtering
+        let model_selectors: Vec<String> = schemas
+            .iter()
+            .filter_map(|schema| {
+                try_compute_selector_from_tag(&schema.name())
+                    .ok()
+                    .map(|selector| format!("{:#x}", selector))
+            })
+            .collect();
+
         for chunk in schemas.chunks(SQL_MAX_JOINS) {
-            let mut query_builder = QueryBuilder::new(table_name);
+            // Start from model_relation_table instead of entities table for better performance
+            // This dramatically reduces the initial scan size when there are many entities
+            let mut query_builder = QueryBuilder::new(model_relation_table);
 
             // Build selections
             let mut selections = vec![
@@ -894,6 +906,11 @@ impl Sql {
                 ),
             ];
 
+            // Join to entities table
+            query_builder = query_builder.join(&format!(
+                "JOIN {table_name} ON {model_relation_table}.entity_id = {table_name}.id",
+            ));
+
             // Add schema joins and collect columns
             for model in chunk {
                 let model_table = model.name();
@@ -905,18 +922,29 @@ impl Sql {
             }
 
             query_builder = query_builder
-                .join(&format!(
-                    "JOIN {model_relation_table} ON {table_name}.id = {model_relation_table}.entity_id",
-                ))
                 .select(&selections)
                 .group_by(&format!("{}.id", table_name));
 
-            // Add where clause
-            if let Some(where_clause) = where_clause {
-                query_builder = query_builder.where_clause(where_clause);
+            // Pre-filter by model_id to reduce the scan size
+            if !model_selectors.is_empty() {
+                let placeholders = model_selectors.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let model_filter = format!("{}.model_id IN ({})", model_relation_table, placeholders);
+                
+                query_builder = query_builder.where_clause(&model_filter);
+                
+                // Add model selector bind values
+                for selector in &model_selectors {
+                    query_builder = query_builder.bind_value(selector.clone());
+                }
             }
 
-            // Add bind values
+            // Add user where clause
+            if let Some(where_clause) = where_clause {
+                // Combine with existing where clause using AND
+                query_builder = query_builder.where_clause(&format!("({})", where_clause));
+            }
+
+            // Add user bind values
             for value in bind_values.iter() {
                 query_builder = query_builder.bind_value(value.clone());
             }
