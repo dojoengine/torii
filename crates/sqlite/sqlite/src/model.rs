@@ -930,10 +930,6 @@ impl Sql {
                 .select(&selections)
                 .group_by(&format!("{}.id", table_name));
 
-            // CRITICAL OPTIMIZATION: Pre-filter by model_id
-            // This is the most important filter as it uses the composite index
-            // idx_entity_model_model_entity (model_id, entity_id) to dramatically
-            // reduce the working set before joining to the large entities table
             if !model_selectors.is_empty() {
                 let placeholders = model_selectors
                     .iter()
@@ -951,7 +947,7 @@ impl Sql {
                 }
             }
 
-            // Add user where clause (these filters are applied on the already-reduced set)
+            // Add user where clause
             if let Some(where_clause) = where_clause {
                 // Combine with existing where clause using AND
                 query_builder = query_builder.where_clause(&format!("({})", where_clause));
@@ -962,7 +958,7 @@ impl Sql {
                 query_builder = query_builder.bind_value(value.clone());
             }
 
-            // Add having clause for filtering on aggregated model_ids
+            // Add having clause
             if let Some(having_clause) = having_clause {
                 query_builder = query_builder.having(having_clause);
             }
