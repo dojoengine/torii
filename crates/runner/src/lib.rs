@@ -57,6 +57,7 @@ use torii_storage::ReadOnlyStorage;
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
+use sqlx::Executor as SqlxExecutor;
 
 mod constants;
 
@@ -400,7 +401,6 @@ impl Runner {
         options = options.pragma("temp_store", "memory"); // Store temp tables in memory
         options = options.pragma("mmap_size", "268435456"); // 256MB memory mapping
         options = options.pragma("journal_size_limit", "67108864"); // 64MB journal limit
-        options = options.pragma("wal_checkpoint", "TRUNCATE"); // Aggressive WAL cleanup
 
         let write_pool = SqlitePoolOptions::new()
             .min_connections(1)
@@ -409,6 +409,9 @@ impl Runner {
             .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
             .connect_with(options.clone())
             .await?;
+
+        // Aggressive WAL cleanup
+        write_pool.execute("PRAGMA wal_checkpoint(TRUNCATE);").await?;
 
         let readonly_options = options.read_only(true);
 

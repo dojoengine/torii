@@ -42,6 +42,7 @@ use torii_broker::MemoryBroker;
 pub mod erc;
 pub mod error;
 pub use erc::{RegisterNftTokenQuery, RegisterTokenContractQuery};
+use sqlx::Executor as SqlxExecutor;
 
 pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor";
 
@@ -951,8 +952,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 );
 
                 // Perform TRUNCATE checkpoint
-                sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
-                    .execute(&self.pool)
+                self.pool
+                    .execute("PRAGMA wal_checkpoint(TRUNCATE);")
                     .await?;
 
                 counter!("torii_executor_wal_checkpoint_truncate_total").increment(1);
