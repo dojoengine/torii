@@ -228,7 +228,9 @@ impl ModelCache {
             model_cache.insert(selector, model);
         }
 
-        Ok(Self { model_cache: RwLock::new(model_cache) })
+        Ok(Self {
+            model_cache: RwLock::new(model_cache),
+        })
     }
 
     pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, Error> {
