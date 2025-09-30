@@ -463,7 +463,7 @@ impl Runner {
             ..Default::default()
         };
 
-        let (mut executor, sender) = Executor::new(
+        let (mut executor, sender) = Executor::new_with_config(
             write_pool.clone(),
             shutdown_tx.clone(),
             provider.clone(),

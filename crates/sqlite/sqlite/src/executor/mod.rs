@@ -256,6 +256,21 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         pool: Pool<Sqlite>,
         shutdown_tx: Sender<()>,
         provider: P,
+    ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
+        Self::new_with_config(
+            pool,
+            shutdown_tx,
+            provider,
+            crate::SqlConfig::default(),
+            PathBuf::from(""),
+        )
+        .await
+    }
+
+    pub async fn new_with_config(
+        pool: Pool<Sqlite>,
+        shutdown_tx: Sender<()>,
+        provider: P,
         config: SqlConfig,
         db_path: PathBuf,
     ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
