@@ -731,9 +731,6 @@ impl Sql {
             ))
             .group_by(&format!("{}.event_id", table));
 
-        // CRITICAL: Filter by model_id first for performance
-        // entities_historical.model_id is a direct column, so we can filter on it
-        // This dramatically reduces the working set before applying other filters
         if !model_selectors.is_empty() {
             let placeholders = model_selectors
                 .iter()
