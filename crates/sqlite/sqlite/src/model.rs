@@ -656,24 +656,19 @@ impl Sql {
         let (where_clause, bind_values) =
             build_composite_clause(table, model_relation_table, composite, historical)?;
 
-        // OPTIMIZATION: HAVING clause is redundant since we already filter by model_id in WHERE
-        // The WHERE clause on entity_model.model_id already ensures we only get entities
-        // that have the requested models. The HAVING with INSTR would:
-        // 1. Be slower (string search vs indexed lookup)
-        // 2. Be redundant (checking same condition twice)
-        // 3. Have potential false positives (substring matching)
-        //
-        // Only use HAVING if we need to filter on aggregated data that isn't in WHERE
-        // For example: HAVING COUNT(DISTINCT model_id) > 1 (entity must have multiple models)
-        // But for simple "entity must have model X OR Y", WHERE is sufficient.
+        // Convert model Felts to hex strings for SQL binding
+        let model_selectors: Vec<String> = models
+            .iter()
+            .map(|model| format!("{:#x}", model))
+            .collect();
 
         let page = if historical {
             self.fetch_historical_entities(
                 table,
                 model_relation_table,
                 &where_clause,
-                "", // No HAVING needed - filtered by WHERE
                 bind_values,
+                model_selectors,
                 pagination,
             )
             .await?
@@ -712,8 +707,8 @@ impl Sql {
         table: &str,
         model_relation_table: &str,
         where_clause: &str,
-        having_clause: &str,
         bind_values: Vec<String>,
+        model_selectors: Vec<String>,
         pagination: Pagination,
     ) -> Result<Page<torii_proto::schema::Entity>, Error> {
         use crate::query::{PaginationExecutor, QueryBuilder};
@@ -738,19 +733,28 @@ impl Sql {
             ))
             .group_by(&format!("{}.event_id", table));
 
-        // Add where clause if provided
+        // CRITICAL: Filter by model_id first for performance
+        // entities_historical.model_id is a direct column, so we can filter on it
+        // This dramatically reduces the working set before applying other filters
+        if !model_selectors.is_empty() {
+            let placeholders = model_selectors.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let model_filter = format!("{}.model_id IN ({})", table, placeholders);
+            query_builder = query_builder.where_clause(&model_filter);
+            
+            // Add model selector bind values
+            for selector in &model_selectors {
+                query_builder = query_builder.bind_value(selector.clone());
+            }
+        }
+
+        // Add user where clause if provided (applies to already-filtered set)
         if !where_clause.is_empty() {
             query_builder = query_builder.where_clause(where_clause);
         }
 
-        // Add bind values
+        // Add user bind values
         for value in bind_values {
             query_builder = query_builder.bind_value(value);
-        }
-
-        // Add having clause if provided
-        if !having_clause.is_empty() {
-            query_builder = query_builder.having(having_clause);
         }
 
         // Execute paginated query
