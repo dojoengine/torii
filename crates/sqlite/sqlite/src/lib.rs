@@ -37,6 +37,7 @@ pub struct SqlConfig {
     pub historical_models: HashSet<Felt>,
     pub hooks: Vec<Hook>,
     pub aggregators: Vec<AggregatorConfig>,
+    pub wal_truncate_size_threshold: u64,
 }
 
 impl SqlConfig {

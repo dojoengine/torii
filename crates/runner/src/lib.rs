@@ -57,6 +57,7 @@ use torii_storage::ReadOnlyStorage;
 use tracing::{error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
+use sqlx::Executor as SqlxExecutor;
 
 mod constants;
 
@@ -400,7 +401,6 @@ impl Runner {
         options = options.pragma("temp_store", "memory"); // Store temp tables in memory
         options = options.pragma("mmap_size", "268435456"); // 256MB memory mapping
         options = options.pragma("journal_size_limit", "67108864"); // 64MB journal limit
-        options = options.pragma("wal_checkpoint", "TRUNCATE"); // Aggressive WAL cleanup
 
         let write_pool = SqlitePoolOptions::new()
             .min_connections(1)
@@ -409,6 +409,9 @@ impl Runner {
             .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
             .connect_with(options.clone())
             .await?;
+
+        // Aggressive WAL cleanup
+        write_pool.execute("PRAGMA wal_checkpoint(TRUNCATE);").await?;
 
         let readonly_options = options.read_only(true);
 
@@ -480,6 +483,7 @@ impl Runner {
             historical_models: historical_models.clone(),
             hooks: self.args.sql.hooks.clone(),
             aggregators: self.args.sql.aggregators.clone(),
+            wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
         };
 
         let (mut executor, sender) = Executor::new_with_config(
@@ -487,6 +491,7 @@ impl Runner {
             shutdown_tx.clone(),
             provider.clone(),
             sql_config.clone(),
+            database_path.clone(),
         )
         .await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
@@ -495,7 +500,7 @@ impl Runner {
             readonly_pool.clone(),
             sender.clone(),
             &self.args.indexing.contracts,
-            sql_config,
+            sql_config.clone(),
         )
         .await?;
         let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
