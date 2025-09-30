@@ -460,6 +460,11 @@ impl Runner {
                 .run(&mut migrate_handle)
                 .await?;
         }
+
+        // Update query planner statistics for optimal index usage
+        info!(target: LOG_TARGET, "Updating database statistics...");
+        sqlx::query("ANALYZE").execute(&mut *migrate_handle).await?;
+
         drop(migrate_handle);
 
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
