@@ -814,10 +814,10 @@ impl Sql {
         &self,
         schemas: &[Ty],
         table_name: &str,
-        model_relation_table: &str,
+        _model_relation_table: &str,
         entity_relation_column: &str,
         where_clause: Option<&str>,
-        having_clause: Option<&str>,
+        _having_clause: Option<&str>,
         pagination: Pagination,
         bind_values: Vec<String>,
     ) -> Result<Page<SqliteRow>, Error> {
@@ -871,28 +871,45 @@ impl Sql {
             }
         }
 
+        if schemas.is_empty() {
+            return Ok(Page {
+                items: vec![],
+                next_cursor: None,
+            });
+        }
+
         // Process schemas in chunks
         let mut all_rows = Vec::new();
         let mut next_cursor = None;
         let mut has_more_pages = false;
         let executor = PaginationExecutor::new(self.pool.clone());
 
-        // Compute model selectors for filtering
-        let model_selectors: Vec<String> = schemas
+        // Compute model selectors for constructing model_ids
+        let model_selectors: Vec<(String, String)> = schemas
             .iter()
             .filter_map(|schema| {
                 try_compute_selector_from_tag(&schema.name())
                     .ok()
-                    .map(|selector| format!("{:#x}", selector))
+                    .map(|selector| (schema.name(), format!("{:#x}", selector)))
             })
             .collect();
 
         for chunk in schemas.chunks(SQL_MAX_JOINS) {
-            // Start from model_relation_table instead of entities table for better performance
-            // This dramatically reduces the initial scan size when there are many entities
-            let mut query_builder = QueryBuilder::new(model_relation_table);
+            if chunk.is_empty() {
+                continue;
+            }
 
-            // Build selections
+            // Start directly from the first model table - much simpler and faster!
+            // This avoids entity_model join table and entities table scan entirely
+            let first_model = chunk[0].name();
+            let mut query_builder = QueryBuilder::new(&first_model);
+
+            // Join to entities table for metadata
+            query_builder = query_builder.join(&format!(
+                "JOIN {table_name} ON [{first_model}].{entity_relation_column} = {table_name}.id",
+            ));
+
+            // Build selections - start with entity metadata
             let mut selections = vec![
                 format!("{}.id", table_name),
                 format!("{}.keys", table_name),
@@ -900,48 +917,53 @@ impl Sql {
                 format!("{}.created_at", table_name),
                 format!("{}.updated_at", table_name),
                 format!("{}.executed_at", table_name),
-                format!(
-                    "group_concat({}.model_id) as model_ids",
-                    model_relation_table
-                ),
             ];
 
-            // Join to entities table
-            query_builder = query_builder.join(&format!(
-                "JOIN {table_name} ON {model_relation_table}.entity_id = {table_name}.id",
-            ));
+            // Build model_ids by checking which model tables have non-NULL data
+            // This replaces the group_concat from entity_model table
+            let model_id_parts: Vec<String> = model_selectors
+                .iter()
+                .map(|(model_name, selector)| {
+                    format!("CASE WHEN [{model_name}].{entity_relation_column} IS NOT NULL THEN '{selector}' ELSE NULL END")
+                })
+                .collect();
+            
+            // Use || operator to concatenate with commas, filtering out NULLs
+            let model_ids_expr = if model_id_parts.len() == 1 {
+                format!("COALESCE({}, '') as model_ids", model_id_parts[0])
+            } else {
+                let concat_parts: Vec<String> = model_id_parts
+                    .iter()
+                    .enumerate()
+                    .map(|(i, part)| {
+                        if i == 0 {
+                            format!("COALESCE({}, '')", part)
+                        } else {
+                            format!("CASE WHEN {} IS NOT NULL THEN ',' || {} ELSE '' END", part, part)
+                        }
+                    })
+                    .collect();
+                format!("({}) as model_ids", concat_parts.join(" || "))
+            };
+            selections.push(model_ids_expr);
 
-            // Add schema joins and collect columns
-            for model in chunk {
+            // Collect columns from first model
+            collect_columns(&first_model, "", &chunk[0], &mut selections);
+
+            // LEFT JOIN remaining model tables and collect their columns
+            for model in chunk.iter().skip(1) {
                 let model_table = model.name();
                 query_builder = query_builder.join(&format!(
-                    "LEFT JOIN [{model_table}] ON {table_name}.id = \
-                     [{model_table}].{entity_relation_column}",
+                    "LEFT JOIN [{model_table}] ON {table_name}.id = [{model_table}].{entity_relation_column}",
                 ));
                 collect_columns(&model_table, "", model, &mut selections);
             }
 
-            query_builder = query_builder
-                .select(&selections)
-                .group_by(&format!("{}.id", table_name));
-
-            // Pre-filter by model_id to reduce the scan size
-            if !model_selectors.is_empty() {
-                let placeholders = model_selectors.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-                let model_filter = format!("{}.model_id IN ({})", model_relation_table, placeholders);
-                
-                query_builder = query_builder.where_clause(&model_filter);
-                
-                // Add model selector bind values
-                for selector in &model_selectors {
-                    query_builder = query_builder.bind_value(selector.clone());
-                }
-            }
+            query_builder = query_builder.select(&selections);
 
             // Add user where clause
             if let Some(where_clause) = where_clause {
-                // Combine with existing where clause using AND
-                query_builder = query_builder.where_clause(&format!("({})", where_clause));
+                query_builder = query_builder.where_clause(where_clause);
             }
 
             // Add user bind values
@@ -949,10 +971,8 @@ impl Sql {
                 query_builder = query_builder.bind_value(value.clone());
             }
 
-            // Add having clause
-            if let Some(having_clause) = having_clause {
-                query_builder = query_builder.having(having_clause);
-            }
+            // No GROUP BY, no HAVING - much simpler!
+            // The having_clause parameter is now ignored as it's not needed
 
             // Execute paginated query
             let page = executor
