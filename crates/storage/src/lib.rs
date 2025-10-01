@@ -13,9 +13,10 @@ use torii_math::I256;
 use torii_proto::schema::Entity;
 
 use torii_proto::{
-    Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, Model,
-    Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery,
-    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
+    AggregationEntry, AggregationQuery, Contract, ContractCursor, ContractQuery, Controller,
+    ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance,
+    TokenBalanceQuery, TokenContract, TokenContractQuery, TokenQuery, TokenTransfer,
+    TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
 };
 
 pub mod utils;
@@ -86,6 +87,12 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
         entity_id: Felt,
         model_selector: Felt,
     ) -> Result<Option<Ty>, StorageError>;
+
+    /// Returns aggregations for the storage.
+    async fn aggregations(
+        &self,
+        query: &AggregationQuery,
+    ) -> Result<Page<AggregationEntry>, StorageError>;
 }
 
 #[async_trait]
