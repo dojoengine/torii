@@ -17,6 +17,7 @@ use tonic::codec::CompressionEncoding;
 use tonic::transport::Endpoint;
 
 use torii_proto::error::ProtoError;
+use torii_proto::proto::types::{SqlQueryRequest, SqlQueryResponse, SqlRow};
 use torii_proto::proto::world::{
     world_client, PublishMessageBatchRequest, PublishMessageRequest, RetrieveContractsRequest,
     RetrieveContractsResponse, RetrieveControllersRequest, RetrieveControllersResponse,
@@ -645,6 +646,16 @@ impl WorldClient {
                     .map(|r| Felt::from_bytes_be_slice(&r.entity_id))
                     .collect()
             })
+    }
+
+    /// Execute a SQL query against the Torii database.
+    /// Returns the query results as rows.
+    pub async fn execute_sql(&mut self, query: String) -> Result<SqlQueryResponse, Error> {
+        self.inner
+            .execute_sql(SqlQueryRequest { query })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
     }
 }
 

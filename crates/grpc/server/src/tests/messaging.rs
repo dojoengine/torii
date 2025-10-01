@@ -37,14 +37,14 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
         .unwrap()
         .create_if_missing(true)
         .with_regexp();
-    let pool = SqlitePoolOptions::new()
+    let pool = Arc::new(SqlitePoolOptions::new()
         .min_connections(1)
         .idle_timeout(None)
         .max_lifetime(None)
         .connect_with(options)
         .await
-        .unwrap();
-    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+        .unwrap());
+    sqlx::migrate!("../../migrations").run(&*pool).await.unwrap();
 
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
     let account_data = sequencer.account_data(0);

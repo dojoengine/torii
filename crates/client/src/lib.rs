@@ -6,6 +6,7 @@ use torii_grpc_client::{
     ContractUpdateStreaming, EntityUpdateStreaming, EventUpdateStreaming, TokenBalanceStreaming,
     TokenTransferUpdateStreaming, TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
 };
+use torii_proto::proto::types::{SqlQueryResponse, SqlRow};
 use torii_proto::proto::world::{
     RetrieveContractsResponse, RetrieveControllersResponse, RetrieveEntitiesResponse,
     RetrieveEventsResponse, RetrieveTokenBalancesResponse, RetrieveTokenContractsResponse,
@@ -455,5 +456,33 @@ impl Client {
             )
             .await?;
         Ok(())
+    }
+
+    /// Execute a SQL query against the Torii database.
+    ///
+    /// # Arguments
+    /// * `query` - The SQL query string to execute
+    ///
+    /// # Returns
+    /// A `SqlQueryResponse` containing the rows
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use torii_client::Client;
+    /// # use starknet::core::types::Felt;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = Client::new("http://localhost:8080".to_string(), Felt::ZERO).await?;
+    /// let response = client.query_sql("SELECT * FROM entities LIMIT 10".to_string()).await?;
+    /// println!("Found {} rows", response.rows.len());
+    /// for row in response.rows {
+    ///     println!("{:?}", row.fields);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn query_sql(&self, query: String) -> Result<SqlQueryResponse, Error> {
+        let mut grpc_client = self.inner.clone();
+        let response = grpc_client.execute_sql(query).await?;
+        Ok(response)
     }
 }
