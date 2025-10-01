@@ -3,8 +3,9 @@ pub mod error;
 use crypto_bigint::U256;
 use starknet::core::types::Felt;
 use torii_grpc_client::{
-    ContractUpdateStreaming, EntityUpdateStreaming, EventUpdateStreaming, TokenBalanceStreaming,
-    TokenTransferUpdateStreaming, TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
+    AggregationUpdateStreaming, ContractUpdateStreaming, EntityUpdateStreaming,
+    EventUpdateStreaming, TokenBalanceStreaming, TokenTransferUpdateStreaming,
+    TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
 };
 use torii_proto::proto::world::{
     RetrieveAggregationsResponse, RetrieveContractsResponse, RetrieveControllersResponse,
@@ -236,6 +237,35 @@ impl Client {
                 Some(next_cursor)
             },
         })
+    }
+
+    /// Subscribe to aggregation updates (leaderboards, stats, rankings).
+    /// If no aggregator_ids are provided, it will subscribe to updates for all aggregators.
+    /// If no entity_ids are provided, it will subscribe to updates for all entities.
+    pub async fn on_aggregation_updated(
+        &self,
+        aggregator_ids: Vec<String>,
+        entity_ids: Vec<String>,
+    ) -> Result<AggregationUpdateStreaming, Error> {
+        let mut grpc_client = self.inner.clone();
+        let stream = grpc_client
+            .subscribe_aggregations(aggregator_ids, entity_ids)
+            .await?;
+        Ok(stream)
+    }
+
+    /// Update an aggregations subscription
+    pub async fn update_aggregation_subscription(
+        &self,
+        subscription_id: u64,
+        aggregator_ids: Vec<String>,
+        entity_ids: Vec<String>,
+    ) -> Result<(), Error> {
+        let mut grpc_client = self.inner.clone();
+        grpc_client
+            .update_aggregations_subscription(subscription_id, aggregator_ids, entity_ids)
+            .await?;
+        Ok(())
     }
 
     /// A direct stream to grpc subscribe transactions

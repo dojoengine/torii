@@ -241,6 +241,8 @@ type SubscribeTokenTransfersResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokenTransfersResponse, Status>> + Send>>;
 type SubscribeTransactionsResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTransactionsResponse, Status>> + Send>>;
+type SubscribeAggregationsResponseStream =
+    Pin<Box<dyn Stream<Item = Result<SubscribeAggregationsResponse, Status>> + Send>>;
 
 #[tonic::async_trait]
 impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for DojoWorld<P> {
@@ -252,6 +254,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
     type SubscribeTokensStream = SubscribeTokensResponseStream;
     type SubscribeTokenTransfersStream = SubscribeTokenTransfersResponseStream;
     type SubscribeTransactionsStream = SubscribeTransactionsResponseStream;
+    type SubscribeAggregationsStream = SubscribeAggregationsResponseStream;
 
     async fn world_metadata(
         &self,

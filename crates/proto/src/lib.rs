@@ -724,6 +724,22 @@ pub struct AggregationEntry {
     pub updated_at: DateTime<Utc>,
 }
 
+impl Default for AggregationEntry {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            aggregator_id: String::new(),
+            entity_id: String::new(),
+            value: String::new(),
+            display_value: String::new(),
+            position: 0,
+            model_id: String::new(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+}
+
 impl From<AggregationQuery> for proto::types::AggregationQuery {
     fn from(value: AggregationQuery) -> Self {
         Self {
