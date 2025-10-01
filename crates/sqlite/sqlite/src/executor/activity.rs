@@ -50,7 +50,7 @@ pub async fn update_activity(
          FROM activities
          WHERE caller_address = ?
          ORDER BY session_end DESC
-         LIMIT 1"
+         LIMIT 1",
     )
     .bind(caller_address)
     .fetch_optional(&mut **tx)
@@ -60,13 +60,12 @@ pub async fn update_activity(
         Some((session_id, _session_start, session_end, action_count, actions_json)) => {
             // Calculate time difference from last action
             let time_diff = executed_at.signed_duration_since(session_end);
-            
+
             if time_diff.num_seconds() <= SESSION_TIMEOUT_SECONDS {
                 // Same session - update it
-                let mut action_counts: IndexMap<String, u32> = 
-                    serde_json::from_str(&actions_json)
-                        .unwrap_or_else(|_| IndexMap::new());
-                
+                let mut action_counts: IndexMap<String, u32> =
+                    serde_json::from_str(&actions_json).unwrap_or_else(|_| IndexMap::new());
+
                 // Increment count for this action (entrypoint)
                 *action_counts.entry(entrypoint.to_string()).or_insert(0) += 1;
 
@@ -76,7 +75,7 @@ pub async fn update_activity(
                          action_count = ?,
                          actions = ?,
                          updated_at = CURRENT_TIMESTAMP
-                     WHERE id = ?"
+                     WHERE id = ?",
                 )
                 .bind(executed_at)
                 .bind(action_count + 1)
@@ -113,18 +112,17 @@ async fn create_new_session(
     executed_at: DateTime<Utc>,
 ) -> QueryResult<()> {
     let session_id = format!("{}:{}", caller_address, executed_at.timestamp());
-    
+
     // Initialize IndexMap with first action (entrypoint)
     let mut action_counts = IndexMap::new();
     action_counts.insert(entrypoint.to_string(), 1u32);
-    
-    let actions_json = serde_json::to_string(&action_counts)
-        .unwrap_or_else(|_| "{}".to_string());
+
+    let actions_json = serde_json::to_string(&action_counts).unwrap_or_else(|_| "{}".to_string());
 
     sqlx::query(
         "INSERT INTO activities
          (id, caller_address, session_start, session_end, action_count, actions)
-         VALUES (?, ?, ?, ?, 1, ?)"
+         VALUES (?, ?, ?, ?, 1, ?)",
     )
     .bind(&session_id)
     .bind(caller_address)
@@ -150,10 +148,10 @@ pub async fn cleanup_old_activities(
     days_to_keep: i64,
 ) -> QueryResult<u64> {
     let cutoff_date = Utc::now() - Duration::days(days_to_keep);
-    
+
     let result = sqlx::query(
         "DELETE FROM activities
-         WHERE session_end < ?"
+         WHERE session_end < ?",
     )
     .bind(cutoff_date)
     .execute(&mut **tx)
@@ -161,4 +159,3 @@ pub async fn cleanup_old_activities(
 
     Ok(result.rows_affected())
 }
-

@@ -475,7 +475,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                          SELECT contract_address FROM transaction_contract 
                          WHERE transaction_hash = ?
                      ) AND contract_type = 'WORLD'
-                     LIMIT 1"
+                     LIMIT 1",
                 )
                 .bind(transaction.transaction_hash.clone())
                 .fetch_optional(&mut **tx)
