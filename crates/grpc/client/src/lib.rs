@@ -18,27 +18,26 @@ use tonic::transport::Endpoint;
 
 use torii_proto::error::ProtoError;
 use torii_proto::proto::world::{
-    world_client, PublishMessageBatchRequest, PublishMessageRequest, RetrieveContractsRequest,
-    RetrieveContractsResponse, RetrieveControllersRequest, RetrieveControllersResponse,
-    RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventMessagesRequest,
-    RetrieveEventsRequest, RetrieveEventsResponse, RetrieveTokenBalancesRequest,
-    RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
-    RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse, RetrieveTokensRequest,
-    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
-    SubscribeContractsRequest, SubscribeContractsResponse, SubscribeEntitiesRequest,
-    SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsRequest,
-    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    world_client, PublishMessageBatchRequest, PublishMessageRequest, RetrieveAggregationsRequest,
+    RetrieveAggregationsResponse, RetrieveContractsRequest, RetrieveContractsResponse,
+    RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEntitiesRequest,
+    RetrieveEntitiesResponse, RetrieveEventMessagesRequest, RetrieveEventsRequest,
+    RetrieveEventsResponse, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
+    RetrieveTokenContractsRequest, RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest,
+    RetrieveTokenTransfersResponse, RetrieveTokensRequest, RetrieveTokensResponse,
+    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeContractsRequest,
+    SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
+    SubscribeEventMessagesRequest, SubscribeEventsRequest, SubscribeEventsResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
+    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
+    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
     UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
     UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
     UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message,
-    Query, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery,
-    TokenTransfer, TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery,
+    AggregationQuery, Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message, Query, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery
 };
 
 pub use torii_proto as types;
@@ -172,6 +171,19 @@ impl WorldClient {
     ) -> Result<RetrieveTransactionsResponse, Error> {
         self.inner
             .retrieve_transactions(RetrieveTransactionsRequest {
+                query: Some(query.into()),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
+    }
+
+    pub async fn retrieve_aggregations(
+        &mut self,
+        query: AggregationQuery,
+    ) -> Result<RetrieveAggregationsResponse, Error> {
+        self.inner
+            .retrieve_aggregations(RetrieveAggregationsRequest {
                 query: Some(query.into()),
             })
             .await

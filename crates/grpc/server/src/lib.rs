@@ -20,6 +20,7 @@ use proto::world::{
 };
 use starknet::core::types::Felt;
 use starknet::providers::Provider;
+use subscriptions::aggregation::AggregationManager;
 use subscriptions::contract::ContractManager;
 use subscriptions::event::EventManager;
 use subscriptions::token::TokenManager;
@@ -45,19 +46,21 @@ use sqlx::SqlitePool;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
     PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest,
-    PublishMessageResponse, RetrieveContractsRequest, RetrieveContractsResponse,
-    RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEventMessagesRequest,
-    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest,
-    RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse,
-    RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest,
-    RetrieveTransactionsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
-    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
-    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
-    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
-    UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
-    WorldMetadataResponse,
+    PublishMessageResponse, RetrieveAggregationsRequest, RetrieveAggregationsResponse,
+    RetrieveContractsRequest, RetrieveContractsResponse, RetrieveControllersRequest,
+    RetrieveControllersResponse, RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest,
+    RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
+    RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse, RetrieveTokensRequest,
+    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
+    SubscribeAggregationsRequest, SubscribeAggregationsResponse, SubscribeContractsRequest,
+    SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
+    SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeTokenBalancesRequest,
+    SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse,
+    SubscribeTokensRequest, SubscribeTokensResponse, SubscribeTransactionsRequest,
+    SubscribeTransactionsResponse, UpdateAggregationsSubscriptionRequest,
+    UpdateAggregationsSubscriptionResponse, UpdateEventMessagesSubscriptionRequest,
+    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
+    UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest, WorldMetadataResponse,
 };
 use torii_proto::proto::{self};
 use torii_proto::Message;
@@ -81,6 +84,7 @@ pub struct DojoWorld<P: Provider + Sync> {
     token_manager: Arc<TokenManager>,
     token_transfer_manager: Arc<TokenTransferManager>,
     transaction_manager: Arc<TransactionManager>,
+    aggregation_manager: Arc<AggregationManager>,
     pool: SqlitePool,
     _config: GrpcConfig,
 }
@@ -102,6 +106,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let token_manager = Arc::new(TokenManager::new(config.clone()));
         let token_transfer_manager = Arc::new(TokenTransferManager::new(config.clone()));
         let transaction_manager = Arc::new(TransactionManager::new(config.clone()));
+        let aggregation_manager = Arc::new(AggregationManager::new(config.clone()));
 
         // Spawn subscription services on the main runtime
         // They use try_send and non-blocking operations to avoid starving other tasks
@@ -137,6 +142,10 @@ impl<P: Provider + Sync> DojoWorld<P> {
             &transaction_manager,
         )));
 
+        tokio::spawn(subscriptions::aggregation::Service::new(Arc::clone(
+            &aggregation_manager,
+        )));
+
         Self {
             storage,
             messaging,
@@ -150,6 +159,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             token_manager,
             token_transfer_manager,
             transaction_manager,
+            aggregation_manager,
             pool,
             _config: config,
         }
@@ -379,6 +389,42 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         Ok(Response::new(RetrieveControllersResponse {
             next_cursor: controllers.next_cursor.unwrap_or_default(),
             controllers: controllers.items.into_iter().map(|c| c.into()).collect(),
+        }))
+    }
+
+    async fn retrieve_aggregations(
+        &self,
+        request: Request<RetrieveAggregationsRequest>,
+    ) -> Result<Response<RetrieveAggregationsResponse>, Status> {
+        let RetrieveAggregationsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+
+        let aggregations = self
+            .storage
+            .aggregations(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(RetrieveAggregationsResponse {
+            entries: aggregations
+                .items
+                .into_iter()
+                .map(|entry| proto::types::AggregationEntry {
+                    id: entry.id,
+                    aggregator_id: entry.aggregator_id,
+                    entity_id: entry.entity_id,
+                    value: entry.value,
+                    display_value: entry.display_value,
+                    position: entry.position,
+                    model_id: entry.model_id,
+                    created_at: entry.created_at.to_rfc3339(),
+                    updated_at: entry.updated_at.to_rfc3339(),
+                })
+                .collect(),
+            next_cursor: aggregations.next_cursor.unwrap_or_default(),
         }))
     }
 

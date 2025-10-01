@@ -7,9 +7,10 @@ use torii_grpc_client::{
     TokenTransferUpdateStreaming, TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
 };
 use torii_proto::proto::world::{
-    RetrieveContractsResponse, RetrieveControllersResponse, RetrieveEntitiesResponse,
-    RetrieveEventsResponse, RetrieveTokenBalancesResponse, RetrieveTokenContractsResponse,
-    RetrieveTokenTransfersResponse, RetrieveTokensResponse, RetrieveTransactionsResponse,
+    RetrieveAggregationsResponse, RetrieveContractsResponse, RetrieveControllersResponse,
+    RetrieveEntitiesResponse, RetrieveEventsResponse, RetrieveTokenBalancesResponse,
+    RetrieveTokenContractsResponse, RetrieveTokenTransfersResponse, RetrieveTokensResponse,
+    RetrieveTransactionsResponse,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
@@ -206,6 +207,27 @@ impl Client {
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<Transaction>, _>>()?,
+            next_cursor: if next_cursor.is_empty() {
+                None
+            } else {
+                Some(next_cursor)
+            },
+        })
+    }
+
+    /// Retrieves aggregations (leaderboards, stats, rankings) matching query parameter.
+    pub async fn aggregations(
+        &self,
+        query: AggregationQuery,
+    ) -> Result<Page<AggregationEntry>, Error> {
+        let mut grpc_client = self.inner.clone();
+        let RetrieveAggregationsResponse { entries, next_cursor } =
+            grpc_client.retrieve_aggregations(query).await?;
+        Ok(Page {
+            items: entries
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<AggregationEntry>, _>>()?,
             next_cursor: if next_cursor.is_empty() {
                 None
             } else {

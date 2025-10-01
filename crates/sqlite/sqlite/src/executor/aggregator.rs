@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use dojo_types::schema::Ty;
 use sqlx::{Sqlite, Transaction as SqlxTransaction};
 use torii_sqlite_types::{Aggregation, AggregatorConfig};
@@ -10,12 +11,13 @@ pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor::aggregator";
 pub type QueryResult<T> = std::result::Result<T, ExecutorQueryError>;
 
 /// Updates an aggregation entry based on the configured strategy
+/// Returns the updated entry with its calculated position, or None if the group_by field can't be extracted
 pub async fn update_aggregation(
     tx: &mut SqlxTransaction<'_, Sqlite>,
     aggregator_config: &AggregatorConfig,
     entity: &Ty,
     model_id: &str,
-) -> QueryResult<()> {
+) -> QueryResult<Option<torii_proto::AggregationEntry>> {
     // Extract group_by field (e.g., player address) from the model
     let entity_id = match extract_field_value(entity, &aggregator_config.group_by, false) {
         Some(val) => val,
@@ -26,7 +28,7 @@ pub async fn update_aggregation(
                 model = %entity.name(),
                 "Could not extract group_by field from model for aggregator"
             );
-            return Ok(());
+            return Ok(None);
         }
     };
 
@@ -59,8 +61,8 @@ pub async fn update_aggregation(
         }
     };
 
-    // Upsert the aggregation entry
-    upsert_aggregation_entry(
+    // Upsert the aggregation entry and get it back with position
+    let aggregation_entry = upsert_aggregation_entry(
         tx,
         &entry_id,
         &aggregator_config.id,
@@ -77,11 +79,12 @@ pub async fn update_aggregation(
         aggregator_id = %aggregator_config.id,
         entity = %entity_id,
         display_value = %display_value,
+        position = %aggregation_entry.position,
         aggregation = %format!("{:?}", aggregator_config.aggregation).split('(').next().unwrap_or("unknown"),
         "Updated aggregation entry"
     );
 
-    Ok(())
+    Ok(Some(aggregation_entry))
 }
 
 /// Extract and return the latest value from a field
@@ -322,7 +325,8 @@ async fn upsert_aggregation_entry(
     display_value: &str,
     metadata: Option<&str>,
     model_id: &str,
-) -> QueryResult<()> {
+) -> QueryResult<torii_proto::AggregationEntry> {
+    // First, upsert the entry
     sqlx::query(
         "INSERT INTO aggregations (id, aggregator_id, entity_id, value, display_value, metadata, model_id) \
          VALUES (?, ?, ?, ?, ?, ?, ?) \
@@ -343,7 +347,29 @@ async fn upsert_aggregation_entry(
     .execute(&mut **tx)
     .await?;
 
-    Ok(())
+    // Then, fetch the entry with its calculated position
+    let entry: (String, String, String, String, String, String, DateTime<Utc>, DateTime<Utc>, i64) = sqlx::query_as(
+        "SELECT a.id, a.aggregator_id, a.entity_id, a.value, a.display_value, a.model_id, \
+         a.created_at, a.updated_at, \
+         ROW_NUMBER() OVER (PARTITION BY a.aggregator_id ORDER BY a.value DESC) as position \
+         FROM aggregations a \
+         WHERE a.id = ?",
+    )
+    .bind(entry_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    Ok(torii_proto::AggregationEntry {
+        id: entry.0,
+        aggregator_id: entry.1,
+        entity_id: entry.2,
+        value: entry.3,
+        display_value: entry.4,
+        model_id: entry.5,
+        created_at: entry.6,
+        updated_at: entry.7,
+        position: entry.8 as u64,
+    })
 }
 
 /// Helper function to extract a field value from a Ty by path (e.g., "player" or "stats.score")

@@ -22,8 +22,8 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 use torii_broker::types::{
-    ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType, ModelUpdate,
-    TokenBalanceUpdate, TokenTransferUpdate, TokenUpdate, TransactionUpdate, Update,
+    AggregationUpdate, ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType,
+    ModelUpdate, TokenBalanceUpdate, TokenTransferUpdate, TokenUpdate, TransactionUpdate, Update,
 };
 use torii_math::I256;
 use torii_proto::{ContractCursor, TransactionCall};
@@ -71,6 +71,7 @@ pub enum BrokerMessage {
     TokenBalanceUpdated(<TokenBalanceUpdate as InnerType>::Inner),
     TokenTransfer(<TokenTransferUpdate as InnerType>::Inner),
     Transaction(<TransactionUpdate as InnerType>::Inner),
+    AggregationUpdated(<AggregationUpdate as InnerType>::Inner),
 }
 
 #[derive(Debug, Clone)]
@@ -585,8 +586,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     .into_iter()
                     .cloned()
                     .collect();
+                let mut aggregation_updates = Vec::new();
                 for aggregator_config in aggregator_configs {
-                    if let Err(e) = aggregator::update_aggregation(
+                    match aggregator::update_aggregation(
                         tx,
                         &aggregator_config,
                         &entity.ty,
@@ -594,13 +596,28 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     )
                     .await
                     {
-                        error!(
-                            target: LOG_TARGET,
-                            aggregator_id = %aggregator_config.id,
-                            error = ?e,
-                            "Failed to update aggregation"
-                        );
+                        Ok(Some(aggregation_entry)) => {
+                            aggregation_updates.push(aggregation_entry);
+                        }
+                        Ok(None) => {
+                            // group_by field could not be extracted, skip
+                        }
+                        Err(e) => {
+                            error!(
+                                target: LOG_TARGET,
+                                aggregator_id = %aggregator_config.id,
+                                error = ?e,
+                                "Failed to update aggregation"
+                            );
+                        }
                     }
+                }
+
+                // Publish aggregation updates
+                for aggregation_entry in aggregation_updates {
+                    self.publish_optimistic_and_queue(BrokerMessage::AggregationUpdated(
+                        aggregation_entry,
+                    ));
                 }
 
                 self.publish_optimistic_and_queue(BrokerMessage::EntityUpdate(
@@ -1087,6 +1104,9 @@ fn send_broker_message(message: BrokerMessage, optimistic: bool) {
         }
         BrokerMessage::Transaction(transaction) => {
             MemoryBroker::publish(Update::new(transaction, optimistic))
+        }
+        BrokerMessage::AggregationUpdated(aggregation) => {
+            MemoryBroker::publish(Update::new(aggregation, optimistic))
         }
     }
 }
