@@ -135,7 +135,7 @@ pub fn map_row_to_proto(row: &sqlx::sqlite::SqliteRow) -> torii_proto::proto::ty
     use torii_proto::proto::types::{sql_value, SqlValue};
 
     let mut fields = HashMap::new();
-    
+
     for (i, column) in row.columns().iter().enumerate() {
         let value = match column.type_info().name() {
             "TEXT" => {
@@ -213,7 +213,7 @@ pub fn map_row_to_proto(row: &sqlx::sqlite::SqliteRow) -> torii_proto::proto::ty
         };
         fields.insert(column.name().to_string(), value);
     }
-    
+
     torii_proto::proto::types::SqlRow { fields }
 }
 

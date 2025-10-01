@@ -41,6 +41,7 @@ use crate::subscriptions::transaction::TransactionManager;
 
 use self::subscriptions::entity::EntityManager;
 use self::subscriptions::event_message::EventMessageManager;
+use sqlx::SqlitePool;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
     PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest,
@@ -60,7 +61,6 @@ use torii_proto::proto::world::{
 };
 use torii_proto::proto::{self};
 use torii_proto::Message;
-use sqlx::SqlitePool;
 
 use anyhow::{anyhow, Error};
 
