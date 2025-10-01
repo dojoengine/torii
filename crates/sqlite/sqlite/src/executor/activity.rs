@@ -9,7 +9,7 @@ pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor::activity";
 
 pub type QueryResult<T> = std::result::Result<T, ExecutorQueryError>;
 
-// Type alias for session data: (id, session_start, session_end, action_count, entrypoints_json)
+// Type alias for session data: (id, session_start, session_end, action_count, actions_json)
 type SessionData = (String, DateTime<Utc>, DateTime<Utc>, i32, String);
 
 // Session timeout: 1 hour of inactivity starts a new session
@@ -46,7 +46,7 @@ pub async fn update_activity(
 
     // Try to find the most recent session for this caller
     let last_session: Option<SessionData> = sqlx::query_as(
-        "SELECT id, session_start, session_end, action_count, entrypoints
+        "SELECT id, session_start, session_end, action_count, actions
          FROM activities
          WHERE caller_address = ?
          ORDER BY session_end DESC
@@ -57,30 +57,30 @@ pub async fn update_activity(
     .await?;
 
     match last_session {
-        Some((session_id, _session_start, session_end, action_count, entrypoints_json)) => {
+        Some((session_id, _session_start, session_end, action_count, actions_json)) => {
             // Calculate time difference from last action
             let time_diff = executed_at.signed_duration_since(session_end);
             
             if time_diff.num_seconds() <= SESSION_TIMEOUT_SECONDS {
                 // Same session - update it
-                let mut entrypoint_counts: IndexMap<String, u32> = 
-                    serde_json::from_str(&entrypoints_json)
+                let mut action_counts: IndexMap<String, u32> = 
+                    serde_json::from_str(&actions_json)
                         .unwrap_or_else(|_| IndexMap::new());
                 
-                // Increment count for this entrypoint
-                *entrypoint_counts.entry(entrypoint.to_string()).or_insert(0) += 1;
+                // Increment count for this action (entrypoint)
+                *action_counts.entry(entrypoint.to_string()).or_insert(0) += 1;
 
                 sqlx::query(
                     "UPDATE activities
                      SET session_end = ?,
                          action_count = ?,
-                         entrypoints = ?,
+                         actions = ?,
                          updated_at = CURRENT_TIMESTAMP
                      WHERE id = ?"
                 )
                 .bind(executed_at)
                 .bind(action_count + 1)
-                .bind(serde_json::to_string(&entrypoint_counts).unwrap_or_else(|_| "{}".to_string()))
+                .bind(serde_json::to_string(&action_counts).unwrap_or_else(|_| "{}".to_string()))
                 .bind(&session_id)
                 .execute(&mut **tx)
                 .await?;
@@ -114,23 +114,23 @@ async fn create_new_session(
 ) -> QueryResult<()> {
     let session_id = format!("{}:{}", caller_address, executed_at.timestamp());
     
-    // Initialize IndexMap with first entrypoint
-    let mut entrypoint_counts = IndexMap::new();
-    entrypoint_counts.insert(entrypoint.to_string(), 1u32);
+    // Initialize IndexMap with first action (entrypoint)
+    let mut action_counts = IndexMap::new();
+    action_counts.insert(entrypoint.to_string(), 1u32);
     
-    let entrypoints_json = serde_json::to_string(&entrypoint_counts)
+    let actions_json = serde_json::to_string(&action_counts)
         .unwrap_or_else(|_| "{}".to_string());
 
     sqlx::query(
         "INSERT INTO activities
-         (id, caller_address, session_start, session_end, action_count, entrypoints)
+         (id, caller_address, session_start, session_end, action_count, actions)
          VALUES (?, ?, ?, ?, 1, ?)"
     )
     .bind(&session_id)
     .bind(caller_address)
     .bind(executed_at)
     .bind(executed_at)
-    .bind(&entrypoints_json)
+    .bind(&actions_json)
     .execute(&mut **tx)
     .await?;
 
