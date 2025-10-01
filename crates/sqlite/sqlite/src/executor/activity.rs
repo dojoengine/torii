@@ -9,6 +9,9 @@ pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor::activity";
 
 pub type QueryResult<T> = std::result::Result<T, ExecutorQueryError>;
 
+// Type alias for session data: (id, session_start, session_end, action_count, entrypoints_json)
+type SessionData = (String, DateTime<Utc>, DateTime<Utc>, i32, String);
+
 // Session timeout: 1 hour of inactivity starts a new session
 const SESSION_TIMEOUT_SECONDS: i64 = 3600;
 
@@ -42,7 +45,7 @@ pub async fn update_activity(
     }
 
     // Try to find the most recent session for this caller
-    let last_session: Option<(String, DateTime<Utc>, DateTime<Utc>, i32, String)> = sqlx::query_as(
+    let last_session: Option<SessionData> = sqlx::query_as(
         "SELECT id, session_start, session_end, action_count, entrypoints
          FROM activities
          WHERE caller_address = ?

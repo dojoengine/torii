@@ -9471,6 +9471,7 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "hashlink",
+ "indexmap 2.11.1",
  "ipfs-api-backend-hyper",
  "katana-runner",
  "metrics",
