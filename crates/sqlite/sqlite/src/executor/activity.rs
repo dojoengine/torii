@@ -1,4 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
+use indexmap::IndexMap;
 use sqlx::{Sqlite, Transaction as SqlxTransaction};
 use tracing::info;
 
@@ -59,9 +60,12 @@ pub async fn update_activity(
             
             if time_diff.num_seconds() <= SESSION_TIMEOUT_SECONDS {
                 // Same session - update it
-                let mut entrypoints: Vec<String> = serde_json::from_str(&entrypoints_json)
-                    .unwrap_or_else(|_| vec![]);
-                entrypoints.push(entrypoint.to_string());
+                let mut entrypoint_counts: IndexMap<String, u32> = 
+                    serde_json::from_str(&entrypoints_json)
+                        .unwrap_or_else(|_| IndexMap::new());
+                
+                // Increment count for this entrypoint
+                *entrypoint_counts.entry(entrypoint.to_string()).or_insert(0) += 1;
 
                 sqlx::query(
                     "UPDATE activities
@@ -73,7 +77,7 @@ pub async fn update_activity(
                 )
                 .bind(executed_at)
                 .bind(action_count + 1)
-                .bind(serde_json::to_string(&entrypoints).unwrap_or_else(|_| "[]".to_string()))
+                .bind(serde_json::to_string(&entrypoint_counts).unwrap_or_else(|_| "{}".to_string()))
                 .bind(&session_id)
                 .execute(&mut **tx)
                 .await?;
@@ -106,9 +110,13 @@ async fn create_new_session(
     executed_at: DateTime<Utc>,
 ) -> QueryResult<()> {
     let session_id = format!("{}:{}", caller_address, executed_at.timestamp());
-    let entrypoints = vec![entrypoint.to_string()];
-    let entrypoints_json = serde_json::to_string(&entrypoints)
-        .unwrap_or_else(|_| "[]".to_string());
+    
+    // Initialize IndexMap with first entrypoint
+    let mut entrypoint_counts = IndexMap::new();
+    entrypoint_counts.insert(entrypoint.to_string(), 1u32);
+    
+    let entrypoints_json = serde_json::to_string(&entrypoint_counts)
+        .unwrap_or_else(|_| "{}".to_string());
 
     sqlx::query(
         "INSERT INTO activities

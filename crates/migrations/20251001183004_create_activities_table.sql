@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS activities (
     session_start DATETIME NOT NULL,
     session_end DATETIME NOT NULL,
     action_count INTEGER NOT NULL DEFAULT 1,
-    entrypoints TEXT NOT NULL,  -- JSON array of entrypoints called in this session
+    entrypoints TEXT NOT NULL,  -- JSON object mapping entrypoint names to call counts: {"approve": 5, "set_slot": 42}
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
