@@ -634,6 +634,7 @@ impl Runner {
             messaging.clone(),
             self.args.world_address.unwrap_or_default(),
             cross_messaging_tx,
+            readonly_pool.clone(),
             GrpcConfig {
                 subscription_buffer_size: self.args.grpc.subscription_buffer_size,
                 optimistic: self.args.grpc.optimistic,

@@ -14,7 +14,7 @@ use torii_proto::proto::world::{
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Contract, ContractQuery, Controller, ControllerQuery, Event, EventQuery, KeysClause,
-    Message, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract,
+    Message, Page, Query, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContract,
     TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
     TransactionFilter, TransactionQuery, World,
 };
@@ -455,5 +455,42 @@ impl Client {
             )
             .await?;
         Ok(())
+    }
+
+    /// Execute a SQL query against the Torii database.
+    ///
+    /// # Arguments
+    /// * `query` - The SQL query string to execute
+    ///
+    /// # Returns
+    /// A vector of `SqlRow` results
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use torii_client::Client;
+    /// # use starknet::core::types::Felt;
+    /// # use torii_proto::SqlValue;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = Client::new("http://localhost:8080".to_string(), Felt::ZERO).await?;
+    /// let rows = client.sql("SELECT * FROM entities LIMIT 10".to_string()).await?;
+    /// println!("Found {} rows", rows.len());
+    /// for row in rows {
+    ///     for (column, value) in row.fields {
+    ///         match value {
+    ///             SqlValue::Text(s) => println!("{}: {}", column, s),
+    ///             SqlValue::Integer(i) => println!("{}: {}", column, i),
+    ///             SqlValue::Real(r) => println!("{}: {}", column, r),
+    ///             SqlValue::Blob(b) => println!("{}: {} bytes", column, b.len()),
+    ///             SqlValue::Null => println!("{}: NULL", column),
+    ///         }
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn sql(&self, query: String) -> Result<Vec<SqlRow>, Error> {
+        let mut grpc_client = self.inner.clone();
+        let rows = grpc_client.execute_sql(query).await?;
+        Ok(rows)
     }
 }

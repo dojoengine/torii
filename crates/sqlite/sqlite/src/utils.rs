@@ -129,6 +129,94 @@ pub fn map_row_to_json(row: &sqlx::sqlite::SqliteRow) -> serde_json::Value {
     serde_json::Value::Object(obj)
 }
 
+// Map a SQLite row to proto SqlRow type
+pub fn map_row_to_proto(row: &sqlx::sqlite::SqliteRow) -> torii_proto::proto::types::SqlRow {
+    use std::collections::HashMap;
+    use torii_proto::proto::types::{sql_value, SqlValue};
+
+    let mut fields = HashMap::new();
+
+    for (i, column) in row.columns().iter().enumerate() {
+        let value = match column.type_info().name() {
+            "TEXT" => {
+                if let Some(text) = row.get::<Option<String>, _>(i) {
+                    SqlValue {
+                        value_type: Some(sql_value::ValueType::Text(text)),
+                    }
+                } else {
+                    SqlValue {
+                        value_type: Some(sql_value::ValueType::Null(true)),
+                    }
+                }
+            }
+            "INTEGER" => {
+                if let Some(int_val) = row.get::<Option<i64>, _>(i) {
+                    SqlValue {
+                        value_type: Some(sql_value::ValueType::Integer(int_val)),
+                    }
+                } else {
+                    SqlValue {
+                        value_type: Some(sql_value::ValueType::Null(true)),
+                    }
+                }
+            }
+            "REAL" => {
+                if let Some(real_val) = row.get::<Option<f64>, _>(i) {
+                    SqlValue {
+                        value_type: Some(sql_value::ValueType::Real(real_val)),
+                    }
+                } else {
+                    SqlValue {
+                        value_type: Some(sql_value::ValueType::Null(true)),
+                    }
+                }
+            }
+            "BLOB" => {
+                if let Some(blob) = row.get::<Option<Vec<u8>>, _>(i) {
+                    SqlValue {
+                        value_type: Some(sql_value::ValueType::Blob(blob)),
+                    }
+                } else {
+                    SqlValue {
+                        value_type: Some(sql_value::ValueType::Null(true)),
+                    }
+                }
+            }
+            _ => {
+                // Try different types in order
+                if let Ok(val) = row.try_get::<i64, _>(i) {
+                    SqlValue {
+                        value_type: Some(sql_value::ValueType::Integer(val)),
+                    }
+                } else if let Ok(val) = row.try_get::<f64, _>(i) {
+                    SqlValue {
+                        value_type: Some(sql_value::ValueType::Real(val)),
+                    }
+                } else if let Ok(val) = row.try_get::<String, _>(i) {
+                    SqlValue {
+                        value_type: Some(sql_value::ValueType::Text(val)),
+                    }
+                } else {
+                    // Handle or fallback to BLOB
+                    let val = row.get::<Option<Vec<u8>>, _>(i);
+                    if let Some(blob) = val {
+                        SqlValue {
+                            value_type: Some(sql_value::ValueType::Blob(blob)),
+                        }
+                    } else {
+                        SqlValue {
+                            value_type: Some(sql_value::ValueType::Null(true)),
+                        }
+                    }
+                }
+            }
+        };
+        fields.insert(column.name().to_string(), value);
+    }
+
+    torii_proto::proto::types::SqlRow { fields }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, NaiveDate, NaiveTime, Utc};

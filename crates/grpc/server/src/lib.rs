@@ -41,6 +41,7 @@ use crate::subscriptions::transaction::TransactionManager;
 
 use self::subscriptions::entity::EntityManager;
 use self::subscriptions::event_message::EventMessageManager;
+use sqlx::SqlitePool;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
     PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest,
@@ -80,6 +81,7 @@ pub struct DojoWorld<P: Provider + Sync> {
     token_manager: Arc<TokenManager>,
     token_transfer_manager: Arc<TokenTransferManager>,
     transaction_manager: Arc<TransactionManager>,
+    pool: SqlitePool,
     _config: GrpcConfig,
 }
 
@@ -89,6 +91,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         messaging: Arc<Messaging<P>>,
         world_address: Felt,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
+        pool: SqlitePool,
         config: GrpcConfig,
     ) -> Self {
         let entity_manager = Arc::new(EntityManager::new(config.clone()));
@@ -147,6 +150,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             token_manager,
             token_transfer_manager,
             transaction_manager,
+            pool,
             _config: config,
         }
     }
@@ -833,6 +837,29 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             responses: responses.into_iter().collect(),
         }))
     }
+
+    async fn execute_sql(
+        &self,
+        request: Request<proto::types::SqlQueryRequest>,
+    ) -> Result<Response<proto::types::SqlQueryResponse>, Status> {
+        let proto::types::SqlQueryRequest { query } = request.into_inner();
+
+        // Execute the query
+        let rows = sqlx::query(&query)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| Status::invalid_argument(format!("Query error: {:?}", e)))?;
+
+        // Map rows to proto types
+        let proto_rows: Vec<proto::types::SqlRow> = rows
+            .iter()
+            .map(torii_sqlite::utils::map_row_to_proto)
+            .collect();
+
+        Ok(Response::new(proto::types::SqlQueryResponse {
+            rows: proto_rows,
+        }))
+    }
 }
 
 const DEFAULT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
@@ -881,6 +908,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     messaging: Arc<Messaging<P>>,
     world_address: Felt,
     cross_messaging_tx: UnboundedSender<Message>,
+    pool: SqlitePool,
     config: GrpcConfig,
     bind_addr: Option<SocketAddr>,
 ) -> Result<
@@ -910,6 +938,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
         messaging,
         world_address,
         Some(cross_messaging_tx),
+        pool,
         config,
     );
     let server = WorldServer::new(world)

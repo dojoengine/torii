@@ -37,8 +37,8 @@ use torii_proto::proto::world::{
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message,
-    Query, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery, TokenTransfer,
-    TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery,
+    Query, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery,
+    TokenTransfer, TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -643,6 +643,22 @@ impl WorldClient {
                     .responses
                     .iter()
                     .map(|r| Felt::from_bytes_be_slice(&r.entity_id))
+                    .collect()
+            })
+    }
+
+    /// Execute a SQL query against the Torii database.
+    /// Returns the query results as rows.
+    pub async fn execute_sql(&mut self, query: String) -> Result<Vec<SqlRow>, Error> {
+        self.inner
+            .execute_sql(torii_proto::proto::types::SqlQueryRequest { query })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| {
+                res.into_inner()
+                    .rows
+                    .into_iter()
+                    .map(|r| r.into())
                     .collect()
             })
     }

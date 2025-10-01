@@ -342,6 +342,35 @@ enum ContractType {
     OTHER = 5;
 }
 
+// SQL query value types
+message SqlValue {
+    oneof value_type {
+        string text = 1;
+        int64 integer = 2;
+        double real = 3;
+        bytes blob = 4;
+        bool null = 5;
+    }
+}
+
+// A single row from SQL query results
+message SqlRow {
+    // Map of column name to value
+    map<string, SqlValue> fields = 1;
+}
+
+// A request to execute a SQL query
+message SqlQueryRequest {
+    // The SQL query to execute
+    string query = 1;
+}
+
+// A response containing SQL query results
+message SqlQueryResponse {
+    // The rows returned by the query
+    repeated SqlRow rows = 1;
+}
+
 message Contract {
     // The contract address
     bytes contract_address = 1;

@@ -84,6 +84,9 @@ service World {
 
     // Publish a set of torii offchain messages
     rpc PublishMessageBatch (PublishMessageBatchRequest) returns (PublishMessageBatchResponse);
+
+    // Execute a SQL query and return results
+    rpc ExecuteSql (types.SqlQueryRequest) returns (types.SqlQueryResponse);
 }
 
 message SubscribeTransactionsRequest {
