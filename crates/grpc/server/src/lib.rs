@@ -81,7 +81,7 @@ pub struct DojoWorld<P: Provider + Sync> {
     token_manager: Arc<TokenManager>,
     token_transfer_manager: Arc<TokenTransferManager>,
     transaction_manager: Arc<TransactionManager>,
-    pool: Arc<SqlitePool>,
+    pool: SqlitePool,
     _config: GrpcConfig,
 }
 
@@ -91,7 +91,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         messaging: Arc<Messaging<P>>,
         world_address: Felt,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
-        pool: Arc<SqlitePool>,
+        pool: SqlitePool,
         config: GrpcConfig,
     ) -> Self {
         let entity_manager = Arc::new(EntityManager::new(config.clone()));
@@ -846,7 +846,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
 
         // Execute the query
         let rows = sqlx::query(&query)
-            .fetch_all(&*self.pool)
+            .fetch_all(&self.pool)
             .await
             .map_err(|e| Status::invalid_argument(format!("Query error: {:?}", e)))?;
 
@@ -908,7 +908,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     messaging: Arc<Messaging<P>>,
     world_address: Felt,
     cross_messaging_tx: UnboundedSender<Message>,
-    pool: Arc<SqlitePool>,
+    pool: SqlitePool,
     config: GrpcConfig,
     bind_addr: Option<SocketAddr>,
 ) -> Result<

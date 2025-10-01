@@ -168,6 +168,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         messaging.clone(),
         world_address,
         None,
+        pool.clone(),
         GrpcConfig::default(),
     );
 

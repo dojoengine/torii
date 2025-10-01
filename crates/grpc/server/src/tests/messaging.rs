@@ -37,19 +37,14 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
         .unwrap()
         .create_if_missing(true)
         .with_regexp();
-    let pool = Arc::new(
-        SqlitePoolOptions::new()
-            .min_connections(1)
-            .idle_timeout(None)
-            .max_lifetime(None)
-            .connect_with(options)
-            .await
-            .unwrap(),
-    );
-    sqlx::migrate!("../../migrations")
-        .run(&*pool)
+    let pool = SqlitePoolOptions::new()
+        .min_connections(1)
+        .idle_timeout(None)
+        .max_lifetime(None)
+        .connect_with(options)
         .await
         .unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
 
     let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
     let account_data = sequencer.account_data(0);
@@ -120,6 +115,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
         messaging,
         Felt::ZERO, // world_address
         None,
+        pool.clone(),
         GrpcConfig::default(),
     );
 
@@ -438,6 +434,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         messaging1,
         Felt::ZERO, // world_address
         Some(cross_messaging_tx1),
+        pool1.clone(),
         GrpcConfig::default(),
     );
 
@@ -635,6 +632,7 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
         messaging,
         Felt::ZERO, // world_address
         None,
+        pool.clone(),
         GrpcConfig::default(),
     );
 
@@ -828,6 +826,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
         messaging,
         Felt::ZERO,
         None,
+        pool.clone(),
         GrpcConfig::default(),
     );
 
