@@ -12,35 +12,17 @@ pub type QueryResult<T> = std::result::Result<T, ExecutorQueryError>;
 // Type alias for session data: (id, session_start, session_end, action_count, actions_json)
 type SessionData = (String, DateTime<Utc>, DateTime<Utc>, i32, String);
 
-// Session timeout: 1 hour of inactivity starts a new session
-const SESSION_TIMEOUT_SECONDS: i64 = 3600;
-
-// Entrypoints to exclude from activity tracking
-const EXCLUDED_ENTRYPOINTS: &[&str] = &[
-    "execute_from_outside_v3",
-    "request_random",
-    "submit_random",
-    "assert_consumed",
-    "deployContract",
-    "set_name",
-    "register_model",
-    "entities",
-    "init_contract",
-    "upgrade_model",
-    "emit_events",
-    "emit_event",
-    "set_metadata",
-];
-
 /// Update activity tracking for a transaction
 pub async fn update_activity(
     tx: &mut SqlxTransaction<'_, Sqlite>,
     caller_address: &str,
     entrypoint: &str,
     executed_at: DateTime<Utc>,
+    session_timeout: u64,
+    excluded_entrypoints: &std::collections::HashSet<String>,
 ) -> QueryResult<()> {
     // Skip excluded entrypoints
-    if EXCLUDED_ENTRYPOINTS.contains(&entrypoint) {
+    if excluded_entrypoints.contains(entrypoint) {
         return Ok(());
     }
 
@@ -61,7 +43,7 @@ pub async fn update_activity(
             // Calculate time difference from last action
             let time_diff = executed_at.signed_duration_since(session_end);
 
-            if time_diff.num_seconds() <= SESSION_TIMEOUT_SECONDS {
+            if time_diff.num_seconds() <= session_timeout as i64 {
                 // Same session - update it
                 let mut action_counts: IndexMap<String, u32> =
                     serde_json::from_str(&actions_json).unwrap_or_else(|_| IndexMap::new());

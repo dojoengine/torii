@@ -481,7 +481,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .fetch_optional(&mut **tx)
                 .await?;
 
-                if is_world_tx.is_some() {
+                if is_world_tx.is_some() && self.config.activity_enabled {
                     // Track activity for each call to WORLD contracts
                     for call in &store_transaction.calls {
                         let caller_address_str = format!("{:#x}", call.caller_address);
@@ -490,6 +490,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                             &caller_address_str,
                             &call.entrypoint,
                             transaction.executed_at,
+                            self.config.activity_session_timeout,
+                            &self.config.activity_excluded_entrypoints,
                         )
                         .await
                         {
