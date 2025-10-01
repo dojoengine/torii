@@ -36,12 +36,11 @@ impl AggregationFilter {
         }
 
         // Check aggregator_id filter
-        let aggregator_match = self.aggregator_ids.is_empty()
-            || self.aggregator_ids.contains(&entry.aggregator_id);
+        let aggregator_match =
+            self.aggregator_ids.is_empty() || self.aggregator_ids.contains(&entry.aggregator_id);
 
         // Check entity_id filter
-        let entity_match =
-            self.entity_ids.is_empty() || self.entity_ids.contains(&entry.entity_id);
+        let entity_match = self.entity_ids.is_empty() || self.entity_ids.contains(&entry.entity_id);
 
         aggregator_match && entity_match
     }
@@ -136,10 +135,7 @@ impl Service {
         }
     }
 
-    async fn process_aggregation_update(
-        subs: &Arc<AggregationManager>,
-        entry: &AggregationEntry,
-    ) {
+    async fn process_aggregation_update(subs: &Arc<AggregationManager>, entry: &AggregationEntry) {
         let mut closed_stream = Vec::new();
 
         for sub in subs.subscribers.iter() {
@@ -195,4 +191,3 @@ impl Future for Service {
         Poll::Pending
     }
 }
-

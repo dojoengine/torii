@@ -221,8 +221,10 @@ impl Client {
         query: AggregationQuery,
     ) -> Result<Page<AggregationEntry>, Error> {
         let mut grpc_client = self.inner.clone();
-        let RetrieveAggregationsResponse { entries, next_cursor } =
-            grpc_client.retrieve_aggregations(query).await?;
+        let RetrieveAggregationsResponse {
+            entries,
+            next_cursor,
+        } = grpc_client.retrieve_aggregations(query).await?;
         Ok(Page {
             items: entries
                 .into_iter()

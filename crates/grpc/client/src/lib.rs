@@ -30,10 +30,9 @@ use torii_proto::proto::world::{
     SubscribeEventMessagesRequest, SubscribeEventsRequest, SubscribeEventsResponse,
     SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
     SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
-    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
-    UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
-    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
-    UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
+    SubscribeTransactionsRequest, SubscribeTransactionsResponse, UpdateEntitiesSubscriptionRequest,
+    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
+    UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{

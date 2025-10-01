@@ -348,7 +348,17 @@ async fn upsert_aggregation_entry(
     .await?;
 
     // Then, fetch the entry with its calculated position
-    let entry: (String, String, String, String, String, String, DateTime<Utc>, DateTime<Utc>, i64) = sqlx::query_as(
+    let entry: (
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        DateTime<Utc>,
+        DateTime<Utc>,
+        i64,
+    ) = sqlx::query_as(
         "SELECT a.id, a.aggregator_id, a.entity_id, a.value, a.display_value, a.model_id, \
          a.created_at, a.updated_at, \
          ROW_NUMBER() OVER (PARTITION BY a.aggregator_id ORDER BY a.value DESC) as position \

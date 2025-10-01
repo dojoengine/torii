@@ -55,12 +55,13 @@ use torii_proto::proto::world::{
     SubscribeAggregationsRequest, SubscribeAggregationsResponse, SubscribeContractsRequest,
     SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
     SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeTokenBalancesRequest,
-    SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse,
-    SubscribeTokensRequest, SubscribeTokensResponse, SubscribeTransactionsRequest,
-    SubscribeTransactionsResponse, UpdateAggregationsSubscriptionRequest,
-    UpdateAggregationsSubscriptionResponse, UpdateEventMessagesSubscriptionRequest,
-    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
-    UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest, WorldMetadataResponse,
+    SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
+    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
+    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    UpdateAggregationsSubscriptionRequest, UpdateAggregationsSubscriptionResponse,
+    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
+    UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
+    WorldMetadataResponse,
 };
 use torii_proto::proto::{self};
 use torii_proto::Message;
@@ -426,6 +427,49 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
                 .collect(),
             next_cursor: aggregations.next_cursor.unwrap_or_default(),
         }))
+    }
+
+    async fn subscribe_aggregations(
+        &self,
+        request: Request<SubscribeAggregationsRequest>,
+    ) -> ServiceResult<Self::SubscribeAggregationsStream> {
+        let SubscribeAggregationsRequest {
+            aggregator_ids,
+            entity_ids,
+        } = request.into_inner();
+
+        let filter = subscriptions::aggregation::AggregationFilter {
+            aggregator_ids,
+            entity_ids,
+        };
+
+        let rx = self.aggregation_manager.add_subscriber(filter).await;
+
+        Ok(Response::new(
+            Box::pin(ReceiverStream::new(rx)) as Self::SubscribeAggregationsStream
+        ))
+    }
+
+    async fn update_aggregations_subscription(
+        &self,
+        request: Request<UpdateAggregationsSubscriptionRequest>,
+    ) -> ServiceResult<UpdateAggregationsSubscriptionResponse> {
+        let UpdateAggregationsSubscriptionRequest {
+            subscription_id,
+            aggregator_ids,
+            entity_ids,
+        } = request.into_inner();
+
+        let filter = subscriptions::aggregation::AggregationFilter {
+            aggregator_ids,
+            entity_ids,
+        };
+
+        self.aggregation_manager
+            .update_subscriber(subscription_id, filter)
+            .await;
+
+        Ok(Response::new(UpdateAggregationsSubscriptionResponse {}))
     }
 
     async fn retrieve_contracts(
