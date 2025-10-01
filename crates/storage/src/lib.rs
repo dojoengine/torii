@@ -14,9 +14,9 @@ use torii_proto::schema::Entity;
 
 use torii_proto::{
     AggregationEntry, AggregationQuery, Contract, ContractCursor, ContractQuery, Controller,
-    ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance,
-    TokenBalanceQuery, TokenContract, TokenContractQuery, TokenQuery, TokenTransfer,
-    TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
+    ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery,
+    TokenContract, TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
+    TransactionCall, TransactionQuery,
 };
 
 pub mod utils;

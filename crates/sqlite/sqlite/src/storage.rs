@@ -847,27 +847,27 @@ impl ReadOnlyStorage for Sql {
         query: &AggregationQuery,
     ) -> Result<Page<AggregationEntry>, StorageError> {
         let executor = PaginationExecutor::new(self.pool.clone());
-        
+
         // Use window function to calculate positions on-the-fly
-        let mut query_builder = QueryBuilder::new("aggregations")
-            .alias("a")
-            .select(&[
-                "a.id".to_string(),
-                "a.aggregator_id".to_string(),
-                "a.entity_id".to_string(),
-                "a.value".to_string(),
-                "a.display_value".to_string(),
-                "a.model_id".to_string(),
-                "a.created_at".to_string(),
-                "a.updated_at".to_string(),
-                // Calculate position using ROW_NUMBER() window function
-                // Partitioned by aggregator_id and ordered by value DESC
-                "ROW_NUMBER() OVER (PARTITION BY a.aggregator_id ORDER BY a.value DESC) as position".to_string(),
-            ]);
+        let mut query_builder = QueryBuilder::new("aggregations").alias("a").select(&[
+            "a.id".to_string(),
+            "a.aggregator_id".to_string(),
+            "a.entity_id".to_string(),
+            "a.value".to_string(),
+            "a.display_value".to_string(),
+            "a.model_id".to_string(),
+            "a.created_at".to_string(),
+            "a.updated_at".to_string(),
+            // Calculate position using ROW_NUMBER() window function
+            // Partitioned by aggregator_id and ordered by value DESC
+            "ROW_NUMBER() OVER (PARTITION BY a.aggregator_id ORDER BY a.value DESC) as position"
+                .to_string(),
+        ]);
 
         if !query.aggregator_ids.is_empty() {
             let placeholders = vec!["?"; query.aggregator_ids.len()].join(", ");
-            query_builder = query_builder.where_clause(&format!("a.aggregator_id IN ({})", placeholders));
+            query_builder =
+                query_builder.where_clause(&format!("a.aggregator_id IN ({})", placeholders));
             for aggregator_id in &query.aggregator_ids {
                 query_builder = query_builder.bind_value(aggregator_id.clone());
             }
@@ -875,7 +875,8 @@ impl ReadOnlyStorage for Sql {
 
         if !query.entity_ids.is_empty() {
             let placeholders = vec!["?"; query.entity_ids.len()].join(", ");
-            query_builder = query_builder.where_clause(&format!("a.entity_id IN ({})", placeholders));
+            query_builder =
+                query_builder.where_clause(&format!("a.entity_id IN ({})", placeholders));
             for entity_id in &query.entity_ids {
                 query_builder = query_builder.bind_value(entity_id.clone());
             }
