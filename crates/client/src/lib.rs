@@ -14,7 +14,7 @@ use torii_proto::proto::world::{
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Contract, ContractQuery, Controller, ControllerQuery, Event, EventQuery, KeysClause,
-    Message, Page, Query, SqlRow, SqlValue, Token, TokenBalance, TokenBalanceQuery, TokenContract,
+    Message, Page, Query, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContract,
     TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
     TransactionFilter, TransactionQuery, World,
 };
