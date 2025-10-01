@@ -639,6 +639,28 @@ pub struct TokenContractQuery {
     pub pagination: Pagination,
 }
 
+/// Query for aggregations (formerly leaderboards)
+#[derive(Debug, Clone, Default)]
+pub struct AggregationQuery {
+    pub aggregator_ids: Vec<String>,
+    pub entity_ids: Vec<String>,
+    pub pagination: Pagination,
+}
+
+/// Represents an entry in an aggregation with its calculated position
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AggregationEntry {
+    pub id: String,
+    pub aggregator_id: String,
+    pub entity_id: String,
+    pub value: String,
+    pub display_value: String,
+    pub position: u64,
+    pub model_id: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 impl From<TokenBalanceQuery> for proto::types::TokenBalanceQuery {
     fn from(value: TokenBalanceQuery) -> Self {
         Self {
