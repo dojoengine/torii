@@ -34,6 +34,69 @@ use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
 use strum_macros::{AsRefStr, EnumIter, FromRepr};
 
+/// SQL query value types
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SqlValue {
+    Text(String),
+    Integer(i64),
+    Real(f64),
+    Blob(Vec<u8>),
+    Null,
+}
+
+/// A single row from SQL query results
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SqlRow {
+    pub fields: HashMap<String, SqlValue>,
+}
+
+impl From<proto::types::SqlValue> for SqlValue {
+    fn from(value: proto::types::SqlValue) -> Self {
+        match value.value_type {
+            Some(proto::types::sql_value::ValueType::Text(text)) => SqlValue::Text(text),
+            Some(proto::types::sql_value::ValueType::Integer(int)) => SqlValue::Integer(int),
+            Some(proto::types::sql_value::ValueType::Real(real)) => SqlValue::Real(real),
+            Some(proto::types::sql_value::ValueType::Blob(blob)) => SqlValue::Blob(blob),
+            Some(proto::types::sql_value::ValueType::Null(_)) | None => SqlValue::Null,
+        }
+    }
+}
+
+impl From<SqlValue> for proto::types::SqlValue {
+    fn from(value: SqlValue) -> Self {
+        let value_type = match value {
+            SqlValue::Text(text) => Some(proto::types::sql_value::ValueType::Text(text)),
+            SqlValue::Integer(int) => Some(proto::types::sql_value::ValueType::Integer(int)),
+            SqlValue::Real(real) => Some(proto::types::sql_value::ValueType::Real(real)),
+            SqlValue::Blob(blob) => Some(proto::types::sql_value::ValueType::Blob(blob)),
+            SqlValue::Null => Some(proto::types::sql_value::ValueType::Null(true)),
+        };
+        Self { value_type }
+    }
+}
+
+impl From<proto::types::SqlRow> for SqlRow {
+    fn from(value: proto::types::SqlRow) -> Self {
+        let fields = value
+            .fields
+            .into_iter()
+            .map(|(k, v)| (k, v.into()))
+            .collect();
+        Self { fields }
+    }
+}
+
+impl From<SqlRow> for proto::types::SqlRow {
+    fn from(value: SqlRow) -> Self {
+        let fields = value
+            .fields
+            .into_iter()
+            .map(|(k, v)| (k, v.into()))
+            .collect();
+        Self { fields }
+    }
+}
+
 /// Represents a cursor for tracking blockchain state
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct ContractCursor {

@@ -17,7 +17,6 @@ use tonic::codec::CompressionEncoding;
 use tonic::transport::Endpoint;
 
 use torii_proto::error::ProtoError;
-use torii_proto::proto::types::{SqlQueryRequest, SqlQueryResponse, SqlRow};
 use torii_proto::proto::world::{
     world_client, PublishMessageBatchRequest, PublishMessageRequest, RetrieveContractsRequest,
     RetrieveContractsResponse, RetrieveControllersRequest, RetrieveControllersResponse,
@@ -38,8 +37,8 @@ use torii_proto::proto::world::{
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message,
-    Query, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery, TokenTransfer,
-    TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery,
+    Query, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery,
+    TokenTransfer, TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -650,12 +649,18 @@ impl WorldClient {
 
     /// Execute a SQL query against the Torii database.
     /// Returns the query results as rows.
-    pub async fn execute_sql(&mut self, query: String) -> Result<SqlQueryResponse, Error> {
+    pub async fn execute_sql(&mut self, query: String) -> Result<Vec<SqlRow>, Error> {
         self.inner
-            .execute_sql(SqlQueryRequest { query })
+            .execute_sql(torii_proto::proto::types::SqlQueryRequest { query })
             .await
             .map_err(Error::Grpc)
-            .map(|res| res.into_inner())
+            .map(|res| {
+                res.into_inner()
+                    .rows
+                    .into_iter()
+                    .map(|r| r.into())
+                    .collect()
+            })
     }
 }
 

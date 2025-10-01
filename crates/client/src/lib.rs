@@ -6,7 +6,6 @@ use torii_grpc_client::{
     ContractUpdateStreaming, EntityUpdateStreaming, EventUpdateStreaming, TokenBalanceStreaming,
     TokenTransferUpdateStreaming, TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
 };
-use torii_proto::proto::types::{SqlQueryResponse, SqlRow};
 use torii_proto::proto::world::{
     RetrieveContractsResponse, RetrieveControllersResponse, RetrieveEntitiesResponse,
     RetrieveEventsResponse, RetrieveTokenBalancesResponse, RetrieveTokenContractsResponse,
@@ -15,7 +14,7 @@ use torii_proto::proto::world::{
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, Contract, ContractQuery, Controller, ControllerQuery, Event, EventQuery, KeysClause,
-    Message, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract,
+    Message, Page, Query, SqlRow, SqlValue, Token, TokenBalance, TokenBalanceQuery, TokenContract,
     TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
     TransactionFilter, TransactionQuery, World,
 };
@@ -464,25 +463,34 @@ impl Client {
     /// * `query` - The SQL query string to execute
     ///
     /// # Returns
-    /// A `SqlQueryResponse` containing the rows
+    /// A vector of `SqlRow` results
     ///
     /// # Example
     /// ```no_run
     /// # use torii_client::Client;
     /// # use starknet::core::types::Felt;
+    /// # use torii_proto::SqlValue;
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = Client::new("http://localhost:8080".to_string(), Felt::ZERO).await?;
-    /// let response = client.query_sql("SELECT * FROM entities LIMIT 10".to_string()).await?;
-    /// println!("Found {} rows", response.rows.len());
-    /// for row in response.rows {
-    ///     println!("{:?}", row.fields);
+    /// let rows = client.sql("SELECT * FROM entities LIMIT 10".to_string()).await?;
+    /// println!("Found {} rows", rows.len());
+    /// for row in rows {
+    ///     for (column, value) in row.fields {
+    ///         match value {
+    ///             SqlValue::Text(s) => println!("{}: {}", column, s),
+    ///             SqlValue::Integer(i) => println!("{}: {}", column, i),
+    ///             SqlValue::Real(r) => println!("{}: {}", column, r),
+    ///             SqlValue::Blob(b) => println!("{}: {} bytes", column, b.len()),
+    ///             SqlValue::Null => println!("{}: NULL", column),
+    ///         }
+    ///     }
     /// }
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn query_sql(&self, query: String) -> Result<SqlQueryResponse, Error> {
+    pub async fn sql(&self, query: String) -> Result<Vec<SqlRow>, Error> {
         let mut grpc_client = self.inner.clone();
-        let response = grpc_client.execute_sql(query).await?;
-        Ok(response)
+        let rows = grpc_client.execute_sql(query).await?;
+        Ok(rows)
     }
 }
