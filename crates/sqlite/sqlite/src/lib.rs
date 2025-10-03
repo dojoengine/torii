@@ -39,6 +39,10 @@ pub struct SqlConfig {
     pub aggregators: Vec<AggregatorConfig>,
     pub wal_truncate_size_threshold: u64,
     pub optimize_interval: u64,
+    // Activity tracking configuration
+    pub activity_enabled: bool,
+    pub activity_session_timeout: u64,
+    pub activity_excluded_entrypoints: HashSet<String>,
 }
 
 impl SqlConfig {

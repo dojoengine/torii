@@ -45,6 +45,12 @@ pub const DEFAULT_DATABASE_MAX_CONNECTIONS: u32 = 100;
 pub const DEFAULT_MESSAGING_MAX_AGE: u64 = 300_000;
 pub const DEFAULT_MESSAGING_FUTURE_TOLERANCE: u64 = 60_000;
 
+// Activity tracking defaults
+/// Default session timeout in seconds (1 hour)
+pub const DEFAULT_ACTIVITY_SESSION_TIMEOUT: u64 = 3600;
+/// Default days to keep activity records (30 days)
+pub const DEFAULT_ACTIVITY_RETENTION_DAYS: u64 = 30;
+
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Relay options")]
@@ -630,6 +636,63 @@ impl Default for SqlOptions {
             hooks: vec![],
             migrations: None,
             aggregators: vec![],
+        }
+    }
+}
+
+#[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
+#[serde(default)]
+#[command(next_help_heading = "Activity tracking options")]
+pub struct ActivityOptions {
+    /// Enable activity tracking for user sessions
+    /// NOTE: Requires --indexing.transactions to be enabled
+    #[arg(
+        long = "activity.enabled",
+        default_value_t = true,
+        help = "Whether to track user activity sessions. When enabled, aggregates transaction \
+                calls into sessions for efficient activity queries. Requires transaction indexing \
+                to be enabled (--indexing.transactions)."
+    )]
+    pub enabled: bool,
+
+    /// Session timeout in seconds
+    #[arg(
+        long = "activity.session_timeout",
+        default_value_t = DEFAULT_ACTIVITY_SESSION_TIMEOUT,
+        help = "Duration in seconds of inactivity before starting a new session. Default is 3600 \
+                seconds (1 hour)."
+    )]
+    pub session_timeout: u64,
+
+    /// Days to retain activity records
+    #[arg(
+        long = "activity.retention_days",
+        default_value_t = DEFAULT_ACTIVITY_RETENTION_DAYS,
+        help = "Number of days to keep activity records before cleanup. Set to 0 to keep forever. \
+                Default is 30 days."
+    )]
+    pub retention_days: u64,
+
+    /// Entrypoints to exclude from activity tracking
+    #[arg(
+        long = "activity.excluded_entrypoints",
+        value_delimiter = ',',
+        help = "Comma-separated list of entrypoints to exclude from activity tracking. Useful for \
+                filtering out wrapper functions or system calls. Defaults include: \
+                execute_from_outside_v3, request_random, submit_random, assert_consumed, \
+                deployContract, set_name, register_model, entities, init_contract, upgrade_model, \
+                emit_events, emit_event, set_metadata"
+    )]
+    pub excluded_entrypoints: Vec<String>,
+}
+
+impl Default for ActivityOptions {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            session_timeout: DEFAULT_ACTIVITY_SESSION_TIMEOUT,
+            retention_days: DEFAULT_ACTIVITY_RETENTION_DAYS,
+            excluded_entrypoints: vec![],
         }
     }
 }

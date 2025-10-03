@@ -64,6 +64,10 @@ pub struct ToriiArgs {
 
     #[command(flatten)]
     #[merge]
+    pub activity: ActivityOptions,
+
+    #[command(flatten)]
+    #[merge]
     pub snapshot: SnapshotOptions,
 
     #[cfg(feature = "server")]
@@ -104,6 +108,7 @@ impl Default for ToriiArgs {
             events: EventsOptions::default(),
             erc: ErcOptions::default(),
             sql: SqlOptions::default(),
+            activity: ActivityOptions::default(),
             snapshot: SnapshotOptions::default(),
             runner: RunnerOptions::default(),
             #[cfg(feature = "server")]

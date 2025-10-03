@@ -475,6 +475,16 @@ impl Runner {
             );
         }
 
+        // Validate activity tracking configuration
+        if self.args.activity.enabled && !self.args.indexing.transactions {
+            return Err(anyhow::anyhow!(
+                "Activity tracking is enabled but transaction indexing is disabled. \
+                 Activity tracking requires transaction data to function. \
+                 Please enable transaction indexing with --indexing.transactions or \
+                 disable activity tracking with --activity.enabled=false"
+            ));
+        }
+
         let historical_models = self.args.sql.historical.clone().into_iter().try_fold(
             HashSet::new(),
             |mut acc, tag| {
@@ -485,6 +495,35 @@ impl Runner {
             },
         )?;
 
+        // Build excluded entrypoints set - use defaults if not specified
+        let default_excluded = [
+            "execute_from_outside_v3",
+            "request_random",
+            "submit_random",
+            "assert_consumed",
+            "deployContract",
+            "set_name",
+            "register_model",
+            "entities",
+            "init_contract",
+            "upgrade_model",
+            "emit_events",
+            "emit_event",
+            "set_metadata",
+        ];
+
+        let activity_excluded_entrypoints: HashSet<String> =
+            if self.args.activity.excluded_entrypoints.is_empty() {
+                default_excluded.iter().map(|s| s.to_string()).collect()
+            } else {
+                self.args
+                    .activity
+                    .excluded_entrypoints
+                    .iter()
+                    .cloned()
+                    .collect()
+            };
+
         let sql_config = SqlConfig {
             all_model_indices: self.args.sql.all_model_indices,
             model_indices: self.args.sql.model_indices.clone(),
@@ -493,6 +532,9 @@ impl Runner {
             aggregators: self.args.sql.aggregators.clone(),
             wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
             optimize_interval: self.args.sql.optimize_interval,
+            activity_enabled: self.args.activity.enabled,
+            activity_session_timeout: self.args.activity.session_timeout,
+            activity_excluded_entrypoints,
         };
 
         let (mut executor, sender) = Executor::new_with_config(

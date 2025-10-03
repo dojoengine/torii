@@ -39,6 +39,7 @@ use crate::utils::{
 use crate::SqlConfig;
 use torii_broker::MemoryBroker;
 
+pub mod activity;
 pub mod aggregator;
 pub mod erc;
 pub mod error;
@@ -464,6 +465,45 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     .bind(felt_to_sql_string(&call.caller_address))
                     .execute(&mut **tx)
                     .await?;
+                }
+
+                // Track activities for WORLD contract interactions
+                // Check if any of the contract addresses are WORLD contracts
+                let is_world_tx: Option<bool> = sqlx::query_scalar(
+                    "SELECT 1 FROM contracts 
+                     WHERE contract_address IN (
+                         SELECT contract_address FROM transaction_contract 
+                         WHERE transaction_hash = ?
+                     ) AND contract_type = 'WORLD'
+                     LIMIT 1",
+                )
+                .bind(transaction.transaction_hash.clone())
+                .fetch_optional(&mut **tx)
+                .await?;
+
+                if is_world_tx.is_some() && self.config.activity_enabled {
+                    // Track activity for each call to WORLD contracts
+                    for call in &store_transaction.calls {
+                        let caller_address_str = format!("{:#x}", call.caller_address);
+                        if let Err(e) = activity::update_activity(
+                            tx,
+                            &caller_address_str,
+                            &call.entrypoint,
+                            transaction.executed_at,
+                            self.config.activity_session_timeout,
+                            &self.config.activity_excluded_entrypoints,
+                        )
+                        .await
+                        {
+                            error!(
+                                target: LOG_TARGET,
+                                caller = %caller_address_str,
+                                entrypoint = %call.entrypoint,
+                                error = ?e,
+                                "Failed to update activity"
+                            );
+                        }
+                    }
                 }
 
                 transaction.contract_addresses = store_transaction.contract_addresses;
