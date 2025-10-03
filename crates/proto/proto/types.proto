@@ -438,13 +438,13 @@ message AggregationEntry {
     // The entity being ranked
     string entity_id = 3;
     // Normalized value for ordering (zero-padded hex)
-    string value = 4;
+    bytes value = 4;
     // Display value for presentation (original format)
     string display_value = 5;
     // Calculated position/rank (1-indexed)
     uint64 position = 6;
     // The model ID this aggregation is based on
-    string model_id = 7;
+    bytes model_id = 7;
     // When the entry was created (RFC3339 timestamp)
     string created_at = 8;
     // When the entry was last updated (RFC3339 timestamp)

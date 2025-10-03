@@ -17,20 +17,25 @@ pub async fn update_aggregation(
     entity: &Ty,
     model_id: &str,
 ) -> QueryResult<Option<torii_proto::AggregationEntry>> {
-    // Extract group_by field (e.g., player address) from the model
-    let entity_id = match extract_field_value(entity, &aggregator_config.group_by, false) {
-        Some(val) => val,
-        None => {
-            warn!(
-                target: LOG_TARGET,
-                group_by = %aggregator_config.group_by,
-                model = %entity.name(),
-                "Could not extract group_by field from model for aggregator"
-            );
-            return Ok(None);
+    // Extract group_by fields (e.g., player address, task_id) from the model
+    // For multiple fields, we create a composite key by joining them with ':'
+    let mut entity_id_parts = Vec::new();
+    for field_path in &aggregator_config.group_by {
+        match extract_field_value(entity, field_path, false) {
+            Some(val) => entity_id_parts.push(val),
+            None => {
+                warn!(
+                    target: LOG_TARGET,
+                    group_by = %field_path,
+                    model = %entity.name(),
+                    "Could not extract group_by field from model for aggregator"
+                );
+                return Ok(None);
+            }
         }
-    };
+    }
 
+    let entity_id = entity_id_parts.join(":");
     let entry_id = format!("{}:{}", aggregator_config.id, entity_id);
 
     // Calculate value based on aggregation strategy - returns (normalized_value, display_value, optional_metadata)

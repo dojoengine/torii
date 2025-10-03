@@ -416,17 +416,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             entries: aggregations
                 .items
                 .into_iter()
-                .map(|entry| proto::types::AggregationEntry {
-                    id: entry.id,
-                    aggregator_id: entry.aggregator_id,
-                    entity_id: entry.entity_id,
-                    value: entry.value,
-                    display_value: entry.display_value,
-                    position: entry.position,
-                    model_id: entry.model_id,
-                    created_at: entry.created_at.to_rfc3339(),
-                    updated_at: entry.updated_at.to_rfc3339(),
-                })
+                .map(|entry| entry.into())
                 .collect(),
             next_cursor: aggregations.next_cursor.unwrap_or_default(),
         }))
