@@ -920,16 +920,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, "Rolled back the transaction.");
             }
             QueryType::UpdateTokenMetadata(update_metadata) => {
-                let id = if let Some(token_id) = update_metadata.token_id {
-                    felt_and_u256_to_sql_string(&update_metadata.contract_address, &token_id)
-                } else {
-                    felt_to_sql_string(&update_metadata.contract_address)
-                };
-
                 // Get the old metadata before updating (needed for trait subtraction)
-                let old_metadata = if update_metadata.token_id.is_some() {
+                let old_metadata = if update_metadata.token_id.is_nft() {
                     sqlx::query_scalar::<_, String>("SELECT metadata FROM tokens WHERE id = ?")
-                        .bind(&id)
+                        .bind(update_metadata.token_id.to_string())
                         .fetch_optional(&mut **tx)
                         .await?
                         .unwrap_or_default()

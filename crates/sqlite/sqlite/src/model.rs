@@ -657,8 +657,7 @@ impl Sql {
             build_composite_clause(table, model_relation_table, composite, historical)?;
 
         // Convert model Felts to hex strings for SQL binding
-        let model_selectors: Vec<String> =
-            models.iter().map(|model| felt_to_sql_string(model)).collect();
+        let model_selectors: Vec<String> = models.iter().map(felt_to_sql_string).collect();
 
         let page = if historical {
             self.fetch_historical_entities(

@@ -78,6 +78,9 @@ pub struct BalanceId {
 impl std::fmt::Display for BalanceId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:#064x}/{}", self.account_address, self.token_id)
+    }
+}
+
 /// SQL query value types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SqlValue {

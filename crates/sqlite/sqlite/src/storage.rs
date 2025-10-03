@@ -12,10 +12,10 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    schema::Entity, BalanceId, AggregationEntry, AggregationQuery, CallType, Clause, CompositeClause,
-    Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery,
-    LogicalOperator, Model, OrderBy, OrderDirection, Page, Query, Token, TokenBalance,
-    TokenBalanceQuery, TokenContract, TokenContractQuery, TokenQuery, TokenTransfer,
+    schema::Entity, AggregationEntry, AggregationQuery, BalanceId, CallType, Clause,
+    CompositeClause, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event,
+    EventQuery, LogicalOperator, Model, OrderBy, OrderDirection, Page, Query, Token, TokenBalance,
+    TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery, TokenTransfer,
     TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
