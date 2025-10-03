@@ -38,7 +38,10 @@ use torii_proto::proto::world::{
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    AggregationQuery, Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message, Query, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery
+    AggregationQuery, Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery,
+    KeysClause, Message, Query, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery,
+    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionFilter,
+    TransactionQuery,
 };
 
 pub use torii_proto as types;
