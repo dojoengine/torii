@@ -415,3 +415,80 @@ impl From<Contract> for torii_proto::Contract {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AggregatorConfig {
+    pub id: String,
+    pub model_tag: String,
+    pub group_by: String,
+    pub aggregation: Aggregation,
+    pub order: SortOrder,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Aggregation {
+    /// Count occurrences by incrementing by 1 for each update (useful for counting events like wins, kills, etc.)
+    Count,
+    /// Keep the latest value from the field (useful for current score, level, rank)
+    Latest(String),
+    /// Keep the maximum value seen from the field (useful for high scores, best combo)
+    Max(String),
+    /// Keep the minimum value seen from the field (useful for fastest times, speedruns)
+    Min(String),
+    /// Sum/accumulate values from the field (useful for total XP, total gold earned)
+    Sum(String),
+    /// Calculate the average value from the field (useful for average score, average time)
+    Avg(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SortOrder {
+    Desc,
+    Asc,
+}
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregationEntry {
+    pub id: String,
+    pub aggregator_id: String,
+    pub entity_id: String,
+    pub value: String,
+    pub display_value: String,
+    pub model_id: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    /// Only used for Avg aggregation to track sum and count
+    #[sqlx(default)]
+    pub metadata: Option<String>,
+}
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregationEntryWithPosition {
+    pub id: String,
+    pub aggregator_id: String,
+    pub entity_id: String,
+    pub value: String,
+    pub display_value: String,
+    pub model_id: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub position: i64,
+}
+
+impl From<AggregationEntryWithPosition> for torii_proto::AggregationEntry {
+    fn from(value: AggregationEntryWithPosition) -> Self {
+        Self {
+            id: value.id,
+            aggregator_id: value.aggregator_id,
+            entity_id: value.entity_id,
+            value: value.value,
+            display_value: value.display_value,
+            model_id: value.model_id,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            position: value.position as u64,
+        }
+    }
+}

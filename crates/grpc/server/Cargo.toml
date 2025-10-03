@@ -17,6 +17,7 @@ thiserror.workspace = true
 torii-broker = { workspace = true }
 torii-proto = { workspace = true, features = ["server"] }
 torii-messaging = { workspace = true }
+torii-sqlite = { workspace = true }
 
 crypto-bigint.workspace = true
 serde.workspace = true

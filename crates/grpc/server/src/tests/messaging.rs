@@ -116,6 +116,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
         messaging,
         Felt::ZERO, // world_address
         None,
+        pool.clone(),
         GrpcConfig::default(),
     );
 
@@ -434,6 +435,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         messaging1,
         Felt::ZERO, // world_address
         Some(cross_messaging_tx1),
+        pool1.clone(),
         GrpcConfig::default(),
     );
 
@@ -631,6 +633,7 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
         messaging,
         Felt::ZERO, // world_address
         None,
+        pool.clone(),
         GrpcConfig::default(),
     );
 
@@ -824,6 +827,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
         messaging,
         Felt::ZERO,
         None,
+        pool.clone(),
         GrpcConfig::default(),
     );
 

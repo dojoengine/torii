@@ -1,10 +1,14 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
-use erc::{store_token_attributes, update_contract_traits_from_metadata, UpdateTokenMetadataQuery};
+use erc::{
+    store_token_attributes, update_contract_traits_from_metadata,
+    update_contract_traits_on_metadata_change, UpdateTokenMetadataQuery,
+};
 use metrics::{counter, histogram};
 use serde_json;
 use sqlx::{FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
@@ -18,8 +22,8 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 use torii_broker::types::{
-    ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType, ModelUpdate,
-    TokenBalanceUpdate, TokenTransferUpdate, TokenUpdate, TransactionUpdate, Update,
+    AggregationUpdate, ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType,
+    ModelUpdate, TokenBalanceUpdate, TokenTransferUpdate, TokenUpdate, TransactionUpdate, Update,
 };
 use torii_math::I256;
 use torii_proto::{BalanceId, ContractCursor, TokenId, TransactionCall};
@@ -32,11 +36,15 @@ use crate::executor::error::{ExecutorError, ExecutorQueryError};
 use crate::utils::{
     felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, u256_to_sql_string,
 };
+use crate::SqlConfig;
 use torii_broker::MemoryBroker;
 
+pub mod activity;
+pub mod aggregator;
 pub mod erc;
 pub mod error;
 pub use erc::{RegisterNftTokenQuery, RegisterTokenContractQuery};
+use sqlx::Executor as SqlxExecutor;
 
 pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor";
 
@@ -63,6 +71,7 @@ pub enum BrokerMessage {
     TokenBalanceUpdated(<TokenBalanceUpdate as InnerType>::Inner),
     TokenTransfer(<TokenTransferUpdate as InnerType>::Inner),
     Transaction(<TransactionUpdate as InnerType>::Inner),
+    AggregationUpdated(<AggregationUpdate as InnerType>::Inner),
 }
 
 #[derive(Debug, Clone)]
@@ -174,6 +183,11 @@ pub struct Executor<'c, P: Provider + Sync + Send + Clone + 'static> {
     shutdown_rx: Receiver<()>,
     // It is used to make RPC calls to fetch erc contracts
     provider: P,
+    // SQL configuration
+    config: crate::SqlConfig,
+    db_path: PathBuf,
+    // Timestamp of last optimization
+    last_optimization: Option<Instant>,
 }
 
 #[derive(Debug)]
@@ -250,6 +264,23 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         shutdown_tx: Sender<()>,
         provider: P,
     ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
+        Self::new_with_config(
+            pool,
+            shutdown_tx,
+            provider,
+            crate::SqlConfig::default(),
+            PathBuf::from(""),
+        )
+        .await
+    }
+
+    pub async fn new_with_config(
+        pool: Pool<Sqlite>,
+        shutdown_tx: Sender<()>,
+        provider: P,
+        config: SqlConfig,
+        db_path: PathBuf,
+    ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
         let (tx, rx) = unbounded_channel();
         let transaction = pool.begin().await?;
         let publish_queue = Vec::new();
@@ -263,6 +294,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 rx,
                 shutdown_rx,
                 provider,
+                config,
+                db_path,
+                last_optimization: None,
             },
             tx,
         ))
@@ -434,6 +468,45 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     .await?;
                 }
 
+                // Track activities for WORLD contract interactions
+                // Check if any of the contract addresses are WORLD contracts
+                let is_world_tx: Option<bool> = sqlx::query_scalar(
+                    "SELECT 1 FROM contracts 
+                     WHERE contract_address IN (
+                         SELECT contract_address FROM transaction_contract 
+                         WHERE transaction_hash = ?
+                     ) AND contract_type = 'WORLD'
+                     LIMIT 1",
+                )
+                .bind(transaction.transaction_hash.clone())
+                .fetch_optional(&mut **tx)
+                .await?;
+
+                if is_world_tx.is_some() && self.config.activity_enabled {
+                    // Track activity for each call to WORLD contracts
+                    for call in &store_transaction.calls {
+                        let caller_address_str = format!("{:#x}", call.caller_address);
+                        if let Err(e) = activity::update_activity(
+                            tx,
+                            &caller_address_str,
+                            &call.entrypoint,
+                            transaction.executed_at,
+                            self.config.activity_session_timeout,
+                            &self.config.activity_excluded_entrypoints,
+                        )
+                        .await
+                        {
+                            error!(
+                                target: LOG_TARGET,
+                                caller = %caller_address_str,
+                                entrypoint = %call.entrypoint,
+                                error = ?e,
+                                "Failed to update activity"
+                            );
+                        }
+                    }
+                }
+
                 transaction.contract_addresses = store_transaction.contract_addresses;
                 transaction.calls = store_transaction.calls;
                 transaction.unique_models = store_transaction.unique_models;
@@ -504,6 +577,48 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .bind(entity_counter)
                 .execute(&mut **tx)
                 .await?;
+
+                // Update aggregations if this model is part of any aggregator configuration
+                let model_tag = entity.ty.name();
+                let aggregator_configs: Vec<_> = self
+                    .config
+                    .get_aggregator_for_model(&model_tag)
+                    .into_iter()
+                    .cloned()
+                    .collect();
+                let mut aggregation_updates = Vec::new();
+                for aggregator_config in aggregator_configs {
+                    match aggregator::update_aggregation(
+                        tx,
+                        &aggregator_config,
+                        &entity.ty,
+                        &entity.model_id,
+                    )
+                    .await
+                    {
+                        Ok(Some(aggregation_entry)) => {
+                            aggregation_updates.push(aggregation_entry);
+                        }
+                        Ok(None) => {
+                            // group_by field could not be extracted, skip
+                        }
+                        Err(e) => {
+                            error!(
+                                target: LOG_TARGET,
+                                aggregator_id = %aggregator_config.id,
+                                error = ?e,
+                                "Failed to update aggregation"
+                            );
+                        }
+                    }
+                }
+
+                // Publish aggregation updates
+                for aggregation_entry in aggregation_updates {
+                    self.publish_optimistic_and_queue(BrokerMessage::AggregationUpdated(
+                        aggregation_entry,
+                    ));
+                }
 
                 self.publish_optimistic_and_queue(BrokerMessage::EntityUpdate(
                     entity_updated.into(),
@@ -636,7 +751,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, "Applying balance diff.");
                 let instant = Instant::now();
                 self.apply_balance_diff(apply_balance_diff, self.provider.clone())
-                    .await?;
+                    .await
+                    .map_err(Box::new)?;
                 debug!(target: LOG_TARGET, duration = ?instant.elapsed(), "Applied balance diff.");
             }
             QueryType::RegisterNftToken(register_nft_token) => {
@@ -804,6 +920,23 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, "Rolled back the transaction.");
             }
             QueryType::UpdateTokenMetadata(update_metadata) => {
+                let id = if let Some(token_id) = update_metadata.token_id {
+                    felt_and_u256_to_sql_string(&update_metadata.contract_address, &token_id)
+                } else {
+                    felt_to_sql_string(&update_metadata.contract_address)
+                };
+
+                // Get the old metadata before updating (needed for trait subtraction)
+                let old_metadata = if update_metadata.token_id.is_some() {
+                    sqlx::query_scalar::<_, String>("SELECT metadata FROM tokens WHERE id = ?")
+                        .bind(&id)
+                        .fetch_optional(&mut **tx)
+                        .await?
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+
                 // Update metadata and timestamp in database
                 let token = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "UPDATE tokens SET metadata = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *",
@@ -818,8 +951,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     // Update individual token attributes
                     store_token_attributes(&update_metadata.metadata, &token.id, &mut *tx).await?;
 
-                    // Update contract's traits
-                    update_contract_traits_from_metadata(
+                    // Update contract's traits with proper subtraction of old traits and addition of new traits
+                    update_contract_traits_on_metadata_change(
+                        &old_metadata,
                         &update_metadata.metadata,
                         &update_metadata.token_id.contract_address(),
                         &mut *tx,
@@ -857,10 +991,28 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             transaction.commit().await?;
         }
 
-        // Write & truncate the WAL file. Pretty expensive operation.
-        // self.pool
-        //     .execute("PRAGMA wal_checkpoint(TRUNCATE);")
-        //     .await?;
+        // Run PRAGMA optimize after committing transaction if interval has elapsed
+        // This is the optimal time since the transaction is closed and tables may have changed
+        if self.config.optimize_interval > 0 {
+            let should_optimize = match self.last_optimization {
+                None => true, // Never optimized, do it now
+                Some(last) => last.elapsed().as_secs() >= self.config.optimize_interval,
+            };
+
+            if should_optimize {
+                if let Err(e) = self.pool.execute("PRAGMA optimize").await {
+                    debug!(target: LOG_TARGET, error = ?e, "Failed to run optimization after commit");
+                } else {
+                    debug!(target: LOG_TARGET, "Ran PRAGMA optimize after commit");
+                    self.last_optimization = Some(Instant::now());
+                }
+            }
+        }
+
+        // Check WAL size and truncate if it exceeds threshold
+        if self.config.wal_truncate_size_threshold > 0 {
+            self.check_and_truncate_wal().await?;
+        }
 
         self.transaction = Some(self.pool.begin().await?);
 
@@ -880,11 +1032,6 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             transaction.rollback().await?;
         }
 
-        // Write & truncate the WAL file. Pretty expensive operation.
-        // self.pool
-        //     .execute("PRAGMA wal_checkpoint(TRUNCATE);")
-        //     .await?;
-
         self.transaction = Some(self.pool.begin().await?);
 
         self.publish_queue.clear();
@@ -892,6 +1039,35 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         // Record metrics
         counter!("torii_executor_transaction_operations_total", "operation" => "rollback", "status" => "success")
             .increment(1);
+
+        Ok(())
+    }
+
+    async fn check_and_truncate_wal(&mut self) -> Result<()> {
+        let wal_path = self.db_path.with_extension("db-wal");
+
+        // Check if WAL file exists and get its size
+        if let Ok(metadata) = tokio::fs::metadata(&wal_path).await {
+            let wal_size = metadata.len();
+
+            if wal_size > self.config.wal_truncate_size_threshold {
+                debug!(
+                    target: LOG_TARGET,
+                    wal_size = wal_size,
+                    threshold = self.config.wal_truncate_size_threshold,
+                    "WAL size exceeds threshold, performing TRUNCATE checkpoint"
+                );
+
+                // Perform TRUNCATE checkpoint
+                self.pool
+                    .execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                    .await?;
+
+                counter!("torii_executor_wal_checkpoint_truncate_total").increment(1);
+
+                histogram!("torii_executor_wal_size_at_truncate_bytes").record(wal_size as f64);
+            }
+        }
 
         Ok(())
     }
@@ -928,6 +1104,9 @@ fn send_broker_message(message: BrokerMessage, optimistic: bool) {
         }
         BrokerMessage::Transaction(transaction) => {
             MemoryBroker::publish(Update::new(transaction, optimistic))
+        }
+        BrokerMessage::AggregationUpdated(aggregation) => {
+            MemoryBroker::publish(Update::new(aggregation, optimistic))
         }
     }
 }

@@ -13,9 +13,9 @@ use torii_math::I256;
 use torii_proto::schema::Entity;
 
 use torii_proto::{
-    BalanceId, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event,
-    EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery, TokenContract,
-    TokenContractQuery, TokenId, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
+    BalanceId, AggregationEntry, AggregationQuery, Contract, ContractCursor, ContractQuery, Controller,
+    ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery,
+    TokenContract, TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
     TransactionCall, TransactionQuery,
 };
 
@@ -87,6 +87,12 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
         entity_id: Felt,
         model_selector: Felt,
     ) -> Result<Option<Ty>, StorageError>;
+
+    /// Returns aggregations for the storage.
+    async fn aggregations(
+        &self,
+        query: &AggregationQuery,
+    ) -> Result<Page<AggregationEntry>, StorageError>;
 }
 
 #[async_trait]
@@ -147,6 +153,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
+        keys: Vec<Felt>,
     ) -> Result<(), StorageError>;
 
     /// Deletes an entity with the storage.

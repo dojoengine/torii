@@ -112,31 +112,50 @@ impl StaticHandler {
         // Split the path and validate format
         let parts: Vec<&str> = path.split('/').collect();
 
-        if parts.len() != 3 || parts[2] != "image" {
-            return Ok(Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::empty())
-                .unwrap());
-        }
+        // Handle both token format: contract_address/token_id/image
+        // and contract format: contract_address/image
+        let (contract_address, token_id_part, is_contract) = match parts.len() {
+            3 if parts[2] == "image" => {
+                // Token format: contract_address/token_id/image
+                if !parts[0].starts_with("0x") || !parts[1].starts_with("0x") {
+                    return Ok(Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(Body::empty())
+                        .unwrap());
+                }
+                (parts[0], parts[1], false)
+            }
+            2 if parts[1] == "image" => {
+                // Contract format: contract_address/image
+                if !parts[0].starts_with("0x") {
+                    return Ok(Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(Body::empty())
+                        .unwrap());
+                }
+                (parts[0], "", true)
+            }
+            _ => {
+                return Ok(Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Body::empty())
+                    .unwrap());
+            }
+        };
 
-        // Validate contract_address format
-        if !parts[0].starts_with("0x") {
-            return Ok(Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::empty())
-                .unwrap());
-        }
+        let token_image_dir = if is_contract {
+            self.artifacts_dir.join(contract_address)
+        } else {
+            self.artifacts_dir
+                .join(contract_address)
+                .join(token_id_part)
+        };
 
-        // Validate token_id format
-        if !parts[1].starts_with("0x") {
-            return Ok(Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::empty())
-                .unwrap());
-        }
-
-        let token_image_dir = self.artifacts_dir.join(parts[0]).join(parts[1]);
-        let token_id = format!("{}:{}", parts[0], parts[1]);
+        let token_id = if is_contract {
+            contract_address.to_string()
+        } else {
+            format!("{}:{}", contract_address, token_id_part)
+        };
 
         // We'll generate ETag from content hash after reading the file
 
@@ -347,15 +366,15 @@ impl StaticHandler {
     }
 
     async fn get_token_updated_at(&self, token_id: &str) -> Result<String> {
-        let query = sqlx::query_as::<_, (String,)>(&format!(
-            "SELECT updated_at FROM {TOKENS_TABLE} WHERE id = ?"
-        ))
-        .bind(token_id)
-        .fetch_one(&self.pool)
-        .await
-        .context("Failed to fetch updated_at from database")?;
+        // For both tokens and contracts, we can use the same query since contract address is the ID for contracts
+        let query_str = format!("SELECT updated_at FROM {TOKENS_TABLE} WHERE id = ?");
+        let query_result = sqlx::query_as::<_, (String,)>(&query_str)
+            .bind(token_id)
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to fetch updated_at from database")?;
 
-        Ok(query.0)
+        Ok(query_result.0)
     }
 
     async fn check_if_image_outdated(
@@ -487,16 +506,16 @@ impl StaticHandler {
         token_id: &str,
         db_timestamp: Option<&str>,
     ) -> anyhow::Result<String> {
-        let query = sqlx::query_as::<_, (String,)>(&format!(
-            "SELECT metadata FROM {TOKENS_TABLE} WHERE id = ?"
-        ))
-        .bind(token_id)
-        .fetch_one(&self.pool)
-        .await
-        .context("Failed to fetch metadata from database")?;
+        // For both tokens and contracts, we can use the same query since contract address is the ID for contracts
+        let query_str = format!("SELECT metadata FROM {TOKENS_TABLE} WHERE id = ?");
+        let query_result = sqlx::query_as::<_, (String,)>(&query_str)
+            .bind(token_id)
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to fetch metadata from database")?;
 
         let metadata: serde_json::Value =
-            serde_json::from_str(&query.0).context("Failed to parse metadata")?;
+            serde_json::from_str(&query_result.0).context("Failed to parse metadata")?;
         let image_uri = metadata
             .get("image")
             .context("Image URL not found in metadata")?
@@ -584,19 +603,28 @@ impl StaticHandler {
         };
 
         // Extract contract_address and token_id from token_id
-        let parts: Vec<&str> = token_id.split(':').collect();
-        if parts.len() != 2 {
-            return Err(anyhow::anyhow!(
-                "token_id must be in format contract_address:token_id"
-            ));
-        }
-        let contract_address = parts[0];
-        let token_id_part = parts[1];
+        let (contract_address, token_id_part) = if token_id.contains(':') {
+            let parts: Vec<&str> = token_id.split(':').collect();
+            if parts.len() != 2 {
+                return Err(anyhow::anyhow!(
+                    "token_id must be in format contract_address:token_id"
+                ));
+            }
+            (parts[0], parts[1])
+        } else {
+            // Contract address only
+            (token_id, "")
+        };
 
-        let dir_path = self
-            .artifacts_dir
-            .join(contract_address)
-            .join(token_id_part);
+        let dir_path = if token_id_part.is_empty() {
+            // Contract case - store in contract_address directory
+            self.artifacts_dir.join(contract_address)
+        } else {
+            // Token case - store in contract_address/token_id directory
+            self.artifacts_dir
+                .join(contract_address)
+                .join(token_id_part)
+        };
 
         // Create directories if they don't exist
         fs::create_dir_all(&dir_path)
@@ -606,9 +634,15 @@ impl StaticHandler {
         // Define base image name
         let base_image_name = "image";
 
-        let relative_path = Utf8PathBuf::new()
-            .join(contract_address)
-            .join(token_id_part);
+        let relative_path = if token_id_part.is_empty() {
+            // Contract case - just contract_address
+            Utf8PathBuf::from(contract_address)
+        } else {
+            // Token case - contract_address/token_id_part
+            Utf8PathBuf::new()
+                .join(contract_address)
+                .join(token_id_part)
+        };
 
         match image_type {
             ErcImageType::DynamicImage((img, format)) => {

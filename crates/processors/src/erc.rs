@@ -560,10 +560,19 @@ pub async fn fetch_token_uri<P: Provider + Sync>(
     let token_uri =
         match try_fetch_token_uri_sequence(provider, contract_address, token_id, block_id).await {
             Ok(Some(uri)) => uri,
-            Ok(None) | Err(_) => {
+            Ok(None) => {
                 warn!(
                     contract_address = format!("{:#x}", contract_address),
                     token_id = %token_id,
+                    "Error fetching token URI, empty metadata will be used instead.",
+                );
+                return Ok("".to_string());
+            }
+            Err(e) => {
+                warn!(
+                    contract_address = format!("{:#x}", contract_address),
+                    token_id = %token_id,
+                    error = ?e,
                     "Error fetching token URI, empty metadata will be used instead.",
                 );
                 return Ok("".to_string());
@@ -613,11 +622,12 @@ pub async fn fetch_token_metadata<P: Provider + Sync>(
     match metadata {
         Ok(metadata) => serde_json::to_string(&metadata)
             .map_err(|e| TokenMetadataError::Parse(ParseError::FromJsonStr(e))),
-        Err(_) => {
+        Err(e) => {
             warn!(
                 contract_address = format!("{:#x}", contract_address),
                 token_id = %token_id,
                 token_uri = %token_uri,
+                error = ?e,
                 "Error fetching metadata, empty metadata will be used instead.",
             );
             Ok("".to_string())

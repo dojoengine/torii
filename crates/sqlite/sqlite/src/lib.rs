@@ -14,7 +14,7 @@ use crate::error::{Error, ParseError};
 use crate::executor::error::ExecutorQueryError;
 use crate::executor::{Argument, QueryMessage};
 use crate::utils::utc_dt_string_from_timestamp;
-use torii_sqlite_types::{Hook, ModelIndices};
+use torii_sqlite_types::{AggregatorConfig, Hook, ModelIndices};
 
 pub mod constants;
 pub mod cursor;
@@ -36,11 +36,25 @@ pub struct SqlConfig {
     pub model_indices: Vec<ModelIndices>,
     pub historical_models: HashSet<Felt>,
     pub hooks: Vec<Hook>,
+    pub aggregators: Vec<AggregatorConfig>,
+    pub wal_truncate_size_threshold: u64,
+    pub optimize_interval: u64,
+    // Activity tracking configuration
+    pub activity_enabled: bool,
+    pub activity_session_timeout: u64,
+    pub activity_excluded_entrypoints: HashSet<String>,
 }
 
 impl SqlConfig {
     pub fn is_historical(&self, selector: &Felt) -> bool {
         self.historical_models.contains(selector)
+    }
+
+    pub fn get_aggregator_for_model(&self, model_tag: &str) -> Vec<&AggregatorConfig> {
+        self.aggregators
+            .iter()
+            .filter(|agg| agg.model_tag == model_tag)
+            .collect()
     }
 }
 
@@ -78,7 +92,7 @@ impl Sql {
                     Argument::String(contract.r#type.to_string()),
                     Argument::Int(contract.starting_block.map_or(0, |b| b - 1) as i64),
                 ],
-            )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e)))))?;
         }
 
         let db = Self {
@@ -214,7 +228,9 @@ impl Sql {
         // Execute the single query
         self.executor
             .send(QueryMessage::other(insert_statement, arguments))
-            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
 
         Ok(())
     }
@@ -284,20 +300,24 @@ impl Sql {
                 self.executor
                     .send(QueryMessage::other(alter_query, vec![]))
                     .map_err(|e| {
-                        Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e)))
+                        Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
                     })?;
             }
         } else {
             self.executor
                 .send(QueryMessage::other(create_table_query, vec![]))
-                .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+                .map_err(|e| {
+                    Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+                })?;
         }
 
         // Create indices
         for index_query in indices {
             self.executor
                 .send(QueryMessage::other(index_query, vec![]))
-                .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(e))))?;
+                .map_err(|e| {
+                    Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+                })?;
         }
 
         Ok(())

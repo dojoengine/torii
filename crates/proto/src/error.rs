@@ -1,3 +1,4 @@
+use chrono::ParseError as ChronoParseError;
 use starknet::core::types::FromStrError;
 
 #[derive(Debug, thiserror::Error)]
@@ -22,4 +23,6 @@ pub enum ProtoError {
     InvalidCallType(String),
     #[error("Invalid contract type: {0}")]
     InvalidContractType(String),
+    #[error("Failed to parse timestamp '{0}': {1}")]
+    ParseTimestamp(String, ChronoParseError),
 }

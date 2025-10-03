@@ -8,7 +8,6 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::str;
 use std::sync::Arc;
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use crypto_bigint::U256;
@@ -21,6 +20,7 @@ use proto::world::{
 };
 use starknet::core::types::Felt;
 use starknet::providers::Provider;
+use subscriptions::aggregation::AggregationManager;
 use subscriptions::contract::ContractManager;
 use subscriptions::event::EventManager;
 use subscriptions::token::TokenManager;
@@ -42,19 +42,23 @@ use crate::subscriptions::transaction::TransactionManager;
 
 use self::subscriptions::entity::EntityManager;
 use self::subscriptions::event_message::EventMessageManager;
+use sqlx::SqlitePool;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
     PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest,
-    PublishMessageResponse, RetrieveContractsRequest, RetrieveContractsResponse,
-    RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEventMessagesRequest,
-    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest,
-    RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse,
-    RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest,
-    RetrieveTransactionsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
-    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
-    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    PublishMessageResponse, RetrieveAggregationsRequest, RetrieveAggregationsResponse,
+    RetrieveContractsRequest, RetrieveContractsResponse, RetrieveControllersRequest,
+    RetrieveControllersResponse, RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest,
+    RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
+    RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse, RetrieveTokensRequest,
+    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
+    SubscribeAggregationsRequest, SubscribeAggregationsResponse, SubscribeContractsRequest,
+    SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
+    SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeTokenBalancesRequest,
+    SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
+    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
+    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    UpdateAggregationsSubscriptionRequest, UpdateAggregationsSubscriptionResponse,
     UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
     UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
     WorldMetadataResponse,
@@ -64,18 +68,8 @@ use torii_proto::Message;
 
 use anyhow::{anyhow, Error};
 
-// Shared subscription runtime for all DojoWorld instances
-// This provides performance isolation from user-facing API requests
-// Subscriptions involve heavy polling and should not starve API response threads
-static SUBSCRIPTION_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
-    let worker_threads = (num_cpus::get() / 2).clamp(2, 8);
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(worker_threads)
-        .thread_name("torii-grpc-subscriptions")
-        .enable_all()
-        .build()
-        .expect("Failed to create subscriptions runtime")
-});
+// Note: Subscriptions now run on the main runtime to reduce overhead
+// They use try_send to avoid blocking and have built-in backpressure handling
 
 #[derive(Debug)]
 pub struct DojoWorld<P: Provider + Sync> {
@@ -91,6 +85,8 @@ pub struct DojoWorld<P: Provider + Sync> {
     token_manager: Arc<TokenManager>,
     token_transfer_manager: Arc<TokenTransferManager>,
     transaction_manager: Arc<TransactionManager>,
+    aggregation_manager: Arc<AggregationManager>,
+    pool: SqlitePool,
     _config: GrpcConfig,
 }
 
@@ -100,6 +96,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         messaging: Arc<Messaging<P>>,
         world_address: Felt,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
+        pool: SqlitePool,
         config: GrpcConfig,
     ) -> Self {
         let entity_manager = Arc::new(EntityManager::new(config.clone()));
@@ -110,39 +107,44 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let token_manager = Arc::new(TokenManager::new(config.clone()));
         let token_transfer_manager = Arc::new(TokenTransferManager::new(config.clone()));
         let transaction_manager = Arc::new(TransactionManager::new(config.clone()));
+        let aggregation_manager = Arc::new(AggregationManager::new(config.clone()));
 
-        // Spawn subscription services on the dedicated subscription runtime
-        // These services do heavy polling and should be isolated from API request handling
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::entity::Service::new(Arc::clone(
+        // Spawn subscription services on the main runtime
+        // They use try_send and non-blocking operations to avoid starving other tasks
+        tokio::spawn(subscriptions::entity::Service::new(Arc::clone(
             &entity_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::event_message::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::event_message::Service::new(Arc::clone(
             &event_message_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::event::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::event::Service::new(Arc::clone(
             &event_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::contract::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::contract::Service::new(Arc::clone(
             &contract_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::token_balance::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::token_balance::Service::new(Arc::clone(
             &token_balance_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::token::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::token::Service::new(Arc::clone(
             &token_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::token_transfer::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::token_transfer::Service::new(Arc::clone(
             &token_transfer_manager,
         )));
 
-        SUBSCRIPTION_RUNTIME.spawn(subscriptions::transaction::Service::new(Arc::clone(
+        tokio::spawn(subscriptions::transaction::Service::new(Arc::clone(
             &transaction_manager,
+        )));
+
+        tokio::spawn(subscriptions::aggregation::Service::new(Arc::clone(
+            &aggregation_manager,
         )));
 
         Self {
@@ -158,6 +160,8 @@ impl<P: Provider + Sync> DojoWorld<P> {
             token_manager,
             token_transfer_manager,
             transaction_manager,
+            aggregation_manager,
+            pool,
             _config: config,
         }
     }
@@ -237,6 +241,8 @@ type SubscribeTokenTransfersResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTokenTransfersResponse, Status>> + Send>>;
 type SubscribeTransactionsResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTransactionsResponse, Status>> + Send>>;
+type SubscribeAggregationsResponseStream =
+    Pin<Box<dyn Stream<Item = Result<SubscribeAggregationsResponse, Status>> + Send>>;
 
 #[tonic::async_trait]
 impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for DojoWorld<P> {
@@ -248,6 +254,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
     type SubscribeTokensStream = SubscribeTokensResponseStream;
     type SubscribeTokenTransfersStream = SubscribeTokenTransfersResponseStream;
     type SubscribeTransactionsStream = SubscribeTransactionsResponseStream;
+    type SubscribeAggregationsStream = SubscribeAggregationsResponseStream;
 
     async fn world_metadata(
         &self,
@@ -387,6 +394,85 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             next_cursor: controllers.next_cursor.unwrap_or_default(),
             controllers: controllers.items.into_iter().map(|c| c.into()).collect(),
         }))
+    }
+
+    async fn retrieve_aggregations(
+        &self,
+        request: Request<RetrieveAggregationsRequest>,
+    ) -> Result<Response<RetrieveAggregationsResponse>, Status> {
+        let RetrieveAggregationsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+
+        let aggregations = self
+            .storage
+            .aggregations(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(RetrieveAggregationsResponse {
+            entries: aggregations
+                .items
+                .into_iter()
+                .map(|entry| proto::types::AggregationEntry {
+                    id: entry.id,
+                    aggregator_id: entry.aggregator_id,
+                    entity_id: entry.entity_id,
+                    value: entry.value,
+                    display_value: entry.display_value,
+                    position: entry.position,
+                    model_id: entry.model_id,
+                    created_at: entry.created_at.to_rfc3339(),
+                    updated_at: entry.updated_at.to_rfc3339(),
+                })
+                .collect(),
+            next_cursor: aggregations.next_cursor.unwrap_or_default(),
+        }))
+    }
+
+    async fn subscribe_aggregations(
+        &self,
+        request: Request<SubscribeAggregationsRequest>,
+    ) -> ServiceResult<Self::SubscribeAggregationsStream> {
+        let SubscribeAggregationsRequest {
+            aggregator_ids,
+            entity_ids,
+        } = request.into_inner();
+
+        let filter = subscriptions::aggregation::AggregationFilter {
+            aggregator_ids,
+            entity_ids,
+        };
+
+        let rx = self.aggregation_manager.add_subscriber(filter).await;
+
+        Ok(Response::new(
+            Box::pin(ReceiverStream::new(rx)) as Self::SubscribeAggregationsStream
+        ))
+    }
+
+    async fn update_aggregations_subscription(
+        &self,
+        request: Request<UpdateAggregationsSubscriptionRequest>,
+    ) -> ServiceResult<UpdateAggregationsSubscriptionResponse> {
+        let UpdateAggregationsSubscriptionRequest {
+            subscription_id,
+            aggregator_ids,
+            entity_ids,
+        } = request.into_inner();
+
+        let filter = subscriptions::aggregation::AggregationFilter {
+            aggregator_ids,
+            entity_ids,
+        };
+
+        self.aggregation_manager
+            .update_subscriber(subscription_id, filter)
+            .await;
+
+        Ok(Response::new(UpdateAggregationsSubscriptionResponse {}))
     }
 
     async fn retrieve_contracts(
@@ -844,6 +930,29 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             responses: responses.into_iter().collect(),
         }))
     }
+
+    async fn execute_sql(
+        &self,
+        request: Request<proto::types::SqlQueryRequest>,
+    ) -> Result<Response<proto::types::SqlQueryResponse>, Status> {
+        let proto::types::SqlQueryRequest { query } = request.into_inner();
+
+        // Execute the query
+        let rows = sqlx::query(&query)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| Status::invalid_argument(format!("Query error: {:?}", e)))?;
+
+        // Map rows to proto types
+        let proto_rows: Vec<proto::types::SqlRow> = rows
+            .iter()
+            .map(torii_sqlite::utils::map_row_to_proto)
+            .collect();
+
+        Ok(Response::new(proto::types::SqlQueryResponse {
+            rows: proto_rows,
+        }))
+    }
 }
 
 const DEFAULT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
@@ -892,6 +1001,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     messaging: Arc<Messaging<P>>,
     world_address: Felt,
     cross_messaging_tx: UnboundedSender<Message>,
+    pool: SqlitePool,
     config: GrpcConfig,
     bind_addr: Option<SocketAddr>,
 ) -> Result<
@@ -921,6 +1031,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
         messaging,
         world_address,
         Some(cross_messaging_tx),
+        pool,
         config,
     );
     let server = WorldServer::new(world)

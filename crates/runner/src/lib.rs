@@ -17,7 +17,6 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use camino::Utf8PathBuf;
@@ -27,6 +26,7 @@ use futures::future::join_all;
 use sqlx::sqlite::{
     SqliteAutoVacuum, SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
 };
+use sqlx::Executor as SqlxExecutor;
 use sqlx::SqlitePool;
 use starknet::core::types::{BlockId, BlockTag};
 use starknet::providers::jsonrpc::HttpTransport;
@@ -55,25 +55,152 @@ use torii_sqlite::executor::Executor;
 use torii_sqlite::{Sql, SqlConfig};
 use torii_storage::proto::{ContractDefinition, ContractType};
 use torii_storage::ReadOnlyStorage;
-use tracing::{error, info, info_span, warn, Instrument, Span};
+use tracing::{debug, error, info, info_span, warn, Instrument, Span};
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 use url::form_urlencoded;
 
 mod constants;
 
 use crate::constants::LOG_TARGET;
+const MIN_THREADS: usize = 1;
 
-// Shared runtime for GraphQL and gRPC services
-// This provides performance isolation for user-facing query services
-static QUERY_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
-    let worker_threads = (num_cpus::get() / 2).clamp(2, 8);
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(worker_threads)
-        .thread_name("torii-query")
-        .enable_all()
-        .build()
-        .expect("Failed to create query runtime")
-});
+#[derive(Debug, Clone)]
+pub enum AllocationStrategy {
+    Adaptive,
+    QueryPriority,
+    IndexerPriority,
+    Balanced,
+}
+
+impl From<&str> for AllocationStrategy {
+    fn from(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "adaptive" => AllocationStrategy::Adaptive,
+            "query_priority" => AllocationStrategy::QueryPriority,
+            "indexer_priority" => AllocationStrategy::IndexerPriority,
+            "balanced" => AllocationStrategy::Balanced,
+            _ => AllocationStrategy::Adaptive,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct RuntimeAllocation {
+    pub query_threads: usize,
+    pub indexer_threads: usize,
+    pub main_threads: usize,
+}
+
+impl RuntimeAllocation {
+    pub fn calculate(
+        cpu_count: usize,
+        strategy: &AllocationStrategy,
+        query_override: usize,
+        indexer_override: usize,
+    ) -> Self {
+        // Reserve at least 1 thread for main runtime (proxy, messaging, etc.)
+        let available_threads = cpu_count.saturating_sub(1);
+
+        let (query_threads, indexer_threads) = match strategy {
+            AllocationStrategy::QueryPriority => {
+                // 70% query, 30% indexer
+                let query = ((available_threads * 7) / 10)
+                    .max(MIN_THREADS)
+                    .min(available_threads);
+                let indexer = available_threads
+                    .saturating_sub(query)
+                    .max(MIN_THREADS)
+                    .min(available_threads);
+                (query, indexer)
+            }
+            AllocationStrategy::IndexerPriority => {
+                // 30% query, 70% indexer
+                let indexer = ((available_threads * 7) / 10)
+                    .max(MIN_THREADS)
+                    .min(available_threads);
+                let query = available_threads
+                    .saturating_sub(indexer)
+                    .max(MIN_THREADS)
+                    .min(available_threads);
+                (query, indexer)
+            }
+            AllocationStrategy::Balanced => {
+                // 50% each
+                let half = available_threads / 2;
+                (
+                    half.max(MIN_THREADS).min(available_threads),
+                    half.max(MIN_THREADS).min(available_threads),
+                )
+            }
+            AllocationStrategy::Adaptive => {
+                // Default: 60% query, 40% indexer (queries are user-facing)
+                let query = ((available_threads * 6) / 10)
+                    .max(MIN_THREADS)
+                    .min(available_threads);
+                let indexer = available_threads
+                    .saturating_sub(query)
+                    .max(MIN_THREADS)
+                    .min(available_threads);
+                (query, indexer)
+            }
+        };
+
+        Self {
+            query_threads: if query_override > 0 {
+                query_override.max(MIN_THREADS).min(cpu_count)
+            } else {
+                query_threads
+            },
+            indexer_threads: if indexer_override > 0 {
+                indexer_override.max(MIN_THREADS).min(cpu_count)
+            } else {
+                indexer_threads
+            },
+            main_threads: 1, // Keep main runtime lightweight
+        }
+    }
+}
+
+// Structure to hold runtime and its handle for proper shutdown
+struct ManagedRuntime {
+    runtime: tokio::runtime::Runtime,
+    handle: tokio::runtime::Handle,
+}
+
+impl ManagedRuntime {
+    fn new(threads: usize, name: &str, stack_size: usize) -> Self {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(threads)
+            .thread_name(name)
+            .thread_stack_size(stack_size)
+            .enable_all()
+            .build()
+            .expect("Failed to create runtime");
+
+        let handle = runtime.handle().clone();
+
+        Self { runtime, handle }
+    }
+
+    fn handle(&self) -> &tokio::runtime::Handle {
+        &self.handle
+    }
+
+    // Shutdown runtime in a blocking context to avoid the panic
+    fn shutdown(self) {
+        self.runtime.shutdown_background();
+    }
+}
+
+// Function to create a configurable query runtime
+fn create_query_runtime(threads: usize) -> ManagedRuntime {
+    ManagedRuntime::new(threads, "torii-query", 2 * 1024 * 1024) // 2MB stack for complex queries
+}
+
+// Function to create a dedicated indexer runtime
+fn create_indexer_runtime(threads: usize) -> ManagedRuntime {
+    ManagedRuntime::new(threads, "torii-indexer", 1024 * 1024) // 1MB stack (less than queries)
+}
 
 /// Creates a responsive progress bar template based on terminal size
 fn create_progress_bar_template() -> String {
@@ -226,27 +353,51 @@ impl Runner {
             }
         }
 
+        // Calculate optimal runtime allocation early for database configuration
+        let cpu_count = num_cpus::get();
+        let strategy = AllocationStrategy::from(self.args.runner.allocation_strategy.as_str());
+        let allocation = RuntimeAllocation::calculate(
+            cpu_count,
+            &strategy,
+            self.args.runner.query_threads,
+            self.args.runner.indexer_threads,
+        );
+
         let mut options = SqliteConnectOptions::from_str(&database_path.to_string_lossy())?
             .create_if_missing(true)
             .with_regexp();
 
-        // Set the number of threads based on CPU count
-        let cpu_count = std::thread::available_parallelism().unwrap().get();
-        let thread_count = cmp::min(cpu_count, 8);
-        options = options.pragma("threads", thread_count.to_string());
+        // Optimize SQLite threading for our runtime architecture
+        // Use total available threads instead of artificial 8-thread limit
+        let sqlite_threads = cmp::min(
+            cpu_count,
+            allocation.query_threads + allocation.indexer_threads,
+        );
+        options = options.pragma("threads", sqlite_threads.to_string());
 
-        // Performance settings
+        // Advanced performance settings optimized for indexing + query workload
         options = options.auto_vacuum(SqliteAutoVacuum::None);
         options = options.journal_mode(SqliteJournalMode::Wal);
+
+        // Use NORMAL for better performance during heavy indexing
+        // FULL would be safer but much slower for writes
         options = options.synchronous(SqliteSynchronous::Normal);
         options = options.optimize_on_close(true, None);
+
+        // Performance tuning based on workload
         options = options.pragma("cache_size", self.args.sql.cache_size.to_string());
         options = options.pragma("page_size", self.args.sql.page_size.to_string());
+
+        // Optimize WAL checkpointing for heavy write workloads
         options = options.pragma(
             "wal_autocheckpoint",
             self.args.sql.wal_autocheckpoint.to_string(),
         );
+
+        // Increase busy timeout for concurrent access
         options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
+
+        // Memory limits
         options = options.pragma(
             "soft_heap_limit",
             self.args.sql.soft_memory_limit.to_string(),
@@ -256,6 +407,11 @@ impl Runner {
             self.args.sql.hard_memory_limit.to_string(),
         );
 
+        // Additional performance optimizations for indexing workload
+        options = options.pragma("temp_store", "memory"); // Store temp tables in memory
+        options = options.pragma("mmap_size", "268435456"); // 256MB memory mapping
+        options = options.pragma("journal_size_limit", "67108864"); // 64MB journal limit
+
         let write_pool = SqlitePoolOptions::new()
             .min_connections(1)
             .max_connections(1)
@@ -264,10 +420,22 @@ impl Runner {
             .connect_with(options.clone())
             .await?;
 
+        // Aggressive WAL cleanup
+        write_pool
+            .execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            .await?;
+
         let readonly_options = options.read_only(true);
+
+        // Use more connections for readonly pool to handle concurrent queries
+        let max_readonly_connections = cmp::max(
+            self.args.sql.max_connections,
+            (allocation.query_threads * 2) as u32, // 2 connections per query thread
+        );
+
         let readonly_pool = SqlitePoolOptions::new()
-            .min_connections(1)
-            .max_connections(self.args.sql.max_connections)
+            .min_connections(cmp::min(4, max_readonly_connections)) // Keep some connections warm
+            .max_connections(max_readonly_connections)
             .acquire_timeout(Duration::from_millis(self.args.sql.acquire_timeout))
             .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
             .connect_with(readonly_options)
@@ -302,17 +470,29 @@ impl Runner {
                 .run(&mut migrate_handle)
                 .await?;
         }
-        drop(migrate_handle);
 
-        let (mut executor, sender) =
-            Executor::new(write_pool.clone(), shutdown_tx.clone(), provider.clone()).await?;
-        let executor_handle = tokio::spawn(async move { executor.run().await });
+        // Optimize database after schema changes (migrations/indexes)
+        sqlx::query("PRAGMA optimize")
+            .execute(&mut *migrate_handle)
+            .await?;
+
+        drop(migrate_handle);
 
         if self.args.sql.all_model_indices && !self.args.sql.model_indices.is_empty() {
             warn!(
                 target: LOG_TARGET,
                 "all_model_indices is true, which will override any specific indices in model_indices"
             );
+        }
+
+        // Validate activity tracking configuration
+        if self.args.activity.enabled && !self.args.indexing.transactions {
+            return Err(anyhow::anyhow!(
+                "Activity tracking is enabled but transaction indexing is disabled. \
+                 Activity tracking requires transaction data to function. \
+                 Please enable transaction indexing with --indexing.transactions or \
+                 disable activity tracking with --activity.enabled=false"
+            ));
         }
 
         let historical_models = self.args.sql.historical.clone().into_iter().try_fold(
@@ -325,16 +505,63 @@ impl Runner {
             },
         )?;
 
+        // Build excluded entrypoints set - use defaults if not specified
+        let default_excluded = [
+            "execute_from_outside_v3",
+            "request_random",
+            "submit_random",
+            "assert_consumed",
+            "deployContract",
+            "set_name",
+            "register_model",
+            "entities",
+            "init_contract",
+            "upgrade_model",
+            "emit_events",
+            "emit_event",
+            "set_metadata",
+        ];
+
+        let activity_excluded_entrypoints: HashSet<String> =
+            if self.args.activity.excluded_entrypoints.is_empty() {
+                default_excluded.iter().map(|s| s.to_string()).collect()
+            } else {
+                self.args
+                    .activity
+                    .excluded_entrypoints
+                    .iter()
+                    .cloned()
+                    .collect()
+            };
+
+        let sql_config = SqlConfig {
+            all_model_indices: self.args.sql.all_model_indices,
+            model_indices: self.args.sql.model_indices.clone(),
+            historical_models: historical_models.clone(),
+            hooks: self.args.sql.hooks.clone(),
+            aggregators: self.args.sql.aggregators.clone(),
+            wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
+            optimize_interval: self.args.sql.optimize_interval,
+            activity_enabled: self.args.activity.enabled,
+            activity_session_timeout: self.args.activity.session_timeout,
+            activity_excluded_entrypoints,
+        };
+
+        let (mut executor, sender) = Executor::new_with_config(
+            write_pool.clone(),
+            shutdown_tx.clone(),
+            provider.clone(),
+            sql_config.clone(),
+            database_path.clone(),
+        )
+        .await?;
+        let executor_handle = tokio::spawn(async move { executor.run().await });
+
         let db = Sql::new_with_config(
             readonly_pool.clone(),
             sender.clone(),
             &self.args.indexing.contracts,
-            SqlConfig {
-                all_model_indices: self.args.sql.all_model_indices,
-                model_indices: self.args.sql.model_indices.clone(),
-                historical_models: historical_models.clone(),
-                hooks: self.args.sql.hooks.clone(),
-            },
+            sql_config.clone(),
         )
         .await?;
         let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
@@ -363,13 +590,31 @@ impl Runner {
             None
         };
 
+        // Scale max_concurrent_tasks based on indexer threads for better CPU utilization
+        let optimal_concurrent_tasks = if self.args.indexing.max_concurrent_tasks == 100 {
+            // Default value, scale with indexer threads
+            (allocation.indexer_threads * 8).clamp(50, 500) // 8 tasks per thread, reasonable bounds
+        } else {
+            // User specified, respect their choice
+            self.args.indexing.max_concurrent_tasks
+        };
+
+        debug!(target: LOG_TARGET,
+            cpu_count = cpu_count,
+            strategy = ?strategy,
+            query_threads = allocation.query_threads,
+            indexer_threads = allocation.indexer_threads,
+            max_concurrent_tasks = optimal_concurrent_tasks,
+            "Runtime allocation calculated"
+        );
+
         let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new_with_controllers(
             storage.clone(),
             cache.clone(),
             provider.clone(),
             processors.clone(),
             EngineConfig {
-                max_concurrent_tasks: self.args.indexing.max_concurrent_tasks,
+                max_concurrent_tasks: optimal_concurrent_tasks,
                 fetcher_config: FetcherConfig {
                     batch_chunk_size: self.args.indexing.batch_chunk_size,
                     blocks_chunk_size: self.args.indexing.blocks_chunk_size,
@@ -441,6 +686,7 @@ impl Runner {
             messaging.clone(),
             self.args.world_address.unwrap_or_default(),
             cross_messaging_tx,
+            readonly_pool.clone(),
             GrpcConfig {
                 subscription_buffer_size: self.args.grpc.subscription_buffer_size,
                 optimistic: self.args.grpc.optimistic,
@@ -489,7 +735,7 @@ impl Runner {
                         (Some(cert_path), Some(key_path))
                     }
                     Err(e) => {
-                        error!(target: LOG_TARGET, error = ?e, "Failed to generate mkcert certificates. Falling back to HTTP.");
+                        warn!(target: LOG_TARGET, error = ?e, "Failed to generate mkcert certificates. Falling back to HTTP.");
                         (None, None)
                     }
                 }
@@ -551,7 +797,7 @@ impl Runner {
 
         if self.args.runner.explorer {
             if let Err(e) = webbrowser::open(&explorer_url) {
-                error!(target: LOG_TARGET, error = ?e, "Opening World Explorer in the browser.");
+                error!(target: LOG_TARGET, error = ?e, "Failed to open World Explorer in browser.");
             }
         }
 
@@ -566,30 +812,63 @@ impl Runner {
             tokio::spawn(server.start(addr));
         }
 
-        let engine_handle = tokio::spawn(async move { engine.start().await });
+        // Create dedicated runtimes
+        let query_runtime = create_query_runtime(allocation.query_threads);
+        let indexer_runtime = create_indexer_runtime(allocation.indexer_threads);
+
+        // Move engine to dedicated indexer runtime for CPU isolation
+        let engine_handle = indexer_runtime
+            .handle()
+            .spawn(async move { engine.start().await });
 
         let proxy_server_handle =
             tokio::spawn(async move { proxy_server.start(shutdown_tx.subscribe()).await });
 
         // Spawn user-facing query services on dedicated API runtime for better performance isolation
-        let graphql_server_handle = QUERY_RUNTIME.spawn(graphql_server);
+        let graphql_server_handle = query_runtime.handle().spawn(graphql_server);
 
-        let grpc_server_handle = QUERY_RUNTIME.spawn(grpc_server);
+        let grpc_server_handle = query_runtime.handle().spawn(grpc_server);
 
         let libp2p_relay_server_handle =
             tokio::spawn(async move { libp2p_relay_server.run().await });
 
-        tokio::select! {
-            res = engine_handle => res??,
-            res = executor_handle => res??,
-            res = proxy_server_handle => res??,
-            res = graphql_server_handle => res?,
-            res = grpc_server_handle => res??,
-            res = libp2p_relay_server_handle => res?,
-            _ = dojo_utils::signal::wait_signals() => {},
+        // Macro to handle task results uniformly
+        macro_rules! handle_task {
+            ($result:expr, $name:literal) => {
+                match $result {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(e)) => Err(anyhow::anyhow!("{} failed: {}", $name, e)),
+                    Err(e) => Err(anyhow::anyhow!("{} task panicked: {}", $name, e)),
+                }
+            };
+            // For tasks that return () directly (no inner Result)
+            ($result:expr, $name:literal, void) => {
+                $result
+                    .map_err(|e| anyhow::anyhow!("{} task panicked: {}", $name, e))
+                    .map(|_| ())
+            };
+        }
+
+        // Wait for shutdown signal or any task completion
+        let result = tokio::select! {
+            res = engine_handle => handle_task!(res, "Engine"),
+            res = executor_handle => handle_task!(res, "Executor"),
+            res = proxy_server_handle => handle_task!(res, "Proxy server"),
+            res = graphql_server_handle => handle_task!(res, "GraphQL server", void),
+            res = grpc_server_handle => handle_task!(res, "gRPC server"),
+            res = libp2p_relay_server_handle => handle_task!(res, "LibP2P relay", void),
+            _ = dojo_utils::signal::wait_signals() => {
+                info!(target: LOG_TARGET, "Shutdown signal received, cleaning up...");
+                Ok(())
+            },
         };
 
-        Ok(())
+        // Properly shutdown runtimes
+        query_runtime.shutdown();
+        indexer_runtime.shutdown();
+
+        info!(target: LOG_TARGET, "Shutdown complete");
+        result
     }
 }
 

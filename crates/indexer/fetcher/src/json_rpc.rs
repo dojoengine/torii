@@ -528,7 +528,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         initial_requests: Vec<(Felt, u64, u64, ProviderRequestData)>,
         latest_block_number: u64,
     ) -> Result<Vec<ContractEventBatch>, Error> {
-        let mut all_batches = Vec::new();
+        // Use HashMap to consolidate events by contract address
+        let mut contract_batches: HashMap<Felt, ContractEventBatch> = HashMap::new();
         let mut current_requests = initial_requests;
 
         while !current_requests.is_empty() {
@@ -613,14 +614,22 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                             page_events.push(event);
                         }
 
-                        if !page_events.is_empty() {
-                            all_batches.push(ContractEventBatch {
+                        // Get or create the batch for this contract
+                        let batch = contract_batches.entry(contract_address).or_insert_with(|| {
+                            ContractEventBatch {
                                 contract_address,
-                                events: page_events,
+                                events: Vec::new(),
                                 from_block: from,
                                 to_block: to,
-                            });
-                        }
+                            }
+                        });
+
+                        // Extend the events vector
+                        batch.events.extend(page_events);
+
+                        // Update the block range to cover the full range
+                        batch.from_block = batch.from_block.min(from);
+                        batch.to_block = batch.to_block.max(to);
 
                         // Add continuation request if there are more pages
                         if events_page.continuation_token.is_some() && !done {
@@ -651,17 +660,18 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
             debug!(
                 target: LOG_TARGET,
-                batches_count = all_batches.len(),
+                batches_count = contract_batches.len(),
                 next_requests = next_requests.len(),
-                "Batch fetching complete: {} total batches, {} continuation requests",
-                all_batches.len(),
+                "Batch fetching complete: {} unique contract batches, {} continuation requests",
+                contract_batches.len(),
                 next_requests.len()
             );
 
             current_requests = next_requests;
         }
 
-        Ok(all_batches)
+        // Convert HashMap values to Vec
+        Ok(contract_batches.into_values().collect())
     }
 
     /// Preprocesses raw fetched events by filtering and updating cursors
