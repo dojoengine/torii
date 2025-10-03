@@ -27,9 +27,7 @@ pub fn parse_keys_argument(ctx: &ResolverContext<'_>) -> Result<Option<Vec<Strin
             .map(|s| Felt::from_str(s))
             .collect::<Result<Vec<_>, _>>()?;
         return Ok(Some(
-            keys.iter()
-                .map(|s| felt_to_sql_string(s))
-                .collect::<Vec<_>>(),
+            keys.iter().map(felt_to_sql_string).collect::<Vec<_>>(),
         ));
     }
 
