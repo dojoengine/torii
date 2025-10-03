@@ -462,3 +462,33 @@ pub struct AggregationEntry {
     #[sqlx(default)]
     pub metadata: Option<String>,
 }
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregationEntryWithPosition {
+    pub id: String,
+    pub aggregator_id: String,
+    pub entity_id: String,
+    pub value: String,
+    pub display_value: String,
+    pub model_id: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub position: i64,
+}
+
+impl From<AggregationEntryWithPosition> for torii_proto::AggregationEntry {
+    fn from(value: AggregationEntryWithPosition) -> Self {
+        Self {
+            id: value.id,
+            aggregator_id: value.aggregator_id,
+            entity_id: value.entity_id,
+            value: value.value,
+            display_value: value.display_value,
+            model_id: value.model_id,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            position: value.position as u64,
+        }
+    }
+}

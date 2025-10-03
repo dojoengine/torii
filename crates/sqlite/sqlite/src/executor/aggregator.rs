@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use dojo_types::schema::Ty;
 use sqlx::{Sqlite, Transaction as SqlxTransaction};
 use torii_sqlite_types::{Aggregation, AggregatorConfig};
@@ -348,17 +347,7 @@ async fn upsert_aggregation_entry(
     .await?;
 
     // Then, fetch the entry with its calculated position
-    let entry: (
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        DateTime<Utc>,
-        DateTime<Utc>,
-        i64,
-    ) = sqlx::query_as(
+    let entry: torii_sqlite_types::AggregationEntryWithPosition = sqlx::query_as(
         "SELECT a.id, a.aggregator_id, a.entity_id, a.value, a.display_value, a.model_id, \
          a.created_at, a.updated_at, \
          ROW_NUMBER() OVER (PARTITION BY a.aggregator_id ORDER BY a.value DESC) as position \
@@ -369,17 +358,7 @@ async fn upsert_aggregation_entry(
     .fetch_one(&mut **tx)
     .await?;
 
-    Ok(torii_proto::AggregationEntry {
-        id: entry.0,
-        aggregator_id: entry.1,
-        entity_id: entry.2,
-        value: entry.3,
-        display_value: entry.4,
-        model_id: entry.5,
-        created_at: entry.6,
-        updated_at: entry.7,
-        position: entry.8 as u64,
-    })
+    Ok(entry.into())
 }
 
 /// Helper function to extract a field value from a Ty by path (e.g., "player" or "stats.score")
