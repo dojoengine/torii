@@ -258,7 +258,14 @@ mod tests {
             models: vec![],
         };
         let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x1/0x2/$");
+        assert_eq!(
+            pattern,
+            format!(
+                "^{}/{}/$",
+                felt_to_sql_string(&Felt::ONE),
+                felt_to_sql_string(&Felt::TWO)
+            )
+        );
     }
 
     #[test]
@@ -269,7 +276,14 @@ mod tests {
             models: vec![],
         };
         let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x1/0x[0-9a-fA-F]+/0x2/$");
+        assert_eq!(
+            pattern,
+            format!(
+                "^{}/0x[0-9a-fA-F]+/{}/$",
+                felt_to_sql_string(&Felt::ONE),
+                felt_to_sql_string(&Felt::TWO)
+            )
+        );
     }
 
     #[test]
@@ -280,7 +294,14 @@ mod tests {
             models: vec![],
         };
         let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x1/0x2(/0x[0-9a-fA-F]+)*/$");
+        assert_eq!(
+            pattern,
+            format!(
+                "^{}/{}(/0x[0-9a-fA-F]+)*/$",
+                felt_to_sql_string(&Felt::ONE),
+                felt_to_sql_string(&Felt::TWO)
+            )
+        );
     }
 
     #[test]
@@ -291,7 +312,13 @@ mod tests {
             models: vec![],
         };
         let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x1/0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$");
+        assert_eq!(
+            pattern,
+            format!(
+                "^{}/0x[0-9a-fA-F]+(/0x[0-9a-fA-F]+)*/$",
+                felt_to_sql_string(&Felt::ONE)
+            )
+        );
     }
 
     #[test]
@@ -349,7 +376,13 @@ mod tests {
             models: vec![],
         };
         let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x123/$");
+        assert_eq!(
+            pattern,
+            format!(
+                "^{}/$",
+                felt_to_sql_string(&Felt::from_hex("0x123").unwrap())
+            )
+        );
     }
 
     #[test]
@@ -360,7 +393,13 @@ mod tests {
             models: vec![],
         };
         let pattern = build_keys_pattern(&keys);
-        assert_eq!(pattern, "^0x123(/0x[0-9a-fA-F]+)*/$");
+        assert_eq!(
+            pattern,
+            format!(
+                "^{}(/0x[0-9a-fA-F]+)*/$",
+                felt_to_sql_string(&Felt::from_hex("0x123").unwrap())
+            )
+        );
     }
 
     #[test]
