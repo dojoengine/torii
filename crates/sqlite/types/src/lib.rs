@@ -444,7 +444,9 @@ where
                 _ => Err(D::Error::custom("group_by array must contain only strings")),
             })
             .collect(),
-        _ => Err(D::Error::custom("group_by must be a string or array of strings")),
+        _ => Err(D::Error::custom(
+            "group_by must be a string or array of strings",
+        )),
     }
 }
 
