@@ -158,12 +158,20 @@ mod tests {
         assert_eq!(connection.total_count, 2);
         // due to parallelization order is nondeterministic
         assert!(
-            first_entity.node.keys.clone().unwrap() == vec!["0x0", "0x1"]
-                || first_entity.node.keys.clone().unwrap() == vec!["0x0"]
+            first_entity.node.keys.clone().unwrap()
+                == vec![
+                    felt_to_sql_string(&Felt::ZERO),
+                    felt_to_sql_string(&Felt::ONE)
+                ]
+                || first_entity.node.keys.clone().unwrap() == vec![felt_to_sql_string(&Felt::ZERO)]
         );
         assert!(
-            last_entity.node.keys.clone().unwrap() == vec!["0x0", "0x1"]
-                || last_entity.node.keys.clone().unwrap() == vec!["0x0"]
+            last_entity.node.keys.clone().unwrap()
+                == vec![
+                    felt_to_sql_string(&Felt::ZERO),
+                    felt_to_sql_string(&Felt::ONE)
+                ]
+                || last_entity.node.keys.clone().unwrap() == vec![felt_to_sql_string(&Felt::ZERO)]
         );
 
         // double key param - returns all entities with `0x0` as first key and `0x1` as second key
@@ -172,7 +180,13 @@ mod tests {
         let first_entity = connection.edges.first().unwrap();
         assert_eq!(connection.edges.len(), 1);
         assert_eq!(connection.total_count, 1);
-        assert_eq!(first_entity.node.keys.clone().unwrap(), vec!["0x0", "0x1"]);
+        assert_eq!(
+            first_entity.node.keys.clone().unwrap(),
+            vec![
+                felt_to_sql_string(&Felt::ZERO),
+                felt_to_sql_string(&Felt::ONE)
+            ]
+        );
 
         // pagination testing
         let entities = entities_query(&schema, "(first: 20)").await;
