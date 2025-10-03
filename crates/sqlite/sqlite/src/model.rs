@@ -886,7 +886,7 @@ impl Sql {
             .filter_map(|schema| {
                 try_compute_selector_from_tag(&schema.name())
                     .ok()
-                    .map(|selector| format!("{:#x}", selector))
+                    .map(|selector| felt_to_sql_string(&selector))
             })
             .collect();
 

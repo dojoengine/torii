@@ -485,7 +485,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 if is_world_tx.is_some() && self.config.activity_enabled {
                     // Track activity for each call to WORLD contracts
                     for call in &store_transaction.calls {
-                        let caller_address_str = format!("{:#x}", call.caller_address);
+                        let caller_address_str = felt_to_sql_string(&call.caller_address);
                         if let Err(e) = activity::update_activity(
                             tx,
                             &caller_address_str,
