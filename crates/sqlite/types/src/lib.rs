@@ -416,13 +416,62 @@ impl From<Contract> for torii_proto::Contract {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct AggregatorConfig {
     pub id: String,
     pub model_tag: String,
-    pub group_by: String,
+    #[serde(deserialize_with = "deserialize_group_by")]
+    pub group_by: Vec<String>,
     pub aggregation: Aggregation,
     pub order: SortOrder,
+}
+
+// Custom deserializer to handle both single string and array for group_by
+fn deserialize_group_by<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    use serde_json::Value;
+
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::String(s) => Ok(vec![s]),
+        Value::Array(arr) => arr
+            .into_iter()
+            .map(|v| match v {
+                Value::String(s) => Ok(s),
+                _ => Err(D::Error::custom("group_by array must contain only strings")),
+            })
+            .collect(),
+        _ => Err(D::Error::custom("group_by must be a string or array of strings")),
+    }
+}
+
+impl<'de> Deserialize<'de> for AggregatorConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct AggregatorConfigHelper {
+            id: String,
+            model_tag: String,
+            #[serde(deserialize_with = "deserialize_group_by")]
+            group_by: Vec<String>,
+            aggregation: Aggregation,
+            order: SortOrder,
+        }
+
+        let helper = AggregatorConfigHelper::deserialize(deserializer)?;
+        Ok(AggregatorConfig {
+            id: helper.id,
+            model_tag: helper.model_tag,
+            group_by: helper.group_by,
+            aggregation: helper.aggregation,
+            order: helper.order,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

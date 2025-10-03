@@ -527,9 +527,10 @@ pub struct SqlOptions {
         value_delimiter = ';',
         value_parser = parse_aggregator_config,
         help = "Aggregator configurations. Format: \"aggregator_id:model_tag:group_by:aggregation:order\". \
+                group_by can be comma-separated for multiple fields (e.g., 'player,task_id'). \
                 Aggregation can be: field_name (latest value), +1/count (count events), max:field (highest), min:field (lowest), sum:field (accumulate), avg:field (average). \
                 Order can be 'asc' or 'desc'. Multiple configs separated by ';'. \
-                Examples: 'top_scores:ns-Player:player:score:desc' or 'most_wins:ns-GameWon:player:+1:desc' or 'avg_score:ns-Game:player:avg:score:desc'"
+                Examples: 'top_scores:ns-Player:player:score:desc' or 'progression:ns-Trophy:player,task:+1:desc' or 'avg_score:ns-Game:player:avg:score:desc'"
     )]
     pub aggregators: Vec<AggregatorConfig>,
 
@@ -1074,10 +1075,21 @@ fn parse_aggregator_config(part: &str) -> anyhow::Result<AggregatorConfig> {
         }
     };
 
+    // Parse group_by - can be comma-separated for multiple fields
+    let group_by: Vec<String> = parts[2]
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if group_by.is_empty() {
+        return Err(anyhow::anyhow!("group_by cannot be empty"));
+    }
+
     Ok(AggregatorConfig {
         id: parts[0].to_string(),
         model_tag: parts[1].to_string(),
-        group_by: parts[2].to_string(),
+        group_by,
         aggregation,
         order,
     })
