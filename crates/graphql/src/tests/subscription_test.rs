@@ -332,24 +332,28 @@ mod tests {
         });
 
         // 2. The subscription is executed and it is listening, waiting for publish() to be executed
+        // uise entity_id variable
         let response_value = run_graphql_subscription(
             &db,
             provider,
-            r#"subscription {
-                entityUpdated(id: "0x579e8877c7755365d5ec1ec7d3a94a457eff5d1f40482bbe9729c064cdead2") {
+            &format!(
+                r#"subscription {{
+                entityUpdated(id: "{entity_id}") {{
                     id
                     keys
-                    models {
+                    models {{
                         __typename
-                        ... on types_test_Record {
+                        ... on types_test_Record {{
                             depth
                             record_id
                             type_felt
                             typeContractAddress
-                        }
-                    }
-                }
-            }"#,
+                        }}
+                    }}
+                }}
+                }}
+            }}"#
+            ),
         )
         .await;
         // 4. The subscription has received the message from publish()
