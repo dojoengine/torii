@@ -724,6 +724,82 @@ pub struct AggregationEntry {
     pub updated_at: DateTime<Utc>,
 }
 
+impl Default for AggregationEntry {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            aggregator_id: String::new(),
+            entity_id: String::new(),
+            value: String::new(),
+            display_value: String::new(),
+            position: 0,
+            model_id: String::new(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+}
+
+impl From<AggregationQuery> for proto::types::AggregationQuery {
+    fn from(value: AggregationQuery) -> Self {
+        Self {
+            aggregator_ids: value.aggregator_ids,
+            entity_ids: value.entity_ids,
+            pagination: Some(value.pagination.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::AggregationQuery> for AggregationQuery {
+    type Error = ProtoError;
+
+    fn try_from(value: proto::types::AggregationQuery) -> Result<Self, Self::Error> {
+        Ok(Self {
+            aggregator_ids: value.aggregator_ids,
+            entity_ids: value.entity_ids,
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
+        })
+    }
+}
+
+impl From<AggregationEntry> for proto::types::AggregationEntry {
+    fn from(value: AggregationEntry) -> Self {
+        Self {
+            id: value.id,
+            aggregator_id: value.aggregator_id,
+            entity_id: value.entity_id,
+            value: value.value,
+            display_value: value.display_value,
+            position: value.position,
+            model_id: value.model_id,
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl TryFrom<proto::types::AggregationEntry> for AggregationEntry {
+    type Error = ProtoError;
+
+    fn try_from(value: proto::types::AggregationEntry) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: value.id,
+            aggregator_id: value.aggregator_id,
+            entity_id: value.entity_id,
+            value: value.value,
+            display_value: value.display_value,
+            position: value.position,
+            model_id: value.model_id,
+            created_at: DateTime::parse_from_rfc3339(&value.created_at)
+                .map_err(|e| ProtoError::ParseTimestamp(value.created_at.clone(), e))?
+                .with_timezone(&Utc),
+            updated_at: DateTime::parse_from_rfc3339(&value.updated_at)
+                .map_err(|e| ProtoError::ParseTimestamp(value.updated_at.clone(), e))?
+                .with_timezone(&Utc),
+        })
+    }
+}
+
 impl From<TokenBalanceQuery> for proto::types::TokenBalanceQuery {
     fn from(value: TokenBalanceQuery) -> Self {
         Self {

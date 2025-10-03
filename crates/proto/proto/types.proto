@@ -418,3 +418,35 @@ message TokenContract {
     // The first token metadata of the contract
     bytes token_metadata = 9;
 }
+
+// A query for aggregations (leaderboards, stats, rankings)
+message AggregationQuery {
+    // The list of aggregator IDs to retrieve (e.g., "top_scores", "most_wins")
+    repeated string aggregator_ids = 1;
+    // The list of entity IDs to filter by (optional)
+    repeated string entity_ids = 2;
+    // Pagination
+    Pagination pagination = 3;
+}
+
+// An entry in an aggregation with its calculated position
+message AggregationEntry {
+    // Unique identifier for this entry
+    string id = 1;
+    // The aggregator this entry belongs to
+    string aggregator_id = 2;
+    // The entity being ranked
+    string entity_id = 3;
+    // Normalized value for ordering (zero-padded hex)
+    string value = 4;
+    // Display value for presentation (original format)
+    string display_value = 5;
+    // Calculated position/rank (1-indexed)
+    uint64 position = 6;
+    // The model ID this aggregation is based on
+    string model_id = 7;
+    // When the entry was created (RFC3339 timestamp)
+    string created_at = 8;
+    // When the entry was last updated (RFC3339 timestamp)
+    string updated_at = 9;
+}

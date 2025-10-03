@@ -47,3 +47,4 @@ pub type TokenBalanceUpdate = Update<torii_proto::TokenBalance>;
 pub type TokenTransferUpdate = Update<torii_proto::TokenTransfer>;
 pub type EventUpdate = Update<torii_proto::EventWithMetadata>;
 pub type TransactionUpdate = Update<torii_proto::Transaction>;
+pub type AggregationUpdate = Update<torii_proto::AggregationEntry>;

@@ -18,27 +18,30 @@ use tonic::transport::Endpoint;
 
 use torii_proto::error::ProtoError;
 use torii_proto::proto::world::{
-    world_client, PublishMessageBatchRequest, PublishMessageRequest, RetrieveContractsRequest,
-    RetrieveContractsResponse, RetrieveControllersRequest, RetrieveControllersResponse,
-    RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventMessagesRequest,
-    RetrieveEventsRequest, RetrieveEventsResponse, RetrieveTokenBalancesRequest,
-    RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
-    RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse, RetrieveTokensRequest,
-    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
-    SubscribeContractsRequest, SubscribeContractsResponse, SubscribeEntitiesRequest,
-    SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsRequest,
-    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
-    UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
-    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
-    UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
+    world_client, PublishMessageBatchRequest, PublishMessageRequest, RetrieveAggregationsRequest,
+    RetrieveAggregationsResponse, RetrieveContractsRequest, RetrieveContractsResponse,
+    RetrieveControllersRequest, RetrieveControllersResponse, RetrieveEntitiesRequest,
+    RetrieveEntitiesResponse, RetrieveEventMessagesRequest, RetrieveEventsRequest,
+    RetrieveEventsResponse, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
+    RetrieveTokenContractsRequest, RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest,
+    RetrieveTokenTransfersResponse, RetrieveTokensRequest, RetrieveTokensResponse,
+    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeAggregationsRequest,
+    SubscribeAggregationsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsRequest, SubscribeEventsResponse, SubscribeTokenBalancesRequest,
+    SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
+    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
+    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    UpdateAggregationsSubscriptionRequest, UpdateEntitiesSubscriptionRequest,
+    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
+    UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery, KeysClause, Message,
-    Query, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery,
-    TokenTransfer, TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery,
+    AggregationQuery, Clause, Contract, ContractQuery, ControllerQuery, Event, EventQuery,
+    KeysClause, Message, Query, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery,
+    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionFilter,
+    TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -177,6 +180,63 @@ impl WorldClient {
             .await
             .map_err(Error::Grpc)
             .map(|res| res.into_inner())
+    }
+
+    pub async fn retrieve_aggregations(
+        &mut self,
+        query: AggregationQuery,
+    ) -> Result<RetrieveAggregationsResponse, Error> {
+        self.inner
+            .retrieve_aggregations(RetrieveAggregationsRequest {
+                query: Some(query.into()),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
+    }
+
+    pub async fn subscribe_aggregations(
+        &mut self,
+        aggregator_ids: Vec<String>,
+        entity_ids: Vec<String>,
+    ) -> Result<AggregationUpdateStreaming, Error> {
+        let request = SubscribeAggregationsRequest {
+            aggregator_ids,
+            entity_ids,
+        };
+        let stream = self
+            .inner
+            .subscribe_aggregations(request)
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())?;
+        Ok(AggregationUpdateStreaming(stream.map_ok(Box::new(|res| {
+            (
+                res.subscription_id,
+                res.entry
+                    .map_or_else(torii_proto::AggregationEntry::default, |e| {
+                        e.try_into().expect("must able to serialize")
+                    }),
+            )
+        }))))
+    }
+
+    pub async fn update_aggregations_subscription(
+        &mut self,
+        subscription_id: u64,
+        aggregator_ids: Vec<String>,
+        entity_ids: Vec<String>,
+    ) -> Result<(), Error> {
+        let request = UpdateAggregationsSubscriptionRequest {
+            subscription_id,
+            aggregator_ids,
+            entity_ids,
+        };
+        self.inner
+            .update_aggregations_subscription(request)
+            .await
+            .map_err(Error::Grpc)?;
+        Ok(())
     }
 
     pub async fn subscribe_transactions(
@@ -784,6 +844,27 @@ pub struct TransactionUpdateStreaming(TransactionMappedStream);
 
 impl Stream for TransactionUpdateStreaming {
     type Item = <TransactionMappedStream as Stream>::Item;
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.poll_next_unpin(cx)
+    }
+}
+
+type AggregationMappedStream = MapOk<
+    tonic::Streaming<SubscribeAggregationsResponse>,
+    Box<
+        dyn Fn(SubscribeAggregationsResponse) -> (SubscriptionId, torii_proto::AggregationEntry)
+            + Send,
+    >,
+>;
+
+#[derive(Debug)]
+pub struct AggregationUpdateStreaming(AggregationMappedStream);
+
+impl Stream for AggregationUpdateStreaming {
+    type Item = <AggregationMappedStream as Stream>::Item;
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
