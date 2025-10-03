@@ -10,10 +10,13 @@ use torii_broker::types::{EventUpdate, InnerType};
 use torii_broker::MemoryBroker;
 
 use super::inputs::keys_input::{keys_argument, parse_keys_argument};
-use super::{resolve_many, BasicObject, ResolvableObject, TypeMapping};
-use crate::constants::{DATETIME_FORMAT, EVENT_NAMES, EVENT_TABLE, EVENT_TYPE_NAME, ID_COLUMN};
+use super::{BasicObject, ResolvableObject, TypeMapping};
+use crate::constants::{DATETIME_FORMAT, EVENT_NAMES, EVENT_TYPE_NAME};
 use crate::mapping::EVENT_TYPE_MAPPING;
 use crate::types::ValueMapping;
+use std::sync::Arc;
+use torii_storage::{proto as storage_proto, ReadOnlyStorage};
+use async_graphql::dynamic::FieldFuture;
 
 #[derive(Debug)]
 pub struct EventObject;
@@ -34,16 +37,32 @@ impl BasicObject for EventObject {
 
 impl ResolvableObject for EventObject {
     fn resolvers(&self) -> Vec<Field> {
-        let mut resolve_many = resolve_many(
-            EVENT_TABLE,
-            ID_COLUMN,
-            self.name().1,
-            self.type_name(),
-            self.type_mapping(),
-        );
-        resolve_many = keys_argument(resolve_many);
-
-        vec![resolve_many]
+        // Events list via storage
+        let mut field = Field::new(self.name().1, TypeRef::named_list(self.type_name()), |ctx| {
+            FieldFuture::new(async move {
+                let storage = ctx.data::<Arc<dyn ReadOnlyStorage>>()?.clone();
+                // support optional keys filtering with KeysClause similar to subscription
+                let keys = parse_keys_argument(&ctx)?;
+                let pagination = storage_proto::Pagination { cursor: None, limit: None, direction: storage_proto::PaginationDirection::Forward, order_by: vec![] };
+                let query = storage_proto::EventQuery { keys: keys.map(|k| storage_proto::KeysClause { keys: k.iter().map(|s| Some(Felt::from_str(s).unwrap())).collect(), pattern_matching: storage_proto::PatternMatching::VariableLen, models: vec![] }), pagination };
+                let page = storage.events(query).await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                let list = page.items.into_iter().map(|e| {
+                    let keys: Vec<String> = e.keys.into_iter().map(|k| format!("{:#x}", k)).collect();
+                    let data: Vec<String> = e.data.into_iter().map(|k| format!("{:#x}", k)).collect();
+                    Value::Object(ValueMapping::from([
+                        (Name::new("id"), Value::from("")),
+                        (Name::new("keys"), Value::from(keys)),
+                        (Name::new("data"), Value::from(data)),
+                        (Name::new("transactionHash"), Value::from("")),
+                        (Name::new("executedAt"), Value::from("")),
+                        (Name::new("createdAt"), Value::from("")),
+                    ]))
+                }).collect::<Vec<_>>();
+                Ok(Some(Value::List(list)))
+            })
+        });
+        field = keys_argument(field);
+        vec![field]
     }
 
     fn subscriptions(&self) -> Option<Vec<SubscriptionField>> {

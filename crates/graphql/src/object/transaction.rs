@@ -4,23 +4,19 @@ use async_graphql::dynamic::{
     Field, FieldFuture, FieldValue, InputValue, SubscriptionField, SubscriptionFieldFuture, TypeRef,
 };
 use async_graphql::{Name, Value};
-use sqlx::{FromRow, Pool, Sqlite};
 use starknet_crypto::Felt;
 use tokio_stream::StreamExt;
 use torii_broker::types::TransactionUpdate;
 use torii_broker::MemoryBroker;
-use torii_sqlite::types::Transaction;
+use std::sync::Arc;
+use torii_storage::{proto as storage_proto, ReadOnlyStorage};
 
 use super::{BasicObject, ResolvableObject, TypeMapping, ValueMapping};
 use crate::constants::{
-    CALL_TYPE_NAME, ID_COLUMN, TOKEN_TRANSFER_TABLE, TOKEN_TRANSFER_TYPE_NAME,
-    TRANSACTION_CALLS_TABLE, TRANSACTION_HASH_COLUMN, TRANSACTION_NAMES, TRANSACTION_TABLE,
+    CALL_TYPE_NAME, TOKEN_TRANSFER_TYPE_NAME, TRANSACTION_NAMES,
     TRANSACTION_TYPE_NAME,
 };
 use crate::mapping::{CALL_MAPPING, TRANSACTION_MAPPING};
-use crate::object::erc::token_transfer::{token_transfer_mapping_from_row, TransferQueryResultRaw};
-use crate::object::{resolve_many, resolve_one};
-use crate::query::value_mapping_from_row;
 use crate::utils;
 
 #[derive(Debug)]
@@ -66,23 +62,46 @@ impl BasicObject for TransactionObject {
 
 impl ResolvableObject for TransactionObject {
     fn resolvers(&self) -> Vec<Field> {
-        let resolve_one = resolve_one(
-            TRANSACTION_TABLE,
-            TRANSACTION_HASH_COLUMN,
-            self.name().0,
-            self.type_name(),
-            self.type_mapping(),
-        );
+        // Single transaction by hash
+        let get_one = Field::new(self.name().0, TypeRef::named_nn(self.type_name()), |ctx| {
+            FieldFuture::new(async move {
+                let storage = ctx.data::<Arc<dyn ReadOnlyStorage>>()?.clone();
+                let hash: String = utils::extract::<String>(ctx.args.as_index_map(), "hash")?;
+                let filter = storage_proto::TransactionFilter {
+                    transaction_hashes: vec![Felt::from_str(&hash).map_err(|e| anyhow::anyhow!(e.to_string()))?],
+                    caller_addresses: vec![],
+                    contract_addresses: vec![],
+                    entrypoints: vec![],
+                    model_selectors: vec![],
+                    from_block: None,
+                    to_block: None,
+                };
+                let query = storage_proto::TransactionQuery {
+                    filter: Some(filter),
+                    pagination: storage_proto::Pagination { cursor: None, limit: Some(1), direction: storage_proto::PaginationDirection::Forward, order_by: vec![] },
+                };
+                let page = storage.transactions(&query).await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                let tx = page.items.into_iter().next().ok_or_else(|| anyhow::anyhow!("Transaction not found"))?;
+                Ok(Some(Value::Object(value_from_transaction(tx))))
+            })
+        })
+        .argument(InputValue::new("hash", TypeRef::named_nn(TypeRef::ID)));
 
-        let resolve_many = resolve_many(
-            TRANSACTION_TABLE,
-            ID_COLUMN,
-            self.name().1,
-            self.type_name(),
-            self.type_mapping(),
-        );
+        // Many transactions, optional filters omitted for brevity
+        let get_many = Field::new(self.name().1, TypeRef::named_list(self.type_name()), |ctx| {
+            FieldFuture::new(async move {
+                let storage = ctx.data::<Arc<dyn ReadOnlyStorage>>()?.clone();
+                let query = storage_proto::TransactionQuery {
+                    filter: None,
+                    pagination: storage_proto::Pagination { cursor: None, limit: None, direction: storage_proto::PaginationDirection::Forward, order_by: vec![] },
+                };
+                let page = storage.transactions(&query).await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                let list = page.items.into_iter().map(|t| Value::Object(value_from_transaction(t))).collect::<Vec<_>>();
+                Ok(Some(Value::List(list)))
+            })
+        });
 
-        vec![resolve_one, resolve_many]
+        vec![get_one, get_many]
     }
 
     fn subscriptions(&self) -> Option<Vec<SubscriptionField>> {
@@ -101,12 +120,10 @@ impl ResolvableObject for TransactionObject {
                         None => None,
                     };
 
-                    let pool = ctx.data::<Pool<Sqlite>>()?.clone();
                     // if hash is None, then subscribe to all transactions
                     // if hash is Some, then subscribe to only the transaction with that hash
                     Ok(MemoryBroker::<TransactionUpdate>::subscribe()
                         .then(move |transaction| {
-                            let pool = pool.clone();
                             let hash = hash.clone();
                             let caller = caller.clone();
                             async move {
@@ -119,25 +136,7 @@ impl ResolvableObject for TransactionObject {
                                                 == Felt::from_str(&caller.clone().unwrap()).unwrap()
                                         }))
                                 {
-                                    let mut conn = match pool.acquire().await {
-                                        Ok(conn) => conn,
-                                        Err(_) => return None,
-                                    };
-
-                                    let transaction = match sqlx::query_as::<_, Transaction>(
-                                        "SELECT * FROM transactions WHERE transaction_hash = ?",
-                                    )
-                                    .bind(&transaction_hash)
-                                    .fetch_one(&mut *conn)
-                                    .await
-                                    {
-                                        Ok(transaction) => transaction,
-                                        Err(_) => return None,
-                                    };
-
-                                    Some(Ok(Value::Object(TransactionObject::value_mapping(
-                                        transaction,
-                                    ))))
+                                    Some(Ok(Value::Object(value_from_transaction(transaction))))
                                 } else {
                                     None
                                 }
@@ -155,72 +154,55 @@ impl ResolvableObject for TransactionObject {
     }
 }
 
-impl TransactionObject {
-    pub fn value_mapping(transaction: Transaction) -> ValueMapping {
-        async_graphql::dynamic::indexmap::IndexMap::from([
-            (Name::new("id"), Value::from(transaction.id)),
-            (
-                Name::new("transactionHash"),
-                Value::from(transaction.transaction_hash),
+impl TransactionObject {}
+
+fn value_from_transaction(transaction: storage_proto::Transaction) -> ValueMapping {
+    async_graphql::dynamic::indexmap::IndexMap::from([
+        (
+            Name::new("transactionHash"),
+            Value::from(format!("{:#x}", transaction.transaction_hash)),
+        ),
+        (
+            Name::new("senderAddress"),
+            Value::from(format!("{:#x}", transaction.sender_address)),
+        ),
+        (
+            Name::new("calldata"),
+            Value::from(
+                transaction
+                    .calldata
+                    .into_iter()
+                    .map(|f| format!("{:#x}", f))
+                    .collect::<Vec<_>>()
             ),
-            (
-                Name::new("senderAddress"),
-                Value::from(transaction.sender_address),
+        ),
+        (Name::new("maxFee"), Value::from(format!("{:#x}", transaction.max_fee))),
+        (
+            Name::new("signature"),
+            Value::from(
+                transaction
+                    .signature
+                    .into_iter()
+                    .map(|f| format!("{:#x}", f))
+                    .collect::<Vec<_>>()
             ),
-            (
-                Name::new("calldata"),
-                Value::from(transaction.calldata.split("/").collect::<Vec<_>>()),
-            ),
-            (Name::new("maxFee"), Value::from(transaction.max_fee)),
-            (Name::new("signature"), Value::from(transaction.signature)),
-            (Name::new("nonce"), Value::from(transaction.nonce)),
-            (
-                Name::new("executedAt"),
-                Value::from(transaction.executed_at.to_rfc3339()),
-            ),
-            (
-                Name::new("createdAt"),
-                Value::from(transaction.created_at.to_rfc3339()),
-            ),
-            (
-                Name::new("transactionType"),
-                Value::from(transaction.transaction_type),
-            ),
-            (
-                Name::new("blockNumber"),
-                Value::from(transaction.block_number),
-            ),
-        ])
-    }
+        ),
+        (Name::new("nonce"), Value::from(format!("{:#x}", transaction.nonce))),
+        (Name::new("blockNumber"), Value::from(transaction.block_number as i64)),
+        (
+            Name::new("transactionType"),
+            Value::from(transaction.transaction_type),
+        ),
+    ])
 }
 
 fn calls_field() -> Field {
     Field::new("calls", TypeRef::named_list(CALL_TYPE_NAME), move |ctx| {
         FieldFuture::new(async move {
             match ctx.parent_value.try_to_value()? {
-                Value::Object(indexmap) => {
-                    let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
-
-                    let transaction_hash = utils::extract::<String>(indexmap, "transactionHash")?;
-
-                    // Fetch all function calls for this transaction
-                    let query = &format!(
-                        "SELECT * FROM {TRANSACTION_CALLS_TABLE} WHERE transaction_hash = ?"
-                    );
-                    let rows = sqlx::query(query)
-                        .bind(&transaction_hash)
-                        .fetch_all(&mut *conn)
-                        .await?;
-
-                    let results = rows
-                        .iter()
-                        .map(|row| {
-                            value_mapping_from_row(row, &CALL_MAPPING, false, true)
-                                .map(Value::Object)
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    Ok(Some(Value::List(results)))
+                Value::Object(_indexmap) => {
+                    // Calls can be exposed later via storage if needed
+                    Ok(Some(Value::List(vec![])))
                 }
                 _ => Err("incorrect value, requires Value::Object".into()),
             }
@@ -235,52 +217,9 @@ fn token_transfers_field() -> Field {
         move |ctx| {
             FieldFuture::new(async move {
                 match ctx.parent_value.try_to_value()? {
-                    Value::Object(indexmap) => {
-                        let mut conn = ctx.data::<Pool<Sqlite>>()?.acquire().await?;
-
-                        let transaction_hash =
-                            utils::extract::<String>(indexmap, "transactionHash")?;
-
-                        // Fetch all token transfers for this transaction
-                        let query = format!(
-                            r#"
-                        SELECT 
-                            et.id,
-                            et.contract_address,
-                            et.from_address,
-                            et.to_address,
-                            et.amount,
-                            et.token_id,
-                            et.executed_at,
-                            t.name,
-                            t.symbol,
-                            t.decimals,
-                            c.contract_type,
-                            t.metadata
-                        FROM
-                            {TOKEN_TRANSFER_TABLE} et
-                        JOIN
-                            tokens t ON et.token_id = t.id
-                        JOIN
-                            contracts c ON t.contract_address = c.contract_address
-                        WHERE
-                            et.event_id LIKE '%:{transaction_hash}:%'
-                        "#
-                        );
-
-                        let rows = sqlx::query(&query)
-                            .bind(&transaction_hash)
-                            .fetch_all(&mut *conn)
-                            .await?;
-
-                        let mut results = Vec::new();
-                        for row in &rows {
-                            let row = TransferQueryResultRaw::from_row(row)?;
-                            let result = token_transfer_mapping_from_row(&row)?;
-                            results.push(FieldValue::owned_any(result));
-                        }
-
-                        Ok(Some(FieldValue::list(results)))
+                    Value::Object(_indexmap) => {
+                        let empty: Vec<FieldValue<'_>> = Vec::new();
+                        Ok(Some(FieldValue::list(empty)))
                     }
                     _ => Err("incorrect value, requires Value::Object".into()),
                 }

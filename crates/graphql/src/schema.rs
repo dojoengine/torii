@@ -1,14 +1,11 @@
 use anyhow::Result;
 use async_graphql::dynamic::{Object, Scalar, Schema, Subscription, Union};
 use dojo_types::schema::Ty;
-use sqlx::SqlitePool;
 use starknet::providers::Provider;
 use std::sync::Arc;
 use torii_messaging::{Messaging, MessagingTrait};
-use torii_sqlite::types::Model;
 use torii_storage::ReadOnlyStorage;
 
-use super::object::connection::page_info::PageInfoObject;
 use super::object::entity::EntityObject;
 use super::object::event::EventObject;
 use super::object::model_data::ModelDataObject;
@@ -40,12 +37,11 @@ use crate::query::build_type_mapping;
 // events, their schema is known but we generate them dynamically as well because async-graphql
 // does not allow mixing of static and dynamic schemas.
 pub async fn build_schema<P: Provider + Sync + Send + 'static>(
-    pool: &SqlitePool,
     messaging: Arc<Messaging<P>>,
     storage: Arc<dyn ReadOnlyStorage>,
 ) -> Result<Schema> {
     // build world gql objects
-    let (objects, unions) = build_objects(pool).await?;
+    let (objects, unions) = build_objects(storage.clone()).await?;
 
     let mut schema_builder = Schema::build(
         QUERY_TYPE_NAME,
@@ -87,13 +83,6 @@ pub async fn build_schema<P: Provider + Sync + Send + 'static>(
                     query_root = query_root.field(resolver);
                 }
 
-                // register connection types, relay
-                if let Some(conn_objects) = object.connection_objects() {
-                    for conn in conn_objects {
-                        schema_builder = schema_builder.register(conn);
-                    }
-                }
-
                 // register enum objects
                 if let Some(input_objects) = object.enum_objects() {
                     for input in input_objects {
@@ -131,18 +120,17 @@ pub async fn build_schema<P: Provider + Sync + Send + 'static>(
         .register(query_root)
         .register(mutation_root)
         .register(subscription_root)
-        .data(pool.clone())
         .data(messaging as Arc<dyn MessagingTrait>)
         .data(storage)
         .finish()
         .map_err(|e| e.into())
 }
 
-async fn build_objects(pool: &SqlitePool) -> Result<(Vec<ObjectVariant>, Vec<Union>)> {
-    let mut conn = pool.acquire().await?;
-    let models: Vec<Model> = sqlx::query_as("SELECT * FROM models")
-        .fetch_all(&mut *conn)
-        .await?;
+async fn build_objects(storage: Arc<dyn ReadOnlyStorage>) -> Result<(Vec<ObjectVariant>, Vec<Union>)> {
+    let models = storage
+        .models(&[])
+        .await
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     // predefined objects
     let mut objects: Vec<ObjectVariant> = vec![
@@ -158,7 +146,6 @@ async fn build_objects(pool: &SqlitePool) -> Result<(Vec<ObjectVariant>, Vec<Uni
         ObjectVariant::Resolvable(Box::new(TokenObject)),
         ObjectVariant::Basic(Box::new(SocialObject)),
         ObjectVariant::Basic(Box::new(ContentObject)),
-        ObjectVariant::Basic(Box::new(PageInfoObject)),
         ObjectVariant::Basic(Box::new(Erc721TokenObject)),
         ObjectVariant::Basic(Box::new(Erc20TokenObject)),
         ObjectVariant::Basic(Box::new(Erc1155TokenObject)),
@@ -180,14 +167,12 @@ async fn build_objects(pool: &SqlitePool) -> Result<(Vec<ObjectVariant>, Vec<Uni
 
     // model data objects
     for model in &models {
-        let schema: Ty = serde_json::from_str(&model.schema)
-            .map_err(|e| anyhow::anyhow!(format!("Failed to parse model schema: {e}")))?;
+        let schema: Ty = model.schema.clone();
         let type_mapping = build_type_mapping(&model.namespace, &schema);
 
         if !type_mapping.is_empty() {
             // add models objects & unions
             let field_name = utils::field_name_from_names(&model.namespace, &model.name);
-
             let type_name = utils::type_name_from_names(&model.namespace, &model.name);
 
             model_union = model_union.possible_type(&type_name);
