@@ -1,5 +1,9 @@
+use std::str::FromStr;
+
 use async_graphql::dynamic::{Field, InputValue, ResolverContext, TypeRef};
 use async_graphql::Error;
+use starknet_crypto::Felt;
+use torii_sqlite::utils::felt_to_sql_string;
 
 use crate::utils::extract;
 
@@ -18,7 +22,15 @@ pub fn parse_keys_argument(ctx: &ResolverContext<'_>) -> Result<Option<Vec<Strin
             return Err("Key parts can only be hex string or wild card `*`".into());
         }
 
-        return Ok(Some(keys));
+        let keys = keys
+            .iter()
+            .map(|s| Felt::from_str(s))
+            .collect::<Result<Vec<_>, _>>()?;
+        return Ok(Some(
+            keys.iter()
+                .map(|s| felt_to_sql_string(s))
+                .collect::<Vec<_>>(),
+        ));
     }
 
     Ok(None)

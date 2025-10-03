@@ -11,6 +11,7 @@ mod tests {
     use tokio::sync::broadcast;
     use torii_messaging::{Messaging, MessagingConfig};
     use torii_sqlite::executor::Executor;
+    use torii_sqlite::utils::felt_to_sql_string;
     use torii_sqlite::Sql;
     use torii_storage::proto::{ContractDefinition, ContractType};
 
@@ -225,7 +226,10 @@ mod tests {
         assert_eq!(connection.total_count, 10);
         assert_eq!(connection.edges.len(), 10);
         assert_eq!(&record.node.__typename, "types_test_Record");
-        assert_eq!(entity.keys.clone().unwrap(), vec!["0x0"]);
+        assert_eq!(
+            entity.keys.clone().unwrap(),
+            vec![felt_to_sql_string(&Felt::ZERO)]
+        );
         assert_eq!(record.node.depth, "Zero");
         assert_eq!(deeply_nested.depth, "One");
         assert_eq!(deeply_nested_more.depth, "Two");

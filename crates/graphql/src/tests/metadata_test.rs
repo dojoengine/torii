@@ -10,6 +10,7 @@ mod tests {
     use tokio::sync::broadcast;
     use torii_messaging::{Messaging, MessagingConfig};
     use torii_sqlite::executor::Executor;
+    use torii_sqlite::utils::felt_to_sql_string;
     use torii_sqlite::Sql;
     use torii_storage::proto::{ContractDefinition, ContractType};
     use torii_storage::Storage;
@@ -130,7 +131,7 @@ mod tests {
             .clone();
         let connection: Connection<SqlMetadata> = serde_json::from_value(value).unwrap();
         let edge = connection.edges.first().unwrap();
-        assert_eq!(edge.node.world_address, "0x0");
+        assert_eq!(edge.node.world_address, felt_to_sql_string(&Felt::ZERO));
         assert_eq!(connection.edges.len(), 1);
         assert_eq!(edge.node.cover_img, cover_img);
         assert_eq!(
