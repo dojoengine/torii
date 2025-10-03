@@ -731,6 +731,48 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 let mut event_message = torii_sqlite_types::Entity::from_row(&event_messages_row)?;
                 event_message.updated_model = Some(em_query.ty.clone());
 
+                // Update aggregations if this model is part of any aggregator configuration
+                let model_tag = em_query.ty.name();
+                let aggregator_configs: Vec<_> = self
+                    .config
+                    .get_aggregator_for_model(&model_tag)
+                    .into_iter()
+                    .cloned()
+                    .collect();
+                let mut aggregation_updates = Vec::new();
+                for aggregator_config in aggregator_configs {
+                    match aggregator::update_aggregation(
+                        tx,
+                        &aggregator_config,
+                        &em_query.ty,
+                        &em_query.model_id,
+                    )
+                    .await
+                    {
+                        Ok(Some(aggregation_entry)) => {
+                            aggregation_updates.push(aggregation_entry);
+                        }
+                        Ok(None) => {
+                            // group_by field could not be extracted, skip
+                        }
+                        Err(e) => {
+                            error!(
+                                target: LOG_TARGET,
+                                aggregator_id = %aggregator_config.id,
+                                error = ?e,
+                                "Failed to update aggregation"
+                            );
+                        }
+                    }
+                }
+
+                // Publish aggregation updates
+                for aggregation_entry in aggregation_updates {
+                    self.publish_optimistic_and_queue(BrokerMessage::AggregationUpdated(
+                        aggregation_entry,
+                    ));
+                }
+
                 self.publish_optimistic_and_queue(BrokerMessage::EventMessageUpdate(
                     event_message.into(),
                 ));
