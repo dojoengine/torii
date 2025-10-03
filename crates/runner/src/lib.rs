@@ -62,6 +62,7 @@ use url::form_urlencoded;
 mod constants;
 
 use crate::constants::LOG_TARGET;
+const MIN_THREADS: usize = 1;
 
 #[derive(Debug, Clone)]
 pub enum AllocationStrategy {
@@ -103,46 +104,55 @@ impl RuntimeAllocation {
         let (query_threads, indexer_threads) = match strategy {
             AllocationStrategy::QueryPriority => {
                 // 70% query, 30% indexer
-                let query = ((available_threads * 7) / 10).clamp(4, available_threads);
+                let query = ((available_threads * 7) / 10)
+                    .max(MIN_THREADS)
+                    .min(available_threads);
                 let indexer = available_threads
                     .saturating_sub(query)
-                    .clamp(2, available_threads);
+                    .max(MIN_THREADS)
+                    .min(available_threads);
                 (query, indexer)
             }
             AllocationStrategy::IndexerPriority => {
                 // 30% query, 70% indexer
-                let indexer = ((available_threads * 7) / 10).clamp(4, available_threads);
+                let indexer = ((available_threads * 7) / 10)
+                    .max(MIN_THREADS)
+                    .min(available_threads);
                 let query = available_threads
                     .saturating_sub(indexer)
-                    .clamp(2, available_threads);
+                    .max(MIN_THREADS)
+                    .min(available_threads);
                 (query, indexer)
             }
             AllocationStrategy::Balanced => {
                 // 50% each
                 let half = available_threads / 2;
                 (
-                    half.clamp(2, available_threads),
-                    half.clamp(2, available_threads),
+                    half.max(MIN_THREADS).min(available_threads),
+                    half.max(MIN_THREADS).min(available_threads),
                 )
             }
             AllocationStrategy::Adaptive => {
                 // Default: 60% query, 40% indexer (queries are user-facing)
-                let query = ((available_threads * 6) / 10).clamp(4, available_threads);
+                let query = ((available_threads * 6) / 10)
+                    .max(MIN_THREADS)
+                    .min(available_threads);
                 let indexer = available_threads
                     .saturating_sub(query)
-                    .clamp(2, available_threads);
+                    .max(MIN_THREADS)
+                    .min(available_threads);
                 (query, indexer)
             }
         };
 
         Self {
             query_threads: if query_override > 0 {
-                query_override.clamp(1, cpu_count)
+                query_override.max(MIN_THREADS).min(cpu_count)
             } else {
                 query_threads
             },
             indexer_threads: if indexer_override > 0 {
-                indexer_override.clamp(1, cpu_count)
+                indexer_override.max(MIN_THREADS).min(cpu_count)
             } else {
                 indexer_threads
             },
