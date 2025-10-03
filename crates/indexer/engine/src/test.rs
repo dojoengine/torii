@@ -519,7 +519,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
             format!(
                 "SELECT balance FROM token_balances WHERE account_address = '{}' AND \
                  contract_address = '{}' AND token_id = '{}'",
-                Felt::ONE,
+                felt_to_sql_string(&Felt::ONE),
                 felt_to_sql_string(&badge_address),
                 felt_and_u256_to_sql_string(&badge_address, &U256::from(token_id as u32))
             )
