@@ -4,6 +4,7 @@ use starknet_crypto::Felt;
 use std::str::FromStr;
 use std::sync::Arc;
 use torii_messaging::MessagingTrait;
+use torii_sqlite::utils::felt_to_sql_string;
 
 use super::{BasicObject, TypeMapping, ValueMapping};
 use crate::constants::{PUBLISH_MESSAGE_RESPONSE_TYPE_NAME, PUBLISH_MESSAGE_TYPE_NAME};
@@ -84,7 +85,7 @@ impl PublishMessageObject {
                     // Create response
                     let response = ValueMapping::from([(
                         Name::new("entityId"),
-                        Value::from(format!("{:#x}", entity_id)),
+                        Value::from(felt_to_sql_string(&entity_id)),
                     )]);
 
                     Ok(Some(Value::Object(response)))

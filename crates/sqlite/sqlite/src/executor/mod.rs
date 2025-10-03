@@ -26,7 +26,7 @@ use torii_broker::types::{
     ModelUpdate, TokenBalanceUpdate, TokenTransferUpdate, TokenUpdate, TransactionUpdate, Update,
 };
 use torii_math::I256;
-use torii_proto::{ContractCursor, TransactionCall};
+use torii_proto::{BalanceId, ContractCursor, TokenId, TransactionCall};
 use torii_sqlite_types::TokenTransfer as SQLTokenTransfer;
 use tracing::{debug, error, info, warn};
 
@@ -85,8 +85,8 @@ pub struct DeleteEntityQuery {
 
 #[derive(Debug, Clone)]
 pub struct ApplyBalanceDiffQuery {
-    pub balances_diff: HashMap<String, I256>,
-    pub total_supply_diff: HashMap<String, I256>,
+    pub balances_diff: HashMap<BalanceId, I256>,
+    pub total_supply_diff: HashMap<TokenId, I256>,
     pub cursors: HashMap<Felt, ContractCursor>,
 }
 
@@ -345,7 +345,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 Argument::Int(integer) => query.bind(integer),
                 Argument::Bool(bool) => query.bind(bool),
                 Argument::String(string) => query.bind(string),
-                Argument::FieldElement(felt) => query.bind(format!("{:#x}", felt)),
+                Argument::FieldElement(felt) => query.bind(felt_to_sql_string(felt)),
             }
         }
 
@@ -398,7 +398,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
                     cursor.last_pending_block_tx = new_cursor
                         .last_pending_block_tx
-                        .map(|tx| format!("{:#x}", tx));
+                        .map(|tx| felt_to_sql_string(&tx));
                     cursor.tps = Some(new_tps.try_into().expect("does't fit in i64"));
                     cursor.last_block_timestamp =
                         Some(new_timestamp.try_into().expect("doesn't fit in i64"));
@@ -485,7 +485,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 if is_world_tx.is_some() && self.config.activity_enabled {
                     // Track activity for each call to WORLD contracts
                     for call in &store_transaction.calls {
-                        let caller_address_str = format!("{:#x}", call.caller_address);
+                        let caller_address_str = felt_to_sql_string(&call.caller_address);
                         if let Err(e) = activity::update_activity(
                             tx,
                             &caller_address_str,
@@ -962,34 +962,25 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, "Rolled back the transaction.");
             }
             QueryType::UpdateTokenMetadata(update_metadata) => {
-                let id = if let Some(token_id) = update_metadata.token_id {
-                    felt_and_u256_to_sql_string(&update_metadata.contract_address, &token_id)
-                } else {
-                    felt_to_sql_string(&update_metadata.contract_address)
-                };
-
-                // Get the old metadata before updating (needed for trait subtraction)
-                let old_metadata = if update_metadata.token_id.is_some() {
-                    sqlx::query_scalar::<_, String>("SELECT metadata FROM tokens WHERE id = ?")
-                        .bind(&id)
-                        .fetch_optional(&mut **tx)
-                        .await?
-                        .unwrap_or_default()
-                } else {
-                    String::new()
-                };
-
                 // Update metadata and timestamp in database
                 let token = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "UPDATE tokens SET metadata = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *",
                 )
                 .bind(&update_metadata.metadata)
-                .bind(&id)
+                .bind(update_metadata.token_id.to_string())
                 .fetch_one(&mut **tx)
                 .await?;
 
                 // If this is an individual token (has token_id), update attributes and contract's traits
-                if update_metadata.token_id.is_some() {
+                if update_metadata.token_id.is_nft() {
+                    // Get the old metadata before updating (needed for trait subtraction)
+                    let old_metadata =
+                        sqlx::query_scalar::<_, String>("SELECT metadata FROM tokens WHERE id = ?")
+                            .bind(update_metadata.token_id.to_string())
+                            .fetch_optional(&mut **tx)
+                            .await?
+                            .unwrap_or_default();
+
                     // Update individual token attributes
                     store_token_attributes(&update_metadata.metadata, &token.id, &mut *tx).await?;
 
@@ -997,7 +988,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     update_contract_traits_on_metadata_change(
                         &old_metadata,
                         &update_metadata.metadata,
-                        &update_metadata.contract_address,
+                        &update_metadata.token_id.contract_address(),
                         &mut *tx,
                     )
                     .await?;

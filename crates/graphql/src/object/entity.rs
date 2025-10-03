@@ -10,6 +10,7 @@ use tokio_stream::StreamExt;
 use torii_broker::types::EntityUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::types::Entity;
+use torii_sqlite::utils::felt_to_sql_string;
 
 use super::inputs::keys_input::keys_argument;
 use super::{BasicObject, ResolvableObject, TypeMapping, ValueMapping};
@@ -81,7 +82,7 @@ impl ResolvableObject for EntityObject {
                             let pool = pool.clone();
                             let id = id.clone();
                             async move {
-                                let entity_id = format!("{:#x}", entity.entity.hashed_keys);
+                                let entity_id = felt_to_sql_string(&entity.entity.hashed_keys);
                                 if id.is_none() || id == Some(entity_id.clone()) {
                                     let mut conn = match pool.acquire().await {
                                         Ok(conn) => conn,

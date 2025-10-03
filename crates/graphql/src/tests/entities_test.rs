@@ -11,6 +11,7 @@ mod tests {
     use tokio::sync::broadcast;
     use torii_messaging::{Messaging, MessagingConfig};
     use torii_sqlite::executor::Executor;
+    use torii_sqlite::utils::felt_to_sql_string;
     use torii_sqlite::Sql;
     use torii_storage::proto::{ContractDefinition, ContractType};
 
@@ -55,7 +56,7 @@ mod tests {
         let query = format!(
             r#"
           {{
-            entity (id: "{:#x}") {{
+            entity (id: "{}") {{
               keys
               models {{
                 ... on types_test_Record {{
@@ -91,7 +92,7 @@ mod tests {
             }}
           }}
         "#,
-            id
+            felt_to_sql_string(id)
         );
 
         let result = run_graphql_query(schema, &query).await;
@@ -157,12 +158,20 @@ mod tests {
         assert_eq!(connection.total_count, 2);
         // due to parallelization order is nondeterministic
         assert!(
-            first_entity.node.keys.clone().unwrap() == vec!["0x0", "0x1"]
-                || first_entity.node.keys.clone().unwrap() == vec!["0x0"]
+            first_entity.node.keys.clone().unwrap()
+                == vec![
+                    felt_to_sql_string(&Felt::ZERO),
+                    felt_to_sql_string(&Felt::ONE)
+                ]
+                || first_entity.node.keys.clone().unwrap() == vec![felt_to_sql_string(&Felt::ZERO)]
         );
         assert!(
-            last_entity.node.keys.clone().unwrap() == vec!["0x0", "0x1"]
-                || last_entity.node.keys.clone().unwrap() == vec!["0x0"]
+            last_entity.node.keys.clone().unwrap()
+                == vec![
+                    felt_to_sql_string(&Felt::ZERO),
+                    felt_to_sql_string(&Felt::ONE)
+                ]
+                || last_entity.node.keys.clone().unwrap() == vec![felt_to_sql_string(&Felt::ZERO)]
         );
 
         // double key param - returns all entities with `0x0` as first key and `0x1` as second key
@@ -171,7 +180,13 @@ mod tests {
         let first_entity = connection.edges.first().unwrap();
         assert_eq!(connection.edges.len(), 1);
         assert_eq!(connection.total_count, 1);
-        assert_eq!(first_entity.node.keys.clone().unwrap(), vec!["0x0", "0x1"]);
+        assert_eq!(
+            first_entity.node.keys.clone().unwrap(),
+            vec![
+                felt_to_sql_string(&Felt::ZERO),
+                felt_to_sql_string(&Felt::ONE)
+            ]
+        );
 
         // pagination testing
         let entities = entities_query(&schema, "(first: 20)").await;

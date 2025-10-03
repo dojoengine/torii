@@ -13,10 +13,10 @@ use torii_math::I256;
 use torii_proto::schema::Entity;
 
 use torii_proto::{
-    AggregationEntry, AggregationQuery, Contract, ContractCursor, ContractQuery, Controller,
-    ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance, TokenBalanceQuery,
-    TokenContract, TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
-    TransactionCall, TransactionQuery,
+    AggregationEntry, AggregationQuery, BalanceId, Contract, ContractCursor, ContractQuery,
+    Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance,
+    TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery, TokenTransfer,
+    TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
 };
 
 pub mod utils;
@@ -37,7 +37,7 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, StorageError>;
 
     /// Returns the IDs of all the registered tokens
-    async fn token_ids(&self) -> Result<HashSet<String>, StorageError>;
+    async fn token_ids(&self) -> Result<HashSet<TokenId>, StorageError>;
 
     /// Returns the controllers for the storage.
     async fn controllers(&self, query: &ControllerQuery) -> Result<Page<Controller>, StorageError>;
@@ -248,13 +248,12 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
 
     /// Stores a token transfer event with the storage.
     #[allow(clippy::too_many_arguments)]
-    async fn store_erc_transfer_event(
+    async fn store_token_transfer(
         &self,
-        contract_address: Felt,
+        token_id: TokenId,
         from: Felt,
         to: Felt,
         amount: U256,
-        token_id: Option<U256>,
         block_timestamp: u64,
         event_id: &str,
     ) -> Result<(), StorageError>;
@@ -262,16 +261,15 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     /// Updates NFT metadata for a specific token.
     async fn update_token_metadata(
         &self,
-        contract_address: Felt,
-        token_id: Option<U256>,
+        token_id: TokenId,
         metadata: String,
     ) -> Result<(), StorageError>;
 
     /// Applies cached balance differences to the storage.
     async fn apply_balances_diff(
         &self,
-        balances_diff: HashMap<String, I256>,
-        total_supply_diff: HashMap<String, I256>,
+        balances_diff: HashMap<BalanceId, I256>,
+        total_supply_diff: HashMap<TokenId, I256>,
         cursors: HashMap<Felt, ContractCursor>,
     ) -> Result<(), StorageError>;
 

@@ -7,12 +7,11 @@ use starknet::core::types::{Event, U256};
 use starknet::providers::Provider;
 use tracing::debug;
 
-use crate::erc::{
-    felt_and_u256_to_sql_string, try_register_nft_token_metadata, try_register_token_contract,
-};
+use crate::erc::{try_register_nft_token_metadata, try_register_token_contract};
 use crate::error::Error;
 use crate::task_manager::TaskId;
 use crate::{EventProcessor, EventProcessorContext};
+use torii_proto::TokenId;
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::processors::erc1155_legacy_transfer_batch";
 
@@ -110,9 +109,9 @@ where
                 let amount = U256Cainome::cairo_deserialize(&data_clone, current_idx_clone)?;
                 let amount = U256::from_words(amount.low, amount.high);
 
-                let id = felt_and_u256_to_sql_string(&token_address, &token_id_clone);
+                let id = TokenId::Nft(token_address, token_id_clone);
                 try_register_nft_token_metadata(
-                    &id,
+                    id.clone(),
                     token_address,
                     token_id_clone,
                     &provider,
@@ -123,16 +122,15 @@ where
                 .await?;
 
                 cache
-                    .update_balance_diff(&id, from_clone, to_clone, amount)
+                    .update_balance_diff(id.clone(), from_clone, to_clone, amount)
                     .await;
 
                 storage
-                    .store_erc_transfer_event(
-                        token_address,
+                    .store_token_transfer(
+                        id,
                         from_clone,
                         to_clone,
                         amount,
-                        Some(token_id_clone),
                         block_timestamp_clone,
                         &event_id_clone,
                     )

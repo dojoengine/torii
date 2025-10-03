@@ -23,7 +23,7 @@ use tokio::sync::broadcast;
 use torii_cache::{Cache, InMemoryCache};
 use torii_sqlite::executor::Executor;
 use torii_sqlite::types::Token;
-use torii_sqlite::utils::u256_to_sql_string;
+use torii_sqlite::utils::{felt_and_u256_to_sql_string, felt_to_sql_string, u256_to_sql_string};
 use torii_sqlite::Sql;
 use torii_storage::proto::{ContractDefinition, ContractType};
 use torii_storage::Storage;
@@ -194,7 +194,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        format!("{:#x}", compute_selector_from_names("ns", "Position"))
+        felt_to_sql_string(&compute_selector_from_names("ns", "Position"))
     );
     assert_eq!(name, "Position");
     assert_eq!(namespace, "ns");
@@ -212,7 +212,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        format!("{:#x}", compute_selector_from_names("ns", "Moves"))
+        felt_to_sql_string(&compute_selector_from_names("ns", "Moves"))
     );
     assert_eq!(name, "Moves");
     assert_eq!(namespace, "ns");
@@ -230,7 +230,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        format!("{:#x}", compute_selector_from_names("ns", "PlayerConfig"))
+        felt_to_sql_string(&compute_selector_from_names("ns", "PlayerConfig"))
     );
     assert_eq!(name, "PlayerConfig");
     assert_eq!(namespace, "ns");
@@ -242,8 +242,8 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     let (id, keys): (String, String) = sqlx::query_as(
         format!(
-            "SELECT id, keys FROM entities WHERE id = '{:#x}'",
-            poseidon_hash_many(&[account.address()])
+            "SELECT id, keys FROM entities WHERE id = '{}'",
+            felt_to_sql_string(&poseidon_hash_many(&[account.address()]))
         )
         .as_str(),
     )
@@ -253,9 +253,9 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        format!("{:#x}", poseidon_hash_many(&[account.address()]))
+        felt_to_sql_string(&poseidon_hash_many(&[account.address()]))
     );
-    assert_eq!(keys, format!("{:#x}/", account.address()));
+    assert_eq!(keys, format!("{}/", felt_to_sql_string(&account.address())));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -348,8 +348,8 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
     // first check if we indexed the token
     let token = sqlx::query_as::<_, Token>(
         format!(
-            "SELECT * from tokens where contract_address = '{:#x}'",
-            token_address
+            "SELECT * from tokens where contract_address = '{}'",
+            felt_to_sql_string(&token_address)
         )
         .as_str(),
     )
@@ -364,10 +364,10 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
     // check the balance
     let remote_balance = sqlx::query_scalar::<_, String>(
         format!(
-            "SELECT balance FROM token_balances WHERE account_address = '{:#x}' AND \
-             contract_address = '{:#x}'",
-            account.address(),
-            token_address
+            "SELECT balance FROM token_balances WHERE account_address = '{}' AND \
+             contract_address = '{}'",
+            felt_to_sql_string(&account.address()),
+            felt_to_sql_string(&token_address)
         )
         .as_str(),
     )
@@ -490,8 +490,8 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
     // Check if we indexed all tokens
     let tokens = sqlx::query_as::<_, Token>(
         format!(
-            "SELECT * from tokens where contract_address = '{:#x}' AND token_id IS NOT NULL ORDER BY token_id",
-            badge_address
+            "SELECT * from tokens where contract_address = '{}' AND token_id IS NOT NULL ORDER BY token_id",
+            felt_to_sql_string(&badge_address)
         )
         .as_str(),
     )
@@ -517,12 +517,11 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
     for token_id in 1..=2 {
         let balance = sqlx::query_scalar::<_, String>(
             format!(
-                "SELECT balance FROM token_balances WHERE account_address = '{:#x}' AND \
-                 contract_address = '{:#x}' AND token_id = '{:#x}:{}'",
-                Felt::ONE,
-                badge_address,
-                badge_address,
-                u256_to_sql_string(&U256::from(token_id as u32))
+                "SELECT balance FROM token_balances WHERE account_address = '{}' AND \
+                 contract_address = '{}' AND token_id = '{}'",
+                felt_to_sql_string(&Felt::ONE),
+                felt_to_sql_string(&badge_address),
+                felt_and_u256_to_sql_string(&badge_address, &U256::from(token_id as u32))
             )
             .as_str(),
         )
@@ -542,12 +541,11 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
     for token_id in 3..=5 {
         let balance = sqlx::query_scalar::<_, String>(
             format!(
-                "SELECT balance FROM token_balances WHERE account_address = '{:#x}' AND \
-                 contract_address = '{:#x}' AND token_id = '{:#x}:{}'",
-                account.address(),
-                badge_address,
-                badge_address,
-                u256_to_sql_string(&U256::from(token_id as u32))
+                "SELECT balance FROM token_balances WHERE account_address = '{}' AND \
+                 contract_address = '{}' AND token_id = '{}'",
+                felt_to_sql_string(&account.address()),
+                felt_to_sql_string(&badge_address),
+                felt_and_u256_to_sql_string(&badge_address, &U256::from(token_id as u32))
             )
             .as_str(),
         )
@@ -689,8 +687,8 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
     // Check if we indexed all tokens
     let tokens = sqlx::query_as::<_, Token>(
         format!(
-            "SELECT * from tokens where contract_address = '{:#x}' AND token_id IS NOT NULL ORDER BY token_id",
-            rewards_address
+            "SELECT * from tokens where contract_address = '{}' AND token_id IS NOT NULL ORDER BY token_id",
+            felt_to_sql_string(&rewards_address)
         )
         .as_str(),
     )
@@ -715,12 +713,11 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
         // Check recipient balance
         let recipient_balance = sqlx::query_scalar::<_, String>(
             format!(
-                "SELECT balance FROM token_balances WHERE account_address = '{:#x}' AND \
-                 contract_address = '{:#x}' AND token_id = '{:#x}:{}'",
-                other_account.address(),
-                rewards_address,
-                rewards_address,
-                u256_to_sql_string(&U256::from(token_id))
+                "SELECT balance FROM token_balances WHERE account_address = '{}' AND \
+                 contract_address = '{}' AND token_id = '{}'",
+                felt_to_sql_string(&other_account.address()),
+                felt_to_sql_string(&rewards_address),
+                felt_and_u256_to_sql_string(&rewards_address, &U256::from(token_id))
             )
             .as_str(),
         )
@@ -740,12 +737,11 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
         // Check sender remaining balance
         let sender_balance = sqlx::query_scalar::<_, String>(
             format!(
-                "SELECT balance FROM token_balances WHERE account_address = '{:#x}' AND \
-                 contract_address = '{:#x}' AND token_id = '{:#x}:{}'",
-                account.address(),
-                rewards_address,
-                rewards_address,
-                u256_to_sql_string(&U256::from(token_id))
+                "SELECT balance FROM token_balances WHERE account_address = '{}' AND \
+                 contract_address = '{}' AND token_id = '{}'",
+                felt_to_sql_string(&account.address()),
+                felt_to_sql_string(&rewards_address),
+                felt_and_u256_to_sql_string(&rewards_address, &U256::from(token_id))
             )
             .as_str(),
         )
@@ -880,8 +876,8 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
     // our entity model relations should be deleted for our player entity
     let entity_model_count: i64 = sqlx::query_scalar(
         format!(
-            "SELECT COUNT(*) FROM entity_model WHERE entity_id = '{:#x}'",
-            poseidon_hash_many(&[account.address()])
+            "SELECT COUNT(*) FROM entity_model WHERE entity_id = '{}'",
+            felt_to_sql_string(&poseidon_hash_many(&[account.address()]))
         )
         .as_str(),
     )
@@ -892,8 +888,8 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
     // our player entity should be deleted
     let entity_count: i64 = sqlx::query_scalar(
         format!(
-            "SELECT COUNT(*) FROM entities WHERE id = '{:#x}'",
-            poseidon_hash_many(&[account.address()])
+            "SELECT COUNT(*) FROM entities WHERE id = '{}'",
+            felt_to_sql_string(&poseidon_hash_many(&[account.address()]))
         )
         .as_str(),
     )
@@ -1115,8 +1111,8 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
 
     let name: String = sqlx::query_scalar(
         format!(
-            "SELECT name FROM [ns-PlayerConfig] WHERE internal_id = '{:#x}'",
-            poseidon_hash_many(&[account.address()])
+            "SELECT name FROM [ns-PlayerConfig] WHERE internal_id = '{}'",
+            felt_to_sql_string(&poseidon_hash_many(&[account.address()]))
         )
         .as_str(),
     )
@@ -1230,8 +1226,8 @@ async fn test_update_token_metadata_erc4906(sequencer: &RunnerCtx) {
 
     let token = sqlx::query_as::<_, Token>(
         format!(
-            "SELECT * from tokens where contract_address = '{:#x}' AND token_id IS NOT NULL ORDER BY token_id",
-            rewards_address
+            "SELECT * from tokens where contract_address = '{}' AND token_id IS NOT NULL ORDER BY token_id",
+            felt_to_sql_string(&rewards_address)
         )
         .as_str(),
     )
@@ -1351,8 +1347,8 @@ async fn test_erc7572_contract_uri_updated(sequencer: &RunnerCtx) {
     // Check only the contract-level metadata (token_id = 0)
     let contract_token = sqlx::query_as::<_, Token>(
         format!(
-            "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND token_id IS NULL",
-            rewards_address,
+            "SELECT * FROM tokens WHERE contract_address = '{}' AND token_id IS NULL",
+            felt_to_sql_string(&rewards_address)
         )
         .as_str(),
     )
@@ -1527,8 +1523,8 @@ async fn test_erc20_total_supply_tracking(sequencer: &RunnerCtx) {
 
     let token: Token = sqlx::query_as(
         format!(
-            "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND (token_id IS NULL OR token_id = '')",
-            erc20_address,
+            "SELECT * FROM tokens WHERE contract_address = '{}' AND (token_id IS NULL OR token_id = '')",
+            felt_to_sql_string(&erc20_address)
         )
         .as_str(),
     )
@@ -1687,8 +1683,8 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
     // We track this ourselves since ERC721 doesn't have a total_supply entrypoint
     let contract_token: Token = sqlx::query_as(
         format!(
-            "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND (token_id IS NULL OR token_id = '')",
-            erc721_address,
+            "SELECT * FROM tokens WHERE contract_address = '{}' AND (token_id IS NULL OR token_id = '')",
+            felt_to_sql_string(&erc721_address)
         )
         .as_str(),
     )
@@ -1706,9 +1702,8 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
         // Token ID 2 was burned
         let nft_token: Token = sqlx::query_as(
             format!(
-                "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
-                erc721_address,
-                U256::from(token_id as u64)
+                "SELECT * FROM tokens WHERE id = '{}'",
+                felt_and_u256_to_sql_string(&erc721_address, &U256::from(token_id as u64))
             )
             .as_str(),
         )
@@ -1725,9 +1720,8 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
     // Check that burned token ID 2 has supply 0
     let burned_token: Token = sqlx::query_as(
         format!(
-            "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
-            erc721_address,
-            U256::from(2u64)
+            "SELECT * FROM tokens WHERE id = '{}'",
+            felt_and_u256_to_sql_string(&erc721_address, &U256::from(2u64))
         )
         .as_str(),
     )
@@ -1891,8 +1885,8 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
 
     let contract_token: Token = sqlx::query_as(
         format!(
-            "SELECT * FROM tokens WHERE contract_address = '{:#x}' AND (token_id IS NULL OR token_id = '')",
-            erc1155_address
+            "SELECT * FROM tokens WHERE contract_address = '{}' AND (token_id IS NULL OR token_id = '')",
+            felt_to_sql_string(&erc1155_address)
         )
         .as_str(),
     )
@@ -1908,9 +1902,8 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
     // Check token ID 1 total supply
     let token1: Token = sqlx::query_as(
         format!(
-            "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
-            erc1155_address,
-            U256::from(1u64)
+            "SELECT * FROM tokens WHERE id = '{}'",
+            felt_and_u256_to_sql_string(&erc1155_address, &U256::from(1u64))
         )
         .as_str(),
     )
@@ -1926,9 +1919,8 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
     // Check token ID 2 total supply
     let token2: Token = sqlx::query_as(
         format!(
-            "SELECT * FROM tokens WHERE id = '{:#x}:{:#064x}'",
-            erc1155_address,
-            U256::from(2u64)
+            "SELECT * FROM tokens WHERE id = '{}'",
+            felt_and_u256_to_sql_string(&erc1155_address, &U256::from(2u64))
         )
         .as_str(),
     )
