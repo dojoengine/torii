@@ -920,17 +920,6 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 debug!(target: LOG_TARGET, "Rolled back the transaction.");
             }
             QueryType::UpdateTokenMetadata(update_metadata) => {
-                // Get the old metadata before updating (needed for trait subtraction)
-                let old_metadata = if update_metadata.token_id.is_nft() {
-                    sqlx::query_scalar::<_, String>("SELECT metadata FROM tokens WHERE id = ?")
-                        .bind(update_metadata.token_id.to_string())
-                        .fetch_optional(&mut **tx)
-                        .await?
-                        .unwrap_or_default()
-                } else {
-                    String::new()
-                };
-
                 // Update metadata and timestamp in database
                 let token = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "UPDATE tokens SET metadata = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *",
@@ -941,7 +930,15 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .await?;
 
                 // If this is an individual token (has token_id), update attributes and contract's traits
-                if update_metadata.token_id.token_id().is_some() {
+                if update_metadata.token_id.is_nft() {
+                    // Get the old metadata before updating (needed for trait subtraction)
+                    let old_metadata =
+                        sqlx::query_scalar::<_, String>("SELECT metadata FROM tokens WHERE id = ?")
+                            .bind(update_metadata.token_id.to_string())
+                            .fetch_optional(&mut **tx)
+                            .await?
+                            .unwrap_or_default();
+
                     // Update individual token attributes
                     store_token_attributes(&update_metadata.metadata, &token.id, &mut *tx).await?;
 
