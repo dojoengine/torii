@@ -898,18 +898,7 @@ impl ReadOnlyStorage for Sql {
             .into_iter()
             .map(|row| {
                 let aggregation = torii_sqlite_types::AggregationEntryWithPosition::from_row(&row)?;
-
-                Result::<AggregationEntry, Error>::Ok(AggregationEntry {
-                    id: aggregation.id,
-                    aggregator_id: aggregation.aggregator_id,
-                    entity_id: aggregation.entity_id,
-                    value: aggregation.value,
-                    display_value: aggregation.display_value,
-                    position: aggregation.position as u64,
-                    model_id: aggregation.model_id,
-                    created_at: aggregation.created_at,
-                    updated_at: aggregation.updated_at,
-                })
+                Result::<AggregationEntry, Error>::Ok(aggregation.into())
             })
             .collect::<Result<Vec<_>, _>>()?;
 
