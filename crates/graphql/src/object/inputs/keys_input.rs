@@ -24,11 +24,17 @@ pub fn parse_keys_argument(ctx: &ResolverContext<'_>) -> Result<Option<Vec<Strin
 
         let keys = keys
             .iter()
-            .map(|s| Felt::from_str(s))
-            .collect::<Result<Vec<_>, _>>()?;
-        return Ok(Some(
-            keys.iter().map(felt_to_sql_string).collect::<Vec<_>>(),
-        ));
+            .map(|s| {
+                if s == "*" {
+                    Ok("*".to_string())
+                } else {
+                    let felt = Felt::from_str(s)
+                        .map_err(|e| Error::new(format!("Failed to parse key as felt: {}", e)))?;
+                    Ok(felt_to_sql_string(&felt))
+                }
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        return Ok(Some(keys));
     }
 
     Ok(None)

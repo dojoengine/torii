@@ -252,8 +252,8 @@ mod tests {
                     "__typename": type_name,
                         "depth": "Zero",
                         "record_id": 0,
-                        "type_felt": felt_to_sql_string(&Felt::from(1u128)),
-                        "typeContractAddress": felt_to_sql_string(&Felt::ONE)
+                        "type_felt": "0x1",
+                        "typeContractAddress": "0x1"
                 }]
             }
         });
@@ -336,24 +336,21 @@ mod tests {
         let response_value = run_graphql_subscription(
             &db,
             provider,
-            &format!(
-                r#"subscription {{
-                entityUpdated(id: "{entity_id}") {{
+            r#"subscription {
+                entityUpdated(id: "0x00579e8877c7755365d5ec1ec7d3a94a457eff5d1f40482bbe9729c064cdead2") {
                     id
                     keys
-                    models {{
+                    models {
                         __typename
-                        ... on types_test_Record {{
+                        ... on types_test_Record {
                             depth
                             record_id
                             type_felt
                             typeContractAddress
-                        }}
-                    }}
-                }}
-                }}
-            }}"#
-            ),
+                        }
+                    }
+                }
+            }"#,
         )
         .await;
         // 4. The subscription has received the message from publish()
