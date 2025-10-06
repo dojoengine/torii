@@ -91,6 +91,12 @@ service World {
     // Retrieve activities (user session tracking)
     rpc RetrieveActivities (RetrieveActivitiesRequest) returns (RetrieveActivitiesResponse);
 
+    // Subscribe to activity updates (user session tracking)
+    rpc SubscribeActivities (SubscribeActivitiesRequest) returns (stream SubscribeActivitiesResponse);
+
+    // Update an activities subscription
+    rpc UpdateActivitiesSubscription (UpdateActivitiesSubscriptionRequest) returns (google.protobuf.Empty);
+
     // Publish a torii offchain message
     rpc PublishMessage (PublishMessageRequest) returns (PublishMessageResponse);
 
@@ -407,4 +413,34 @@ message RetrieveActivitiesRequest {
 message RetrieveActivitiesResponse {
     string next_cursor = 1;
     repeated types.Activity activities = 2;
+}
+
+// A request to subscribe to activity updates
+message SubscribeActivitiesRequest {
+    // Filter by world addresses
+    repeated bytes world_addresses = 1;
+    // Filter by namespaces
+    repeated string namespaces = 2;
+    // Filter by caller addresses
+    repeated bytes caller_addresses = 3;
+}
+
+// A response containing activity updates
+message SubscribeActivitiesResponse {
+    // The subscription ID
+    uint64 subscription_id = 1;
+    // The activity update
+    types.Activity activity = 2;
+}
+
+// A request to update an activities subscription
+message UpdateActivitiesSubscriptionRequest {
+    // The subscription ID
+    uint64 subscription_id = 1;
+    // Filter by world addresses
+    repeated bytes world_addresses = 2;
+    // Filter by namespaces
+    repeated string namespaces = 3;
+    // Filter by caller addresses
+    repeated bytes caller_addresses = 4;
 }
