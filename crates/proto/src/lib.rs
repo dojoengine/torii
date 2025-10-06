@@ -1807,8 +1807,24 @@ pub struct Activity {
     pub session_start: DateTime<Utc>,
     pub session_end: DateTime<Utc>,
     pub action_count: u32,
-    pub actions: HashMap<String, u32>,  // Map of action name -> count
+    pub actions: HashMap<String, u32>, // Map of action name -> count
     pub updated_at: DateTime<Utc>,
+}
+
+impl From<Activity> for proto::types::Activity {
+    fn from(value: Activity) -> Self {
+        Self {
+            id: value.id,
+            world_address: value.world_address.to_bytes_be().to_vec(),
+            namespace: value.namespace,
+            caller_address: value.caller_address.to_bytes_be().to_vec(),
+            session_start: value.session_start.timestamp() as u64,
+            session_end: value.session_end.timestamp() as u64,
+            action_count: value.action_count,
+            actions: value.actions,
+            updated_at: value.updated_at.timestamp() as u64,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -1819,6 +1835,53 @@ pub struct ActivityQuery {
     pub from_time: Option<DateTime<Utc>>,
     pub to_time: Option<DateTime<Utc>>,
     pub pagination: Pagination,
+}
+
+impl From<ActivityQuery> for proto::types::ActivityQuery {
+    fn from(value: ActivityQuery) -> Self {
+        Self {
+            world_addresses: value
+                .world_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().to_vec())
+                .collect(),
+            namespaces: value.namespaces,
+            caller_addresses: value
+                .caller_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().to_vec())
+                .collect(),
+            from_time: value.from_time.map(|t| t.timestamp() as u64),
+            to_time: value.to_time.map(|t| t.timestamp() as u64),
+            pagination: Some(value.pagination.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::ActivityQuery> for ActivityQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::ActivityQuery) -> Result<Self, Self::Error> {
+        Ok(Self {
+            world_addresses: value
+                .world_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
+            namespaces: value.namespaces,
+            caller_addresses: value
+                .caller_addresses
+                .into_iter()
+                .map(|a| Felt::from_bytes_be_slice(&a))
+                .collect(),
+            from_time: value
+                .from_time
+                .map(|t| DateTime::from_timestamp(t as i64, 0).unwrap()),
+            to_time: value
+                .to_time
+                .map(|t| DateTime::from_timestamp(t as i64, 0).unwrap()),
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
+        })
+    }
 }
 
 impl From<TransactionQuery> for proto::types::TransactionQuery {

@@ -144,14 +144,15 @@ pub struct Activity {
     pub session_start: DateTime<Utc>,
     pub session_end: DateTime<Utc>,
     pub action_count: i32,
-    pub actions: String,  // JSON string
+    pub actions: String, // JSON string
     pub updated_at: DateTime<Utc>,
 }
 
 impl From<Activity> for torii_proto::Activity {
     fn from(value: Activity) -> Self {
         use std::collections::HashMap;
-        let actions: HashMap<String, u32> = serde_json::from_str(&value.actions).unwrap_or_default();
+        let actions: HashMap<String, u32> =
+            serde_json::from_str(&value.actions).unwrap_or_default();
         Self {
             id: value.id,
             world_address: Felt::from_hex(&value.world_address).unwrap(),

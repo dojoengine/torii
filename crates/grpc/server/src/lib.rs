@@ -46,18 +46,18 @@ use sqlx::SqlitePool;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
     PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest,
-    PublishMessageResponse, RetrieveAggregationsRequest, RetrieveAggregationsResponse,
-    RetrieveContractsRequest, RetrieveContractsResponse, RetrieveControllersRequest,
-    RetrieveControllersResponse, RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest,
-    RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
-    RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse, RetrieveTokensRequest,
-    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
-    SubscribeAggregationsRequest, SubscribeAggregationsResponse, SubscribeContractsRequest,
-    SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
-    SubscribeEventMessagesRequest, SubscribeEventsResponse, SubscribeTokenBalancesRequest,
-    SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
-    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
-    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    PublishMessageResponse, RetrieveActivitiesRequest, RetrieveActivitiesResponse,
+    RetrieveAggregationsRequest, RetrieveAggregationsResponse, RetrieveContractsRequest,
+    RetrieveContractsResponse, RetrieveControllersRequest, RetrieveControllersResponse,
+    RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
+    RetrieveTokenContractsRequest, RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest,
+    RetrieveTokenTransfersResponse, RetrieveTokensRequest, RetrieveTokensResponse,
+    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeAggregationsRequest,
+    SubscribeAggregationsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
+    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
+    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
     UpdateAggregationsSubscriptionRequest, UpdateAggregationsSubscriptionResponse,
     UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
     UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
@@ -463,6 +463,28 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .await;
 
         Ok(Response::new(UpdateAggregationsSubscriptionResponse {}))
+    }
+
+    async fn retrieve_activities(
+        &self,
+        request: Request<RetrieveActivitiesRequest>,
+    ) -> Result<Response<RetrieveActivitiesResponse>, Status> {
+        let RetrieveActivitiesRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+
+        let activities = self
+            .storage
+            .activities(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(RetrieveActivitiesResponse {
+            activities: activities.items.into_iter().map(Into::into).collect(),
+            next_cursor: activities.next_cursor.unwrap_or_default(),
+        }))
     }
 
     async fn retrieve_contracts(
