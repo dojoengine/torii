@@ -81,12 +81,28 @@ pub async fn update_activity(
                 );
             } else {
                 // New session - time gap exceeded
-                create_new_session(tx, world_address, namespace, caller_address, entrypoint, executed_at).await?;
+                create_new_session(
+                    tx,
+                    world_address,
+                    namespace,
+                    caller_address,
+                    entrypoint,
+                    executed_at,
+                )
+                .await?;
             }
         }
         None => {
             // First session for this caller in this world/namespace
-            create_new_session(tx, world_address, namespace, caller_address, entrypoint, executed_at).await?;
+            create_new_session(
+                tx,
+                world_address,
+                namespace,
+                caller_address,
+                entrypoint,
+                executed_at,
+            )
+            .await?;
         }
     }
 
@@ -101,7 +117,13 @@ async fn create_new_session(
     entrypoint: &str,
     executed_at: DateTime<Utc>,
 ) -> QueryResult<()> {
-    let session_id = format!("{}:{}:{}:{}", world_address, namespace, caller_address, executed_at.timestamp());
+    let session_id = format!(
+        "{}:{}:{}:{}",
+        world_address,
+        namespace,
+        caller_address,
+        executed_at.timestamp()
+    );
 
     // Initialize IndexMap with first action (entrypoint)
     let mut action_counts = IndexMap::new();
