@@ -88,6 +88,9 @@ service World {
     // Update an aggregations subscription
     rpc UpdateAggregationsSubscription (UpdateAggregationsSubscriptionRequest) returns (UpdateAggregationsSubscriptionResponse);
 
+    // Retrieve activities (user session tracking)
+    rpc RetrieveActivities (RetrieveActivitiesRequest) returns (RetrieveActivitiesResponse);
+
     // Publish a torii offchain message
     rpc PublishMessage (PublishMessageRequest) returns (PublishMessageResponse);
 
@@ -393,4 +396,15 @@ message UpdateAggregationsSubscriptionRequest {
 
 // A response for updating an aggregations subscription
 message UpdateAggregationsSubscriptionResponse {
+}
+
+// A request to retrieve activities
+message RetrieveActivitiesRequest {
+    types.ActivityQuery query = 1;
+}
+
+// A response containing activities
+message RetrieveActivitiesResponse {
+    string next_cursor = 1;
+    repeated types.Activity activities = 2;
 }

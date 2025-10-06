@@ -12,11 +12,11 @@ use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
 use torii_math::I256;
 use torii_proto::{
-    schema::Entity, AggregationEntry, AggregationQuery, BalanceId, CallType, Clause,
-    CompositeClause, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event,
-    EventQuery, LogicalOperator, Model, OrderBy, OrderDirection, Page, Query, Token, TokenBalance,
-    TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery, TokenTransfer,
-    TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
+    schema::Entity, Activity, ActivityQuery, AggregationEntry, AggregationQuery, BalanceId,
+    CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery, Controller,
+    ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy, OrderDirection, Page,
+    Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId,
+    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{ReadOnlyStorage, Storage, StorageError};
@@ -907,6 +907,80 @@ impl ReadOnlyStorage for Sql {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        Ok(Page {
+            items,
+            next_cursor: page.next_cursor,
+        })
+    }
+
+    /// Returns activities for the storage.
+    async fn activities(&self, query: &ActivityQuery) -> Result<Page<Activity>, StorageError> {
+        let executor = PaginationExecutor::new(self.pool.clone());
+        let mut query_builder = QueryBuilder::new("activities").select(&[
+            "id".to_string(),
+            "world_address".to_string(),
+            "namespace".to_string(),
+            "caller_address".to_string(),
+            "session_start".to_string(),
+            "session_end".to_string(),
+            "action_count".to_string(),
+            "actions".to_string(),
+            "updated_at".to_string(),
+        ]);
+
+        if !query.world_addresses.is_empty() {
+            let placeholders = vec!["?"; query.world_addresses.len()].join(", ");
+            query_builder =
+                query_builder.where_clause(&format!("world_address IN ({})", placeholders));
+            for addr in &query.world_addresses {
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
+            }
+        }
+
+        if !query.namespaces.is_empty() {
+            let placeholders = vec!["?"; query.namespaces.len()].join(", ");
+            query_builder = query_builder.where_clause(&format!("namespace IN ({})", placeholders));
+            for namespace in &query.namespaces {
+                query_builder = query_builder.bind_value(namespace.clone());
+            }
+        }
+
+        if !query.caller_addresses.is_empty() {
+            let placeholders = vec!["?"; query.caller_addresses.len()].join(", ");
+            query_builder =
+                query_builder.where_clause(&format!("caller_address IN ({})", placeholders));
+            for addr in &query.caller_addresses {
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
+            }
+        }
+
+        if let Some(from_time) = &query.from_time {
+            query_builder = query_builder.where_clause("session_end >= ?");
+            query_builder = query_builder.bind_value(from_time.to_rfc3339());
+        }
+
+        if let Some(to_time) = &query.to_time {
+            query_builder = query_builder.where_clause("session_end <= ?");
+            query_builder = query_builder.bind_value(to_time.to_rfc3339());
+        }
+
+        let page = executor
+            .execute_paginated_query(
+                query_builder,
+                &query.pagination,
+                &OrderBy {
+                    field: "session_end".to_string(),
+                    direction: OrderDirection::Desc,
+                },
+            )
+            .await?;
+        let items: Vec<Activity> = page
+            .items
+            .into_iter()
+            .map(|row| {
+                Result::<Activity, Error>::Ok(torii_sqlite_types::Activity::from_row(&row)?.into())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Page {
             items,
             next_cursor: page.next_cursor,

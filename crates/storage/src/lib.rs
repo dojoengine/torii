@@ -13,10 +13,10 @@ use torii_math::I256;
 use torii_proto::schema::Entity;
 
 use torii_proto::{
-    AggregationEntry, AggregationQuery, BalanceId, Contract, ContractCursor, ContractQuery,
-    Controller, ControllerQuery, Event, EventQuery, Model, Page, Query, Token, TokenBalance,
-    TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery, TokenTransfer,
-    TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
+    Activity, ActivityQuery, AggregationEntry, AggregationQuery, BalanceId, Contract,
+    ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, Model, Page,
+    Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId,
+    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
 };
 
 pub mod utils;
@@ -93,6 +93,9 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
         &self,
         query: &AggregationQuery,
     ) -> Result<Page<AggregationEntry>, StorageError>;
+
+    /// Returns activities for the storage.
+    async fn activities(&self, query: &ActivityQuery) -> Result<Page<Activity>, StorageError>;
 }
 
 #[async_trait]

@@ -333,6 +333,42 @@ message TransactionQuery {
     Pagination pagination = 2;
 }
 
+// Activity tracking for user sessions
+message Activity {
+    // Unique identifier: world_address:namespace:caller_address:session_start_timestamp
+    string id = 1;
+    // World contract address
+    bytes world_address = 2;
+    // Namespace
+    string namespace = 3;
+    // Caller address
+    bytes caller_address = 4;
+    // Session start time
+    uint64 session_start = 5;
+    // Session end time
+    uint64 session_end = 6;
+    // Total action count in session
+    uint32 action_count = 7;
+    // Map of action names to call counts
+    map<string, uint32> actions = 8;
+    // Last update timestamp
+    uint64 updated_at = 9;
+}
+
+message ActivityQuery {
+    // Filter by world addresses
+    repeated bytes world_addresses = 1;
+    // Filter by namespaces
+    repeated string namespaces = 2;
+    // Filter by caller addresses
+    repeated bytes caller_addresses = 3;
+    // Filter by time range (unix timestamps)
+    optional uint64 from_time = 4;
+    optional uint64 to_time = 5;
+    // Pagination
+    Pagination pagination = 6;
+}
+
 enum ContractType {
     WORLD = 0;
     ERC20 = 1;

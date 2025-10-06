@@ -134,6 +134,39 @@ pub struct Event {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Activity {
+    pub id: String,
+    pub world_address: String,
+    pub namespace: String,
+    pub caller_address: String,
+    pub session_start: DateTime<Utc>,
+    pub session_end: DateTime<Utc>,
+    pub action_count: i32,
+    pub actions: String, // JSON string
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<Activity> for torii_proto::Activity {
+    fn from(value: Activity) -> Self {
+        use std::collections::HashMap;
+        let actions: HashMap<String, u32> =
+            serde_json::from_str(&value.actions).unwrap_or_default();
+        Self {
+            id: value.id,
+            world_address: Felt::from_hex(&value.world_address).unwrap(),
+            namespace: value.namespace,
+            caller_address: Felt::from_hex(&value.caller_address).unwrap(),
+            session_start: value.session_start,
+            session_end: value.session_end,
+            action_count: value.action_count as u32,
+            actions,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
 impl From<Event> for torii_proto::EventWithMetadata {
     fn from(value: Event) -> Self {
         Self {
