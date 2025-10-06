@@ -54,7 +54,7 @@ pub struct AggregationSubscriber {
     pub(crate) sender: Sender<Result<SubscribeAggregationsResponse, tonic::Status>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct AggregationManager {
     subscribers: DashMap<u64, AggregationSubscriber>,
     config: GrpcConfig,

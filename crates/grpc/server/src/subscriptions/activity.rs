@@ -5,6 +5,7 @@ use std::task::{Context, Poll};
 
 use dashmap::DashMap;
 use futures::Stream;
+use futures_util::StreamExt;
 use rand::Rng;
 use starknet_crypto::Felt;
 use tokio::sync::mpsc::{
@@ -113,7 +114,7 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn new(subs_manager: Arc<ActivityManager>) -> impl Future<Output = ()> {
+    pub fn new(subs_manager: Arc<ActivityManager>) -> Self {
         let (activity_sender, activity_receiver) = unbounded_channel();
         let service = Self {
             simple_broker: if subs_manager.config.optimistic {
@@ -138,36 +139,43 @@ impl Service {
         }
     }
 
-    async fn process_activity_update(subs: &ActivityManager, activity: &Activity) {
-        let mut closed_stream_ids = Vec::new();
+    async fn process_activity_update(subs: &Arc<ActivityManager>, activity: &Activity) {
+        let mut closed_stream = Vec::new();
 
-        for subscriber in subs.subscribers.iter() {
-            let id = subscriber.key();
-            let subscriber = subscriber.value();
+        for sub in subs.subscribers.iter() {
+            let idx = sub.key();
+            let sub = sub.value();
 
-            if !subscriber.filter.matches(activity) {
+            // Check if the subscriber is interested in this activity
+            if !sub.filter.matches(activity) {
                 continue;
             }
 
-            trace!(
-                target: LOG_TARGET,
-                subscription_id = id,
-                activity_id = %activity.id,
-                "Processing activity update"
-            );
-
             let resp = SubscribeActivitiesResponse {
-                subscription_id: *id,
                 activity: Some(activity.clone().into()),
+                subscription_id: *idx,
             };
 
-            if subscriber.sender.try_send(Ok(resp)).is_err() {
-                closed_stream_ids.push(*id);
+            // Use try_send to avoid blocking on slow subscribers
+            match sub.sender.try_send(Ok(resp)) {
+                Ok(_) => {
+                    // Message sent successfully
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    // Channel is full, subscriber is too slow - disconnect them
+                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
+                    closed_stream.push(*idx);
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    // Channel is closed, subscriber has disconnected
+                    closed_stream.push(*idx);
+                }
             }
         }
 
-        for id in closed_stream_ids {
-            subs.remove_subscriber(id).await;
+        for id in closed_stream {
+            trace!(target = LOG_TARGET, id = %id, "Closing activity stream.");
+            subs.remove_subscriber(id).await
         }
     }
 }
@@ -178,13 +186,9 @@ impl Future for Service {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
-        while let Poll::Ready(Some(activity)) = this.simple_broker.as_mut().poll_next(cx) {
+        while let Poll::Ready(Some(activity)) = this.simple_broker.poll_next_unpin(cx) {
             if let Err(e) = this.activity_sender.send(activity) {
-                error!(
-                    target: LOG_TARGET,
-                    error = %e,
-                    "Sending activity update to processor"
-                );
+                error!(target = LOG_TARGET, error = %e, "Sending activity update to processor.");
             }
         }
 
