@@ -1798,7 +1798,7 @@ pub struct TransactionQuery {
     pub pagination: Pagination,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Activity {
     pub id: String,
     pub world_address: Felt,
@@ -1824,6 +1824,23 @@ impl From<Activity> for proto::types::Activity {
             actions: value.actions,
             updated_at: value.updated_at.timestamp() as u64,
         }
+    }
+}
+
+impl TryFrom<proto::types::Activity> for Activity {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::Activity) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: value.id,
+            world_address: Felt::from_bytes_be_slice(&value.world_address),
+            namespace: value.namespace,
+            caller_address: Felt::from_bytes_be_slice(&value.caller_address),
+            session_start: DateTime::from_timestamp(value.session_start as i64, 0).unwrap(),
+            session_end: DateTime::from_timestamp(value.session_end as i64, 0).unwrap(),
+            action_count: value.action_count,
+            actions: value.actions,
+            updated_at: DateTime::from_timestamp(value.updated_at as i64, 0).unwrap(),
+        })
     }
 }
 
