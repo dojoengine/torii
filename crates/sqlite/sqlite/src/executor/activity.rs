@@ -15,6 +15,8 @@ type SessionData = (String, DateTime<Utc>, DateTime<Utc>, i32, String);
 /// Update activity tracking for a transaction
 pub async fn update_activity(
     tx: &mut SqlxTransaction<'_, Sqlite>,
+    world_address: &str,
+    namespace: &str,
     caller_address: &str,
     entrypoint: &str,
     executed_at: DateTime<Utc>,
@@ -26,14 +28,16 @@ pub async fn update_activity(
         return Ok(());
     }
 
-    // Try to find the most recent session for this caller
+    // Try to find the most recent session for this caller within this world/namespace
     let last_session: Option<SessionData> = sqlx::query_as(
         "SELECT id, session_start, session_end, action_count, actions
          FROM activities
-         WHERE caller_address = ?
+         WHERE world_address = ? AND namespace = ? AND caller_address = ?
          ORDER BY session_end DESC
          LIMIT 1",
     )
+    .bind(world_address)
+    .bind(namespace)
     .bind(caller_address)
     .fetch_optional(&mut **tx)
     .await?;
@@ -68,6 +72,8 @@ pub async fn update_activity(
 
                 info!(
                     target: LOG_TARGET,
+                    world = %world_address,
+                    namespace = %namespace,
                     caller = %caller_address,
                     session_id = %session_id,
                     action_count = %(action_count + 1),
@@ -75,12 +81,12 @@ pub async fn update_activity(
                 );
             } else {
                 // New session - time gap exceeded
-                create_new_session(tx, caller_address, entrypoint, executed_at).await?;
+                create_new_session(tx, world_address, namespace, caller_address, entrypoint, executed_at).await?;
             }
         }
         None => {
-            // First session for this caller
-            create_new_session(tx, caller_address, entrypoint, executed_at).await?;
+            // First session for this caller in this world/namespace
+            create_new_session(tx, world_address, namespace, caller_address, entrypoint, executed_at).await?;
         }
     }
 
@@ -89,11 +95,13 @@ pub async fn update_activity(
 
 async fn create_new_session(
     tx: &mut SqlxTransaction<'_, Sqlite>,
+    world_address: &str,
+    namespace: &str,
     caller_address: &str,
     entrypoint: &str,
     executed_at: DateTime<Utc>,
 ) -> QueryResult<()> {
-    let session_id = format!("{}:{}", caller_address, executed_at.timestamp());
+    let session_id = format!("{}:{}:{}:{}", world_address, namespace, caller_address, executed_at.timestamp());
 
     // Initialize IndexMap with first action (entrypoint)
     let mut action_counts = IndexMap::new();
@@ -103,10 +111,12 @@ async fn create_new_session(
 
     sqlx::query(
         "INSERT INTO activities
-         (id, caller_address, session_start, session_end, action_count, actions)
-         VALUES (?, ?, ?, ?, 1, ?)",
+         (id, world_address, namespace, caller_address, session_start, session_end, action_count, actions)
+         VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
     )
     .bind(&session_id)
+    .bind(world_address)
+    .bind(namespace)
     .bind(caller_address)
     .bind(executed_at)
     .bind(executed_at)
@@ -116,6 +126,8 @@ async fn create_new_session(
 
     info!(
         target: LOG_TARGET,
+        world = %world_address,
+        namespace = %namespace,
         caller = %caller_address,
         session_id = %session_id,
         "Created new activity session"
