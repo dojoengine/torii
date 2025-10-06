@@ -3,22 +3,22 @@ pub mod error;
 use crypto_bigint::U256;
 use starknet::core::types::Felt;
 use torii_grpc_client::{
-    AggregationUpdateStreaming, ContractUpdateStreaming, EntityUpdateStreaming,
-    EventUpdateStreaming, TokenBalanceStreaming, TokenTransferUpdateStreaming,
-    TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
+    ActivityUpdateStreaming, AggregationUpdateStreaming, ContractUpdateStreaming,
+    EntityUpdateStreaming, EventUpdateStreaming, TokenBalanceStreaming,
+    TokenTransferUpdateStreaming, TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
 };
 use torii_proto::proto::world::{
-    RetrieveAggregationsResponse, RetrieveContractsResponse, RetrieveControllersResponse,
-    RetrieveEntitiesResponse, RetrieveEventsResponse, RetrieveTokenBalancesResponse,
-    RetrieveTokenContractsResponse, RetrieveTokenTransfersResponse, RetrieveTokensResponse,
-    RetrieveTransactionsResponse,
+    RetrieveActivitiesResponse, RetrieveAggregationsResponse, RetrieveContractsResponse,
+    RetrieveControllersResponse, RetrieveEntitiesResponse, RetrieveEventsResponse,
+    RetrieveTokenBalancesResponse, RetrieveTokenContractsResponse, RetrieveTokenTransfersResponse,
+    RetrieveTokensResponse, RetrieveTransactionsResponse,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    AggregationEntry, AggregationQuery, Clause, Contract, ContractQuery, Controller,
-    ControllerQuery, Event, EventQuery, KeysClause, Message, Page, Query, SqlRow, Token,
-    TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenQuery, TokenTransfer,
-    TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery, World,
+    Activity, ActivityQuery, AggregationEntry, AggregationQuery, Clause, Contract, ContractQuery,
+    Controller, ControllerQuery, Event, EventQuery, KeysClause, Message, Page, Query, SqlRow,
+    Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenQuery,
+    TokenTransfer, TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery, World,
 };
 
 use crate::error::Error;
@@ -237,6 +237,63 @@ impl Client {
                 Some(next_cursor)
             },
         })
+    }
+
+    /// Retrieves activities (user session tracking) matching query parameter.
+    pub async fn activities(&self, query: ActivityQuery) -> Result<Page<Activity>, Error> {
+        let mut grpc_client = self.inner.clone();
+        let RetrieveActivitiesResponse {
+            activities,
+            next_cursor,
+        } = grpc_client.retrieve_activities(query).await?;
+        Ok(Page {
+            items: activities
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<Activity>, _>>()?,
+            next_cursor: if next_cursor.is_empty() {
+                None
+            } else {
+                Some(next_cursor)
+            },
+        })
+    }
+
+    /// Subscribe to activity updates (user session tracking).
+    /// If no world_addresses are provided, it will subscribe to updates for all worlds.
+    /// If no namespaces are provided, it will subscribe to updates for all namespaces.
+    /// If no caller_addresses are provided, it will subscribe to updates for all callers.
+    pub async fn on_activity_updated(
+        &self,
+        world_addresses: Vec<Felt>,
+        namespaces: Vec<String>,
+        caller_addresses: Vec<Felt>,
+    ) -> Result<ActivityUpdateStreaming, Error> {
+        let mut grpc_client = self.inner.clone();
+        let stream = grpc_client
+            .subscribe_activities(world_addresses, namespaces, caller_addresses)
+            .await?;
+        Ok(stream)
+    }
+
+    /// Update an activities subscription
+    pub async fn update_activity_subscription(
+        &self,
+        subscription_id: u64,
+        world_addresses: Vec<Felt>,
+        namespaces: Vec<String>,
+        caller_addresses: Vec<Felt>,
+    ) -> Result<(), Error> {
+        let mut grpc_client = self.inner.clone();
+        grpc_client
+            .update_activities_subscription(
+                subscription_id,
+                world_addresses,
+                namespaces,
+                caller_addresses,
+            )
+            .await?;
+        Ok(())
     }
 
     /// Subscribe to aggregation updates (leaderboards, stats, rankings).
