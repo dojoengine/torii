@@ -72,16 +72,18 @@ const DEFAULT_EXPOSED_HEADERS: [&str; 4] = [
 const DEFAULT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Create a gRPC-compatible HTTP/2 proxy client with configurable keepalive settings
-pub fn create_grpc_proxy_client(settings: &ProxySettings) -> ReverseProxy<HttpConnector<GaiResolver>> {
+pub fn create_grpc_proxy_client(
+    settings: &ProxySettings,
+) -> ReverseProxy<HttpConnector<GaiResolver>> {
     let mut http_connector = HttpConnector::new();
-    
+
     // TCP keepalive to detect dead connections
     if settings.tcp_keepalive_interval > 0 {
         http_connector.set_keepalive(Some(Duration::from_secs(settings.tcp_keepalive_interval)));
     }
     // TCP nodelay for lower latency (important for gRPC)
     http_connector.set_nodelay(true);
-    
+
     // Build client with HTTP/2 keepalive settings to match gRPC server and detect stale connections
     let client = if settings.http2_keepalive_interval > 0 && settings.http2_keepalive_timeout > 0 {
         Client::builder()
@@ -97,11 +99,9 @@ pub fn create_grpc_proxy_client(settings: &ProxySettings) -> ReverseProxy<HttpCo
             .http2_keep_alive_while_idle(true)
             .build(http_connector)
     } else {
-        Client::builder()
-            .http2_only(true)
-            .build(http_connector)
+        Client::builder().http2_only(true).build(http_connector)
     };
-    
+
     ReverseProxy::new(client)
 }
 
@@ -171,7 +171,11 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
         let websocket_proxy_client = Arc::new(create_websocket_proxy_client());
 
         let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(vec![
-            Box::new(GraphQLHandler::new(graphql_addr, grpc_proxy_client.clone(), websocket_proxy_client.clone())),
+            Box::new(GraphQLHandler::new(
+                graphql_addr,
+                grpc_proxy_client.clone(),
+                websocket_proxy_client.clone(),
+            )),
             Box::new(GrpcHandler::new(grpc_addr, grpc_proxy_client.clone())),
             Box::new(McpHandler::new(pool.clone())),
             Box::new(MetadataHandler::new(storage.clone(), provider)),

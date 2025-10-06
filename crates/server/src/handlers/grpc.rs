@@ -27,7 +27,10 @@ impl GrpcHandler {
         grpc_addr: Option<SocketAddr>,
         proxy_client: Arc<ReverseProxy<HttpConnector<GaiResolver>>>,
     ) -> Self {
-        Self { grpc_addr, proxy_client }
+        Self {
+            grpc_addr,
+            proxy_client,
+        }
     }
 }
 
@@ -52,12 +55,14 @@ impl Handler for GrpcHandler {
     async fn handle(&self, req: Request<Body>, client_addr: IpAddr) -> Response<Body> {
         if let Some(grpc_addr) = self.grpc_addr {
             let grpc_addr = format!("http://{}", grpc_addr);
-            
+
             // Wrap proxy call with timeout to prevent indefinite hangs
             match timeout(
                 GRPC_PROXY_TIMEOUT,
-                self.proxy_client.call(client_addr, &grpc_addr, req)
-            ).await {
+                self.proxy_client.call(client_addr, &grpc_addr, req),
+            )
+            .await
+            {
                 Ok(Ok(response)) => response,
                 Ok(Err(_error)) => {
                     error!(target: LOG_TARGET, error = ?_error, "gRPC proxy error");

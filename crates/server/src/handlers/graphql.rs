@@ -29,7 +29,11 @@ impl GraphQLHandler {
         grpc_proxy_client: Arc<ReverseProxy<HttpConnector<GaiResolver>>>,
         websocket_proxy_client: Arc<ReverseProxy<HttpConnector<GaiResolver>>>,
     ) -> Self {
-        Self { graphql_addr, grpc_proxy_client, websocket_proxy_client }
+        Self {
+            graphql_addr,
+            grpc_proxy_client,
+            websocket_proxy_client,
+        }
     }
 }
 
@@ -56,7 +60,8 @@ impl Handler for GraphQLHandler {
 
             if is_websocket {
                 // No timeout for WebSocket upgrades
-                match self.websocket_proxy_client
+                match self
+                    .websocket_proxy_client
                     .call(client_addr, &graphql_addr, req)
                     .await
                 {
@@ -73,8 +78,10 @@ impl Handler for GraphQLHandler {
                 // Regular GraphQL requests get a timeout
                 match timeout(
                     GRAPHQL_PROXY_TIMEOUT,
-                    self.grpc_proxy_client.call(client_addr, &graphql_addr, req)
-                ).await {
+                    self.grpc_proxy_client.call(client_addr, &graphql_addr, req),
+                )
+                .await
+                {
                     Ok(Ok(response)) => response,
                     Ok(Err(_error)) => {
                         error!(target: LOG_TARGET, error = ?_error, "GraphQL proxy error");
