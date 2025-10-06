@@ -469,9 +469,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 }
 
                 // Track activities for WORLD contract interactions
-                // Check if any of the contract addresses are WORLD contracts
-                let is_world_tx: Option<bool> = sqlx::query_scalar(
-                    "SELECT 1 FROM contracts 
+                // Get the world contract address if this is a WORLD transaction
+                let world_address: Option<String> = sqlx::query_scalar(
+                    "SELECT contract_address FROM contracts 
                      WHERE contract_address IN (
                          SELECT contract_address FROM transaction_contract 
                          WHERE transaction_hash = ?
@@ -482,27 +482,59 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 .fetch_optional(&mut **tx)
                 .await?;
 
-                if is_world_tx.is_some() && self.config.activity_enabled {
-                    // Track activity for each call to WORLD contracts
-                    for call in &store_transaction.calls {
-                        let caller_address_str = felt_to_sql_string(&call.caller_address);
-                        if let Err(e) = activity::update_activity(
-                            tx,
-                            &caller_address_str,
-                            &call.entrypoint,
-                            transaction.executed_at,
-                            self.config.activity_session_timeout,
-                            &self.config.activity_excluded_entrypoints,
-                        )
-                        .await
-                        {
-                            error!(
-                                target: LOG_TARGET,
-                                caller = %caller_address_str,
-                                entrypoint = %call.entrypoint,
-                                error = ?e,
-                                "Failed to update activity"
-                            );
+                if world_address.is_some()
+                    && self.config.activity_enabled
+                    && !store_transaction.unique_models.is_empty()
+                {
+                    let world_addr = world_address.unwrap();
+
+                    // Get the namespace from the unique models involved in this transaction
+                    // Build a query with placeholders for all model IDs
+                    let model_ids: Vec<String> = store_transaction
+                        .unique_models
+                        .iter()
+                        .map(felt_to_sql_string)
+                        .collect();
+
+                    let placeholders = model_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                    let query = format!(
+                        "SELECT DISTINCT namespace FROM models WHERE id IN ({})",
+                        placeholders
+                    );
+
+                    let mut query_builder = sqlx::query_scalar(&query);
+                    for model_id in &model_ids {
+                        query_builder = query_builder.bind(model_id);
+                    }
+
+                    let namespaces: Vec<String> = query_builder.fetch_all(&mut **tx).await?;
+
+                    // Track activity for each call, per namespace
+                    for namespace in &namespaces {
+                        for call in &store_transaction.calls {
+                            let caller_address_str = felt_to_sql_string(&call.caller_address);
+                            if let Err(e) = activity::update_activity(
+                                tx,
+                                &world_addr,
+                                namespace,
+                                &caller_address_str,
+                                &call.entrypoint,
+                                transaction.executed_at,
+                                self.config.activity_session_timeout,
+                                &self.config.activity_excluded_entrypoints,
+                            )
+                            .await
+                            {
+                                error!(
+                                    target: LOG_TARGET,
+                                    world = %world_addr,
+                                    namespace = %namespace,
+                                    caller = %caller_address_str,
+                                    entrypoint = %call.entrypoint,
+                                    error = ?e,
+                                    "Failed to update activity"
+                                );
+                            }
                         }
                     }
                 }
