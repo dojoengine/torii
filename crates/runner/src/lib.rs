@@ -50,7 +50,7 @@ use torii_indexer::{FetcherConfig, FetchingFlags, IndexingFlags};
 use torii_libp2p_relay::Relay;
 use torii_messaging::{Messaging, MessagingConfig};
 use torii_processors::{EventProcessorConfig, Processors};
-use torii_server::proxy::Proxy;
+use torii_server::proxy::{Proxy, ProxySettings};
 use torii_sqlite::executor::Executor;
 use torii_sqlite::{Sql, SqlConfig};
 use torii_storage::proto::{ContractDefinition, ContractType};
@@ -718,6 +718,11 @@ impl Runner {
             storage.clone(),
             provider.clone(),
             self.version_spec.clone(),
+            ProxySettings {
+                tcp_keepalive_interval: self.args.grpc.tcp_keepalive_interval,
+                http2_keepalive_interval: self.args.grpc.http2_keepalive_interval,
+                http2_keepalive_timeout: self.args.grpc.http2_keepalive_timeout,
+            },
         );
 
         // Handle mkcert certificate generation
