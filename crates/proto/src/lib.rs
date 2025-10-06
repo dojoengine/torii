@@ -1798,6 +1798,29 @@ pub struct TransactionQuery {
     pub pagination: Pagination,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct Activity {
+    pub id: String,
+    pub world_address: Felt,
+    pub namespace: String,
+    pub caller_address: Felt,
+    pub session_start: DateTime<Utc>,
+    pub session_end: DateTime<Utc>,
+    pub action_count: u32,
+    pub actions: HashMap<String, u32>,  // Map of action name -> count
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct ActivityQuery {
+    pub world_addresses: Vec<Felt>,
+    pub namespaces: Vec<String>,
+    pub caller_addresses: Vec<Felt>,
+    pub from_time: Option<DateTime<Utc>>,
+    pub to_time: Option<DateTime<Utc>>,
+    pub pagination: Pagination,
+}
+
 impl From<TransactionQuery> for proto::types::TransactionQuery {
     fn from(value: TransactionQuery) -> Self {
         Self {
