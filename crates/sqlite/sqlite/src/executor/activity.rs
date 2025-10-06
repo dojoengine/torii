@@ -13,6 +13,7 @@ pub type QueryResult<T> = std::result::Result<T, ExecutorQueryError>;
 type SessionData = (String, DateTime<Utc>, DateTime<Utc>, i32, String);
 
 /// Update activity tracking for a transaction
+#[allow(clippy::too_many_arguments)]
 pub async fn update_activity(
     tx: &mut SqlxTransaction<'_, Sqlite>,
     world_address: &str,
