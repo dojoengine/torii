@@ -37,6 +37,17 @@ use crate::handlers::Handler;
 
 pub const LOG_TARGET: &str = "torii::server::proxy";
 
+/// Configuration for proxy client connection settings
+#[derive(Debug, Clone)]
+pub struct ProxySettings {
+    /// TCP keepalive interval in seconds (0 to disable)
+    pub tcp_keepalive_interval: u64,
+    /// HTTP/2 keepalive interval in seconds (0 to disable)
+    pub http2_keepalive_interval: u64,
+    /// HTTP/2 keepalive timeout in seconds
+    pub http2_keepalive_timeout: u64,
+}
+
 const DEFAULT_ALLOW_HEADERS: [&str; 13] = [
     "accept",
     "origin",
@@ -60,12 +71,44 @@ const DEFAULT_EXPOSED_HEADERS: [&str; 4] = [
 ];
 const DEFAULT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
-pub(crate) static WEBSOCKET_PROXY_CLIENT: std::sync::LazyLock<
-    ReverseProxy<HttpConnector<GaiResolver>>,
-> = std::sync::LazyLock::new(|| ReverseProxy::new(Client::builder().build_http()));
+/// Create a gRPC-compatible HTTP/2 proxy client with configurable keepalive settings
+pub fn create_grpc_proxy_client(settings: &ProxySettings) -> ReverseProxy<HttpConnector<GaiResolver>> {
+    let mut http_connector = HttpConnector::new();
+    
+    // TCP keepalive to detect dead connections
+    if settings.tcp_keepalive_interval > 0 {
+        http_connector.set_keepalive(Some(Duration::from_secs(settings.tcp_keepalive_interval)));
+    }
+    // TCP nodelay for lower latency (important for gRPC)
+    http_connector.set_nodelay(true);
+    
+    // Build client with HTTP/2 keepalive settings to match gRPC server and detect stale connections
+    let client = if settings.http2_keepalive_interval > 0 && settings.http2_keepalive_timeout > 0 {
+        Client::builder()
+            .http2_only(true)
+            .http2_keep_alive_interval(Duration::from_secs(settings.http2_keepalive_interval))
+            .http2_keep_alive_timeout(Duration::from_secs(settings.http2_keepalive_timeout))
+            .http2_keep_alive_while_idle(true)
+            .build(http_connector)
+    } else if settings.http2_keepalive_interval > 0 {
+        Client::builder()
+            .http2_only(true)
+            .http2_keep_alive_interval(Duration::from_secs(settings.http2_keepalive_interval))
+            .http2_keep_alive_while_idle(true)
+            .build(http_connector)
+    } else {
+        Client::builder()
+            .http2_only(true)
+            .build(http_connector)
+    };
+    
+    ReverseProxy::new(client)
+}
 
-pub(crate) static PROXY_CLIENT: std::sync::LazyLock<ReverseProxy<HttpConnector<GaiResolver>>> =
-    std::sync::LazyLock::new(|| ReverseProxy::new(Client::builder().http2_only(true).build_http()));
+/// Create a WebSocket-compatible HTTP/1.1 proxy client
+pub fn create_websocket_proxy_client() -> ReverseProxy<HttpConnector<GaiResolver>> {
+    ReverseProxy::new(Client::builder().build_http())
+}
 
 // Helper function to check if a request is a WebSocket upgrade request
 pub fn is_websocket_upgrade(req: &Request<Body>) -> bool {
@@ -82,14 +125,25 @@ pub fn is_websocket_upgrade(req: &Request<Body>) -> bool {
             .unwrap_or(false)
 }
 
-#[derive(Debug)]
 pub struct Proxy<P: Provider + Sync + Send + Debug + 'static> {
     addr: SocketAddr,
     allowed_origins: Option<Vec<String>>,
     handlers: Arc<RwLock<Vec<Box<dyn Handler>>>>,
     version_spec: String,
     tls_config: Option<Arc<ServerConfig>>,
+    grpc_proxy_client: Arc<ReverseProxy<HttpConnector<GaiResolver>>>,
+    websocket_proxy_client: Arc<ReverseProxy<HttpConnector<GaiResolver>>>,
     _provider: std::marker::PhantomData<P>,
+}
+
+impl<P: Provider + Sync + Send + Debug + 'static> std::fmt::Debug for Proxy<P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Proxy")
+            .field("addr", &self.addr)
+            .field("allowed_origins", &self.allowed_origins)
+            .field("version_spec", &self.version_spec)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -110,10 +164,15 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
         storage: Arc<S>,
         provider: P,
         version_spec: String,
+        proxy_settings: ProxySettings,
     ) -> Self {
+        // Create proxy clients with configured settings
+        let grpc_proxy_client = Arc::new(create_grpc_proxy_client(&proxy_settings));
+        let websocket_proxy_client = Arc::new(create_websocket_proxy_client());
+
         let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(vec![
-            Box::new(GraphQLHandler::new(graphql_addr)),
-            Box::new(GrpcHandler::new(grpc_addr)),
+            Box::new(GraphQLHandler::new(graphql_addr, grpc_proxy_client.clone(), websocket_proxy_client.clone())),
+            Box::new(GrpcHandler::new(grpc_addr, grpc_proxy_client.clone())),
             Box::new(McpHandler::new(pool.clone())),
             Box::new(MetadataHandler::new(storage.clone(), provider)),
             Box::new(SqlHandler::new(pool.clone())),
@@ -126,6 +185,8 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
             handlers,
             version_spec,
             tls_config: None,
+            grpc_proxy_client,
+            websocket_proxy_client,
             _provider: std::marker::PhantomData,
         }
     }
@@ -176,7 +237,11 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
 
     pub async fn set_graphql_addr(&self, addr: SocketAddr) {
         let mut handlers = self.handlers.write().await;
-        handlers[0] = Box::new(GraphQLHandler::new(Some(addr)));
+        handlers[0] = Box::new(GraphQLHandler::new(
+            Some(addr),
+            self.grpc_proxy_client.clone(),
+            self.websocket_proxy_client.clone(),
+        ));
     }
 
     fn create_cors_layer(&self) -> Option<CorsLayer> {

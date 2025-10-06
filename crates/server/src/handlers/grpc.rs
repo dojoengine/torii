@@ -1,21 +1,41 @@
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
+use std::time::Duration;
 
 use http::header::CONTENT_TYPE;
+use hyper::client::connect::dns::GaiResolver;
+use hyper::client::HttpConnector;
 use hyper::{Body, Request, Response, StatusCode};
+use hyper_reverse_proxy::ReverseProxy;
+use tokio::time::timeout;
 use tracing::error;
 
 use super::Handler;
 
 pub(crate) const LOG_TARGET: &str = "torii::server::handlers::grpc";
 
-#[derive(Debug)]
+// Default timeout for gRPC requests (60 seconds, can be overridden by grpc-timeout header)
+const GRPC_PROXY_TIMEOUT: Duration = Duration::from_secs(60);
+
 pub struct GrpcHandler {
     grpc_addr: Option<SocketAddr>,
+    proxy_client: Arc<ReverseProxy<HttpConnector<GaiResolver>>>,
 }
 
 impl GrpcHandler {
-    pub fn new(grpc_addr: Option<SocketAddr>) -> Self {
-        Self { grpc_addr }
+    pub fn new(
+        grpc_addr: Option<SocketAddr>,
+        proxy_client: Arc<ReverseProxy<HttpConnector<GaiResolver>>>,
+    ) -> Self {
+        Self { grpc_addr, proxy_client }
+    }
+}
+
+impl std::fmt::Debug for GrpcHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GrpcHandler")
+            .field("grpc_addr", &self.grpc_addr)
+            .finish()
     }
 }
 
@@ -32,15 +52,24 @@ impl Handler for GrpcHandler {
     async fn handle(&self, req: Request<Body>, client_addr: IpAddr) -> Response<Body> {
         if let Some(grpc_addr) = self.grpc_addr {
             let grpc_addr = format!("http://{}", grpc_addr);
-            match crate::proxy::PROXY_CLIENT
-                .call(client_addr, &grpc_addr, req)
-                .await
-            {
-                Ok(response) => response,
-                Err(_error) => {
-                    error!(target: LOG_TARGET, "{:?}", _error);
+            
+            // Wrap proxy call with timeout to prevent indefinite hangs
+            match timeout(
+                GRPC_PROXY_TIMEOUT,
+                self.proxy_client.call(client_addr, &grpc_addr, req)
+            ).await {
+                Ok(Ok(response)) => response,
+                Ok(Err(_error)) => {
+                    error!(target: LOG_TARGET, error = ?_error, "gRPC proxy error");
                     Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .status(StatusCode::BAD_GATEWAY)
+                        .body(Body::empty())
+                        .unwrap()
+                }
+                Err(_) => {
+                    error!(target: LOG_TARGET, "gRPC request timeout after {:?}", GRPC_PROXY_TIMEOUT);
+                    Response::builder()
+                        .status(StatusCode::GATEWAY_TIMEOUT)
                         .body(Body::empty())
                         .unwrap()
                 }
