@@ -5,6 +5,7 @@ use torii_proto::{
     Clause, ComparisonOperator, KeysClause, LogicalOperator, MemberValue, PatternMatching,
 };
 
+pub mod activity;
 pub mod aggregation;
 pub mod contract;
 pub mod entity;

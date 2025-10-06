@@ -20,6 +20,7 @@ use proto::world::{
 };
 use starknet::core::types::Felt;
 use starknet::providers::Provider;
+use subscriptions::activity::ActivityManager;
 use subscriptions::aggregation::AggregationManager;
 use subscriptions::contract::ContractManager;
 use subscriptions::event::EventManager;
@@ -52,16 +53,17 @@ use torii_proto::proto::world::{
     RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
     RetrieveTokenContractsRequest, RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest,
     RetrieveTokenTransfersResponse, RetrieveTokensRequest, RetrieveTokensResponse,
-    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeAggregationsRequest,
-    SubscribeAggregationsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
-    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventMessagesRequest,
-    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
-    UpdateAggregationsSubscriptionRequest, UpdateAggregationsSubscriptionResponse,
-    UpdateEventMessagesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
-    UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
-    WorldMetadataResponse,
+    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeActivitiesRequest,
+    SubscribeActivitiesResponse, SubscribeAggregationsRequest, SubscribeAggregationsResponse,
+    SubscribeContractsRequest, SubscribeContractsResponse, SubscribeEntitiesRequest,
+    SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
+    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
+    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    UpdateActivitiesSubscriptionRequest, UpdateAggregationsSubscriptionRequest,
+    UpdateAggregationsSubscriptionResponse, UpdateEventMessagesSubscriptionRequest,
+    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
+    UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest, WorldMetadataResponse,
 };
 use torii_proto::proto::{self};
 use torii_proto::Message;
@@ -86,6 +88,7 @@ pub struct DojoWorld<P: Provider + Sync> {
     token_transfer_manager: Arc<TokenTransferManager>,
     transaction_manager: Arc<TransactionManager>,
     aggregation_manager: Arc<AggregationManager>,
+    activity_manager: Arc<ActivityManager>,
     pool: SqlitePool,
     _config: GrpcConfig,
 }
@@ -108,6 +111,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let token_transfer_manager = Arc::new(TokenTransferManager::new(config.clone()));
         let transaction_manager = Arc::new(TransactionManager::new(config.clone()));
         let aggregation_manager = Arc::new(AggregationManager::new(config.clone()));
+        let activity_manager = Arc::new(ActivityManager::new(config.clone()));
 
         // Spawn subscription services on the main runtime
         // They use try_send and non-blocking operations to avoid starving other tasks
@@ -147,6 +151,10 @@ impl<P: Provider + Sync> DojoWorld<P> {
             &aggregation_manager,
         )));
 
+        tokio::spawn(subscriptions::activity::Service::new(Arc::clone(
+            &activity_manager,
+        )));
+
         Self {
             storage,
             messaging,
@@ -161,6 +169,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             token_transfer_manager,
             transaction_manager,
             aggregation_manager,
+            activity_manager,
             pool,
             _config: config,
         }
@@ -243,6 +252,8 @@ type SubscribeTransactionsResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeTransactionsResponse, Status>> + Send>>;
 type SubscribeAggregationsResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeAggregationsResponse, Status>> + Send>>;
+type SubscribeActivitiesResponseStream =
+    Pin<Box<dyn Stream<Item = Result<SubscribeActivitiesResponse, Status>> + Send>>;
 
 #[tonic::async_trait]
 impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for DojoWorld<P> {
@@ -255,6 +266,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
     type SubscribeTokenTransfersStream = SubscribeTokenTransfersResponseStream;
     type SubscribeTransactionsStream = SubscribeTransactionsResponseStream;
     type SubscribeAggregationsStream = SubscribeAggregationsResponseStream;
+    type SubscribeActivitiesStream = SubscribeActivitiesResponseStream;
 
     async fn world_metadata(
         &self,
@@ -485,6 +497,65 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             activities: activities.items.into_iter().map(Into::into).collect(),
             next_cursor: activities.next_cursor.unwrap_or_default(),
         }))
+    }
+
+    async fn subscribe_activities(
+        &self,
+        request: Request<SubscribeActivitiesRequest>,
+    ) -> ServiceResult<Self::SubscribeActivitiesStream> {
+        let SubscribeActivitiesRequest {
+            world_addresses,
+            namespaces,
+            caller_addresses,
+        } = request.into_inner();
+
+        let filter = subscriptions::activity::ActivityFilter {
+            world_addresses: world_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+            namespaces,
+            caller_addresses: caller_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+        };
+
+        let rx = self.activity_manager.add_subscriber(filter).await;
+
+        Ok(Response::new(
+            Box::pin(ReceiverStream::new(rx)) as Self::SubscribeActivitiesStream
+        ))
+    }
+
+    async fn update_activities_subscription(
+        &self,
+        request: Request<UpdateActivitiesSubscriptionRequest>,
+    ) -> ServiceResult<()> {
+        let UpdateActivitiesSubscriptionRequest {
+            subscription_id,
+            world_addresses,
+            namespaces,
+            caller_addresses,
+        } = request.into_inner();
+
+        let filter = subscriptions::activity::ActivityFilter {
+            world_addresses: world_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+            namespaces,
+            caller_addresses: caller_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+        };
+
+        self.activity_manager
+            .update_subscriber(subscription_id, filter)
+            .await;
+
+        Ok(Response::new(()))
     }
 
     async fn retrieve_contracts(

@@ -13,6 +13,7 @@ pub type QueryResult<T> = std::result::Result<T, ExecutorQueryError>;
 type SessionData = (String, DateTime<Utc>, DateTime<Utc>, i32, String);
 
 /// Update activity tracking for a transaction
+/// Returns the updated activity if tracking was successful
 #[allow(clippy::too_many_arguments)]
 pub async fn update_activity(
     tx: &mut SqlxTransaction<'_, Sqlite>,
@@ -23,10 +24,10 @@ pub async fn update_activity(
     executed_at: DateTime<Utc>,
     session_timeout: u64,
     excluded_entrypoints: &std::collections::HashSet<String>,
-) -> QueryResult<()> {
+) -> QueryResult<Option<torii_proto::Activity>> {
     // Skip excluded entrypoints
     if excluded_entrypoints.contains(entrypoint) {
-        return Ok(());
+        return Ok(None);
     }
 
     // Try to find the most recent session for this caller within this world/namespace
@@ -43,8 +44,8 @@ pub async fn update_activity(
     .fetch_optional(&mut **tx)
     .await?;
 
-    match last_session {
-        Some((session_id, _session_start, session_end, action_count, actions_json)) => {
+    let activity = match last_session {
+        Some((session_id, session_start, session_end, action_count, actions_json)) => {
             // Calculate time difference from last action
             let time_diff = executed_at.signed_duration_since(session_end);
 
@@ -55,6 +56,9 @@ pub async fn update_activity(
 
                 // Increment count for this action (entrypoint)
                 *action_counts.entry(entrypoint.to_string()).or_insert(0) += 1;
+                let updated_actions =
+                    serde_json::to_string(&action_counts).unwrap_or_else(|_| "{}".to_string());
+                let new_action_count = action_count + 1;
 
                 sqlx::query(
                     "UPDATE activities
@@ -65,8 +69,8 @@ pub async fn update_activity(
                      WHERE id = ?",
                 )
                 .bind(executed_at)
-                .bind(action_count + 1)
-                .bind(serde_json::to_string(&action_counts).unwrap_or_else(|_| "{}".to_string()))
+                .bind(new_action_count)
+                .bind(&updated_actions)
                 .bind(&session_id)
                 .execute(&mut **tx)
                 .await?;
@@ -77,9 +81,21 @@ pub async fn update_activity(
                     namespace = %namespace,
                     caller = %caller_address,
                     session_id = %session_id,
-                    action_count = %(action_count + 1),
+                    action_count = %new_action_count,
                     "Updated activity session"
                 );
+
+                torii_sqlite_types::Activity {
+                    id: session_id,
+                    world_address: world_address.to_string(),
+                    namespace: namespace.to_string(),
+                    caller_address: caller_address.to_string(),
+                    session_start,
+                    session_end: executed_at,
+                    action_count: new_action_count,
+                    actions: updated_actions,
+                    updated_at: Utc::now(),
+                }
             } else {
                 // New session - time gap exceeded
                 create_new_session(
@@ -90,7 +106,7 @@ pub async fn update_activity(
                     entrypoint,
                     executed_at,
                 )
-                .await?;
+                .await?
             }
         }
         None => {
@@ -103,11 +119,11 @@ pub async fn update_activity(
                 entrypoint,
                 executed_at,
             )
-            .await?;
+            .await?
         }
-    }
+    };
 
-    Ok(())
+    Ok(Some(activity.into()))
 }
 
 async fn create_new_session(
@@ -117,7 +133,7 @@ async fn create_new_session(
     caller_address: &str,
     entrypoint: &str,
     executed_at: DateTime<Utc>,
-) -> QueryResult<()> {
+) -> QueryResult<torii_sqlite_types::Activity> {
     let session_id = format!(
         "{}:{}:{}:{}",
         world_address,
@@ -156,7 +172,17 @@ async fn create_new_session(
         "Created new activity session"
     );
 
-    Ok(())
+    Ok(torii_sqlite_types::Activity {
+        id: session_id,
+        world_address: world_address.to_string(),
+        namespace: namespace.to_string(),
+        caller_address: caller_address.to_string(),
+        session_start: executed_at,
+        session_end: executed_at,
+        action_count: 1,
+        actions: actions_json,
+        updated_at: Utc::now(),
+    })
 }
 
 /// Clean up old activity records (optional maintenance function)

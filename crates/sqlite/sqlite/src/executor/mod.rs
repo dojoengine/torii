@@ -22,8 +22,9 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 use torii_broker::types::{
-    AggregationUpdate, ContractUpdate, EntityUpdate, EventMessageUpdate, EventUpdate, InnerType,
-    ModelUpdate, TokenBalanceUpdate, TokenTransferUpdate, TokenUpdate, TransactionUpdate, Update,
+    ActivityUpdate, AggregationUpdate, ContractUpdate, EntityUpdate, EventMessageUpdate,
+    EventUpdate, InnerType, ModelUpdate, TokenBalanceUpdate, TokenTransferUpdate, TokenUpdate,
+    TransactionUpdate, Update,
 };
 use torii_math::I256;
 use torii_proto::{BalanceId, ContractCursor, TokenId, TransactionCall};
@@ -72,6 +73,7 @@ pub enum BrokerMessage {
     TokenTransfer(<TokenTransferUpdate as InnerType>::Inner),
     Transaction(<TransactionUpdate as InnerType>::Inner),
     AggregationUpdated(<AggregationUpdate as InnerType>::Inner),
+    ActivityUpdated(<ActivityUpdate as InnerType>::Inner),
 }
 
 #[derive(Debug, Clone)]
@@ -510,10 +512,11 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     let namespaces: Vec<String> = query_builder.fetch_all(&mut **tx).await?;
 
                     // Track activity for each call, per namespace
+                    let mut activity_updates = Vec::new();
                     for namespace in &namespaces {
                         for call in &store_transaction.calls {
                             let caller_address_str = felt_to_sql_string(&call.caller_address);
-                            if let Err(e) = activity::update_activity(
+                            match activity::update_activity(
                                 tx,
                                 &world_addr,
                                 namespace,
@@ -525,17 +528,30 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                             )
                             .await
                             {
-                                error!(
-                                    target: LOG_TARGET,
-                                    world = %world_addr,
-                                    namespace = %namespace,
-                                    caller = %caller_address_str,
-                                    entrypoint = %call.entrypoint,
-                                    error = ?e,
-                                    "Failed to update activity"
-                                );
+                                Ok(Some(activity)) => {
+                                    activity_updates.push(activity);
+                                }
+                                Ok(None) => {
+                                    // Entrypoint was excluded, skip
+                                }
+                                Err(e) => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        world = %world_addr,
+                                        namespace = %namespace,
+                                        caller = %caller_address_str,
+                                        entrypoint = %call.entrypoint,
+                                        error = ?e,
+                                        "Failed to update activity"
+                                    );
+                                }
                             }
                         }
+                    }
+
+                    // Publish activity updates
+                    for activity in activity_updates {
+                        self.publish_optimistic_and_queue(BrokerMessage::ActivityUpdated(activity));
                     }
                 }
 
@@ -1172,6 +1188,9 @@ fn send_broker_message(message: BrokerMessage, optimistic: bool) {
         }
         BrokerMessage::AggregationUpdated(aggregation) => {
             MemoryBroker::publish(Update::new(aggregation, optimistic))
+        }
+        BrokerMessage::ActivityUpdated(activity) => {
+            MemoryBroker::publish(Update::new(activity, optimistic))
         }
     }
 }
