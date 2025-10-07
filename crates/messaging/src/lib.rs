@@ -39,7 +39,7 @@ impl MessagingConfig {
             require_timestamp: false,
         }
     }
-    
+
     pub fn with_world(world_address: Felt) -> Self {
         Self::new(Some(world_address))
     }
@@ -214,7 +214,8 @@ impl<P: Provider + Sync> Messaging<P> {
         // 3. Extracted from the model namespace or other message fields
         let world_address = self.config.world_address.ok_or_else(|| {
             MessagingError::InvalidMessage(
-                "World address not configured for messaging service and not found in message".to_string()
+                "World address not configured for messaging service and not found in message"
+                    .to_string(),
             )
         })?;
 

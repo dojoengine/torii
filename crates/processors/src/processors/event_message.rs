@@ -98,7 +98,13 @@ where
         entity.deserialize(&mut keys_and_unpacked, model.use_legacy_store)?;
 
         ctx.storage
-            .set_event_message(ctx.world_address, entity, &ctx.event_id, ctx.block_timestamp, event.keys)
+            .set_event_message(
+                ctx.world_address,
+                entity,
+                &ctx.event_id,
+                ctx.block_timestamp,
+                event.keys,
+            )
             .await?;
 
         // Record successful event message storage with context

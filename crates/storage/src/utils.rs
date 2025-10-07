@@ -56,7 +56,9 @@ pub fn format_world_scoped_entity_id(world_address: &Felt, entity_id: &Felt) -> 
 ///
 /// # Returns
 /// A tuple of (world_address, entity_id)
-pub fn parse_world_scoped_entity_id(scoped_id: &str) -> Result<(Felt, Felt), Box<dyn std::error::Error>> {
+pub fn parse_world_scoped_entity_id(
+    scoped_id: &str,
+) -> Result<(Felt, Felt), Box<dyn std::error::Error>> {
     let parts: Vec<&str> = scoped_id.split(':').collect();
     if parts.len() != 2 {
         return Err("Invalid world-scoped entity ID format".into());

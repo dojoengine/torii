@@ -1147,7 +1147,8 @@ impl Storage for Sql {
         let namespaced_name = entity.name();
 
         // Format entity_id with world_address prefix for multi-world support
-        let scoped_entity_id = torii_storage::utils::format_world_scoped_entity_id(&world_address, &entity_id);
+        let scoped_entity_id =
+            torii_storage::utils::format_world_scoped_entity_id(&world_address, &entity_id);
         let model_id = felt_to_sql_string(&model_selector);
         let world_address_str = felt_to_sql_string(&world_address);
 
@@ -1173,7 +1174,7 @@ impl Storage for Sql {
         if let Some(keys) = keys_str.clone() {
             arguments.push(Argument::String(keys));
         }
-        
+
         arguments.push(Argument::String(world_address_str.clone()));
 
         self.executor
@@ -1247,7 +1248,8 @@ impl Storage for Sql {
         let (model_namespace, model_name) = namespaced_name.split_once('-').unwrap();
 
         let entity_id = poseidon_hash_many(&keys);
-        let scoped_entity_id = torii_storage::utils::format_world_scoped_entity_id(&world_address, &entity_id);
+        let scoped_entity_id =
+            torii_storage::utils::format_world_scoped_entity_id(&world_address, &entity_id);
         let model_selector = compute_selector_from_names(model_namespace, model_name);
         let model_id = felt_to_sql_string(&model_selector);
         let world_address_str = felt_to_sql_string(&world_address);
@@ -1323,7 +1325,8 @@ impl Storage for Sql {
         event_id: &str,
         block_timestamp: u64,
     ) -> Result<(), StorageError> {
-        let scoped_entity_id = torii_storage::utils::format_world_scoped_entity_id(&world_address, &entity_id);
+        let scoped_entity_id =
+            torii_storage::utils::format_world_scoped_entity_id(&world_address, &entity_id);
         let model_id = felt_to_sql_string(&model_id);
         let model_table = entity.name();
 
