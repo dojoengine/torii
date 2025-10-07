@@ -1044,11 +1044,11 @@ impl Storage for Sql {
         let world_address_str = felt_to_sql_string(&world_address);
         let insert_models =
             "INSERT INTO models (id, world_address, model_selector, namespace, name, class_hash, contract_address, layout, \
-             legacy_store, schema, packed_size, unpacked_size, executed_at, world_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \
+             legacy_store, schema, packed_size, unpacked_size, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \
              ?, ?) ON CONFLICT(id) DO UPDATE SET world_address=EXCLUDED.world_address, model_selector=EXCLUDED.model_selector, contract_address=EXCLUDED.contract_address, \
              class_hash=EXCLUDED.class_hash, layout=EXCLUDED.layout, legacy_store=EXCLUDED.legacy_store, \
              schema=EXCLUDED.schema, packed_size=EXCLUDED.packed_size, unpacked_size=EXCLUDED.unpacked_size, \
-             executed_at=EXCLUDED.executed_at, world_address=EXCLUDED.world_address RETURNING *";
+             executed_at=EXCLUDED.executed_at RETURNING *";
         let arguments = vec![
             Argument::String(scoped_model_id),
             Argument::String(world_address_str),
@@ -1069,7 +1069,6 @@ impl Storage for Sql {
             Argument::Int(packed_size as i64),
             Argument::Int(unpacked_size as i64),
             Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
-            Argument::FieldElement(world_address),
         ];
         self.executor
             .send(QueryMessage::new(
@@ -1166,22 +1165,22 @@ impl Storage for Sql {
 
         let keys_str = keys.map(|keys| felts_to_sql_string(&keys));
         let insert_entities = if keys_str.is_some() {
-            "INSERT INTO entities (id, world_address, entity_id, event_id, executed_at, keys, world_address) VALUES (?, ?, ?, ?, ?, ?, ?) ON \
+            "INSERT INTO entities (id, world_address, entity_id, event_id, executed_at, keys) VALUES (?, ?, ?, ?, ?, ?) ON \
              CONFLICT(id) DO UPDATE SET world_address=EXCLUDED.world_address, updated_at=CURRENT_TIMESTAMP, entity_id=EXCLUDED.entity_id, \
              executed_at=EXCLUDED.executed_at, event_id=EXCLUDED.event_id, keys=EXCLUDED.keys, \
-             world_address=EXCLUDED.world_address RETURNING *"
+             RETURNING *"
         } else {
-            "INSERT INTO entities (id, entity_id, event_id, executed_at, world_address) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO \
+            "INSERT INTO entities (id, world_address, entity_id, event_id, executed_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO \
              UPDATE SET world_address=EXCLUDED.world_address, updated_at=CURRENT_TIMESTAMP, entity_id=EXCLUDED.entity_id, executed_at=EXCLUDED.executed_at, \
-             event_id=EXCLUDED.event_id, world_address=EXCLUDED.world_address RETURNING *"
+             event_id=EXCLUDED.event_id, RETURNING *"
         };
 
         let mut arguments = vec![
             Argument::String(scoped_entity_id.clone()),
+            Argument::String(world_address_str.clone()),
             Argument::String(entity_id_str.clone()),
             Argument::String(event_id.to_string()),
             Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
-            Argument::String(world_address_str.clone()),
         ];
 
         if let Some(keys) = keys_str.clone() {
@@ -1272,10 +1271,10 @@ impl Storage for Sql {
         let keys_str = felts_to_sql_string(&keys);
         let block_timestamp_str = utc_dt_string_from_timestamp(block_timestamp);
 
-        let insert_entities = "INSERT INTO event_messages (id, world_address, entity_id, keys, event_id, executed_at, world_address) \
+        let insert_entities = "INSERT INTO event_messages (id, world_address, entity_id, keys, event_id, executed_at) \
                                VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET \
                                world_address=EXCLUDED.world_address, updated_at=CURRENT_TIMESTAMP, entity_id=EXCLUDED.entity_id, executed_at=EXCLUDED.executed_at, \
-                               event_id=EXCLUDED.event_id, world_address=EXCLUDED.world_address RETURNING *";
+                               event_id=EXCLUDED.event_id RETURNING *";
         self.executor
             .send(QueryMessage::new(
                 insert_entities.to_string(),
@@ -1286,7 +1285,6 @@ impl Storage for Sql {
                     Argument::String(keys_str.clone()),
                     Argument::String(event_id.to_string()),
                     Argument::String(block_timestamp_str.clone()),
-                    Argument::String(world_address_str.clone()),
                 ],
                 QueryType::EventMessage(EventMessageQuery {
                     entity_id: scoped_entity_id.clone(),
