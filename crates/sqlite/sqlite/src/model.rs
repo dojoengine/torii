@@ -428,8 +428,6 @@ fn map_row_to_entity(
         .map(|id| id.to_string())
         .collect::<HashSet<_>>();
 
-    println!("model_ids: {:?}", model_ids);
-
     let models = schemas
         .iter()
         .try_fold(Vec::new(), |mut acc, schema| {
