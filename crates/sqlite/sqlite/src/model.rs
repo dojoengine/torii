@@ -1,12 +1,14 @@
 use chrono::{DateTime, Utc};
 use dojo_types::naming::try_compute_selector_from_tag;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use std::collections::HashSet;
 use std::str::FromStr;
 use torii_proto::schema::Entity;
 use torii_proto::{
     Clause, ComparisonOperator, CompositeClause, LogicalOperator, MemberValue, OrderBy,
     OrderDirection, Page, Pagination,
 };
+use torii_storage::utils::format_world_scoped_id;
 use torii_storage::ReadOnlyStorage;
 
 use async_trait::async_trait;
@@ -413,16 +415,20 @@ fn map_row_to_entity(
     schemas: &[Ty],
     dont_include_hashed_keys: bool,
 ) -> Result<Entity, Error> {
+    let world_address =
+        Felt::from_str(&row.get::<String, _>("world_address")).map_err(ParseError::FromStr)?;
     let hashed_keys =
         Felt::from_str(&row.get::<String, _>("entity_id")).map_err(ParseError::FromStr)?;
     let created_at = row.get::<DateTime<Utc>, _>("created_at");
     let updated_at = row.get::<DateTime<Utc>, _>("updated_at");
     let executed_at = row.get::<DateTime<Utc>, _>("executed_at");
-    let model_ids = row
+    let model_ids: HashSet<String> = row
         .get::<String, _>("model_ids")
         .split(',')
-        .map(|id| Felt::from_str(id).map_err(ParseError::FromStr))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|id| id.to_string())
+        .collect::<HashSet<_>>();
+
+    println!("model_ids: {:?}", model_ids);
 
     let models = schemas
         .iter()
@@ -430,7 +436,7 @@ fn map_row_to_entity(
             let selector = try_compute_selector_from_tag(&schema.name())
                 .map_err(|_| QueryError::InvalidNamespacedModel(schema.name().to_string()))?;
 
-            if model_ids.contains(&selector) {
+            if model_ids.contains(&format_world_scoped_id(&world_address, &selector)) {
                 acc.push(schema);
             }
 
@@ -658,23 +664,43 @@ impl Sql {
         let (mut where_clause, mut bind_values) =
             build_composite_clause(table, model_relation_table, composite, historical)?;
 
+        // Build additional conditions
+        let mut conditions = Vec::new();
+
+        if !where_clause.is_empty() {
+            conditions.push(where_clause.clone());
+        }
+
         if !world_addresses.is_empty() {
             let placeholders = vec!["?"; world_addresses.len()].join(", ");
-            where_clause = format!("({} AND {}.world_address IN ({}))", where_clause, table, placeholders);
+            conditions.push(format!("{}.world_address IN ({})", table, placeholders));
             bind_values.extend(world_addresses.iter().map(|w| felt_to_sql_string(w)));
         }
 
-        // Convert model Felts to hex strings for SQL binding
-        let model_selectors: Vec<String> = models.iter().map(felt_to_sql_string).collect();
+        // Filter by model selectors using the world_address from the entity row
+        // model_id format is: world_address:model_selector
+        // Since we're already filtering entities by world_address, we can construct the model_id dynamically
+        if !models.is_empty() {
+            let model_selector_conditions: Vec<String> = models
+                .iter()
+                .map(|_| {
+                    format!(
+                        "{}.model_id = {}.world_address || ':' || ?",
+                        model_relation_table, table
+                    )
+                })
+                .collect();
 
-        if !model_selectors.is_empty() {
-            let placeholders = vec!["?"; model_selectors.len()].join(", ");
-            where_clause = format!(
-                "({} AND {}.model_id IN ({}))",
-                where_clause, model_relation_table, placeholders
-            );
-            bind_values.extend(model_selectors);
+            conditions.push(format!("({})", model_selector_conditions.join(" OR ")));
+            bind_values.extend(models.iter().map(|s| felt_to_sql_string(s)));
         }
+
+        // Combine all conditions with AND
+        where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            conditions.join(" AND ")
+        };
 
         let page = if historical {
             self.fetch_historical_entities(

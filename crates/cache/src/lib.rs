@@ -26,7 +26,11 @@ pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
     /// Get models by selectors from specified worlds.
     /// If world_addresses is empty, returns models from all worlds.
     /// If selectors is empty, returns all models from the specified worlds.
-    async fn models(&self, world_addresses: &[Felt], selectors: &[Felt]) -> Result<Vec<Model>, CacheError>;
+    async fn models(
+        &self,
+        world_addresses: &[Felt],
+        selectors: &[Felt],
+    ) -> Result<Vec<Model>, CacheError>;
 
     /// Get a specific model by selector for the given world.
     async fn model(&self, world_address: Felt, selector: Felt) -> Result<Model, CacheError>;
@@ -79,7 +83,11 @@ impl InMemoryCache {
 
 #[async_trait]
 impl ReadOnlyCache for InMemoryCache {
-    async fn models(&self, world_addresses: &[Felt], selectors: &[Felt]) -> Result<Vec<Model>, CacheError> {
+    async fn models(
+        &self,
+        world_addresses: &[Felt],
+        selectors: &[Felt],
+    ) -> Result<Vec<Model>, CacheError> {
         self.model_cache
             .models(world_addresses, selectors)
             .await
@@ -169,10 +177,14 @@ impl ModelCache {
         })
     }
 
-    pub async fn models(&self, world_addresses: &[Felt], selectors: &[Felt]) -> Result<Vec<Model>, Error> {
+    pub async fn models(
+        &self,
+        world_addresses: &[Felt],
+        selectors: &[Felt],
+    ) -> Result<Vec<Model>, Error> {
         let cache = self.model_cache.read().await;
         let mut result = Vec::new();
-        
+
         if world_addresses.is_empty() {
             // Return from all worlds
             for world_models in cache.values() {
@@ -189,8 +201,10 @@ impl ModelCache {
         } else {
             // Return from specific worlds
             for world in world_addresses {
-                let Some(world_models) = cache.get(world) else { continue };
-                
+                let Some(world_models) = cache.get(world) else {
+                    continue;
+                };
+
                 if selectors.is_empty() {
                     result.extend(world_models.values().cloned());
                 } else {
@@ -202,13 +216,13 @@ impl ModelCache {
                 }
             }
         }
-        
+
         Ok(result)
     }
 
     pub async fn model(&self, world_address: Felt, selector: Felt) -> Result<Model, Error> {
         let cache = self.model_cache.read().await;
-        
+
         cache
             .get(&world_address)
             .and_then(|world_models| world_models.get(&selector))

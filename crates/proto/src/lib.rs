@@ -1285,7 +1285,11 @@ impl TryFrom<proto::types::Query> for Query {
             no_hashed_keys: value.no_hashed_keys,
             models: value.models,
             historical: value.historical,
-            world_addresses: value.world_addresses.iter().map(|w| Felt::from_bytes_be_slice(w)).collect(),
+            world_addresses: value
+                .world_addresses
+                .iter()
+                .map(|w| Felt::from_bytes_be_slice(w))
+                .collect(),
         })
     }
 }
@@ -1298,7 +1302,11 @@ impl From<Query> for proto::types::Query {
             models: value.models,
             pagination: Some(value.pagination.into()),
             historical: value.historical,
-            world_addresses: value.world_addresses.iter().map(|w| w.to_bytes_be().to_vec()).collect(),
+            world_addresses: value
+                .world_addresses
+                .iter()
+                .map(|w| w.to_bytes_be().to_vec())
+                .collect(),
         }
     }
 }

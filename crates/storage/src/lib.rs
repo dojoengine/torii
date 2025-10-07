@@ -35,7 +35,11 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     /// Returns the models for the storage.
     /// If world_addresses is empty, returns models from all worlds.
     /// If selectors is empty, returns all models from the specified worlds.
-    async fn models(&self, world_addresses: &[Felt], selectors: &[Felt]) -> Result<Vec<Model>, StorageError>;
+    async fn models(
+        &self,
+        world_addresses: &[Felt],
+        selectors: &[Felt],
+    ) -> Result<Vec<Model>, StorageError>;
 
     /// Returns the IDs of all the registered tokens
     async fn token_ids(&self) -> Result<HashSet<TokenId>, StorageError>;

@@ -52,11 +52,7 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Returns the model metadata for the storage.
-    async fn model(
-        &self,
-        world_address: Felt,
-        selector: Felt,
-    ) -> Result<Model, StorageError> {
+    async fn model(&self, world_address: Felt, selector: Felt) -> Result<Model, StorageError> {
         if let Some(cache) = &self.cache {
             if let Ok(model) = cache.model(world_address, selector).await {
                 return Ok(model);
@@ -832,10 +828,7 @@ impl ReadOnlyStorage for Sql {
         entity_id: Felt,
         model_selector: Felt,
     ) -> Result<Option<Ty>, StorageError> {
-        let mut schema = self
-            .model(world_address, model_selector)
-            .await?
-            .schema;
+        let mut schema = self.model(world_address, model_selector).await?.schema;
         let query = format!("SELECT * FROM [{}] WHERE internal_id = ?", schema.name());
         let mut query = sqlx::query(&query);
         query = query.bind(format_world_scoped_id(&world_address, &entity_id));

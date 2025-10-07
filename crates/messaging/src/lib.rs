@@ -79,7 +79,9 @@ impl<P: Provider + Sync> Messaging<P> {
         message: &TypedData,
         signature: &[Felt],
     ) -> Result<Felt, MessagingError> {
-        let ty = match validate_message(self.config.world_address, self.storage.clone(), message).await {
+        let ty = match validate_message(self.config.world_address, self.storage.clone(), message)
+            .await
+        {
             Ok(parsed_message) => parsed_message,
             Err(e) => {
                 warn!(
@@ -136,7 +138,10 @@ impl<P: Provider + Sync> Messaging<P> {
             return Err(MessagingError::TimestampNotFound);
         }
 
-        let entity_model = self.storage.entity_model(self.config.world_address, entity_id, model_id).await?;
+        let entity_model = self
+            .storage
+            .entity_model(self.config.world_address, entity_id, model_id)
+            .await?;
         let entity_identity = match &entity_model {
             Some(entity_model) => match get_identity_from_ty(entity_model) {
                 Ok(identity) => identity,
