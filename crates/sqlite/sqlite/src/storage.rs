@@ -86,7 +86,7 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Returns the models for the storage.
-    /// If world_addresses is empty, uses the default world from config.
+    /// If world_addresses is empty, returns models from all worlds.
     /// If selectors is empty, returns all models from the specified worlds.
     async fn models(
         &self,
@@ -107,21 +107,28 @@ impl ReadOnlyStorage for Sql {
         }
 
         // Build SQL query for multiple worlds
-        let mut query = String::from("SELECT * FROM models WHERE ");
+        let mut query = String::from("SELECT * FROM models");
         let mut bind_values = Vec::new();
+        let mut conditions = Vec::new();
 
         // Add world address filter
         if !world_addresses.is_empty() {
             let placeholders = vec!["?"; world_addresses.len()].join(", ");
-            query.push_str(&format!("world_address IN ({})", placeholders));
+            conditions.push(format!("world_address IN ({})", placeholders));
             bind_values.extend(world_addresses.iter().map(|w| felt_to_sql_string(w)));
         }
 
         // Add selector filter if specified
         if !selectors.is_empty() {
             let placeholders = vec!["?"; selectors.len()].join(", ");
-            query.push_str(&format!(" AND model_selector IN ({})", placeholders));
+            conditions.push(format!("model_selector IN ({})", placeholders));
             bind_values.extend(selectors.iter().map(|s| felt_to_sql_string(s)));
+        }
+
+        // Add WHERE clause if we have any conditions
+        if !conditions.is_empty() {
+            query.push_str(" WHERE ");
+            query.push_str(&conditions.join(" AND "));
         }
 
         // Execute query

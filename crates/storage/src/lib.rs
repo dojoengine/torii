@@ -33,7 +33,7 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     async fn model(&self, world_address: Felt, model: Felt) -> Result<Model, StorageError>;
 
     /// Returns the models for the storage.
-    /// If world_addresses is empty, uses the default world from config.
+    /// If world_addresses is empty, returns models from all worlds.
     /// If selectors is empty, returns all models from the specified worlds.
     async fn models(&self, world_addresses: &[Felt], selectors: &[Felt]) -> Result<Vec<Model>, StorageError>;
 
