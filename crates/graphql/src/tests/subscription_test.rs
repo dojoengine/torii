@@ -158,6 +158,7 @@ mod tests {
             // Set entity with one Record model
             db_clone
                 .set_entity(
+                    Felt::ZERO, // world_address
                     ty,
                     &format!("0x{:064x}:0x{:04x}:0x{:04x}", 0, 0, 0),
                     block_timestamp,
@@ -317,6 +318,7 @@ mod tests {
             // Set entity with one Record model
             db_clone
                 .set_entity(
+                    Felt::ZERO, // world_address
                     ty,
                     &format!("0x{:064x}:0x{:04x}:0x{:04x}", 0, 0, 0),
                     block_timestamp,
@@ -416,6 +418,7 @@ mod tests {
             db_clone
                 .register_model(
                     selector,
+                    Felt::ZERO, // world_address
                     &model,
                     &Layout::Fixed(vec![]),
                     class_hash,
@@ -509,6 +512,7 @@ mod tests {
             db_clone
                 .register_model(
                     selector,
+                    Felt::ZERO, // world_address
                     &model,
                     &Layout::Fixed(vec![]),
                     class_hash,

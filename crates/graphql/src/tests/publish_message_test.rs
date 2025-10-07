@@ -74,6 +74,7 @@ mod tests {
         storage
             .register_model(
                 compute_selector_from_names("types_test", "Message"),
+                Felt::ZERO, // world_address
                 &Ty::Struct(Struct {
                     name: "types_test-Message".to_string(),
                     children: vec![

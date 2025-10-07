@@ -76,6 +76,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     // Register the model for our Message
     db.register_model(
         compute_selector_from_names("types_test", "Message"),
+        Felt::ZERO, // world_address
         &Ty::Struct(Struct {
             name: "types_test-Message".to_string(),
             children: vec![
@@ -374,6 +375,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     for db in [&mut db1, &mut db2] {
         db.register_model(
             compute_selector_from_names("types_test", "Message"),
+            Felt::ZERO, // world_address
             &message_model,
             &Layout::Fixed(vec![]),
             Felt::ZERO,
@@ -593,6 +595,7 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
     // Register the model for our Message
     db.register_model(
         compute_selector_from_names("types_test", "Message"),
+        Felt::ZERO, // world_address
         &Ty::Struct(Struct {
             name: "types_test-Message".to_string(),
             children: vec![
@@ -780,6 +783,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
     // Register a model with timestamp support
     db.register_model(
         compute_selector_from_names("types_test", "TimestampedMessage"),
+        Felt::ZERO, // world_address
         &Ty::Struct(Struct {
             name: "types_test-TimestampedMessage".to_string(),
             children: vec![
