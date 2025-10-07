@@ -1021,6 +1021,7 @@ impl Storage for Sql {
     /// update the model schema and its table.
     async fn register_model(
         &self,
+        world_address: Felt,
         selector: Felt,
         model: &Ty,
         layout: &Layout,
@@ -1038,11 +1039,11 @@ impl Storage for Sql {
 
         let insert_models =
             "INSERT INTO models (id, namespace, name, class_hash, contract_address, layout, \
-             legacy_store, schema, packed_size, unpacked_size, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \
-             ?) ON CONFLICT(id) DO UPDATE SET contract_address=EXCLUDED.contract_address, \
+             legacy_store, schema, packed_size, unpacked_size, executed_at, world_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \
+             ?, ?) ON CONFLICT(id) DO UPDATE SET contract_address=EXCLUDED.contract_address, \
              class_hash=EXCLUDED.class_hash, layout=EXCLUDED.layout, legacy_store=EXCLUDED.legacy_store, \
              schema=EXCLUDED.schema, packed_size=EXCLUDED.packed_size, unpacked_size=EXCLUDED.unpacked_size, \
-             executed_at=EXCLUDED.executed_at RETURNING *";
+             executed_at=EXCLUDED.executed_at, world_address=EXCLUDED.world_address RETURNING *";
         let arguments = vec![
             Argument::FieldElement(selector),
             Argument::String(namespace.to_string()),
@@ -1061,6 +1062,7 @@ impl Storage for Sql {
             Argument::Int(packed_size as i64),
             Argument::Int(unpacked_size as i64),
             Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
+            Argument::FieldElement(world_address),
         ];
         self.executor
             .send(QueryMessage::new(
@@ -1134,6 +1136,7 @@ impl Storage for Sql {
     /// Along with its model state in the model table.
     async fn set_entity(
         &self,
+        world_address: Felt,
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
@@ -1143,24 +1146,26 @@ impl Storage for Sql {
     ) -> Result<(), StorageError> {
         let namespaced_name = entity.name();
 
-        let entity_id = felt_to_sql_string(&entity_id);
+        // Format entity_id with world_address prefix for multi-world support
+        let scoped_entity_id = torii_storage::utils::format_world_scoped_entity_id(&world_address, &entity_id);
         let model_id = felt_to_sql_string(&model_selector);
+        let world_address_str = felt_to_sql_string(&world_address);
 
         let keys_str = keys.map(|keys| felts_to_sql_string(&keys));
 
         let insert_entities = if keys_str.is_some() {
-            "INSERT INTO entities (id, event_id, executed_at, keys) VALUES (?, ?, ?, ?) ON \
+            "INSERT INTO entities (id, event_id, executed_at, keys, world_address) VALUES (?, ?, ?, ?, ?) ON \
              CONFLICT(id) DO UPDATE SET updated_at=CURRENT_TIMESTAMP, \
-             executed_at=EXCLUDED.executed_at, event_id=EXCLUDED.event_id, keys=EXCLUDED.keys \
-             RETURNING *"
+             executed_at=EXCLUDED.executed_at, event_id=EXCLUDED.event_id, keys=EXCLUDED.keys, \
+             world_address=EXCLUDED.world_address RETURNING *"
         } else {
-            "INSERT INTO entities (id, event_id, executed_at) VALUES (?, ?, ?) ON CONFLICT(id) DO \
+            "INSERT INTO entities (id, event_id, executed_at, world_address) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO \
              UPDATE SET updated_at=CURRENT_TIMESTAMP, executed_at=EXCLUDED.executed_at, \
-             event_id=EXCLUDED.event_id RETURNING *"
+             event_id=EXCLUDED.event_id, world_address=EXCLUDED.world_address RETURNING *"
         };
 
         let mut arguments = vec![
-            Argument::String(entity_id.clone()),
+            Argument::String(scoped_entity_id.clone()),
             Argument::String(event_id.to_string()),
             Argument::String(utc_dt_string_from_timestamp(block_timestamp)),
         ];
@@ -1168,6 +1173,8 @@ impl Storage for Sql {
         if let Some(keys) = keys_str.clone() {
             arguments.push(Argument::String(keys));
         }
+        
+        arguments.push(Argument::String(world_address_str.clone()));
 
         self.executor
             .send(QueryMessage::new(
@@ -1176,7 +1183,7 @@ impl Storage for Sql {
                 QueryType::SetEntity(EntityQuery {
                     event_id: event_id.to_string(),
                     block_timestamp: utc_dt_string_from_timestamp(block_timestamp),
-                    entity_id: entity_id.clone(),
+                    entity_id: scoped_entity_id.clone(),
                     model_id: model_id.clone(),
                     keys_str: keys_str.clone(),
                     ty: entity.clone(),
@@ -1192,7 +1199,7 @@ impl Storage for Sql {
              model_id) DO NOTHING"
                 .to_string(),
             vec![
-                Argument::String(entity_id.clone()),
+                Argument::String(scoped_entity_id.clone()),
                 Argument::String(model_id.clone()),
             ],
         )).map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e)))))?;
@@ -1200,7 +1207,7 @@ impl Storage for Sql {
         self.set_entity_model(
             &namespaced_name,
             event_id,
-            &entity_id,
+            &scoped_entity_id,
             &entity,
             block_timestamp,
         )?;
@@ -1230,6 +1237,7 @@ impl Storage for Sql {
     /// Along with its model state in the model table.
     async fn set_event_message(
         &self,
+        world_address: Felt,
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
@@ -1238,28 +1246,31 @@ impl Storage for Sql {
         let namespaced_name = entity.name();
         let (model_namespace, model_name) = namespaced_name.split_once('-').unwrap();
 
-        let entity_id = felt_to_sql_string(&poseidon_hash_many(&keys));
+        let entity_id = poseidon_hash_many(&keys);
+        let scoped_entity_id = torii_storage::utils::format_world_scoped_entity_id(&world_address, &entity_id);
         let model_selector = compute_selector_from_names(model_namespace, model_name);
         let model_id = felt_to_sql_string(&model_selector);
+        let world_address_str = felt_to_sql_string(&world_address);
 
         let keys_str = felts_to_sql_string(&keys);
         let block_timestamp_str = utc_dt_string_from_timestamp(block_timestamp);
 
-        let insert_entities = "INSERT INTO event_messages (id, keys, event_id, executed_at) \
-                               VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET \
+        let insert_entities = "INSERT INTO event_messages (id, keys, event_id, executed_at, world_address) \
+                               VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET \
                                updated_at=CURRENT_TIMESTAMP, executed_at=EXCLUDED.executed_at, \
-                               event_id=EXCLUDED.event_id RETURNING *";
+                               event_id=EXCLUDED.event_id, world_address=EXCLUDED.world_address RETURNING *";
         self.executor
             .send(QueryMessage::new(
                 insert_entities.to_string(),
                 vec![
-                    Argument::String(entity_id.clone()),
+                    Argument::String(scoped_entity_id.clone()),
                     Argument::String(keys_str.clone()),
                     Argument::String(event_id.to_string()),
                     Argument::String(block_timestamp_str.clone()),
+                    Argument::String(world_address_str.clone()),
                 ],
                 QueryType::EventMessage(EventMessageQuery {
-                    entity_id: entity_id.clone(),
+                    entity_id: scoped_entity_id.clone(),
                     model_id: model_id.clone(),
                     keys_str: keys_str.clone(),
                     event_id: event_id.to_string(),
@@ -1275,7 +1286,7 @@ impl Storage for Sql {
         self.set_entity_model(
             &namespaced_name,
             event_id,
-            &format!("event:{}", entity_id),
+            &format!("event:{}", scoped_entity_id),
             &entity,
             block_timestamp,
         )?;
@@ -1305,23 +1316,24 @@ impl Storage for Sql {
     /// Along with its model state in the model table.
     async fn delete_entity(
         &self,
+        world_address: Felt,
         entity_id: Felt,
         model_id: Felt,
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
     ) -> Result<(), StorageError> {
-        let entity_id = felt_to_sql_string(&entity_id);
+        let scoped_entity_id = torii_storage::utils::format_world_scoped_entity_id(&world_address, &entity_id);
         let model_id = felt_to_sql_string(&model_id);
         let model_table = entity.name();
 
         self.executor
             .send(QueryMessage::new(
                 format!("DELETE FROM [{model_table}] WHERE internal_id = ?").to_string(),
-                vec![Argument::String(entity_id.clone())],
+                vec![Argument::String(scoped_entity_id.clone())],
                 QueryType::DeleteEntity(DeleteEntityQuery {
                     model_id: model_id.clone(),
-                    entity_id: entity_id.clone(),
+                    entity_id: scoped_entity_id.clone(),
                     event_id: event_id.to_string(),
                     block_timestamp: utc_dt_string_from_timestamp(block_timestamp),
                     ty: entity.clone(),

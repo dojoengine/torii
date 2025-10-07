@@ -21,18 +21,33 @@ pub const LOG_TARGET: &str = "torii::messaging";
 
 #[derive(Debug, Clone)]
 pub struct MessagingConfig {
+    /// The world address this messaging service is configured for.
+    /// For offchain messages, this determines which world entities belong to.
+    /// Can be None if world address should be extracted from the message itself.
+    pub world_address: Option<Felt>,
     pub max_age: u64,
     pub future_tolerance: u64,
     pub require_timestamp: bool,
 }
 
-impl Default for MessagingConfig {
-    fn default() -> Self {
+impl MessagingConfig {
+    pub fn new(world_address: Option<Felt>) -> Self {
         Self {
+            world_address,
             max_age: 300_000,         // 5 minutes
             future_tolerance: 60_000, // 1 minute
             require_timestamp: false,
         }
+    }
+    
+    pub fn with_world(world_address: Felt) -> Self {
+        Self::new(Some(world_address))
+    }
+}
+
+impl Default for MessagingConfig {
+    fn default() -> Self {
+        Self::new(None)
     }
 }
 
@@ -193,8 +208,19 @@ impl<P: Provider + Sync> Messaging<P> {
             return Err(MessagingError::InvalidSignature);
         }
 
+        // For offchain messages, the world address should either come from:
+        // 1. The messaging config (if configured for a specific world)
+        // 2. The message domain/metadata (if the message specifies which world)
+        // 3. Extracted from the model namespace or other message fields
+        let world_address = self.config.world_address.ok_or_else(|| {
+            MessagingError::InvalidMessage(
+                "World address not configured for messaging service and not found in message".to_string()
+            )
+        })?;
+
         if let Err(e) = set_entity(
             self.storage.clone(),
+            world_address,
             ty.clone(),
             message_timestamp.unwrap_or_else(|| Utc::now().timestamp() as u64), // Use client timestamp if available, otherwise server timestamp
             entity_id,

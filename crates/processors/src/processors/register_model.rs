@@ -145,6 +145,7 @@ where
 
         ctx.storage
             .register_model(
+                ctx.world_address,
                 selector,
                 &schema,
                 &layout,

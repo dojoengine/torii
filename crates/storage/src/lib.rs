@@ -113,6 +113,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     #[allow(clippy::too_many_arguments)]
     async fn register_model(
         &self,
+        world_address: Felt,
         selector: Felt,
         model: &Ty,
         layout: &Layout,
@@ -140,6 +141,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     /// Along with its model state in the model table.
     async fn set_entity(
         &self,
+        world_address: Felt,
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
@@ -153,6 +155,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     /// Along with its model state in the model table.
     async fn set_event_message(
         &self,
+        world_address: Felt,
         entity: Ty,
         event_id: &str,
         block_timestamp: u64,
@@ -164,6 +167,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     /// Along with its model state in the model table.
     async fn delete_entity(
         &self,
+        world_address: Felt,
         entity_id: Felt,
         model_id: Felt,
         entity: Ty,
