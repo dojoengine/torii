@@ -52,9 +52,11 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Returns the model metadata for the storage.
-    async fn model(&self, world_address: Option<Felt>, selector: Felt) -> Result<Model, StorageError> {
-        let world_address = world_address.unwrap_or(self.config.world_address);
-
+    async fn model(
+        &self,
+        world_address: Felt,
+        selector: Felt,
+    ) -> Result<Model, StorageError> {
         if let Some(cache) = &self.cache {
             if let Ok(model) = cache.model(world_address, selector).await {
                 return Ok(model);
@@ -84,16 +86,16 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Returns the models for the storage.
-    /// If selectors is empty, returns all models.
+    /// If world_addresses is empty, uses the default world from config.
+    /// If selectors is empty, returns all models from the specified worlds.
     async fn models(
         &self,
-        world_address: Option<Felt>,
+        world_addresses: &[Felt],
         selectors: &[Felt],
     ) -> Result<Vec<Model>, StorageError> {
-        let world_address = world_address.unwrap_or(self.config.world_address);
-
+        // Try cache first
         if let Some(cache) = &self.cache {
-            if let Ok(models) = cache.models(world_address, selectors).await {
+            if let Ok(models) = cache.models(&world_addresses, selectors).await {
                 return Ok(models);
             } else {
                 warn!(
@@ -104,14 +106,25 @@ impl ReadOnlyStorage for Sql {
             }
         }
 
-        let mut query = "SELECT * FROM models WHERE world_address = ?".to_string();
-        let mut bind_values = vec![felt_to_sql_string(&world_address)];
+        // Build SQL query for multiple worlds
+        let mut query = String::from("SELECT * FROM models WHERE ");
+        let mut bind_values = Vec::new();
+
+        // Add world address filter
+        if !world_addresses.is_empty() {
+            let placeholders = vec!["?"; world_addresses.len()].join(", ");
+            query.push_str(&format!("world_address IN ({})", placeholders));
+            bind_values.extend(world_addresses.iter().map(|w| felt_to_sql_string(w)));
+        }
+
+        // Add selector filter if specified
         if !selectors.is_empty() {
             let placeholders = vec!["?"; selectors.len()].join(", ");
-            query += &format!(" AND model_selector IN ({})", placeholders);
+            query.push_str(&format!(" AND model_selector IN ({})", placeholders));
             bind_values.extend(selectors.iter().map(|s| felt_to_sql_string(s)));
         }
 
+        // Execute query
         let mut query = sqlx::query_as::<_, SQLModel>(&query);
         for value in bind_values {
             query = query.bind(value);
@@ -122,11 +135,12 @@ impl ReadOnlyStorage for Sql {
             .into_iter()
             .map(|m| m.into())
             .collect();
+
         // Update cache to prevent repeated cache misses
         if let Some(cache) = &self.cache {
             for model in &models {
                 cache
-                    .register_model(world_address, model.selector, model.clone())
+                    .register_model(model.world_address, model.selector, model.clone())
                     .await;
             }
         }
@@ -755,7 +769,7 @@ impl ReadOnlyStorage for Sql {
                 query.no_hashed_keys,
                 query.models.clone(),
                 query.historical,
-                query.world_address,
+                &query.world_addresses,
             )
             .await?;
 
@@ -797,7 +811,7 @@ impl ReadOnlyStorage for Sql {
                 query.no_hashed_keys,
                 query.models.clone(),
                 query.historical,
-                query.world_address,
+                &query.world_addresses,
             )
             .await?;
 
@@ -807,13 +821,14 @@ impl ReadOnlyStorage for Sql {
     /// Returns the model data of an entity.
     async fn entity_model(
         &self,
-        world_address: Option<Felt>,
+        world_address: Felt,
         entity_id: Felt,
         model_selector: Felt,
     ) -> Result<Option<Ty>, StorageError> {
-        let world_address = world_address.unwrap_or(self.config.world_address);
-
-        let mut schema = self.model(Some(world_address), model_selector).await?.schema;
+        let mut schema = self
+            .model(world_address, model_selector)
+            .await?
+            .schema;
         let query = format!("SELECT * FROM [{}] WHERE internal_id = ?", schema.name());
         let mut query = sqlx::query(&query);
         query = query.bind(format_world_scoped_id(&world_address, &entity_id));

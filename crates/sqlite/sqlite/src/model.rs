@@ -639,7 +639,7 @@ impl Sql {
         no_hashed_keys: bool,
         models: Vec<String>,
         historical: bool,
-        world_address: Option<Felt>,
+        world_addresses: &[Felt],
     ) -> Result<Page<Entity>, Error> {
         let models = models.iter().try_fold(Vec::new(), |mut acc, model| {
             let selector = try_compute_selector_from_tag(model)
@@ -649,7 +649,7 @@ impl Sql {
         })?;
 
         let schemas = self
-            .models(world_address, &models)
+            .models(world_addresses, &models)
             .await?
             .iter()
             .map(|m| m.schema.clone())
@@ -658,9 +658,10 @@ impl Sql {
         let (mut where_clause, mut bind_values) =
             build_composite_clause(table, model_relation_table, composite, historical)?;
 
-        if let Some(world_address) = world_address {
-            where_clause = format!("({} AND {}.world_address = ?)", where_clause, table);
-            bind_values.push(felt_to_sql_string(&world_address));
+        if !world_addresses.is_empty() {
+            let placeholders = vec!["?"; world_addresses.len()].join(", ");
+            where_clause = format!("({} AND {}.world_address IN ({}))", where_clause, table, placeholders);
+            bind_values.extend(world_addresses.iter().map(|w| felt_to_sql_string(w)));
         }
 
         // Convert model Felts to hex strings for SQL binding

@@ -47,7 +47,7 @@ pub async fn validate_message(
         try_compute_selector_from_tag(&tag).map_err(|_| MessagingError::InvalidModelTag(tag))?;
 
     let mut ty = storage
-        .model(Some(world_address), selector)
+        .model(world_address, selector)
         .await
         .map_err(|e| MessagingError::ModelNotFound(e.to_string()))?
         .schema;

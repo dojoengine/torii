@@ -686,7 +686,6 @@ impl Runner {
             shutdown_rx,
             storage.clone(),
             messaging.clone(),
-            self.args.world_address.unwrap_or_default(),
             cross_messaging_tx,
             readonly_pool.clone(),
             GrpcConfig {

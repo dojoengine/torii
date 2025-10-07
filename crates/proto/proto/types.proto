@@ -62,7 +62,7 @@ message Query {
     repeated string models = 3;
     Pagination pagination = 4;
     bool historical = 5;
-    optional bytes world_address = 6;
+    repeated bytes world_addresses = 6;
 }
 
 message EventQuery {

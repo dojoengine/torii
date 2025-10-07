@@ -11,7 +11,7 @@ service World {
     rpc SubscribeContracts (SubscribeContractsRequest) returns (stream SubscribeContractsResponse);
 
     // Retrieves metadata about the World including all the registered components and systems.
-    rpc WorldMetadata (WorldMetadataRequest) returns (WorldMetadataResponse);
+    rpc Worlds (WorldsRequest) returns (WorldsResponse);
    
     // Subscribe to entity updates.
     rpc SubscribeEntities (SubscribeEntitiesRequest) returns (stream SubscribeEntityResponse);
@@ -243,13 +243,13 @@ message SubscribeContractsResponse {
 }
 
 // A request to retrieve metadata for a specific world ID.
-message WorldMetadataRequest {
-
+message WorldsRequest {
+    repeated bytes world_addresses = 1;
 }
 
 // The metadata response contains addresses and class hashes for the world.
-message WorldMetadataResponse {
-   types.World world = 1;
+message WorldsResponse {
+   repeated types.World worlds = 1;
 }
 
 message SubscribeEntitiesRequest {

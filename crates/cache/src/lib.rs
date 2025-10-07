@@ -23,8 +23,10 @@ pub type CacheError = Box<dyn std::error::Error + Send + Sync>;
 
 #[async_trait]
 pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
-    /// Get models by selectors. If selectors is empty, returns all models for the world.
-    async fn models(&self, world_address: Felt, selectors: &[Felt]) -> Result<Vec<Model>, CacheError>;
+    /// Get models by selectors from specified worlds.
+    /// If world_addresses is empty, returns models from all worlds.
+    /// If selectors is empty, returns all models from the specified worlds.
+    async fn models(&self, world_addresses: &[Felt], selectors: &[Felt]) -> Result<Vec<Model>, CacheError>;
 
     /// Get a specific model by selector for the given world.
     async fn model(&self, world_address: Felt, selector: Felt) -> Result<Model, CacheError>;
@@ -77,9 +79,9 @@ impl InMemoryCache {
 
 #[async_trait]
 impl ReadOnlyCache for InMemoryCache {
-    async fn models(&self, world_address: Felt, selectors: &[Felt]) -> Result<Vec<Model>, CacheError> {
+    async fn models(&self, world_addresses: &[Felt], selectors: &[Felt]) -> Result<Vec<Model>, CacheError> {
         self.model_cache
-            .models(world_address, selectors)
+            .models(world_addresses, selectors)
             .await
             .map_err(|e| Box::new(e) as CacheError)
     }
@@ -152,7 +154,7 @@ pub struct ModelCache {
 
 impl ModelCache {
     pub async fn new(storage: Arc<dyn ReadOnlyStorage>) -> Result<Self, Error> {
-        let models = storage.models(None, &[]).await?;
+        let models = storage.models(&[], &[]).await?;
 
         let mut model_cache: HashMap<Felt, HashMap<Felt, Model>> = HashMap::new();
         for model in models {
@@ -167,24 +169,41 @@ impl ModelCache {
         })
     }
 
-    pub async fn models(&self, world_address: Felt, selectors: &[Felt]) -> Result<Vec<Model>, Error> {
+    pub async fn models(&self, world_addresses: &[Felt], selectors: &[Felt]) -> Result<Vec<Model>, Error> {
         let cache = self.model_cache.read().await;
+        let mut result = Vec::new();
         
-        if selectors.is_empty() {
-            return Ok(cache
-                .get(&world_address)
-                .map(|world_models| world_models.values().cloned().collect())
-                .unwrap_or_default());
+        if world_addresses.is_empty() {
+            // Return from all worlds
+            for world_models in cache.values() {
+                if selectors.is_empty() {
+                    result.extend(world_models.values().cloned());
+                } else {
+                    for selector in selectors {
+                        if let Some(model) = world_models.get(selector) {
+                            result.push(model.clone());
+                        }
+                    }
+                }
+            }
+        } else {
+            // Return from specific worlds
+            for world in world_addresses {
+                let Some(world_models) = cache.get(world) else { continue };
+                
+                if selectors.is_empty() {
+                    result.extend(world_models.values().cloned());
+                } else {
+                    for selector in selectors {
+                        if let Some(model) = world_models.get(selector) {
+                            result.push(model.clone());
+                        }
+                    }
+                }
+            }
         }
-
-        drop(cache);
         
-        let mut schemas = Vec::with_capacity(selectors.len());
-        for selector in selectors {
-            schemas.push(self.model(world_address, *selector).await?);
-        }
-
-        Ok(schemas)
+        Ok(result)
     }
 
     pub async fn model(&self, world_address: Felt, selector: Felt) -> Result<Model, Error> {

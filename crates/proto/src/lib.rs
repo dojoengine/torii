@@ -1015,7 +1015,7 @@ pub struct Query {
     /// Whether or not we should retrieve historical entities.
     pub historical: bool,
     /// The world address of the world.
-    pub world_address: Option<Felt>,
+    pub world_addresses: Vec<Felt>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
@@ -1230,6 +1230,24 @@ impl TryFrom<proto::types::Model> for Model {
     }
 }
 
+impl From<Model> for proto::types::Model {
+    fn from(value: Model) -> Self {
+        Self {
+            selector: value.selector.to_bytes_be().to_vec(),
+            namespace: value.namespace,
+            name: value.name,
+            packed_size: value.packed_size,
+            unpacked_size: value.unpacked_size,
+            use_legacy_store: value.use_legacy_store,
+            class_hash: value.class_hash.to_bytes_be().to_vec(),
+            contract_address: value.contract_address.to_bytes_be().to_vec(),
+            layout: serde_json::to_vec(&value.layout).unwrap(),
+            schema: serde_json::to_vec(&value.schema).unwrap(),
+            world_address: value.world_address.to_bytes_be().to_vec(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct World {
     pub world_address: Felt,
@@ -1267,7 +1285,7 @@ impl TryFrom<proto::types::Query> for Query {
             no_hashed_keys: value.no_hashed_keys,
             models: value.models,
             historical: value.historical,
-            world_address: value.world_address.map(|w| Felt::from_bytes_be_slice(&w)),
+            world_addresses: value.world_addresses.iter().map(|w| Felt::from_bytes_be_slice(w)).collect(),
         })
     }
 }
@@ -1280,7 +1298,7 @@ impl From<Query> for proto::types::Query {
             models: value.models,
             pagination: Some(value.pagination.into()),
             historical: value.historical,
-            world_address: value.world_address.map(|w| w.to_bytes_be().to_vec()),
+            world_addresses: value.world_addresses.iter().map(|w| w.to_bytes_be().to_vec()).collect(),
         }
     }
 }

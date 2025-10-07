@@ -13,7 +13,7 @@ use sqlx::types::chrono::Utc;
 use starknet::providers::Provider;
 use starknet_core::types::{typed_data::TypeReference, TypedData};
 use starknet_crypto::{poseidon_hash_many, Felt};
-use torii_storage::{Storage, utils::format_world_scoped_id};
+use torii_storage::Storage;
 use tracing::{debug, info, warn};
 pub use validation::{validate_message, validate_signature};
 
@@ -136,7 +136,7 @@ impl<P: Provider + Sync> Messaging<P> {
             return Err(MessagingError::TimestampNotFound);
         }
 
-        let entity_model = self.storage.entity_model(Some(self.config.world_address), entity_id, model_id).await?;
+        let entity_model = self.storage.entity_model(self.config.world_address, entity_id, model_id).await?;
         let entity_identity = match &entity_model {
             Some(entity_model) => match get_identity_from_ty(entity_model) {
                 Ok(identity) => identity,
