@@ -415,8 +415,6 @@ fn map_row_to_entity(
     row: &SqliteRow,
     dont_include_hashed_keys: bool,
 ) -> Result<Entity, Error> {
-    let _world_address =
-        Felt::from_str(&row.get::<String, _>("world_address")).map_err(ParseError::FromStr)?;
     let hashed_keys =
         Felt::from_str(&row.get::<String, _>("entity_id")).map_err(ParseError::FromStr)?;
     let created_at = row.get::<DateTime<Utc>, _>("created_at");
@@ -709,6 +707,7 @@ impl Sql {
                 &where_clause,
                 bind_values,
                 pagination,
+                &schemas,
             )
             .await?
         } else {
@@ -748,6 +747,7 @@ impl Sql {
         where_clause: &str,
         bind_values: Vec<String>,
         pagination: Pagination,
+        schemas: &HashMap<String, Ty>,
     ) -> Result<Page<torii_proto::schema::Entity>, Error> {
         use crate::query::{PaginationExecutor, QueryBuilder};
 
@@ -799,22 +799,13 @@ impl Sql {
             .map(|row| async {
                 let entity_id: String = row.get("entity_id");
                 let data: String = row.get("data");
-                let model_id: Felt = Felt::from_str(&row.get::<String, _>("model_id"))
-                    .map_err(ParseError::FromStr)?;
+                let model_id: String = row.get::<String, _>("model_id");
                 let created_at: DateTime<Utc> = row.get("created_at");
                 let updated_at: DateTime<Utc> = row.get("updated_at");
                 let executed_at: DateTime<Utc> = row.get("executed_at");
-                let world_address: Felt = Felt::from_str(&row.get::<String, _>("world_address"))
-                    .map_err(ParseError::FromStr)?;
 
                 let hashed_keys = Felt::from_str(&entity_id).map_err(ParseError::FromStr)?;
-                let model = self
-                    .cache
-                    .as_ref()
-                    .expect("Expected cache to be set")
-                    .model(world_address, model_id)
-                    .await?;
-                let mut schema = model.schema;
+                let mut schema = schemas.get(&model_id).expect("Model not found").clone();
                 schema.from_json_value(
                     serde_json::from_str(&data).map_err(ParseError::FromJsonStr)?,
                 )?;
