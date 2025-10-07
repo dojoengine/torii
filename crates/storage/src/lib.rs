@@ -139,6 +139,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     /// Sets an entity with the storage.
     /// It should insert or update the entity if it already exists.
     /// Along with its model state in the model table.
+    #[allow(clippy::too_many_arguments)]
     async fn set_entity(
         &self,
         world_address: Felt,

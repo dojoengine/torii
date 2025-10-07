@@ -133,7 +133,7 @@ where
 
         ctx.storage
             .set_entity(
-                ctx.world_address,
+                ctx.contract_address,
                 wrapped_ty,
                 &ctx.event_id,
                 ctx.block_timestamp,

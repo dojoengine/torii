@@ -101,7 +101,7 @@ where
 
         ctx.storage
             .set_entity(
-                ctx.world_address,
+                ctx.contract_address,
                 entity,
                 &ctx.event_id,
                 ctx.block_timestamp,

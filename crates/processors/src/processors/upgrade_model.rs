@@ -140,7 +140,7 @@ where
 
         ctx.storage
             .register_model(
-                ctx.world_address,
+                ctx.contract_address,
                 event.selector,
                 &new_schema,
                 &layout,

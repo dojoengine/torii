@@ -94,7 +94,7 @@ where
 
         ctx.storage
             .delete_entity(
-                ctx.world_address,
+                ctx.contract_address,
                 event.entity_id,
                 event.selector,
                 entity,

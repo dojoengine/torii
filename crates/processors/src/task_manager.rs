@@ -3,6 +3,7 @@ use std::sync::Arc;
 use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
+use starknet_crypto::Felt;
 use tokio::sync::Semaphore;
 use torii_cache::Cache;
 use torii_proto::ContractType;
@@ -24,6 +25,7 @@ pub type TaskPriority = usize;
 pub struct ParallelizedEvent {
     pub indexing_mode: IndexingMode,
     pub contract_type: ContractType,
+    pub contract_address: Felt,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub event_id: String,
@@ -155,6 +157,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                     // Process all events for this task sequentially
                     for ParallelizedEvent {
                         contract_type,
+                        contract_address,
                         event,
                         block_number,
                         block_timestamp,
@@ -182,6 +185,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                             );
 
                             let ctx = EventProcessorContext {
+                                contract_address: *contract_address,
                                 storage: storage.clone(),
                                 cache: cache.clone(),
                                 provider: provider.clone(),
