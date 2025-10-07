@@ -480,7 +480,7 @@ message AggregationEntry {
     // Calculated position/rank (1-indexed)
     uint64 position = 6;
     // The model ID this aggregation is based on
-    bytes model_id = 7;
+    string model_id = 7;
     // When the entry was created (RFC3339 timestamp)
     string created_at = 8;
     // When the entry was last updated (RFC3339 timestamp)

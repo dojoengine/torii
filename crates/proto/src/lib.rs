@@ -766,7 +766,7 @@ pub struct AggregationEntry {
     pub value: U256,
     pub display_value: String,
     pub position: u64,
-    pub model_id: Felt,
+    pub model_id: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -780,7 +780,7 @@ impl Default for AggregationEntry {
             value: U256::ZERO,
             display_value: String::new(),
             position: 0,
-            model_id: Felt::ZERO,
+            model_id: String::new(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -818,7 +818,7 @@ impl From<AggregationEntry> for proto::types::AggregationEntry {
             value: value.value.to_be_bytes().to_vec(),
             display_value: value.display_value,
             position: value.position,
-            model_id: value.model_id.to_bytes_be().to_vec(),
+            model_id: value.model_id,
             created_at: value.created_at.to_rfc3339(),
             updated_at: value.updated_at.to_rfc3339(),
         }
@@ -836,7 +836,7 @@ impl TryFrom<proto::types::AggregationEntry> for AggregationEntry {
             value: U256::from_be_slice(&value.value),
             display_value: value.display_value,
             position: value.position,
-            model_id: Felt::from_bytes_be_slice(&value.model_id),
+            model_id: value.model_id,
             created_at: DateTime::parse_from_rfc3339(&value.created_at)
                 .map_err(|e| ProtoError::ParseTimestamp(value.created_at.clone(), e))?
                 .with_timezone(&Utc),

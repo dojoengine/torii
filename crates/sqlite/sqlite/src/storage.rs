@@ -1167,12 +1167,11 @@ impl Storage for Sql {
         let insert_entities = if keys_str.is_some() {
             "INSERT INTO entities (id, world_address, entity_id, event_id, executed_at, keys) VALUES (?, ?, ?, ?, ?, ?) ON \
              CONFLICT(id) DO UPDATE SET world_address=EXCLUDED.world_address, updated_at=CURRENT_TIMESTAMP, entity_id=EXCLUDED.entity_id, \
-             executed_at=EXCLUDED.executed_at, event_id=EXCLUDED.event_id, keys=EXCLUDED.keys, \
-             RETURNING *"
+             executed_at=EXCLUDED.executed_at, event_id=EXCLUDED.event_id, keys=EXCLUDED.keys RETURNING *"
         } else {
             "INSERT INTO entities (id, world_address, entity_id, event_id, executed_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO \
              UPDATE SET world_address=EXCLUDED.world_address, updated_at=CURRENT_TIMESTAMP, entity_id=EXCLUDED.entity_id, executed_at=EXCLUDED.executed_at, \
-             event_id=EXCLUDED.event_id, RETURNING *"
+             event_id=EXCLUDED.event_id RETURNING *"
         };
 
         let mut arguments = vec![
@@ -1273,7 +1272,7 @@ impl Storage for Sql {
 
         let insert_entities = "INSERT INTO event_messages (id, world_address, entity_id, keys, event_id, executed_at) \
                                VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET \
-                               world_address=EXCLUDED.world_address, updated_at=CURRENT_TIMESTAMP, entity_id=EXCLUDED.entity_id, executed_at=EXCLUDED.executed_at, \
+                               updated_at=CURRENT_TIMESTAMP, executed_at=EXCLUDED.executed_at, \
                                event_id=EXCLUDED.event_id RETURNING *";
         self.executor
             .send(QueryMessage::new(

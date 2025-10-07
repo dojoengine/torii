@@ -573,7 +573,7 @@ impl From<AggregationEntryWithPosition> for torii_proto::AggregationEntry {
             entity_id: value.entity_id,
             value: U256::from_be_hex(value.value.trim_start_matches("0x")),
             display_value: value.display_value,
-            model_id: Felt::from_str(&value.model_id).unwrap(),
+            model_id: value.model_id,
             created_at: value.created_at,
             updated_at: value.updated_at,
             position: value.position as u64,
