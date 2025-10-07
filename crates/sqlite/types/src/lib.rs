@@ -583,3 +583,44 @@ impl From<AggregationEntryWithPosition> for torii_proto::AggregationEntry {
         }
     }
 }
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Achievement {
+    pub id: String,
+    pub world_address: String,
+    pub hidden: i32,
+    pub index_num: i32,
+    pub points: i32,
+    pub start: String,
+    pub end: String,
+    pub group_name: String,
+    pub icon: String,
+    pub title: String,
+    pub description: String,
+    pub tasks: String, // JSON string
+    pub data: Option<String>, // Optional JSON string
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AchievementProgression {
+    pub id: String,
+    pub achievement_id: String,
+    pub player_id: String,
+    pub task_id: String,
+    pub count: i32,
+    pub completed: i32,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AchievementConfig {
+    pub registration_model: String,
+    pub progression_model: String,
+    pub additional_progression_models: Vec<String>,
+}

@@ -40,6 +40,7 @@ use crate::utils::{
 use crate::SqlConfig;
 use torii_broker::MemoryBroker;
 
+pub mod achievement;
 pub mod activity;
 pub mod aggregator;
 pub mod erc;
