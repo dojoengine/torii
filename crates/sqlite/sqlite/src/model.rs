@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use dojo_types::naming::try_compute_selector_from_tag;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use torii_proto::schema::Entity;
 use torii_proto::{
@@ -411,11 +411,11 @@ pub fn map_row_to_ty(
 }
 
 fn map_row_to_entity(
+    schemas: &HashMap<String, Ty>,
     row: &SqliteRow,
-    schemas: &[Ty],
     dont_include_hashed_keys: bool,
 ) -> Result<Entity, Error> {
-    let world_address =
+    let _world_address =
         Felt::from_str(&row.get::<String, _>("world_address")).map_err(ParseError::FromStr)?;
     let hashed_keys =
         Felt::from_str(&row.get::<String, _>("entity_id")).map_err(ParseError::FromStr)?;
@@ -430,15 +430,12 @@ fn map_row_to_entity(
 
     let models = schemas
         .iter()
-        .try_fold(Vec::new(), |mut acc, schema| {
-            let selector = try_compute_selector_from_tag(&schema.name())
-                .map_err(|_| QueryError::InvalidNamespacedModel(schema.name().to_string()))?;
-
-            if model_ids.contains(&format_world_scoped_id(&world_address, &selector)) {
-                acc.push(schema);
+        .try_fold(Vec::new(), |mut acc, (id, schema)| {
+            if model_ids.contains(id) {
+                acc.push(schema.clone());
             }
 
-            Ok::<Vec<&dojo_types::schema::Ty>, Error>(acc)
+            Ok::<Vec<dojo_types::schema::Ty>, Error>(acc)
         })?
         .into_iter()
         .map(|schema| {
@@ -652,12 +649,17 @@ impl Sql {
             Ok::<Vec<Felt>, Error>(acc)
         })?;
 
-        let schemas = self
+        let schemas: HashMap<String, Ty> = self
             .models(world_addresses, &models)
             .await?
             .iter()
-            .map(|m| m.schema.clone())
-            .collect::<Vec<_>>();
+            .map(|m| {
+                (
+                    format_world_scoped_id(&m.world_address, &m.selector),
+                    m.schema.clone(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
 
         let (mut where_clause, mut bind_values) =
             build_composite_clause(table, model_relation_table, composite, historical)?;
@@ -730,7 +732,7 @@ impl Sql {
                 items: page
                     .items
                     .par_iter()
-                    .map(|row| map_row_to_entity(row, &schemas, no_hashed_keys))
+                    .map(|row| map_row_to_entity(&schemas, row, no_hashed_keys))
                     .collect::<Result<Vec<_>, Error>>()?,
                 next_cursor: page.next_cursor,
             }
@@ -840,7 +842,7 @@ impl Sql {
     #[allow(clippy::too_many_arguments)]
     pub async fn fetch_entities(
         &self,
-        schemas: &[Ty],
+        schemas: &HashMap<String, Ty>,
         table_name: &str,
         model_relation_table: &str,
         entity_relation_column: &str,
@@ -905,7 +907,7 @@ impl Sql {
         let mut has_more_pages = false;
         let executor = PaginationExecutor::new(self.pool.clone());
 
-        for chunk in schemas.chunks(SQL_MAX_JOINS) {
+        for chunk in schemas.values().collect::<Vec<_>>().chunks(SQL_MAX_JOINS) {
             // Strategy: Start from model_relation_table and use index hints for optimal performance
             // The composite index (model_id, entity_id) dramatically reduces the scan size
             // when filtering by model_id on a large entity set
