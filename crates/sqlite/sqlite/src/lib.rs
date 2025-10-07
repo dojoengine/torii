@@ -32,6 +32,8 @@ pub use torii_broker::MemoryBroker;
 
 #[derive(Debug, Clone, Default)]
 pub struct SqlConfig {
+    /// The default world address to use for the database
+    pub world_address: Felt,
     pub all_model_indices: bool,
     pub model_indices: Vec<ModelIndices>,
     pub historical_models: HashSet<Felt>,

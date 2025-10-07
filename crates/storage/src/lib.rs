@@ -30,11 +30,11 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     fn as_read_only(&self) -> &dyn ReadOnlyStorage;
 
     /// Returns the model metadata for the storage.
-    async fn model(&self, model: Felt) -> Result<Model, StorageError>;
+    async fn model(&self, world_address: Option<Felt>, model: Felt) -> Result<Model, StorageError>;
 
     /// Returns the models for the storage.
     /// If selectors is empty, returns all models.
-    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, StorageError>;
+    async fn models(&self, world_address: Option<Felt>, selectors: &[Felt]) -> Result<Vec<Model>, StorageError>;
 
     /// Returns the IDs of all the registered tokens
     async fn token_ids(&self) -> Result<HashSet<TokenId>, StorageError>;
@@ -84,6 +84,7 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     /// Returns the model data of an entity.
     async fn entity_model(
         &self,
+        world_address: Option<Felt>,
         entity_id: Felt,
         model_selector: Felt,
     ) -> Result<Option<Ty>, StorageError>;

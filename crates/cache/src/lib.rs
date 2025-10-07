@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use dashmap::DashMap;
-use dojo_types::naming;
 use starknet::core::types::contract::AbiEntry;
 use starknet::core::types::{
     BlockId, BlockTag, ContractClass, EntryPointsByType, LegacyContractAbiEntry, StarknetError,
@@ -24,11 +23,11 @@ pub type CacheError = Box<dyn std::error::Error + Send + Sync>;
 
 #[async_trait]
 pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
-    /// Get models by selectors. If selectors is empty, returns all models.
-    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, CacheError>;
+    /// Get models by selectors. If selectors is empty, returns all models for the world.
+    async fn models(&self, world_address: Felt, selectors: &[Felt]) -> Result<Vec<Model>, CacheError>;
 
-    /// Get a specific model by selector.
-    async fn model(&self, selector: Felt) -> Result<Model, CacheError>;
+    /// Get a specific model by selector for the given world.
+    async fn model(&self, world_address: Felt, selector: Felt) -> Result<Model, CacheError>;
 
     /// Check if a token is registered.
     async fn is_token_registered(&self, token_id: &TokenId) -> bool;
@@ -45,8 +44,8 @@ pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
 
 #[async_trait]
 pub trait Cache: ReadOnlyCache + Send + Sync + std::fmt::Debug {
-    /// Register a model in the cache.
-    async fn register_model(&self, selector: Felt, model: Model);
+    /// Register a model in the cache, scoped to a world.
+    async fn register_model(&self, world_address: Felt, selector: Felt, model: Model);
 
     /// Clear all models from the cache.
     async fn clear_models(&self);
@@ -78,16 +77,16 @@ impl InMemoryCache {
 
 #[async_trait]
 impl ReadOnlyCache for InMemoryCache {
-    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, CacheError> {
+    async fn models(&self, world_address: Felt, selectors: &[Felt]) -> Result<Vec<Model>, CacheError> {
         self.model_cache
-            .models(selectors)
+            .models(world_address, selectors)
             .await
             .map_err(|e| Box::new(e) as CacheError)
     }
 
-    async fn model(&self, selector: Felt) -> Result<Model, CacheError> {
+    async fn model(&self, world_address: Felt, selector: Felt) -> Result<Model, CacheError> {
         self.model_cache
-            .model(selector)
+            .model(world_address, selector)
             .await
             .map_err(|e| Box::new(e) as CacheError)
     }
@@ -119,8 +118,8 @@ impl ReadOnlyCache for InMemoryCache {
 
 #[async_trait]
 impl Cache for InMemoryCache {
-    async fn register_model(&self, selector: Felt, model: Model) {
-        self.model_cache.set(selector, model).await
+    async fn register_model(&self, world_address: Felt, selector: Felt, model: Model) {
+        self.model_cache.set(world_address, selector, model).await
     }
 
     async fn clear_models(&self) {
@@ -147,17 +146,20 @@ impl Cache for InMemoryCache {
 
 #[derive(Debug)]
 pub struct ModelCache {
-    model_cache: RwLock<HashMap<Felt, Model>>,
+    // Outer key: world_address, Inner key: model_selector
+    model_cache: RwLock<HashMap<Felt, HashMap<Felt, Model>>>,
 }
 
 impl ModelCache {
     pub async fn new(storage: Arc<dyn ReadOnlyStorage>) -> Result<Self, Error> {
-        let models = storage.models(&[]).await?;
+        let models = storage.models(None, &[]).await?;
 
-        let mut model_cache = HashMap::new();
+        let mut model_cache: HashMap<Felt, HashMap<Felt, Model>> = HashMap::new();
         for model in models {
-            let selector = naming::compute_selector_from_names(&model.namespace, &model.name);
-            model_cache.insert(selector, model);
+            model_cache
+                .entry(model.world_address)
+                .or_insert_with(HashMap::new)
+                .insert(model.selector, model);
         }
 
         Ok(Self {
@@ -165,30 +167,42 @@ impl ModelCache {
         })
     }
 
-    pub async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, Error> {
+    pub async fn models(&self, world_address: Felt, selectors: &[Felt]) -> Result<Vec<Model>, Error> {
+        let cache = self.model_cache.read().await;
+        
         if selectors.is_empty() {
-            return Ok(self.model_cache.read().await.values().cloned().collect());
+            return Ok(cache
+                .get(&world_address)
+                .map(|world_models| world_models.values().cloned().collect())
+                .unwrap_or_default());
         }
 
+        drop(cache);
+        
         let mut schemas = Vec::with_capacity(selectors.len());
         for selector in selectors {
-            schemas.push(self.model(*selector).await?);
+            schemas.push(self.model(world_address, *selector).await?);
         }
 
         Ok(schemas)
     }
 
-    pub async fn model(&self, selector: Felt) -> Result<Model, Error> {
+    pub async fn model(&self, world_address: Felt, selector: Felt) -> Result<Model, Error> {
         let cache = self.model_cache.read().await;
+        
         cache
-            .get(&selector)
+            .get(&world_address)
+            .and_then(|world_models| world_models.get(&selector))
             .cloned()
             .ok_or_else(|| Error::ModelNotFound(selector))
     }
 
-    pub async fn set(&self, selector: Felt, model: Model) {
+    pub async fn set(&self, world_address: Felt, selector: Felt, model: Model) {
         let mut cache = self.model_cache.write().await;
-        cache.insert(selector, model);
+        cache
+            .entry(world_address)
+            .or_insert_with(HashMap::new)
+            .insert(selector, model);
     }
 
     pub async fn clear(&self) {

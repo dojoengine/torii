@@ -13,7 +13,7 @@ use sqlx::types::chrono::Utc;
 use starknet::providers::Provider;
 use starknet_core::types::{typed_data::TypeReference, TypedData};
 use starknet_crypto::{poseidon_hash_many, Felt};
-use torii_storage::Storage;
+use torii_storage::{Storage, utils::format_world_scoped_id};
 use tracing::{debug, info, warn};
 pub use validation::{validate_message, validate_signature};
 
@@ -21,6 +21,7 @@ pub const LOG_TARGET: &str = "torii::messaging";
 
 #[derive(Debug, Clone)]
 pub struct MessagingConfig {
+    pub world_address: Felt,
     pub max_age: u64,
     pub future_tolerance: u64,
     pub require_timestamp: bool,
@@ -29,6 +30,7 @@ pub struct MessagingConfig {
 impl Default for MessagingConfig {
     fn default() -> Self {
         Self {
+            world_address: Felt::ZERO,
             max_age: 300_000,         // 5 minutes
             future_tolerance: 60_000, // 1 minute
             require_timestamp: false,
@@ -77,7 +79,7 @@ impl<P: Provider + Sync> Messaging<P> {
         message: &TypedData,
         signature: &[Felt],
     ) -> Result<Felt, MessagingError> {
-        let ty = match validate_message(self.storage.clone(), message).await {
+        let ty = match validate_message(self.config.world_address, self.storage.clone(), message).await {
             Ok(parsed_message) => parsed_message,
             Err(e) => {
                 warn!(
@@ -134,7 +136,7 @@ impl<P: Provider + Sync> Messaging<P> {
             return Err(MessagingError::TimestampNotFound);
         }
 
-        let entity_model = self.storage.entity_model(entity_id, model_id).await?;
+        let entity_model = self.storage.entity_model(Some(self.config.world_address), entity_id, model_id).await?;
         let entity_identity = match &entity_model {
             Some(entity_model) => match get_identity_from_ty(entity_model) {
                 Ok(identity) => identity,
@@ -195,6 +197,7 @@ impl<P: Provider + Sync> Messaging<P> {
 
         if let Err(e) = set_entity(
             self.storage.clone(),
+            self.config.world_address,
             ty.clone(),
             message_timestamp.unwrap_or_else(|| Utc::now().timestamp() as u64), // Use client timestamp if available, otherwise server timestamp
             entity_id,

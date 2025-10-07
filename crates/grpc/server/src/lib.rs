@@ -177,16 +177,17 @@ impl<P: Provider + Sync> DojoWorld<P> {
 }
 
 impl<P: Provider + Sync> DojoWorld<P> {
-    pub async fn world(&self) -> Result<proto::types::World, Error> {
+    pub async fn worlds(&self) -> Result<Vec<proto::types::World>, Error> {
         let models = self
             .storage
-            .models(&[])
+            .models(&[], Some(self.world_address))
             .await
             .map_err(|e| anyhow!("Failed to get models from cache: {}", e))?;
 
         let mut models_metadata = Vec::with_capacity(models.len());
         for model in models {
             models_metadata.push(proto::types::Model {
+                world_address: model.world_address.to_bytes_be().to_vec(),
                 selector: model.selector.to_bytes_be().to_vec(),
                 namespace: model.namespace,
                 name: model.name,

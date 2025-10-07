@@ -1014,6 +1014,8 @@ pub struct Query {
     pub models: Vec<String>,
     /// Whether or not we should retrieve historical entities.
     pub historical: bool,
+    /// The world address of the world.
+    pub world_address: Option<Felt>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
@@ -1188,6 +1190,8 @@ pub enum ValueType {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Model {
+    /// The world address of the model
+    pub world_address: Felt,
     /// Namespace of the model
     pub namespace: String,
     /// The name of the model
@@ -1211,6 +1215,7 @@ impl TryFrom<proto::types::Model> for Model {
         let schema: Ty = serde_json::from_slice(&value.schema).map_err(ProtoError::FromJson)?;
         let layout: Layout = serde_json::from_slice(&value.layout).map_err(ProtoError::FromJson)?;
         Ok(Self {
+            world_address: Felt::from_bytes_be_slice(&value.world_address),
             selector: Felt::from_bytes_be_slice(&value.selector),
             schema,
             layout,
@@ -1262,6 +1267,7 @@ impl TryFrom<proto::types::Query> for Query {
             no_hashed_keys: value.no_hashed_keys,
             models: value.models,
             historical: value.historical,
+            world_address: value.world_address.map(|w| Felt::from_bytes_be_slice(&w)),
         })
     }
 }
@@ -1274,6 +1280,7 @@ impl From<Query> for proto::types::Query {
             models: value.models,
             pagination: Some(value.pagination.into()),
             historical: value.historical,
+            world_address: value.world_address.map(|w| w.to_bytes_be().to_vec()),
         }
     }
 }

@@ -54,6 +54,7 @@ pub fn get_timestamp_from_ty(ty: &Ty) -> Option<u64> {
 #[allow(clippy::too_many_arguments)]
 pub async fn set_entity(
     db: Arc<dyn Storage>,
+    world_address: Felt,
     ty: Ty,
     block_timestamp: u64,
     entity_id: Felt,
@@ -63,7 +64,7 @@ pub async fn set_entity(
     let event_id = format!("{:#064x}", block_timestamp);
 
     db.set_entity(
-        Felt::ZERO,
+        world_address,
         ty,
         &event_id,
         block_timestamp,

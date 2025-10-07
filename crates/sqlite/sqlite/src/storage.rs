@@ -19,7 +19,7 @@ use torii_proto::{
     TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
-use torii_storage::{ReadOnlyStorage, Storage, StorageError};
+use torii_storage::{utils::format_world_scoped_id, ReadOnlyStorage, Storage, StorageError};
 use tracing::warn;
 
 use crate::{
@@ -52,9 +52,11 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Returns the model metadata for the storage.
-    async fn model(&self, selector: Felt) -> Result<Model, StorageError> {
+    async fn model(&self, world_address: Option<Felt>, selector: Felt) -> Result<Model, StorageError> {
+        let world_address = world_address.unwrap_or(self.config.world_address);
+
         if let Some(cache) = &self.cache {
-            if let Ok(model) = cache.model(selector).await {
+            if let Ok(model) = cache.model(world_address, selector).await {
                 return Ok(model);
             } else {
                 warn!(
@@ -66,41 +68,32 @@ impl ReadOnlyStorage for Sql {
         }
 
         let model = sqlx::query_as::<_, SQLModel>("SELECT * FROM models WHERE id = ?")
-            .bind(felt_to_sql_string(&selector))
+            .bind(format_world_scoped_id(&world_address, &selector))
             .fetch_one(&self.pool)
             .await?;
-
-        let layout = serde_json::from_str(&model.layout)
-            .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
-        let schema = serde_json::from_str(&model.schema)
-            .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
-
-        let model_metadata = Model {
-            selector: Felt::from_str(&model.id)?,
-            name: model.name,
-            namespace: model.namespace,
-            schema,
-            packed_size: model.packed_size,
-            unpacked_size: model.unpacked_size,
-            class_hash: Felt::from_str(&model.class_hash)?,
-            contract_address: Felt::from_str(&model.contract_address)?,
-            layout,
-            use_legacy_store: model.legacy_store,
-        };
+        let model: torii_proto::Model = model.into();
 
         // Update cache to prevent repeated cache misses
         if let Some(cache) = &self.cache {
-            cache.register_model(selector, model_metadata.clone()).await;
+            cache
+                .register_model(world_address, selector, model.clone())
+                .await;
         }
 
-        Ok(model_metadata)
+        Ok(model)
     }
 
     /// Returns the models for the storage.
     /// If selectors is empty, returns all models.
-    async fn models(&self, selectors: &[Felt]) -> Result<Vec<Model>, StorageError> {
+    async fn models(
+        &self,
+        world_address: Option<Felt>,
+        selectors: &[Felt],
+    ) -> Result<Vec<Model>, StorageError> {
+        let world_address = world_address.unwrap_or(self.config.world_address);
+
         if let Some(cache) = &self.cache {
-            if let Ok(models) = cache.models(selectors).await {
+            if let Ok(models) = cache.models(world_address, selectors).await {
                 return Ok(models);
             } else {
                 warn!(
@@ -111,51 +104,34 @@ impl ReadOnlyStorage for Sql {
             }
         }
 
-        let mut query = "SELECT * FROM models".to_string();
-        let mut bind_values = vec![];
+        let mut query = "SELECT * FROM models WHERE world_address = ?".to_string();
+        let mut bind_values = vec![felt_to_sql_string(&world_address)];
         if !selectors.is_empty() {
             let placeholders = vec!["?"; selectors.len()].join(", ");
-            query += &format!(" WHERE id IN ({})", placeholders);
-            bind_values.extend(selectors.iter().map(felt_to_sql_string));
+            query += &format!(" AND model_selector IN ({})", placeholders);
+            bind_values.extend(selectors.iter().map(|s| felt_to_sql_string(s)));
         }
 
         let mut query = sqlx::query_as::<_, SQLModel>(&query);
         for value in bind_values {
             query = query.bind(value);
         }
-        let models = query.fetch_all(&self.pool).await?;
-
-        let mut models_metadata = Vec::with_capacity(models.len());
-        for model in models {
-            let layout = serde_json::from_str(&model.layout)
-                .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
-            let schema = serde_json::from_str(&model.schema)
-                .map_err(|e| Error::Parse(ParseError::FromJsonStr(e)))?;
-
-            let model_metadata = Model {
-                selector: Felt::from_str(&model.id)?,
-                name: model.name,
-                namespace: model.namespace,
-                schema,
-                packed_size: model.packed_size,
-                unpacked_size: model.unpacked_size,
-                class_hash: Felt::from_str(&model.class_hash)?,
-                contract_address: Felt::from_str(&model.contract_address)?,
-                layout,
-                use_legacy_store: model.legacy_store,
-            };
-
-            models_metadata.push(model_metadata);
-        }
-
+        let models: Vec<torii_proto::Model> = query
+            .fetch_all(&self.pool)
+            .await?
+            .into_iter()
+            .map(|m| m.into())
+            .collect();
         // Update cache to prevent repeated cache misses
         if let Some(cache) = &self.cache {
-            for model in &models_metadata {
-                cache.register_model(model.selector, model.clone()).await;
+            for model in &models {
+                cache
+                    .register_model(world_address, model.selector, model.clone())
+                    .await;
             }
         }
 
-        Ok(models_metadata)
+        Ok(models)
     }
 
     async fn token_ids(&self) -> Result<HashSet<TokenId>, StorageError> {
@@ -779,6 +755,7 @@ impl ReadOnlyStorage for Sql {
                 query.no_hashed_keys,
                 query.models.clone(),
                 query.historical,
+                query.world_address,
             )
             .await?;
 
@@ -820,6 +797,7 @@ impl ReadOnlyStorage for Sql {
                 query.no_hashed_keys,
                 query.models.clone(),
                 query.historical,
+                query.world_address,
             )
             .await?;
 
@@ -829,13 +807,16 @@ impl ReadOnlyStorage for Sql {
     /// Returns the model data of an entity.
     async fn entity_model(
         &self,
+        world_address: Option<Felt>,
         entity_id: Felt,
         model_selector: Felt,
     ) -> Result<Option<Ty>, StorageError> {
-        let mut schema = self.model(model_selector).await?.schema;
+        let world_address = world_address.unwrap_or(self.config.world_address);
+
+        let mut schema = self.model(Some(world_address), model_selector).await?.schema;
         let query = format!("SELECT * FROM [{}] WHERE internal_id = ?", schema.name());
         let mut query = sqlx::query(&query);
-        query = query.bind(felt_to_sql_string(&entity_id));
+        query = query.bind(format_world_scoped_id(&world_address, &entity_id));
         let row: Option<SqliteRow> = query.fetch_optional(&self.pool).await?;
         match row {
             Some(row) => {

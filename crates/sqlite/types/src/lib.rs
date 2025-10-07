@@ -113,6 +113,7 @@ pub struct Model {
 impl From<Model> for torii_proto::Model {
     fn from(value: Model) -> Self {
         Self {
+            world_address: Felt::from_str(&value.world_address).unwrap(),
             namespace: value.namespace,
             name: value.name,
             selector: Felt::from_str(&value.model_selector).unwrap(),

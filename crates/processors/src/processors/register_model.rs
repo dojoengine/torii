@@ -162,8 +162,10 @@ where
 
         ctx.cache
             .register_model(
+                ctx.contract_address,
                 selector,
                 Model {
+                    world_address: ctx.contract_address,
                     selector,
                     namespace,
                     name,

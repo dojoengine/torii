@@ -37,6 +37,7 @@ pub async fn validate_signature<P: Provider + Sync>(
 }
 
 pub async fn validate_message(
+    world_address: Felt,
     storage: Arc<dyn Storage>,
     message: &TypedData,
 ) -> Result<Ty, MessagingError> {
@@ -46,7 +47,7 @@ pub async fn validate_message(
         try_compute_selector_from_tag(&tag).map_err(|_| MessagingError::InvalidModelTag(tag))?;
 
     let mut ty = storage
-        .model(selector)
+        .model(Some(world_address), selector)
         .await
         .map_err(|e| MessagingError::ModelNotFound(e.to_string()))?
         .schema;
