@@ -666,13 +666,13 @@ pub struct ActivityOptions {
     pub session_timeout: u64,
 
     /// Days to retain activity records
-    #[arg(
-        long = "activity.retention_days",
-        default_value_t = DEFAULT_ACTIVITY_RETENTION_DAYS,
-        help = "Number of days to keep activity records before cleanup. Set to 0 to keep forever. \
-                Default is 30 days."
-    )]
-    pub retention_days: u64,
+    // #[arg(
+    //     long = "activity.retention_days",
+    //     default_value_t = DEFAULT_ACTIVITY_RETENTION_DAYS,
+    //     help = "Number of days to keep activity records before cleanup. Set to 0 to keep forever. \
+    //             Default is 30 days."
+    // )]
+    // pub retention_days: u64,
 
     /// Entrypoints to exclude from activity tracking
     #[arg(
@@ -692,7 +692,7 @@ impl Default for ActivityOptions {
         Self {
             enabled: true,
             session_timeout: DEFAULT_ACTIVITY_SESSION_TIMEOUT,
-            retention_days: DEFAULT_ACTIVITY_RETENTION_DAYS,
+            // retention_days: DEFAULT_ACTIVITY_RETENTION_DAYS,
             excluded_entrypoints: vec![],
         }
     }
