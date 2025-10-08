@@ -219,7 +219,7 @@ async fn test_entity_broker_multiple_subscriptions() {
     let mut subscribers = Vec::new();
 
     for i in 0..num_subscribers {
-        let receiver = entity_manager.add_subscriber(None).await; // No clause = receive all
+        let receiver = entity_manager.add_subscriber(None, vec![]).await; // No clause = receive all
         subscribers.push((i, receiver));
     }
 
@@ -350,7 +350,7 @@ async fn test_entity_broker_stress_test() {
     println!("📡 Creating {} subscribers...", num_subscribers);
 
     for i in 0..num_subscribers {
-        let receiver = entity_manager.add_subscriber(None).await; // No clause = receive all
+        let receiver = entity_manager.add_subscriber(None, vec![]).await; // No clause = receive all
         subscribers.push((i, receiver));
 
         // Progress indicator

@@ -22,21 +22,19 @@ use torii_proto::proto::world::{
     RetrieveActivitiesResponse, RetrieveAggregationsRequest, RetrieveAggregationsResponse,
     RetrieveContractsRequest, RetrieveContractsResponse, RetrieveControllersRequest,
     RetrieveControllersResponse, RetrieveEntitiesRequest, RetrieveEntitiesResponse,
-    RetrieveEventMessagesRequest, RetrieveEventsRequest, RetrieveEventsResponse,
-    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest,
-    RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse,
-    RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest,
-    RetrieveTransactionsResponse, SubscribeActivitiesRequest, SubscribeActivitiesResponse,
-    SubscribeAggregationsRequest, SubscribeAggregationsResponse, SubscribeContractsRequest,
-    SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
-    SubscribeEventMessagesRequest, SubscribeEventsRequest, SubscribeEventsResponse,
-    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
-    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
-    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    RetrieveEventsRequest, RetrieveEventsResponse, RetrieveTokenBalancesRequest,
+    RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
+    RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse, RetrieveTokensRequest,
+    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
+    SubscribeActivitiesRequest, SubscribeActivitiesResponse, SubscribeAggregationsRequest,
+    SubscribeAggregationsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventsRequest,
+    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
+    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
     UpdateActivitiesSubscriptionRequest, UpdateAggregationsSubscriptionRequest,
-    UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
-    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
-    UpdateTokenTransfersSubscriptionRequest, WorldsRequest,
+    UpdateEntitiesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
+    UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldsRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
@@ -521,7 +519,7 @@ impl WorldClient {
         &mut self,
         query: Query,
     ) -> Result<RetrieveEntitiesResponse, Error> {
-        let request = RetrieveEventMessagesRequest {
+        let request = RetrieveEntitiesRequest {
             query: Some(query.into()),
         };
         self.inner
@@ -570,11 +568,16 @@ impl WorldClient {
     pub async fn subscribe_entities(
         &mut self,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<EntityUpdateStreaming, Error> {
         let stream = self
             .inner
             .subscribe_entities(SubscribeEntitiesRequest {
                 clause: clause.map(|c| c.into()),
+                world_addresses: world_addresses
+                    .into_iter()
+                    .map(|w| w.to_bytes_be().to_vec())
+                    .collect(),
             })
             .await
             .map_err(Error::Grpc)
@@ -596,11 +599,16 @@ impl WorldClient {
         &mut self,
         subscription_id: u64,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<(), Error> {
         self.inner
             .update_entities_subscription(UpdateEntitiesSubscriptionRequest {
                 subscription_id,
                 clause: clause.map(|c| c.into()),
+                world_addresses: world_addresses
+                    .into_iter()
+                    .map(|w| w.to_bytes_be().to_vec())
+                    .collect(),
             })
             .await
             .map_err(Error::Grpc)
@@ -611,11 +619,16 @@ impl WorldClient {
     pub async fn subscribe_event_messages(
         &mut self,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<EntityUpdateStreaming, Error> {
         let stream = self
             .inner
-            .subscribe_event_messages(SubscribeEventMessagesRequest {
+            .subscribe_event_messages(SubscribeEntitiesRequest {
                 clause: clause.map(|c| c.into()),
+                world_addresses: world_addresses
+                    .into_iter()
+                    .map(|w| w.to_bytes_be().to_vec())
+                    .collect(),
             })
             .await
             .map_err(Error::Grpc)
@@ -637,11 +650,16 @@ impl WorldClient {
         &mut self,
         subscription_id: u64,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<(), Error> {
         self.inner
-            .update_event_messages_subscription(UpdateEventMessagesSubscriptionRequest {
+            .update_event_messages_subscription(UpdateEntitiesSubscriptionRequest {
                 subscription_id,
                 clause: clause.map(|c| c.into()),
+                world_addresses: world_addresses
+                    .into_iter()
+                    .map(|w| w.to_bytes_be().to_vec())
+                    .collect(),
             })
             .await
             .map_err(Error::Grpc)

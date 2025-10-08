@@ -403,9 +403,12 @@ impl Client {
     pub async fn on_entity_updated(
         &self,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<EntityUpdateStreaming, Error> {
         let mut grpc_client = self.inner.clone();
-        let stream = grpc_client.subscribe_entities(clause).await?;
+        let stream = grpc_client
+            .subscribe_entities(clause, world_addresses)
+            .await?;
         Ok(stream)
     }
 
@@ -414,10 +417,11 @@ impl Client {
         &self,
         subscription_id: u64,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<(), Error> {
         let mut grpc_client = self.inner.clone();
         grpc_client
-            .update_entities_subscription(subscription_id, clause)
+            .update_entities_subscription(subscription_id, clause, world_addresses)
             .await?;
         Ok(())
     }
@@ -426,9 +430,12 @@ impl Client {
     pub async fn on_event_message_updated(
         &self,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<EntityUpdateStreaming, Error> {
         let mut grpc_client = self.inner.clone();
-        let stream = grpc_client.subscribe_event_messages(clause).await?;
+        let stream = grpc_client
+            .subscribe_event_messages(clause, world_addresses)
+            .await?;
         Ok(stream)
     }
 
@@ -437,10 +444,11 @@ impl Client {
         &self,
         subscription_id: u64,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<(), Error> {
         let mut grpc_client = self.inner.clone();
         grpc_client
-            .update_event_messages_subscription(subscription_id, clause)
+            .update_event_messages_subscription(subscription_id, clause, world_addresses)
             .await?;
         Ok(())
     }

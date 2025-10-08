@@ -8,6 +8,7 @@ use dojo_types::schema::Ty;
 use futures::Stream;
 use futures_util::StreamExt;
 use rand::Rng;
+use starknet_crypto::Felt;
 use tokio::sync::mpsc::{
     channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
 };
@@ -29,6 +30,8 @@ pub(crate) const LOG_TARGET: &str = "torii::grpc::server::subscriptions::event_m
 pub struct EventMessageSubscriber {
     /// The clause that the subscriber is interested in
     pub(crate) clause: Option<Clause>,
+    /// The world addresses that the subscriber is interested in
+    pub(crate) world_addresses: Vec<Felt>,
     /// The channel to send the response back to the subscriber.
     pub(crate) sender: Sender<Result<SubscribeEntityResponse, tonic::Status>>,
 }
@@ -50,6 +53,7 @@ impl EventMessageManager {
     pub async fn add_subscriber(
         &self,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Receiver<Result<SubscribeEntityResponse, tonic::Status>> {
         let subscription_id = rand::thread_rng().gen::<u64>();
         let (sender, receiver) = channel(self.config.subscription_buffer_size);
@@ -64,15 +68,27 @@ impl EventMessageManager {
             }))
             .await;
 
-        self.subscribers
-            .insert(subscription_id, EventMessageSubscriber { clause, sender });
+        self.subscribers.insert(
+            subscription_id,
+            EventMessageSubscriber {
+                clause,
+                world_addresses,
+                sender,
+            },
+        );
 
         receiver
     }
 
-    pub async fn update_subscriber(&self, id: u64, clause: Option<Clause>) {
+    pub async fn update_subscriber(
+        &self,
+        id: u64,
+        clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
+    ) {
         if let Some(mut subscriber) = self.subscribers.get_mut(&id) {
             subscriber.clause = clause;
+            subscriber.world_addresses = world_addresses;
         }
     }
 
@@ -131,6 +147,12 @@ impl Service {
             // If we have a clause of keys, then check that the key pattern of the entity
             // matches the key pattern of the subscriber.
             if let Some(clause) = &sub.clause {
+                if !sub.world_addresses.is_empty()
+                    && !sub.world_addresses.contains(&event.entity.world_address)
+                {
+                    continue;
+                }
+
                 if !match_entity(
                     event.entity.hashed_keys,
                     &event.keys,

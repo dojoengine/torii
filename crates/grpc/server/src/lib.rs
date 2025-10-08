@@ -51,20 +51,19 @@ use torii_proto::proto::world::{
     PublishMessageResponse, RetrieveActivitiesRequest, RetrieveActivitiesResponse,
     RetrieveAggregationsRequest, RetrieveAggregationsResponse, RetrieveContractsRequest,
     RetrieveContractsResponse, RetrieveControllersRequest, RetrieveControllersResponse,
-    RetrieveEventMessagesRequest, RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse,
-    RetrieveTokenContractsRequest, RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest,
-    RetrieveTokenTransfersResponse, RetrieveTokensRequest, RetrieveTokensResponse,
-    RetrieveTransactionsRequest, RetrieveTransactionsResponse, SubscribeActivitiesRequest,
-    SubscribeActivitiesResponse, SubscribeAggregationsRequest, SubscribeAggregationsResponse,
-    SubscribeContractsRequest, SubscribeContractsResponse, SubscribeEntitiesRequest,
-    SubscribeEntityResponse, SubscribeEventMessagesRequest, SubscribeEventsResponse,
-    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
-    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
-    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest,
+    RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse,
+    RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest,
+    RetrieveTransactionsResponse, SubscribeActivitiesRequest, SubscribeActivitiesResponse,
+    SubscribeAggregationsRequest, SubscribeAggregationsResponse, SubscribeContractsRequest,
+    SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
+    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
+    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
+    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
     UpdateActivitiesSubscriptionRequest, UpdateAggregationsSubscriptionRequest,
-    UpdateAggregationsSubscriptionResponse, UpdateEventMessagesSubscriptionRequest,
-    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
-    UpdateTokenTransfersSubscriptionRequest, WorldsRequest, WorldsResponse,
+    UpdateAggregationsSubscriptionResponse, UpdateTokenBalancesSubscriptionRequest,
+    UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldsRequest,
+    WorldsResponse,
 };
 use torii_proto::proto::{self};
 use torii_proto::Message;
@@ -335,9 +334,9 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
 
     async fn retrieve_event_messages(
         &self,
-        request: Request<RetrieveEventMessagesRequest>,
+        request: Request<RetrieveEntitiesRequest>,
     ) -> Result<Response<RetrieveEntitiesResponse>, Status> {
-        let RetrieveEventMessagesRequest { query } = request.into_inner();
+        let RetrieveEntitiesRequest { query } = request.into_inner();
         let query = query
             .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
             .try_into()
@@ -796,13 +795,23 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<SubscribeEntitiesRequest>,
     ) -> ServiceResult<Self::SubscribeEntitiesStream> {
-        let SubscribeEntitiesRequest { clause } = request.into_inner();
+        let SubscribeEntitiesRequest {
+            clause,
+            world_addresses,
+        } = request.into_inner();
         let clause = clause
             .map(|c| c.try_into())
             .transpose()
             .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
+        let world_addresses = world_addresses
+            .into_iter()
+            .map(|w| Felt::from_bytes_be_slice(&w))
+            .collect();
 
-        let rx = self.entity_manager.add_subscriber(clause).await;
+        let rx = self
+            .entity_manager
+            .add_subscriber(clause, world_addresses)
+            .await;
 
         Ok(Response::new(
             Box::pin(ReceiverStream::new(rx)) as Self::SubscribeEntitiesStream
@@ -816,13 +825,18 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         let UpdateEntitiesSubscriptionRequest {
             subscription_id,
             clause,
+            world_addresses,
         } = request.into_inner();
+        let world_addresses = world_addresses
+            .into_iter()
+            .map(|w| Felt::from_bytes_be_slice(&w))
+            .collect();
         let clause = clause
             .map(|c| c.try_into())
             .transpose()
             .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
         self.entity_manager
-            .update_subscriber(subscription_id, clause)
+            .update_subscriber(subscription_id, clause, world_addresses)
             .await;
 
         Ok(Response::new(()))
@@ -896,14 +910,24 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
 
     async fn subscribe_event_messages(
         &self,
-        request: Request<SubscribeEventMessagesRequest>,
+        request: Request<SubscribeEntitiesRequest>,
     ) -> ServiceResult<Self::SubscribeEntitiesStream> {
-        let SubscribeEventMessagesRequest { clause } = request.into_inner();
+        let SubscribeEntitiesRequest {
+            clause,
+            world_addresses,
+        } = request.into_inner();
         let clause = clause
             .map(|c| c.try_into())
             .transpose()
             .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
-        let rx = self.event_message_manager.add_subscriber(clause).await;
+        let world_addresses = world_addresses
+            .into_iter()
+            .map(|w| Felt::from_bytes_be_slice(&w))
+            .collect();
+        let rx = self
+            .event_message_manager
+            .add_subscriber(clause, world_addresses)
+            .await;
 
         Ok(Response::new(
             Box::pin(ReceiverStream::new(rx)) as Self::SubscribeEntitiesStream
@@ -912,18 +936,23 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
 
     async fn update_event_messages_subscription(
         &self,
-        request: Request<UpdateEventMessagesSubscriptionRequest>,
+        request: Request<UpdateEntitiesSubscriptionRequest>,
     ) -> ServiceResult<()> {
-        let UpdateEventMessagesSubscriptionRequest {
+        let UpdateEntitiesSubscriptionRequest {
             subscription_id,
             clause,
+            world_addresses,
         } = request.into_inner();
         let clause = clause
             .map(|c| c.try_into())
             .transpose()
             .map_err(|e: ProtoError| Status::internal(e.to_string()))?;
+        let world_addresses = world_addresses
+            .into_iter()
+            .map(|w| Felt::from_bytes_be_slice(&w))
+            .collect();
         self.event_message_manager
-            .update_subscriber(subscription_id, clause)
+            .update_subscriber(subscription_id, clause, world_addresses)
             .await;
 
         Ok(Response::new(()))
