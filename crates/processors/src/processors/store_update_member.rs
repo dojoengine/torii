@@ -82,7 +82,11 @@ where
 
         // If the model does not exist, silently ignore it.
         // This can happen if only specific namespaces are indexed.
-        let model = match ctx.storage.model(ctx.contract_address, model_selector).await {
+        let model = match ctx
+            .storage
+            .model(ctx.contract_address, model_selector)
+            .await
+        {
             Ok(m) => m,
             Err(e) if e.to_string().contains("no rows") && !ctx.config.namespaces.is_empty() => {
                 debug!(
