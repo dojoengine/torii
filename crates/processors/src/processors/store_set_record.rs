@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
+use torii_cache::CacheError;
 use tracing::{debug, info};
 
 use crate::error::Error;
@@ -71,17 +72,13 @@ where
 
         // If the model does not exist, silently ignore it.
         // This can happen if only specific namespaces are indexed.
-        let model = match ctx
-            .storage
-            .model(ctx.contract_address, event.selector)
-            .await
-        {
+        let model = match ctx.cache.model(ctx.contract_address, event.selector).await {
             Ok(m) => m,
-            Err(e) if e.to_string().contains("no rows") && !ctx.config.namespaces.is_empty() => {
+            Err(CacheError::ModelNotFound(_)) if !ctx.config.namespaces.is_empty() => {
                 debug!(
                     target: LOG_TARGET,
                     selector = %event.selector,
-                    "Model does not exist, skipping."
+                    "Model not found in cache, skipping. This can happen if only specific namespaces are indexed."
                 );
                 return Ok(());
             }
