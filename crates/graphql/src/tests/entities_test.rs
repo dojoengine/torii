@@ -110,7 +110,7 @@ mod tests {
     async fn entities_test() -> Result<()> {
         let tempfile = NamedTempFile::new().unwrap();
         let path = tempfile.path().to_string_lossy();
-        let (pool, provider) = spinup_types_test(&path).await?;
+        let (pool, provider, world_address) = spinup_types_test(&path).await?;
 
         // Set up storage and messaging
         let (shutdown_tx, _) = broadcast::channel(1);
@@ -127,7 +127,7 @@ mod tests {
                 pool.clone(),
                 sender,
                 &[ContractDefinition {
-                    address: Felt::ZERO,
+                    address: world_address,
                     r#type: ContractType::WORLD,
                     starting_block: None,
                 }],
@@ -300,7 +300,7 @@ mod tests {
 
         // entity model union
         let id = poseidon_hash_many(&[Felt::ZERO]);
-        let entity = entity_model_query(&schema, &Felt::ZERO, &id).await;
+        let entity = entity_model_query(&schema, &world_address, &id).await;
         let models = entity.get("models").ok_or("no models found").unwrap();
 
         // models should contain record & recordsibling
@@ -313,7 +313,7 @@ mod tests {
         assert_eq!(record_sibling.record_id, 0);
 
         let id = poseidon_hash_many(&[Felt::ZERO, Felt::ONE]);
-        let entity = entity_model_query(&schema, &Felt::ZERO, &id).await;
+        let entity = entity_model_query(&schema, &world_address, &id).await;
         let models = entity.get("models").ok_or("no models found").unwrap();
         let subrecord: Subrecord = serde_json::from_value(models[0].clone()).unwrap();
         assert_eq!(&subrecord.__typename, "types_test_Subrecord");

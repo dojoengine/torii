@@ -21,6 +21,7 @@ mod tests {
     use torii_sqlite::utils::felt_to_sql_string;
     use torii_sqlite::Sql;
     use torii_storage::proto::{ContractDefinition, ContractType};
+    use torii_storage::utils::format_world_scoped_id;
     use torii_storage::Storage;
     use url::Url;
 
@@ -487,7 +488,7 @@ mod tests {
         let namespace = "types_test".to_string();
         let model_name = "Subrecord".to_string();
         let selector = compute_selector_from_names(&namespace, &model_name);
-        let model_id = felt_to_sql_string(&selector);
+        let model_id = format_world_scoped_id(&Felt::ZERO, &selector);
         let class_hash = Felt::TWO;
         let contract_address = Felt::THREE;
         let block_timestamp: u64 = 1710754478_u64;

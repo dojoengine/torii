@@ -317,7 +317,7 @@ pub async fn model_fixtures(db: &Sql) {
 
 pub async fn spinup_types_test(
     path: &str,
-) -> Result<(SqlitePool, Arc<JsonRpcClient<HttpTransport>>)> {
+) -> Result<(SqlitePool, Arc<JsonRpcClient<HttpTransport>>, Felt)> {
     let options = SqliteConnectOptions::from_str(path)
         .unwrap()
         .create_if_missing(true)
@@ -439,5 +439,5 @@ pub async fn spinup_types_test(
         .await
         .unwrap();
     db.execute().await.unwrap();
-    Ok((pool, provider))
+    Ok((pool, provider, world_address))
 }

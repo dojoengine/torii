@@ -176,7 +176,7 @@ mod tests {
     async fn models_test() -> Result<()> {
         let tempfile = NamedTempFile::new().unwrap();
         let path = tempfile.path().to_string_lossy();
-        let (pool, provider) = spinup_types_test(&path).await?;
+        let (pool, provider, world_address) = spinup_types_test(&path).await?;
 
         // Set up storage and messaging
         let (shutdown_tx, _) = broadcast::channel(1);
@@ -193,7 +193,7 @@ mod tests {
                 pool.clone(),
                 sender,
                 &[ContractDefinition {
-                    address: Felt::ZERO,
+                    address: world_address,
                     r#type: ContractType::WORLD,
                     starting_block: None,
                 }],
