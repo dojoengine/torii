@@ -120,6 +120,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     .unwrap();
 
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let (shutdown_tx, _) = broadcast::channel(1);
 
