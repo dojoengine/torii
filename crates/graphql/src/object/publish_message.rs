@@ -54,7 +54,10 @@ impl PublishMessageObject {
                     let signature_strings =
                         extract::<Vec<String>>(ctx.args.as_index_map(), "signature")?;
                     let message = extract::<String>(ctx.args.as_index_map(), "message")?;
-                    let world_address = Felt::from_str(&extract::<String>(ctx.args.as_index_map(), "worldAddress")?)?;
+                    let world_address = Felt::from_str(&extract::<String>(
+                        ctx.args.as_index_map(),
+                        "worldAddress",
+                    )?)?;
 
                     // Convert signature strings to Felt
                     let signature = signature_strings
@@ -83,10 +86,7 @@ impl PublishMessageObject {
                         })?;
 
                     // Create response
-                    let response = ValueMapping::from([(
-                        Name::new("id"),
-                        Value::from(entity_id),
-                    )]);
+                    let response = ValueMapping::from([(Name::new("id"), Value::from(entity_id))]);
 
                     Ok(Some(Value::Object(response)))
                 })

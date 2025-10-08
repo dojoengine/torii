@@ -62,7 +62,10 @@ impl Client {
 
     /// Publishes a set of offchain messages to the world.
     /// Returns the entity ids of the offchain messages.
-    pub async fn publish_message_batch(&self, messages: Vec<Message>) -> Result<Vec<String>, Error> {
+    pub async fn publish_message_batch(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<Vec<String>, Error> {
         let mut grpc_client = self.inner.clone();
         let entity_ids = grpc_client.publish_message_batch(messages).await?;
         Ok(entity_ids)

@@ -13,7 +13,7 @@ use sqlx::types::chrono::Utc;
 use starknet::providers::Provider;
 use starknet_core::types::{typed_data::TypeReference, TypedData};
 use starknet_crypto::{poseidon_hash_many, Felt};
-use torii_storage::{Storage, utils::format_world_scoped_id};
+use torii_storage::{utils::format_world_scoped_id, Storage};
 use tracing::{debug, info, warn};
 pub use validation::{validate_message, validate_signature};
 
@@ -61,7 +61,8 @@ impl<P: Provider + Sync + Send> MessagingTrait for Messaging<P> {
         message: &TypedData,
         signature: &[Felt],
     ) -> Result<String, MessagingError> {
-        self.validate_and_set_entity(world_address, message, signature).await
+        self.validate_and_set_entity(world_address, message, signature)
+            .await
     }
 }
 
@@ -80,9 +81,7 @@ impl<P: Provider + Sync> Messaging<P> {
         message: &TypedData,
         signature: &[Felt],
     ) -> Result<String, MessagingError> {
-        let ty = match validate_message(world_address, self.storage.clone(), message)
-            .await
-        {
+        let ty = match validate_message(world_address, self.storage.clone(), message).await {
             Ok(parsed_message) => parsed_message,
             Err(e) => {
                 warn!(

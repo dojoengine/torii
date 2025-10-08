@@ -948,7 +948,11 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<PublishMessageRequest>,
     ) -> Result<Response<PublishMessageResponse>, Status> {
-        let PublishMessageRequest { signature, message, world_address } = request.into_inner();
+        let PublishMessageRequest {
+            signature,
+            message,
+            world_address,
+        } = request.into_inner();
 
         let signature = signature
             .iter()
@@ -964,15 +968,17 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let message = Message { signature, message, world_address };
+        let message = Message {
+            signature,
+            message,
+            world_address,
+        };
         if let Some(tx) = &self.cross_messaging_tx {
             tx.send(message)
                 .map_err(|e| Status::internal(e.to_string()))?;
         }
 
-        Ok(Response::new(PublishMessageResponse {
-            id: entity_id,
-        }))
+        Ok(Response::new(PublishMessageResponse { id: entity_id }))
     }
 
     async fn publish_message_batch(
@@ -997,9 +1003,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
                 .validate_and_set_entity(world_address, &typed_data, &signature)
                 .await
                 .map_err(|e| Status::internal(e.to_string()))?;
-            responses.push(PublishMessageResponse {
-                id: entity_id,
-            });
+            responses.push(PublishMessageResponse { id: entity_id });
         }
 
         Ok(Response::new(PublishMessageBatchResponse {
