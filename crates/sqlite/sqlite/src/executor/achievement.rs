@@ -15,7 +15,7 @@ pub type QueryResult<T> = std::result::Result<T, ExecutorQueryError>;
 pub struct AchievementTask {
     pub id: String,
     pub description: String,
-    pub target: u32,  // Target count to complete the task
+    pub target: u32, // Target count to complete the task
 }
 
 /// Process achievement registration (trophy creation)
@@ -131,12 +131,11 @@ pub async fn update_achievement_progression(
     let progression_id = format!("{}:{}:{}", achievement_id, player_id, task_id);
 
     // Get the target count for this task from the achievement definition
-    let achievement_tasks: Option<String> = sqlx::query_scalar(
-        "SELECT tasks FROM achievements WHERE id = ?"
-    )
-    .bind(achievement_id)
-    .fetch_optional(&mut **tx)
-    .await?;
+    let achievement_tasks: Option<String> =
+        sqlx::query_scalar("SELECT tasks FROM achievements WHERE id = ?")
+            .bind(achievement_id)
+            .fetch_optional(&mut **tx)
+            .await?;
 
     let task_target = if let Some(tasks_json) = achievement_tasks {
         parse_task_target(&tasks_json, &task_id)
@@ -194,12 +193,11 @@ pub async fn update_achievement_progression(
 
     // Update player achievement stats if this achievement was just completed
     if overall_status.completed {
-        let world_address: Option<String> = sqlx::query_scalar(
-            "SELECT world_address FROM achievements WHERE id = ?"
-        )
-        .bind(achievement_id)
-        .fetch_optional(&mut **tx)
-        .await?;
+        let world_address: Option<String> =
+            sqlx::query_scalar("SELECT world_address FROM achievements WHERE id = ?")
+                .bind(achievement_id)
+                .fetch_optional(&mut **tx)
+                .await?;
 
         if let Some(world_addr) = world_address {
             update_player_achievement_stats(tx, &world_addr, &player_id).await?;
@@ -229,7 +227,7 @@ pub struct AchievementProgressionResult {
     pub count: i32,
     pub task_completed: bool,
     pub achievement_completed: bool,
-    pub achievement_progress: f32,  // 0.0 to 1.0
+    pub achievement_progress: f32, // 0.0 to 1.0
     pub total_points: i32,
 }
 
@@ -248,12 +246,11 @@ async fn calculate_achievement_status(
     player_id: &str,
 ) -> QueryResult<AchievementStatus> {
     // Get achievement tasks
-    let achievement_data: Option<(String, i32)> = sqlx::query_as(
-        "SELECT tasks, points FROM achievements WHERE id = ?"
-    )
-    .bind(achievement_id)
-    .fetch_optional(&mut **tx)
-    .await?;
+    let achievement_data: Option<(String, i32)> =
+        sqlx::query_as("SELECT tasks, points FROM achievements WHERE id = ?")
+            .bind(achievement_id)
+            .fetch_optional(&mut **tx)
+            .await?;
 
     let (tasks_json, points) = achievement_data.unwrap_or_else(|| ("[]".to_string(), 0));
 
@@ -272,7 +269,7 @@ async fn calculate_achievement_status(
     // Count completed tasks for this player
     let completed_tasks: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM achievement_progressions 
-         WHERE achievement_id = ? AND player_id = ? AND completed = 1"
+         WHERE achievement_id = ? AND player_id = ? AND completed = 1",
     )
     .bind(achievement_id)
     .bind(player_id)
@@ -352,12 +349,11 @@ pub async fn update_player_achievement_stats(
     let stats_id = format!("{}:{}", world_address, player_id);
 
     // Get total number of achievements for this world
-    let total_achievements: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM achievements WHERE world_address = ?"
-    )
-    .bind(world_address)
-    .fetch_one(&mut **tx)
-    .await?;
+    let total_achievements: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM achievements WHERE world_address = ?")
+            .bind(world_address)
+            .fetch_one(&mut **tx)
+            .await?;
 
     // Get all player achievements with completion status
     let player_achievements = get_player_achievements(tx, world_address, player_id).await?;
@@ -376,7 +372,7 @@ pub async fn update_player_achievement_stats(
         "SELECT MAX(ap.completed_at)
          FROM achievement_progressions ap
          JOIN achievements a ON ap.achievement_id = a.id
-         WHERE a.world_address = ? AND ap.player_id = ? AND ap.completed = 1"
+         WHERE a.world_address = ? AND ap.player_id = ? AND ap.completed = 1",
     )
     .bind(world_address)
     .bind(player_id)
@@ -438,20 +434,29 @@ pub async fn get_player_stats(
     world_address: &str,
     player_id: &str,
 ) -> QueryResult<Option<PlayerAchievementStats>> {
-    let stats: Option<(String, String, String, i32, i32, i32, f64, Option<chrono::DateTime<Utc>>, chrono::DateTime<Utc>)> = 
-        sqlx::query_as(
-            "SELECT id, world_address, player_id, total_points, completed_achievements, 
+    let stats: Option<(
+        String,
+        String,
+        String,
+        i32,
+        i32,
+        i32,
+        f64,
+        Option<chrono::DateTime<Utc>>,
+        chrono::DateTime<Utc>,
+    )> = sqlx::query_as(
+        "SELECT id, world_address, player_id, total_points, completed_achievements, 
              total_achievements, completion_percentage, last_achievement_at, updated_at
              FROM player_achievements 
-             WHERE world_address = ? AND player_id = ?"
-        )
-        .bind(world_address)
-        .bind(player_id)
-        .fetch_optional(&mut **tx)
-        .await?;
+             WHERE world_address = ? AND player_id = ?",
+    )
+    .bind(world_address)
+    .bind(player_id)
+    .fetch_optional(&mut **tx)
+    .await?;
 
-    Ok(stats.map(|(id, world_address, player_id, total_points, completed_achievements, total_achievements, completion_percentage, last_achievement_at, updated_at)| {
-        PlayerAchievementStats {
+    Ok(stats.map(
+        |(
             id,
             world_address,
             player_id,
@@ -461,8 +466,20 @@ pub async fn get_player_stats(
             completion_percentage,
             last_achievement_at,
             updated_at,
-        }
-    }))
+        )| {
+            PlayerAchievementStats {
+                id,
+                world_address,
+                player_id,
+                total_points,
+                completed_achievements,
+                total_achievements,
+                completion_percentage,
+                last_achievement_at,
+                updated_at,
+            }
+        },
+    ))
 }
 
 /// Get achievement leaderboard (top players by points)
@@ -471,33 +488,57 @@ pub async fn get_achievement_leaderboard(
     world_address: &str,
     limit: i64,
 ) -> QueryResult<Vec<PlayerAchievementStats>> {
-    let results: Vec<(String, String, String, i32, i32, i32, f64, Option<chrono::DateTime<Utc>>, chrono::DateTime<Utc>)> = 
-        sqlx::query_as(
-            "SELECT id, world_address, player_id, total_points, completed_achievements, 
+    let results: Vec<(
+        String,
+        String,
+        String,
+        i32,
+        i32,
+        i32,
+        f64,
+        Option<chrono::DateTime<Utc>>,
+        chrono::DateTime<Utc>,
+    )> = sqlx::query_as(
+        "SELECT id, world_address, player_id, total_points, completed_achievements, 
              total_achievements, completion_percentage, last_achievement_at, updated_at
              FROM player_achievements 
              WHERE world_address = ?
              ORDER BY total_points DESC, completed_achievements DESC
-             LIMIT ?"
-        )
-        .bind(world_address)
-        .bind(limit)
-        .fetch_all(&mut **tx)
-        .await?;
+             LIMIT ?",
+    )
+    .bind(world_address)
+    .bind(limit)
+    .fetch_all(&mut **tx)
+    .await?;
 
-    Ok(results.into_iter().map(|(id, world_address, player_id, total_points, completed_achievements, total_achievements, completion_percentage, last_achievement_at, updated_at)| {
-        PlayerAchievementStats {
-            id,
-            world_address,
-            player_id,
-            total_points,
-            completed_achievements,
-            total_achievements,
-            completion_percentage,
-            last_achievement_at,
-            updated_at,
-        }
-    }).collect())
+    Ok(results
+        .into_iter()
+        .map(
+            |(
+                id,
+                world_address,
+                player_id,
+                total_points,
+                completed_achievements,
+                total_achievements,
+                completion_percentage,
+                last_achievement_at,
+                updated_at,
+            )| {
+                PlayerAchievementStats {
+                    id,
+                    world_address,
+                    player_id,
+                    total_points,
+                    completed_achievements,
+                    total_achievements,
+                    completion_percentage,
+                    last_achievement_at,
+                    updated_at,
+                }
+            },
+        )
+        .collect())
 }
 
 /// Player achievement statistics
@@ -515,7 +556,7 @@ pub struct PlayerAchievementStats {
 }
 
 /// Helper function to extract a field value from a Ty entity
-fn extract_field_value(ty: &Ty, field_name: &str) -> Option<String> {
+pub fn extract_field_value(ty: &Ty, field_name: &str) -> Option<String> {
     match ty {
         Ty::Struct(s) => {
             for member in &s.children {
@@ -550,4 +591,3 @@ fn parse_task_target(tasks_json: &str, task_id: &str) -> Option<i32> {
         .find(|t| t.id == task_id)
         .map(|t| t.target as i32)
 }
-

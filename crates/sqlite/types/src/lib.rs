@@ -598,7 +598,7 @@ pub struct Achievement {
     pub icon: String,
     pub title: String,
     pub description: String,
-    pub tasks: String, // JSON string
+    pub tasks: String,        // JSON string
     pub data: Option<String>, // Optional JSON string
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

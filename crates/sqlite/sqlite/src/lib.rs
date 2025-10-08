@@ -45,8 +45,14 @@ pub struct SqlConfig {
     pub activity_enabled: bool,
     pub activity_session_timeout: u64,
     pub activity_excluded_entrypoints: HashSet<String>,
+    // ERC tracking configuration
     pub token_attributes: bool,
     pub trait_counts: bool,
+    // Achievement tracking configuration
+    pub achievement_enabled: bool,
+    pub achievement_registration_model: String,
+    pub achievement_progression_model: String,
+    pub achievement_additional_progression_models: Vec<String>,
 }
 
 impl SqlConfig {
@@ -59,6 +65,21 @@ impl SqlConfig {
             .iter()
             .filter(|agg| agg.model_tag == model_tag)
             .collect()
+    }
+
+    pub fn is_achievement_registration_model(&self, model_tag: &str) -> bool {
+        self.achievement_enabled && self.achievement_registration_model == model_tag
+    }
+
+    pub fn is_achievement_progression_model(&self, model_tag: &str) -> bool {
+        if !self.achievement_enabled {
+            return false;
+        }
+
+        model_tag == self.achievement_progression_model
+            || self
+                .achievement_additional_progression_models
+                .contains(&model_tag.to_string())
     }
 }
 

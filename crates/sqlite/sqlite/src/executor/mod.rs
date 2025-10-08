@@ -802,6 +802,15 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     .into_iter()
                     .cloned()
                     .collect();
+
+                // Extract achievement config values before any async operations
+                let achievement_enabled = self.config.achievement_enabled;
+                let world_address_str = felt_to_sql_string(&self.config.world_address);
+                let is_achievement_registration =
+                    self.config.is_achievement_registration_model(&model_tag);
+                let is_achievement_progression =
+                    self.config.is_achievement_progression_model(&model_tag);
+
                 let mut aggregation_updates = Vec::new();
                 for aggregator_config in aggregator_configs {
                     match aggregator::update_aggregation(
@@ -824,6 +833,100 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                                 aggregator_id = %aggregator_config.id,
                                 error = ?e,
                                 "Failed to update aggregation"
+                            );
+                        }
+                    }
+                }
+
+                // Handle achievement registration and progression
+                if achievement_enabled {
+                    // Check if this is an achievement registration model
+                    if is_achievement_registration {
+                        match achievement::register_achievement(
+                            tx,
+                            &world_address_str,
+                            &em_query.ty,
+                        )
+                        .await
+                        {
+                            Ok(Some(achievement_id)) => {
+                                info!(
+                                    target: LOG_TARGET,
+                                    achievement_id = %achievement_id,
+                                    model = %model_tag,
+                                    "Achievement registered"
+                                );
+                            }
+                            Ok(None) => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    model = %model_tag,
+                                    "Achievement registration returned None"
+                                );
+                            }
+                            Err(e) => {
+                                error!(
+                                    target: LOG_TARGET,
+                                    model = %model_tag,
+                                    error = ?e,
+                                    "Failed to register achievement"
+                                );
+                            }
+                        }
+                    }
+
+                    // Check if this is an achievement progression model
+                    if is_achievement_progression {
+                        // Extract achievement_id from the entity
+                        // The achievement_id should be part of the model data
+                        if let Some(achievement_id) =
+                            achievement::extract_field_value(&em_query.ty, "achievement_id")
+                                .or_else(|| {
+                                    achievement::extract_field_value(&em_query.ty, "achievement")
+                                })
+                        {
+                            match achievement::update_achievement_progression(
+                                tx,
+                                &achievement_id,
+                                &em_query.ty,
+                            )
+                            .await
+                            {
+                                Ok(Some(progression_result)) => {
+                                    info!(
+                                        target: LOG_TARGET,
+                                        achievement_id = %progression_result.achievement_id,
+                                        player_id = %progression_result.player_id,
+                                        task_id = %progression_result.task_id,
+                                        count = %progression_result.count,
+                                        task_completed = %progression_result.task_completed,
+                                        achievement_completed = %progression_result.achievement_completed,
+                                        "Achievement progression updated"
+                                    );
+                                }
+                                Ok(None) => {
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        achievement_id = %achievement_id,
+                                        model = %model_tag,
+                                        "Achievement progression returned None"
+                                    );
+                                }
+                                Err(e) => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        achievement_id = %achievement_id,
+                                        model = %model_tag,
+                                        error = ?e,
+                                        "Failed to update achievement progression"
+                                    );
+                                }
+                            }
+                        } else {
+                            warn!(
+                                target: LOG_TARGET,
+                                model = %model_tag,
+                                "Achievement progression model missing achievement_id field"
                             );
                         }
                     }
