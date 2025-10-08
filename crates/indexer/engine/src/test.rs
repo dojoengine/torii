@@ -195,7 +195,10 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        felt_to_sql_string(&compute_selector_from_names("ns", "Position"))
+        format_world_scoped_id(
+            &world_address,
+            &compute_selector_from_names("ns", "Position")
+        )
     );
     assert_eq!(name, "Position");
     assert_eq!(namespace, "ns");
@@ -213,7 +216,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        felt_to_sql_string(&compute_selector_from_names("ns", "Moves"))
+        format_world_scoped_id(&world_address, &compute_selector_from_names("ns", "Moves"))
     );
     assert_eq!(name, "Moves");
     assert_eq!(namespace, "ns");
@@ -231,7 +234,10 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        felt_to_sql_string(&compute_selector_from_names("ns", "PlayerConfig"))
+        format_world_scoped_id(
+            &world_address,
+            &compute_selector_from_names("ns", "PlayerConfig")
+        )
     );
     assert_eq!(name, "PlayerConfig");
     assert_eq!(namespace, "ns");

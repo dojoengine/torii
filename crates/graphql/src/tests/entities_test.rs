@@ -14,6 +14,7 @@ mod tests {
     use torii_sqlite::utils::felt_to_sql_string;
     use torii_sqlite::Sql;
     use torii_storage::proto::{ContractDefinition, ContractType};
+    use torii_storage::utils::format_world_scoped_id;
 
     use crate::schema::build_schema;
     use crate::tests::{
@@ -52,7 +53,7 @@ mod tests {
             .clone()
     }
 
-    async fn entity_model_query(schema: &Schema, id: &Felt) -> Value {
+    async fn entity_model_query(schema: &Schema, world_address: &Felt, id: &Felt) -> Value {
         let query = format!(
             r#"
           {{
@@ -92,7 +93,7 @@ mod tests {
             }}
           }}
         "#,
-            felt_to_sql_string(id)
+            format_world_scoped_id(world_address, id)
         );
 
         let result = run_graphql_query(schema, &query).await;
@@ -299,7 +300,7 @@ mod tests {
 
         // entity model union
         let id = poseidon_hash_many(&[Felt::ZERO]);
-        let entity = entity_model_query(&schema, &id).await;
+        let entity = entity_model_query(&schema, &Felt::ZERO, &id).await;
         let models = entity.get("models").ok_or("no models found").unwrap();
 
         // models should contain record & recordsibling
@@ -312,7 +313,7 @@ mod tests {
         assert_eq!(record_sibling.record_id, 0);
 
         let id = poseidon_hash_many(&[Felt::ZERO, Felt::ONE]);
-        let entity = entity_model_query(&schema, &id).await;
+        let entity = entity_model_query(&schema, &Felt::ZERO, &id).await;
         let models = entity.get("models").ok_or("no models found").unwrap();
         let subrecord: Subrecord = serde_json::from_value(models[0].clone()).unwrap();
         assert_eq!(&subrecord.__typename, "types_test_Subrecord");
