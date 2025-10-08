@@ -649,7 +649,7 @@ pub struct ActivityOptions {
     /// NOTE: Requires --indexing.transactions to be enabled
     #[arg(
         long = "activity.enabled",
-        default_value_t = true,
+        default_value_t = false,
         help = "Whether to track user activity sessions. When enabled, aggregates transaction \
                 calls into sessions for efficient activity queries. Requires transaction indexing \
                 to be enabled (--indexing.transactions)."
@@ -690,7 +690,7 @@ pub struct ActivityOptions {
 impl Default for ActivityOptions {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             session_timeout: DEFAULT_ACTIVITY_SESSION_TIMEOUT,
             // retention_days: DEFAULT_ACTIVITY_RETENTION_DAYS,
             excluded_entrypoints: vec![],
