@@ -197,7 +197,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             .into_iter()
             .map(|(world_address, models)| proto::types::World {
                 world_address: format!("{:#x}", world_address),
-                models: models,
+                models,
             })
             .collect())
     }

@@ -91,7 +91,7 @@ impl ReadOnlyStorage for Sql {
     ) -> Result<Vec<Model>, StorageError> {
         // Try cache first
         if let Some(cache) = &self.cache {
-            if let Ok(models) = cache.models(&world_addresses, selectors).await {
+            if let Ok(models) = cache.models(world_addresses, selectors).await {
                 return Ok(models);
             } else {
                 warn!(
@@ -111,14 +111,14 @@ impl ReadOnlyStorage for Sql {
         if !world_addresses.is_empty() {
             let placeholders = vec!["?"; world_addresses.len()].join(", ");
             conditions.push(format!("world_address IN ({})", placeholders));
-            bind_values.extend(world_addresses.iter().map(|w| felt_to_sql_string(w)));
+            bind_values.extend(world_addresses.iter().map(felt_to_sql_string));
         }
 
         // Add selector filter if specified
         if !selectors.is_empty() {
             let placeholders = vec!["?"; selectors.len()].join(", ");
             conditions.push(format!("model_selector IN ({})", placeholders));
-            bind_values.extend(selectors.iter().map(|s| felt_to_sql_string(s)));
+            bind_values.extend(selectors.iter().map(felt_to_sql_string));
         }
 
         // Add WHERE clause if we have any conditions

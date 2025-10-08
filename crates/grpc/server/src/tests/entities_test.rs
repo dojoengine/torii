@@ -166,7 +166,6 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     let grpc = DojoWorld::new(
         storage,
         messaging.clone(),
-        world_address,
         None,
         pool.clone(),
         GrpcConfig::default(),

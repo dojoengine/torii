@@ -168,7 +168,7 @@ impl ModelCache {
         for model in models {
             model_cache
                 .entry(model.world_address)
-                .or_insert_with(HashMap::new)
+                .or_default()
                 .insert(model.selector, model);
         }
 

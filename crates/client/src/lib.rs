@@ -32,8 +32,8 @@ pub struct Client {
 
 impl Client {
     /// Returns a initialized [Client] with default max message size (4MB).
-    pub async fn new(torii_url: String, world: Felt) -> Result<Self, Error> {
-        let grpc_client = WorldClient::new(torii_url, world).await?;
+    pub async fn new(torii_url: String) -> Result<Self, Error> {
+        let grpc_client = WorldClient::new(torii_url).await?;
 
         Ok(Self { inner: grpc_client })
     }
@@ -42,14 +42,12 @@ impl Client {
     ///
     /// # Arguments
     /// * `torii_url` - The URL of the Torii server
-    /// * `world` - The world address
     /// * `max_message_size` - Maximum size in bytes for gRPC messages (both incoming and outgoing)
     pub async fn new_with_config(
         torii_url: String,
-        world: Felt,
         max_message_size: usize,
     ) -> Result<Self, Error> {
-        let grpc_client = WorldClient::new_with_config(torii_url, world, max_message_size).await?;
+        let grpc_client = WorldClient::new_with_config(torii_url, max_message_size).await?;
 
         Ok(Self { inner: grpc_client })
     }
@@ -71,10 +69,10 @@ impl Client {
     }
 
     /// Returns a read lock on the World metadata that the client is connected to.
-    pub async fn metadata(&self) -> Result<World, Error> {
+    pub async fn worlds(&self, world_addresses: Vec<Felt>) -> Result<Vec<World>, Error> {
         let mut grpc_client = self.inner.clone();
-        let world = grpc_client.metadata().await?;
-        Ok(world)
+        let worlds = grpc_client.worlds(world_addresses).await?;
+        Ok(worlds)
     }
 
     /// Retrieves controllers matching contract addresses.

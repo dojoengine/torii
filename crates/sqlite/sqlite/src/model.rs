@@ -672,7 +672,7 @@ impl Sql {
         if !world_addresses.is_empty() {
             let placeholders = vec!["?"; world_addresses.len()].join(", ");
             conditions.push(format!("{}.world_address IN ({})", table, placeholders));
-            bind_values.extend(world_addresses.iter().map(|w| felt_to_sql_string(w)));
+            bind_values.extend(world_addresses.iter().map(felt_to_sql_string));
         }
 
         // Filter by model selectors using the world_address from the entity row
@@ -690,7 +690,7 @@ impl Sql {
                 .collect();
 
             conditions.push(format!("({})", model_selector_conditions.join(" OR ")));
-            bind_values.extend(models.iter().map(|s| felt_to_sql_string(s)));
+            bind_values.extend(models.iter().map(felt_to_sql_string));
         }
 
         // Combine all conditions with AND

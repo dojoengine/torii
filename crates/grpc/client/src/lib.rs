@@ -36,7 +36,7 @@ use torii_proto::proto::world::{
     UpdateActivitiesSubscriptionRequest, UpdateAggregationsSubscriptionRequest,
     UpdateEntitiesSubscriptionRequest, UpdateEventMessagesSubscriptionRequest,
     UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
-    UpdateTokenTransfersSubscriptionRequest, WorldMetadataRequest,
+    UpdateTokenTransfersSubscriptionRequest, WorldsRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
@@ -72,7 +72,6 @@ const DEFAULT_MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 #[derive(Debug, Clone)]
 /// A lightweight wrapper around the grpc client.
 pub struct WorldClient {
-    _world_address: Felt,
     #[cfg(not(target_arch = "wasm32"))]
     inner: world_client::WorldClient<tonic::transport::Channel>,
     #[cfg(target_arch = "wasm32")]
@@ -81,16 +80,12 @@ pub struct WorldClient {
 
 impl WorldClient {
     #[cfg(not(target_arch = "wasm32"))]
-    pub async fn new(dst: String, world_address: Felt) -> Result<Self, Error> {
-        Self::new_with_config(dst, world_address, DEFAULT_MAX_MESSAGE_SIZE).await
+    pub async fn new(dst: String) -> Result<Self, Error> {
+        Self::new_with_config(dst, DEFAULT_MAX_MESSAGE_SIZE).await
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub async fn new_with_config(
-        dst: String,
-        world_address: Felt,
-        max_message_size: usize,
-    ) -> Result<Self, Error> {
+    pub async fn new_with_config(dst: String, max_message_size: usize) -> Result<Self, Error> {
         const KEEPALIVE_TIME: u64 = 60;
 
         let endpoint = Endpoint::from_shared(dst.clone())
@@ -98,7 +93,6 @@ impl WorldClient {
             .tcp_keepalive(Some(Duration::from_secs(KEEPALIVE_TIME)));
         let channel = endpoint.connect().await.map_err(Error::Transport)?;
         Ok(Self {
-            _world_address: world_address,
             inner: world_client::WorldClient::with_origin(channel, endpoint.uri().clone())
                 .accept_compressed(CompressionEncoding::Gzip)
                 .send_compressed(CompressionEncoding::Gzip)
@@ -109,18 +103,13 @@ impl WorldClient {
 
     // we make this function async so that we can keep the function signature similar
     #[cfg(target_arch = "wasm32")]
-    pub async fn new(endpoint: String, world_address: Felt) -> Result<Self, Error> {
-        Self::new_with_config(endpoint, world_address, DEFAULT_MAX_MESSAGE_SIZE).await
+    pub async fn new(endpoint: String) -> Result<Self, Error> {
+        Self::new_with_config(endpoint, DEFAULT_MAX_MESSAGE_SIZE).await
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub async fn new_with_config(
-        endpoint: String,
-        world_address: Felt,
-        max_message_size: usize,
-    ) -> Result<Self, Error> {
+    pub async fn new_with_config(endpoint: String, max_message_size: usize) -> Result<Self, Error> {
         Ok(Self {
-            _world_address: world_address,
             inner: world_client::WorldClient::new(tonic_web_wasm_client::Client::new(endpoint))
                 .accept_compressed(CompressionEncoding::Gzip)
                 .send_compressed(CompressionEncoding::Gzip)
@@ -130,19 +119,26 @@ impl WorldClient {
     }
 
     /// Retrieve the metadata of the World.
-    pub async fn metadata(&mut self) -> Result<torii_proto::World, Error> {
+    pub async fn worlds(
+        &mut self,
+        world_addresses: Vec<Felt>,
+    ) -> Result<Vec<torii_proto::World>, Error> {
         self.inner
-            .world_metadata(WorldMetadataRequest {})
+            .worlds(WorldsRequest {
+                world_addresses: world_addresses
+                    .into_iter()
+                    .map(|a| a.to_bytes_be().to_vec())
+                    .collect(),
+            })
             .await
             .map_err(Error::Grpc)
-            .and_then(|res| {
+            .map(|res| {
                 res.into_inner()
-                    .world
-                    .ok_or(Error::Proto(ProtoError::MissingExpectedData(
-                        "world".to_string(),
-                    )))
-            })
-            .and_then(|world| world.try_into().map_err(Error::Proto))
+                    .worlds
+                    .into_iter()
+                    .map(|w| w.try_into().map_err(Error::Proto))
+                    .collect::<Result<Vec<torii_proto::World>, Error>>()
+            })?
     }
 
     pub async fn retrieve_controllers(
