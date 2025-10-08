@@ -331,6 +331,7 @@ pub struct Message {
     pub signature: Vec<Felt>,
     // The raw TypedData. Should be deserializable to a TypedData struct.
     pub message: String,
+    pub world_address: Felt,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]

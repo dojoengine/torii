@@ -276,6 +276,7 @@ impl<P: Provider + Sync> Relay<P> {
                                 let typed_data =
                                     serde_json::from_str::<TypedData>(&data.message).unwrap();
                                 if let Err(e) = self.messaging.validate_and_set_entity(
+                                    data.world_address,
                                     &typed_data,
                                     &data.signature,
                                 )

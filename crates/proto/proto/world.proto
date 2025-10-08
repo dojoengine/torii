@@ -311,10 +311,11 @@ message SubscribeEventsResponse {
 message PublishMessageRequest {
     repeated bytes signature = 1;
     string message = 2;
+    bytes world_address = 3;
 }
 
 message PublishMessageResponse {
-    bytes entity_id = 1;
+    string id = 1;
 }
 
 message PublishMessageBatchRequest {

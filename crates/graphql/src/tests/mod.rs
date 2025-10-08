@@ -236,8 +236,8 @@ pub async fn run_graphql_subscription<P: Provider + Sync + Send + 'static>(
 pub async fn model_fixtures(db: &Sql) {
     let tag = get_tag("types_test", "Record");
     db.register_model(
-        compute_selector_from_tag(&tag),
         Felt::ZERO, // world_address
+        compute_selector_from_tag(&tag),
         &Ty::Struct(Struct {
             name: tag,
             children: vec![

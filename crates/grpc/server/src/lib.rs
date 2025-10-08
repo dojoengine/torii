@@ -948,7 +948,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<PublishMessageRequest>,
     ) -> Result<Response<PublishMessageResponse>, Status> {
-        let PublishMessageRequest { signature, message } = request.into_inner();
+        let PublishMessageRequest { signature, message, world_address } = request.into_inner();
 
         let signature = signature
             .iter()
@@ -956,20 +956,22 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .collect::<Vec<_>>();
         let typed_data = serde_json::from_str(&message)
             .map_err(|_| Status::invalid_argument("Invalid message"))?;
+        let world_address = Felt::from_bytes_be_slice(&world_address);
+
         let entity_id = self
             .messaging
-            .validate_and_set_entity(&typed_data, &signature)
+            .validate_and_set_entity(world_address, &typed_data, &signature)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let message = Message { signature, message };
+        let message = Message { signature, message, world_address };
         if let Some(tx) = &self.cross_messaging_tx {
             tx.send(message)
                 .map_err(|e| Status::internal(e.to_string()))?;
         }
 
         Ok(Response::new(PublishMessageResponse {
-            entity_id: entity_id.to_bytes_be().to_vec(),
+            id: entity_id,
         }))
     }
 
@@ -985,17 +987,18 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
                 .iter()
                 .map(|s| Felt::from_bytes_be_slice(s))
                 .collect::<Vec<_>>();
+            let world_address = Felt::from_bytes_be_slice(&message.world_address);
             let message = message.message;
             let typed_data = serde_json::from_str(&message)
                 .map_err(|_| Status::invalid_argument("Invalid message"))?;
 
             let entity_id = self
                 .messaging
-                .validate_and_set_entity(&typed_data, &signature)
+                .validate_and_set_entity(world_address, &typed_data, &signature)
                 .await
                 .map_err(|e| Status::internal(e.to_string()))?;
             responses.push(PublishMessageResponse {
-                entity_id: entity_id.to_bytes_be().to_vec(),
+                id: entity_id,
             });
         }
 

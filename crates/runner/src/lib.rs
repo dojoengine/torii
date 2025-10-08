@@ -659,7 +659,6 @@ impl Runner {
 
         // Create messaging instance with configuration
         let messaging_config = MessagingConfig {
-            world_address: self.args.world_address.unwrap_or_default(),
             max_age: self.args.messaging.max_age,
             future_tolerance: self.args.messaging.future_tolerance,
             require_timestamp: self.args.messaging.require_timestamp,

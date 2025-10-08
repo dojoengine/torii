@@ -417,8 +417,8 @@ mod tests {
             });
             db_clone
                 .register_model(
-                    selector,
                     Felt::ZERO, // world_address
+                    selector,
                     &model,
                     &Layout::Fixed(vec![]),
                     class_hash,
@@ -511,8 +511,8 @@ mod tests {
             });
             db_clone
                 .register_model(
-                    selector,
                     Felt::ZERO, // world_address
+                    selector,
                     &model,
                     &Layout::Fixed(vec![]),
                     class_hash,

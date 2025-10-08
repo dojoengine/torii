@@ -734,7 +734,7 @@ impl WorldClient {
             .map(|res| res.into_inner())
     }
 
-    pub async fn publish_message(&mut self, message: Message) -> Result<Felt, Error> {
+    pub async fn publish_message(&mut self, message: Message) -> Result<String, Error> {
         self.inner
             .publish_message(PublishMessageRequest {
                 message: message.message,
@@ -743,16 +743,17 @@ impl WorldClient {
                     .into_iter()
                     .map(|s| s.to_bytes_be().to_vec())
                     .collect(),
+                world_address: message.world_address.to_bytes_be().to_vec(),
             })
             .await
             .map_err(Error::Grpc)
-            .map(|res| Felt::from_bytes_be_slice(&res.into_inner().entity_id))
+            .map(|res| res.into_inner().id)
     }
 
     pub async fn publish_message_batch(
         &mut self,
         messages: Vec<Message>,
-    ) -> Result<Vec<Felt>, Error> {
+    ) -> Result<Vec<String>, Error> {
         self.inner
             .publish_message_batch(PublishMessageBatchRequest {
                 messages: messages
@@ -764,6 +765,7 @@ impl WorldClient {
                             .map(|s| s.to_bytes_be().to_vec())
                             .collect(),
                         message: m.message.clone(),
+                        world_address: m.world_address.to_bytes_be().to_vec(),
                     })
                     .collect(),
             })
@@ -772,8 +774,8 @@ impl WorldClient {
             .map(|res| {
                 res.into_inner()
                     .responses
-                    .iter()
-                    .map(|r| Felt::from_bytes_be_slice(&r.entity_id))
+                    .into_iter()
+                    .map(|r| r.id)
                     .collect()
             })
     }
