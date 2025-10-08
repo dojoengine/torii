@@ -60,7 +60,7 @@ mod tests {
         let namespace = "types_test".to_string();
         let model_name = "Record".to_string();
         let key = vec![Felt::ONE];
-        let entity_id = felt_to_sql_string(&poseidon_hash_many(&key));
+        let entity_id = format_world_scoped_id(&Felt::ZERO, &poseidon_hash_many(&key));
         let keys_str = key
             .iter()
             .map(felt_to_sql_string)
@@ -237,7 +237,7 @@ mod tests {
         let namespace = "types_test".to_string();
         let model_name = "Record".to_string();
         let key = vec![Felt::ONE];
-        let entity_id = felt_to_sql_string(&poseidon_hash_many(&key));
+        let entity_id = format_world_scoped_id(&Felt::ZERO, &poseidon_hash_many(&key));
         let block_timestamp = 1710754478_u64;
         let keys_str = key
             .iter()
@@ -339,21 +339,23 @@ mod tests {
         let response_value = run_graphql_subscription(
             &db,
             provider,
-            r#"subscription {
-                entityUpdated(id: "0x00579e8877c7755365d5ec1ec7d3a94a457eff5d1f40482bbe9729c064cdead2") {
+            &format!(
+                r#"subscription {{
+                entityUpdated(id: "{entity_id}") {{
                     id
                     keys
-                    models {
+                    models {{
                         __typename
-                        ... on types_test_Record {
+                        ... on types_test_Record {{
                             depth
                             record_id
                             type_felt
                             typeContractAddress
-                        }
-                    }
-                }
-            }"#,
+                        }}
+                    }}
+                }}
+            }}"#
+            ),
         )
         .await;
         // 4. The subscription has received the message from publish()
@@ -393,7 +395,7 @@ mod tests {
         let model_name = "Subrecord".to_string();
         let tag = get_tag(&namespace, &model_name);
         let selector = compute_selector_from_names(&tag, &model_name);
-        let model_id = felt_to_sql_string(&selector);
+        let model_id = format_world_scoped_id(&Felt::ZERO, &selector);
         let class_hash = Felt::TWO;
         let contract_address = Felt::THREE;
         let block_timestamp: u64 = 1710754478_u64;
