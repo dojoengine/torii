@@ -80,11 +80,7 @@ where
         };
 
         // silently ignore if the model is not found
-        let model = match ctx
-            .cache
-            .model(ctx.contract_address, event.selector)
-            .await
-        {
+        let model = match ctx.cache.model(ctx.contract_address, event.selector).await {
             Ok(model) => model,
             Err(CacheError::ModelNotFound(_)) if !ctx.config.namespaces.is_empty() => {
                 debug!(

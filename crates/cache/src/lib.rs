@@ -88,15 +88,11 @@ impl ReadOnlyCache for InMemoryCache {
         world_addresses: &[Felt],
         selectors: &[Felt],
     ) -> Result<Vec<Model>, CacheError> {
-        self.model_cache
-            .models(world_addresses, selectors)
-            .await
+        self.model_cache.models(world_addresses, selectors).await
     }
 
     async fn model(&self, world_address: Felt, selector: Felt) -> Result<Model, CacheError> {
-        self.model_cache
-            .model(world_address, selector)
-            .await
+        self.model_cache.model(world_address, selector).await
     }
 
     async fn is_token_registered(&self, token_id: &TokenId) -> bool {
