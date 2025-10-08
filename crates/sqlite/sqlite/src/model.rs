@@ -417,6 +417,8 @@ fn map_row_to_entity(
 ) -> Result<Entity, Error> {
     let hashed_keys =
         Felt::from_str(&row.get::<String, _>("entity_id")).map_err(ParseError::FromStr)?;
+    let world_address =
+        Felt::from_str(&row.get::<String, _>("world_address")).map_err(ParseError::FromStr)?;
     let created_at = row.get::<DateTime<Utc>, _>("created_at");
     let updated_at = row.get::<DateTime<Utc>, _>("updated_at");
     let executed_at = row.get::<DateTime<Utc>, _>("executed_at");
@@ -444,6 +446,7 @@ fn map_row_to_entity(
         .collect::<Result<Vec<_>, Error>>()?;
 
     Ok(Entity {
+        world_address,
         hashed_keys: if !dont_include_hashed_keys {
             hashed_keys
         } else {
@@ -803,6 +806,8 @@ impl Sql {
                 let created_at: DateTime<Utc> = row.get("created_at");
                 let updated_at: DateTime<Utc> = row.get("updated_at");
                 let executed_at: DateTime<Utc> = row.get("executed_at");
+                let world_address: Felt = Felt::from_str(&row.get::<String, _>("world_address"))
+                    .map_err(ParseError::FromStr)?;
 
                 let hashed_keys = Felt::from_str(&entity_id).map_err(ParseError::FromStr)?;
                 let mut schema = schemas.get(&model_id).expect("Model not found").clone();
@@ -811,6 +816,7 @@ impl Sql {
                 )?;
 
                 Ok::<_, Error>(torii_proto::schema::Entity {
+                    world_address,
                     hashed_keys,
                     models: vec![schema.as_struct().unwrap().clone()],
                     created_at,

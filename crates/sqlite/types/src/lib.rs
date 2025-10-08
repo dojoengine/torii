@@ -38,6 +38,7 @@ impl fmt::LowerHex for SQLFelt {
 pub struct Entity {
     pub id: String,        // Composite: "world_address:entity_id"
     pub entity_id: String, // Just the entity hash (for easy access)
+    pub world_address: String,
     pub keys: String,
     pub event_id: String,
     pub executed_at: DateTime<Utc>,
@@ -62,6 +63,7 @@ impl<const EVENT_MESSAGE: bool> From<Entity> for torii_proto::schema::Entity<EVE
         // Use the dedicated entity_id column (no parsing needed!)
         Self {
             hashed_keys: Felt::from_str(&value.entity_id).unwrap(),
+            world_address: Felt::from_str(&value.world_address).unwrap(),
             models,
             created_at: value.created_at,
             updated_at: value.updated_at,

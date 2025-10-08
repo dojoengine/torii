@@ -17,7 +17,7 @@ use starknet::core::types::Call;
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::JsonRpcClient;
-use starknet_crypto::poseidon_hash_many;
+use starknet_crypto::{poseidon_hash_many, Felt};
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
 use tonic::Request;
@@ -237,6 +237,7 @@ async fn test_entity_broker_multiple_subscriptions() {
         let now = Utc::now();
         let entity = Entity {
             hashed_keys,
+            world_address: Felt::ZERO,
             models: vec![],
             created_at: now,
             updated_at: now,
@@ -504,6 +505,7 @@ async fn test_entity_broker_stress_test() {
             let now = Utc::now();
             let entity = Entity {
                 hashed_keys,
+                world_address: Felt::ZERO,
                 models,
                 created_at: now,
                 updated_at: now,

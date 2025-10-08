@@ -45,6 +45,8 @@ message Entity {
     uint64 updated_at = 4;
     // Block timestamp when the entity was updated
     uint64 executed_at = 5;
+    // The world address of the entity
+    bytes world_address = 6;
 }
 
 message Event {
