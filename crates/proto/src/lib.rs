@@ -331,6 +331,7 @@ pub struct Message {
     pub signature: Vec<Felt>,
     // The raw TypedData. Should be deserializable to a TypedData struct.
     pub message: String,
+    pub world_address: Felt,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
@@ -766,7 +767,7 @@ pub struct AggregationEntry {
     pub value: U256,
     pub display_value: String,
     pub position: u64,
-    pub model_id: Felt,
+    pub model_id: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -780,7 +781,7 @@ impl Default for AggregationEntry {
             value: U256::ZERO,
             display_value: String::new(),
             position: 0,
-            model_id: Felt::ZERO,
+            model_id: String::new(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -818,7 +819,7 @@ impl From<AggregationEntry> for proto::types::AggregationEntry {
             value: value.value.to_be_bytes().to_vec(),
             display_value: value.display_value,
             position: value.position,
-            model_id: value.model_id.to_bytes_be().to_vec(),
+            model_id: value.model_id,
             created_at: value.created_at.to_rfc3339(),
             updated_at: value.updated_at.to_rfc3339(),
         }
@@ -836,7 +837,7 @@ impl TryFrom<proto::types::AggregationEntry> for AggregationEntry {
             value: U256::from_be_slice(&value.value),
             display_value: value.display_value,
             position: value.position,
-            model_id: Felt::from_bytes_be_slice(&value.model_id),
+            model_id: value.model_id,
             created_at: DateTime::parse_from_rfc3339(&value.created_at)
                 .map_err(|e| ProtoError::ParseTimestamp(value.created_at.clone(), e))?
                 .with_timezone(&Utc),
@@ -1014,6 +1015,8 @@ pub struct Query {
     pub models: Vec<String>,
     /// Whether or not we should retrieve historical entities.
     pub historical: bool,
+    /// The world address of the world.
+    pub world_addresses: Vec<Felt>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
@@ -1188,6 +1191,8 @@ pub enum ValueType {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Model {
+    /// The world address of the model
+    pub world_address: Felt,
     /// Namespace of the model
     pub namespace: String,
     /// The name of the model
@@ -1211,6 +1216,7 @@ impl TryFrom<proto::types::Model> for Model {
         let schema: Ty = serde_json::from_slice(&value.schema).map_err(ProtoError::FromJson)?;
         let layout: Layout = serde_json::from_slice(&value.layout).map_err(ProtoError::FromJson)?;
         Ok(Self {
+            world_address: Felt::from_bytes_be_slice(&value.world_address),
             selector: Felt::from_bytes_be_slice(&value.selector),
             schema,
             layout,
@@ -1222,6 +1228,24 @@ impl TryFrom<proto::types::Model> for Model {
             class_hash: Felt::from_bytes_be_slice(&value.class_hash),
             contract_address: Felt::from_bytes_be_slice(&value.contract_address),
         })
+    }
+}
+
+impl From<Model> for proto::types::Model {
+    fn from(value: Model) -> Self {
+        Self {
+            selector: value.selector.to_bytes_be().to_vec(),
+            namespace: value.namespace,
+            name: value.name,
+            packed_size: value.packed_size,
+            unpacked_size: value.unpacked_size,
+            use_legacy_store: value.use_legacy_store,
+            class_hash: value.class_hash.to_bytes_be().to_vec(),
+            contract_address: value.contract_address.to_bytes_be().to_vec(),
+            layout: serde_json::to_vec(&value.layout).unwrap(),
+            schema: serde_json::to_vec(&value.schema).unwrap(),
+            world_address: value.world_address.to_bytes_be().to_vec(),
+        }
     }
 }
 
@@ -1262,6 +1286,11 @@ impl TryFrom<proto::types::Query> for Query {
             no_hashed_keys: value.no_hashed_keys,
             models: value.models,
             historical: value.historical,
+            world_addresses: value
+                .world_addresses
+                .iter()
+                .map(|w| Felt::from_bytes_be_slice(w))
+                .collect(),
         })
     }
 }
@@ -1274,6 +1303,11 @@ impl From<Query> for proto::types::Query {
             models: value.models,
             pagination: Some(value.pagination.into()),
             historical: value.historical,
+            world_addresses: value
+                .world_addresses
+                .iter()
+                .map(|w| w.to_bytes_be().to_vec())
+                .collect(),
         }
     }
 }

@@ -523,6 +523,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         let Some(processors) = processors.get(&event_key) else {
             // if we dont have a processor for this event, we try the catch all processor
             let ctx = EventProcessorContext {
+                contract_address: event.from_address,
                 storage: self.storage.clone(),
                 cache: self.cache.clone(),
                 provider: self.provider.clone(),
@@ -583,6 +584,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             task_identifier,
             dependencies,
             ParallelizedEvent {
+                contract_address: event.from_address,
                 indexing_mode,
                 contract_type,
                 event_id: event_id.to_string(),

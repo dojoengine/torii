@@ -32,8 +32,8 @@ pub struct Client {
 
 impl Client {
     /// Returns a initialized [Client] with default max message size (4MB).
-    pub async fn new(torii_url: String, world: Felt) -> Result<Self, Error> {
-        let grpc_client = WorldClient::new(torii_url, world).await?;
+    pub async fn new(torii_url: String) -> Result<Self, Error> {
+        let grpc_client = WorldClient::new(torii_url).await?;
 
         Ok(Self { inner: grpc_client })
     }
@@ -42,21 +42,19 @@ impl Client {
     ///
     /// # Arguments
     /// * `torii_url` - The URL of the Torii server
-    /// * `world` - The world address
     /// * `max_message_size` - Maximum size in bytes for gRPC messages (both incoming and outgoing)
     pub async fn new_with_config(
         torii_url: String,
-        world: Felt,
         max_message_size: usize,
     ) -> Result<Self, Error> {
-        let grpc_client = WorldClient::new_with_config(torii_url, world, max_message_size).await?;
+        let grpc_client = WorldClient::new_with_config(torii_url, max_message_size).await?;
 
         Ok(Self { inner: grpc_client })
     }
 
     /// Publishes an offchain message to the world.
     /// Returns the entity id of the offchain message.
-    pub async fn publish_message(&self, message: Message) -> Result<Felt, Error> {
+    pub async fn publish_message(&self, message: Message) -> Result<String, Error> {
         let mut grpc_client = self.inner.clone();
         let entity_id = grpc_client.publish_message(message).await?;
         Ok(entity_id)
@@ -64,17 +62,20 @@ impl Client {
 
     /// Publishes a set of offchain messages to the world.
     /// Returns the entity ids of the offchain messages.
-    pub async fn publish_message_batch(&self, messages: Vec<Message>) -> Result<Vec<Felt>, Error> {
+    pub async fn publish_message_batch(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<Vec<String>, Error> {
         let mut grpc_client = self.inner.clone();
         let entity_ids = grpc_client.publish_message_batch(messages).await?;
         Ok(entity_ids)
     }
 
     /// Returns a read lock on the World metadata that the client is connected to.
-    pub async fn metadata(&self) -> Result<World, Error> {
+    pub async fn worlds(&self, world_addresses: Vec<Felt>) -> Result<Vec<World>, Error> {
         let mut grpc_client = self.inner.clone();
-        let world = grpc_client.metadata().await?;
-        Ok(world)
+        let worlds = grpc_client.worlds(world_addresses).await?;
+        Ok(worlds)
     }
 
     /// Retrieves controllers matching contract addresses.
@@ -402,9 +403,12 @@ impl Client {
     pub async fn on_entity_updated(
         &self,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<EntityUpdateStreaming, Error> {
         let mut grpc_client = self.inner.clone();
-        let stream = grpc_client.subscribe_entities(clause).await?;
+        let stream = grpc_client
+            .subscribe_entities(clause, world_addresses)
+            .await?;
         Ok(stream)
     }
 
@@ -413,10 +417,11 @@ impl Client {
         &self,
         subscription_id: u64,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<(), Error> {
         let mut grpc_client = self.inner.clone();
         grpc_client
-            .update_entities_subscription(subscription_id, clause)
+            .update_entities_subscription(subscription_id, clause, world_addresses)
             .await?;
         Ok(())
     }
@@ -425,9 +430,12 @@ impl Client {
     pub async fn on_event_message_updated(
         &self,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<EntityUpdateStreaming, Error> {
         let mut grpc_client = self.inner.clone();
-        let stream = grpc_client.subscribe_event_messages(clause).await?;
+        let stream = grpc_client
+            .subscribe_event_messages(clause, world_addresses)
+            .await?;
         Ok(stream)
     }
 
@@ -436,10 +444,11 @@ impl Client {
         &self,
         subscription_id: u64,
         clause: Option<Clause>,
+        world_addresses: Vec<Felt>,
     ) -> Result<(), Error> {
         let mut grpc_client = self.inner.clone();
         grpc_client
-            .update_event_messages_subscription(subscription_id, clause)
+            .update_event_messages_subscription(subscription_id, clause, world_addresses)
             .await?;
         Ok(())
     }

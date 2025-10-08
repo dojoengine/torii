@@ -29,8 +29,9 @@ message Model {
     bytes schema = 8;
     // felt bytes of the contract address of the component
     bytes contract_address = 9;
-
     bool use_legacy_store = 10;
+    // The world address of the model
+    bytes world_address = 11;
 }
 
 message Entity {
@@ -44,6 +45,8 @@ message Entity {
     uint64 updated_at = 4;
     // Block timestamp when the entity was updated
     uint64 executed_at = 5;
+    // The world address of the entity
+    bytes world_address = 6;
 }
 
 message Event {
@@ -61,6 +64,7 @@ message Query {
     repeated string models = 3;
     Pagination pagination = 4;
     bool historical = 5;
+    repeated bytes world_addresses = 6;
 }
 
 message EventQuery {
@@ -480,7 +484,7 @@ message AggregationEntry {
     // Calculated position/rank (1-indexed)
     uint64 position = 6;
     // The model ID this aggregation is based on
-    bytes model_id = 7;
+    string model_id = 7;
     // When the entry was created (RFC3339 timestamp)
     string created_at = 8;
     // When the entry was last updated (RFC3339 timestamp)

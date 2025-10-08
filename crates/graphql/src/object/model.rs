@@ -9,6 +9,7 @@ use torii_broker::types::ModelUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::types::Model;
 use torii_sqlite::utils::felt_to_sql_string;
+use torii_storage::utils::format_world_scoped_id;
 
 use super::{resolve_many, BasicObject, ResolvableObject, TypeMapping, ValueMapping};
 use crate::constants::{
@@ -108,7 +109,14 @@ impl ResolvableObject for ModelObject {
                                 let id = id.clone();
                                 async move {
                                     let model_id = felt_to_sql_string(&model.selector);
-                                    if id.is_none() || id == Some(model_id.clone()) {
+                                    let scoped_model_id = format_world_scoped_id(
+                                        &model.world_address,
+                                        &model.selector,
+                                    );
+                                    if id.is_none()
+                                        || id == Some(model_id.clone())
+                                        || id == Some(scoped_model_id.clone())
+                                    {
                                         let mut conn = match pool.acquire().await {
                                             Ok(conn) => conn,
                                             Err(_) => return None,
@@ -117,7 +125,7 @@ impl ResolvableObject for ModelObject {
                                         let model = match sqlx::query_as::<_, Model>(
                                             "SELECT * FROM models WHERE id = ?",
                                         )
-                                        .bind(&model_id)
+                                        .bind(&scoped_model_id)
                                         .fetch_one(&mut *conn)
                                         .await
                                         {

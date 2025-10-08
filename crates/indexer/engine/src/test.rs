@@ -26,6 +26,7 @@ use torii_sqlite::types::Token;
 use torii_sqlite::utils::{felt_and_u256_to_sql_string, felt_to_sql_string, u256_to_sql_string};
 use torii_sqlite::Sql;
 use torii_storage::proto::{ContractDefinition, ContractType};
+use torii_storage::utils::format_world_scoped_id;
 use torii_storage::Storage;
 
 use crate::engine::{Engine, EngineConfig};
@@ -195,7 +196,10 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        felt_to_sql_string(&compute_selector_from_names("ns", "Position"))
+        format_world_scoped_id(
+            &world_address,
+            &compute_selector_from_names("ns", "Position")
+        )
     );
     assert_eq!(name, "Position");
     assert_eq!(namespace, "ns");
@@ -213,7 +217,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        felt_to_sql_string(&compute_selector_from_names("ns", "Moves"))
+        format_world_scoped_id(&world_address, &compute_selector_from_names("ns", "Moves"))
     );
     assert_eq!(name, "Moves");
     assert_eq!(namespace, "ns");
@@ -231,7 +235,10 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        felt_to_sql_string(&compute_selector_from_names("ns", "PlayerConfig"))
+        format_world_scoped_id(
+            &world_address,
+            &compute_selector_from_names("ns", "PlayerConfig")
+        )
     );
     assert_eq!(name, "PlayerConfig");
     assert_eq!(namespace, "ns");
@@ -244,7 +251,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
     let (id, keys): (String, String) = sqlx::query_as(
         format!(
             "SELECT id, keys FROM entities WHERE id = '{}'",
-            felt_to_sql_string(&poseidon_hash_many(&[account.address()]))
+            format_world_scoped_id(&world_address, &poseidon_hash_many(&[account.address()]))
         )
         .as_str(),
     )
@@ -254,7 +261,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
 
     assert_eq!(
         id,
-        felt_to_sql_string(&poseidon_hash_many(&[account.address()]))
+        format_world_scoped_id(&world_address, &poseidon_hash_many(&[account.address()]))
     );
     assert_eq!(keys, format!("{}/", felt_to_sql_string(&account.address())));
 }
@@ -894,7 +901,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
     let entity_count: i64 = sqlx::query_scalar(
         format!(
             "SELECT COUNT(*) FROM entities WHERE id = '{}'",
-            felt_to_sql_string(&poseidon_hash_many(&[account.address()]))
+            format_world_scoped_id(&world_address, &poseidon_hash_many(&[account.address()]))
         )
         .as_str(),
     )
@@ -1119,7 +1126,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
     let name: String = sqlx::query_scalar(
         format!(
             "SELECT name FROM [ns-PlayerConfig] WHERE internal_id = '{}'",
-            felt_to_sql_string(&poseidon_hash_many(&[account.address()]))
+            format_world_scoped_id(&world_address, &poseidon_hash_many(&[account.address()]))
         )
         .as_str(),
     )

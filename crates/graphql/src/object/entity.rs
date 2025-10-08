@@ -11,6 +11,7 @@ use torii_broker::types::EntityUpdate;
 use torii_broker::MemoryBroker;
 use torii_sqlite::types::Entity;
 use torii_sqlite::utils::felt_to_sql_string;
+use torii_storage::utils::format_world_scoped_id;
 
 use super::inputs::keys_input::keys_argument;
 use super::{BasicObject, ResolvableObject, TypeMapping, ValueMapping};
@@ -83,7 +84,14 @@ impl ResolvableObject for EntityObject {
                             let id = id.clone();
                             async move {
                                 let entity_id = felt_to_sql_string(&entity.entity.hashed_keys);
-                                if id.is_none() || id == Some(entity_id.clone()) {
+                                let scoped_entity_id = format_world_scoped_id(
+                                    &entity.entity.world_address,
+                                    &entity.entity.hashed_keys,
+                                );
+                                if id.is_none()
+                                    || id == Some(entity_id.clone())
+                                    || id == Some(scoped_entity_id.clone())
+                                {
                                     let mut conn = match pool.acquire().await {
                                         Ok(conn) => conn,
                                         Err(_) => return None,
@@ -92,7 +100,7 @@ impl ResolvableObject for EntityObject {
                                     let entity = match sqlx::query_as::<_, Entity>(
                                         "SELECT * FROM entities WHERE id = ?",
                                     )
-                                    .bind(&entity_id)
+                                    .bind(&scoped_entity_id)
                                     .fetch_one(&mut *conn)
                                     .await
                                     {

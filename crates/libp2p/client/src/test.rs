@@ -82,6 +82,7 @@ async fn test_client_messaging() -> Result<(), Box<dyn Error>> {
 
     // Register the model of our Message
     db.register_model(
+        Felt::ZERO, // world_address
         compute_selector_from_names("types_test", "Message"),
         &Ty::Struct(Struct {
             name: "types_test-Message".to_string(),

@@ -535,6 +535,7 @@ impl Runner {
             };
 
         let sql_config = SqlConfig {
+            world_address: self.args.world_address.unwrap_or_default(),
             all_model_indices: self.args.sql.all_model_indices,
             model_indices: self.args.sql.model_indices.clone(),
             historical_models: historical_models.clone(),
@@ -684,7 +685,6 @@ impl Runner {
             shutdown_rx,
             storage.clone(),
             messaging.clone(),
-            self.args.world_address.unwrap_or_default(),
             cross_messaging_tx,
             readonly_pool.clone(),
             GrpcConfig {

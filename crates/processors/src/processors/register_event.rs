@@ -130,6 +130,7 @@ where
         // Event models, still use Serde for serialization. So we need to use the legacy store.
         ctx.storage
             .register_model(
+                ctx.contract_address,
                 selector,
                 &schema,
                 &layout,
@@ -146,8 +147,10 @@ where
 
         ctx.cache
             .register_model(
+                ctx.contract_address,
                 selector,
                 Model {
+                    world_address: ctx.contract_address,
                     selector,
                     namespace,
                     name,

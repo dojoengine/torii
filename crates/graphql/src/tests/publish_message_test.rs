@@ -69,10 +69,12 @@ mod tests {
             .await
             .unwrap(),
         );
+        let world_address = Felt::ZERO;
 
         // Register the model for our Message
         storage
             .register_model(
+                world_address,
                 compute_selector_from_names("types_test", "Message"),
                 &Ty::Struct(Struct {
                     name: "types_test-Message".to_string(),
@@ -176,21 +178,22 @@ mod tests {
         let message_json = serde_json::to_string(&typed_data)
             .unwrap()
             .replace('"', "\\\"");
-        let signature_r = format!("0x{:064x}", signature.r);
-        let signature_s = format!("0x{:064x}", signature.s);
+        let world_address = format!("{:#064x}", world_address);
+        let signature_r = format!("{:#064x}", signature.r);
+        let signature_s = format!("{:#064x}", signature.s);
 
         let mutation = format!(
             r#"
             mutation {{
                 publishMessage(
-                    message: "{}",
-                    signature: ["{}", "{}"]
+                    worldAddress: "{world_address}",
+                    message: "{message_json}",
+                    signature: ["{signature_r}", "{signature_s}"]
                 ) {{
-                    entityId
+                    id
                 }}
             }}
             "#,
-            message_json, signature_r, signature_s
         );
 
         // Execute the mutation
@@ -202,21 +205,21 @@ mod tests {
             .ok_or("publishMessage not found")
             .unwrap();
 
-        let entity_id = publish_result
-            .get("entityId")
-            .ok_or("entityId not found")
+        let id = publish_result
+            .get("id")
+            .ok_or("id not found")
             .unwrap()
             .as_str()
             .unwrap();
 
         // Verify the entity was created
-        assert!(!entity_id.is_empty());
-        assert!(entity_id.starts_with("0x"));
+        assert!(!id.is_empty());
+        assert!(id.starts_with("0x"));
 
         // Verify the message was stored in the database
         let stored_message: String =
             sqlx::query_scalar("SELECT message FROM [types_test-Message] WHERE internal_id = ?")
-                .bind(entity_id)
+                .bind(id)
                 .fetch_one(&pool)
                 .await
                 .unwrap();

@@ -21,7 +21,6 @@ use torii_libp2p_relay::Relay;
 use torii_messaging::{Messaging, MessagingConfig};
 use torii_proto::proto::world::PublishMessageRequest;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::utils::felt_to_sql_string;
 use torii_sqlite::Sql;
 use torii_storage::proto::{ContractDefinition, ContractType};
 use torii_storage::Storage;
@@ -75,6 +74,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
 
     // Register the model for our Message
     db.register_model(
+        Felt::ZERO, // world_address
         compute_selector_from_names("types_test", "Message"),
         &Ty::Struct(Struct {
             name: "types_test-Message".to_string(),
@@ -114,7 +114,6 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     let grpc = DojoWorld::new(
         db.clone(),
         messaging,
-        Felt::ZERO, // world_address
         None,
         pool.clone(),
         GrpcConfig::default(),
@@ -187,12 +186,13 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
             signature.r.to_bytes_be().to_vec(),
             signature.s.to_bytes_be().to_vec(),
         ],
+        world_address: Felt::ZERO.to_bytes_be().to_vec(),
     });
 
     // Publish the message using the gRPC service
     use torii_proto::proto::world::world_server::World;
     let response = grpc.publish_message(request).await.unwrap();
-    let entity_id = response.into_inner().entity_id;
+    let entity_id = response.into_inner().id;
 
     // Verify the entity was created
     assert!(!entity_id.is_empty());
@@ -200,7 +200,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     // Verify the message was stored in the database by checking entities table
     let message: String =
         sqlx::query_scalar("SELECT message FROM [types_test-Message] WHERE internal_id = ?")
-            .bind(felt_to_sql_string(&Felt::from_bytes_be_slice(&entity_id)))
+            .bind(entity_id)
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -225,11 +225,12 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
             signature.r.to_bytes_be().to_vec(),
             signature.s.to_bytes_be().to_vec(),
         ],
+        world_address: Felt::ZERO.to_bytes_be().to_vec(),
     });
 
     // Publish the message using the gRPC service
     let response = grpc.publish_message(request).await.unwrap();
-    let entity_id = response.into_inner().entity_id;
+    let entity_id = response.into_inner().id;
 
     // Verify the entity was created
     assert!(!entity_id.is_empty());
@@ -237,7 +238,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
     // Verify the message was stored in the database by checking entities table
     let message: String =
         sqlx::query_scalar("SELECT message FROM [types_test-Message] WHERE internal_id = ?")
-            .bind(felt_to_sql_string(&Felt::from_bytes_be_slice(&entity_id)))
+            .bind(entity_id)
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -256,6 +257,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
             signature.r.to_bytes_be().to_vec(),
             signature.s.to_bytes_be().to_vec(),
         ],
+        world_address: Felt::ZERO.to_bytes_be().to_vec(),
     });
 
     let result = grpc.publish_message(request).await;
@@ -373,6 +375,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
 
     for db in [&mut db1, &mut db2] {
         db.register_model(
+            Felt::ZERO, // world_address
             compute_selector_from_names("types_test", "Message"),
             &message_model,
             &Layout::Fixed(vec![]),
@@ -433,7 +436,6 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     let grpc = DojoWorld::new(
         db1,
         messaging1,
-        Felt::ZERO, // world_address
         Some(cross_messaging_tx1),
         pool1.clone(),
         GrpcConfig::default(),
@@ -506,19 +508,20 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
             signature.r.to_bytes_be().to_vec(),
             signature.s.to_bytes_be().to_vec(),
         ],
+        world_address: Felt::ZERO.to_bytes_be().to_vec(),
     });
 
     // Publish the message using the gRPC service
     use torii_proto::proto::world::world_server::World;
     let response = grpc.publish_message(request).await.unwrap();
-    let entity_id = response.into_inner().entity_id;
+    let entity_id = response.into_inner().id;
 
     // Verify the entity was created on the first server
     assert!(!entity_id.is_empty());
 
     let entity_exists_server1: bool =
         sqlx::query_scalar("SELECT COUNT(*) > 0 FROM entities WHERE id = ?")
-            .bind(felt_to_sql_string(&Felt::from_bytes_be_slice(&entity_id)))
+            .bind(entity_id.clone())
             .fetch_one(&pool1)
             .await
             .unwrap();
@@ -534,7 +537,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
     // Verify the message was received and stored by the second server
     let entity_exists_server2: bool =
         sqlx::query_scalar("SELECT COUNT(*) > 0 FROM entities WHERE id = ?")
-            .bind(felt_to_sql_string(&Felt::from_bytes_be_slice(&entity_id)))
+            .bind(entity_id)
             .fetch_one(&pool2)
             .await
             .unwrap();
@@ -592,6 +595,7 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
 
     // Register the model for our Message
     db.register_model(
+        Felt::ZERO, // world_address
         compute_selector_from_names("types_test", "Message"),
         &Ty::Struct(Struct {
             name: "types_test-Message".to_string(),
@@ -631,7 +635,6 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
     let grpc = DojoWorld::new(
         db.clone(),
         messaging,
-        Felt::ZERO, // world_address
         None,
         pool.clone(),
         GrpcConfig::default(),
@@ -709,6 +712,7 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
             bad_signature.r.to_bytes_be().to_vec(),
             bad_signature.s.to_bytes_be().to_vec(),
         ],
+        world_address: Felt::ZERO.to_bytes_be().to_vec(),
     });
 
     // Attempt to publish the message using the gRPC service
@@ -779,6 +783,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
 
     // Register a model with timestamp support
     db.register_model(
+        Felt::ZERO, // world_address
         compute_selector_from_names("types_test", "TimestampedMessage"),
         &Ty::Struct(Struct {
             name: "types_test-TimestampedMessage".to_string(),
@@ -825,7 +830,6 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
     let grpc = DojoWorld::new(
         db.clone(),
         messaging,
-        Felt::ZERO,
         None,
         pool.clone(),
         GrpcConfig::default(),
@@ -906,11 +910,12 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
             signature.r.to_bytes_be().to_vec(),
             signature.s.to_bytes_be().to_vec(),
         ],
+        world_address: Felt::ZERO.to_bytes_be().to_vec(),
     });
 
     use torii_proto::proto::world::world_server::World;
     let response = grpc.publish_message(request).await.unwrap();
-    assert!(!response.into_inner().entity_id.is_empty());
+    assert!(!response.into_inner().id.is_empty());
 
     // Test timestamp too far in future (should fail)
     typed_data.message.insert(
@@ -930,6 +935,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
             signature.r.to_bytes_be().to_vec(),
             signature.s.to_bytes_be().to_vec(),
         ],
+        world_address: Felt::ZERO.to_bytes_be().to_vec(),
     });
 
     let result = grpc.publish_message(request).await;
@@ -956,6 +962,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
             signature.r.to_bytes_be().to_vec(),
             signature.s.to_bytes_be().to_vec(),
         ],
+        world_address: Felt::ZERO.to_bytes_be().to_vec(),
     });
 
     let result = grpc.publish_message(request).await;

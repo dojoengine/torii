@@ -36,7 +36,9 @@ impl fmt::LowerHex for SQLFelt {
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Entity {
-    pub id: String,
+    pub id: String,        // Composite: "world_address:entity_id"
+    pub entity_id: String, // Just the entity hash (for easy access)
+    pub world_address: String,
     pub keys: String,
     pub event_id: String,
     pub executed_at: DateTime<Utc>,
@@ -58,8 +60,10 @@ impl<const EVENT_MESSAGE: bool> From<Entity> for torii_proto::schema::Entity<EVE
             vec![value.updated_model.unwrap().as_struct().unwrap().clone()]
         };
 
+        // Use the dedicated entity_id column (no parsing needed!)
         Self {
-            hashed_keys: Felt::from_str(&value.id).unwrap(),
+            hashed_keys: Felt::from_str(&value.entity_id).unwrap(),
+            world_address: Felt::from_str(&value.world_address).unwrap(),
             models,
             created_at: value.created_at,
             updated_at: value.updated_at,
@@ -92,7 +96,9 @@ impl<const EVENT_MESSAGE: bool> From<Entity> for EntityWithMetadata<EVENT_MESSAG
 #[derive(FromRow, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Model {
-    pub id: String,
+    pub id: String,             // Composite: "world_address:model_selector"
+    pub model_selector: String, // Just the model selector (for easy access)
+    pub world_address: String,  // The world address (for filtering)
     pub namespace: String,
     pub name: String,
     pub class_hash: String,
@@ -109,9 +115,10 @@ pub struct Model {
 impl From<Model> for torii_proto::Model {
     fn from(value: Model) -> Self {
         Self {
+            world_address: Felt::from_str(&value.world_address).unwrap(),
             namespace: value.namespace,
             name: value.name,
-            selector: Felt::from_str(&value.id).unwrap(),
+            selector: Felt::from_str(&value.model_selector).unwrap(),
             class_hash: Felt::from_str(&value.class_hash).unwrap(),
             contract_address: Felt::from_str(&value.contract_address).unwrap(),
             layout: serde_json::from_str(&value.layout).unwrap(),
@@ -569,7 +576,7 @@ impl From<AggregationEntryWithPosition> for torii_proto::AggregationEntry {
             entity_id: value.entity_id,
             value: U256::from_be_hex(value.value.trim_start_matches("0x")),
             display_value: value.display_value,
-            model_id: Felt::from_str(&value.model_id).unwrap(),
+            model_id: value.model_id,
             created_at: value.created_at,
             updated_at: value.updated_at,
             position: value.position as u64,

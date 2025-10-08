@@ -27,6 +27,7 @@ pub struct EventProcessorContext<P: Provider + Sync + Send + 'static> {
     pub storage: Arc<dyn Storage>,
     pub cache: Arc<dyn Cache>,
     pub provider: P,
+    pub contract_address: Felt,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub event_id: String,

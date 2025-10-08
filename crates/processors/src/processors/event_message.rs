@@ -79,7 +79,11 @@ where
         };
 
         // silently ignore if the model is not found
-        let model = match ctx.storage.model(event.selector).await {
+        let model = match ctx
+            .storage
+            .model(ctx.contract_address, event.selector)
+            .await
+        {
             Ok(model) => model,
             Err(_) => return Ok(()),
         };
@@ -98,7 +102,13 @@ where
         entity.deserialize(&mut keys_and_unpacked, model.use_legacy_store)?;
 
         ctx.storage
-            .set_event_message(entity, &ctx.event_id, ctx.block_timestamp, event.keys)
+            .set_event_message(
+                ctx.contract_address,
+                entity,
+                &ctx.event_id,
+                ctx.block_timestamp,
+                event.keys,
+            )
             .await?;
 
         // Record successful event message storage with context

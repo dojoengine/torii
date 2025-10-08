@@ -17,7 +17,7 @@ use starknet::core::types::Call;
 use starknet::core::utils::get_selector_from_name;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::JsonRpcClient;
-use starknet_crypto::poseidon_hash_many;
+use starknet_crypto::{poseidon_hash_many, Felt};
 use tempfile::NamedTempFile;
 use tokio::sync::broadcast;
 use tonic::Request;
@@ -167,7 +167,6 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
     let grpc = DojoWorld::new(
         storage,
         messaging.clone(),
-        world_address,
         None,
         pool.clone(),
         GrpcConfig::default(),
@@ -221,7 +220,7 @@ async fn test_entity_broker_multiple_subscriptions() {
     let mut subscribers = Vec::new();
 
     for i in 0..num_subscribers {
-        let receiver = entity_manager.add_subscriber(None).await; // No clause = receive all
+        let receiver = entity_manager.add_subscriber(None, vec![]).await; // No clause = receive all
         subscribers.push((i, receiver));
     }
 
@@ -239,6 +238,7 @@ async fn test_entity_broker_multiple_subscriptions() {
         let now = Utc::now();
         let entity = Entity {
             hashed_keys,
+            world_address: Felt::ZERO,
             models: vec![],
             created_at: now,
             updated_at: now,
@@ -351,7 +351,7 @@ async fn test_entity_broker_stress_test() {
     println!("📡 Creating {} subscribers...", num_subscribers);
 
     for i in 0..num_subscribers {
-        let receiver = entity_manager.add_subscriber(None).await; // No clause = receive all
+        let receiver = entity_manager.add_subscriber(None, vec![]).await; // No clause = receive all
         subscribers.push((i, receiver));
 
         // Progress indicator
@@ -506,6 +506,7 @@ async fn test_entity_broker_stress_test() {
             let now = Utc::now();
             let entity = Entity {
                 hashed_keys,
+                world_address: Felt::ZERO,
                 models,
                 created_at: now,
                 updated_at: now,

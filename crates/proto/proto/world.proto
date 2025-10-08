@@ -11,7 +11,7 @@ service World {
     rpc SubscribeContracts (SubscribeContractsRequest) returns (stream SubscribeContractsResponse);
 
     // Retrieves metadata about the World including all the registered components and systems.
-    rpc WorldMetadata (WorldMetadataRequest) returns (WorldMetadataResponse);
+    rpc Worlds (WorldsRequest) returns (WorldsResponse);
    
     // Subscribe to entity updates.
     rpc SubscribeEntities (SubscribeEntitiesRequest) returns (stream SubscribeEntityResponse);
@@ -23,10 +23,10 @@ service World {
     rpc RetrieveEntities (RetrieveEntitiesRequest) returns (RetrieveEntitiesResponse);
 
     // Subscribe to entity updates.
-    rpc SubscribeEventMessages (SubscribeEventMessagesRequest) returns (stream SubscribeEntityResponse);
+    rpc SubscribeEventMessages (SubscribeEntitiesRequest) returns (stream SubscribeEntityResponse);
 
     // Update entity subscription
-    rpc UpdateEventMessagesSubscription (UpdateEventMessagesSubscriptionRequest) returns (google.protobuf.Empty);
+    rpc UpdateEventMessagesSubscription (UpdateEntitiesSubscriptionRequest) returns (google.protobuf.Empty);
 
     // Subscribe to token balance updates.
     rpc SubscribeTokenBalances (SubscribeTokenBalancesRequest) returns (stream SubscribeTokenBalancesResponse);
@@ -47,7 +47,7 @@ service World {
     rpc UpdateTokenTransfersSubscription (UpdateTokenTransfersSubscriptionRequest) returns (google.protobuf.Empty);
 
     // Retrieve entities
-    rpc RetrieveEventMessages (RetrieveEventMessagesRequest) returns (RetrieveEntitiesResponse);
+    rpc RetrieveEventMessages (RetrieveEntitiesRequest) returns (RetrieveEntitiesResponse);
 
     // Retrieve events
     rpc RetrieveEvents (RetrieveEventsRequest) returns (RetrieveEventsResponse);
@@ -243,31 +243,24 @@ message SubscribeContractsResponse {
 }
 
 // A request to retrieve metadata for a specific world ID.
-message WorldMetadataRequest {
-
+message WorldsRequest {
+    repeated bytes world_addresses = 1;
 }
 
 // The metadata response contains addresses and class hashes for the world.
-message WorldMetadataResponse {
-   types.World world = 1;
+message WorldsResponse {
+   repeated types.World worlds = 1;
 }
 
 message SubscribeEntitiesRequest {
     types.Clause clause = 1;
-}
-
-message SubscribeEventMessagesRequest {
-    types.Clause clause = 1;
+    repeated bytes world_addresses = 2;
 }
 
 message UpdateEntitiesSubscriptionRequest {
     uint64 subscription_id = 1;
     types.Clause clause = 2;
-}
-
-message UpdateEventMessagesSubscriptionRequest {
-    uint64 subscription_id = 1;
-    types.Clause clause = 2;
+    repeated bytes world_addresses = 3;
 }
 
 message SubscribeEntityResponse {
@@ -277,11 +270,6 @@ message SubscribeEntityResponse {
 
 message RetrieveEntitiesRequest {
     // The entities to retrieve
-    types.Query query = 1;
-}
-
-message RetrieveEventMessagesRequest {
-    // The event messages to retrieve
     types.Query query = 1;
 }
 
@@ -311,10 +299,11 @@ message SubscribeEventsResponse {
 message PublishMessageRequest {
     repeated bytes signature = 1;
     string message = 2;
+    bytes world_address = 3;
 }
 
 message PublishMessageResponse {
-    bytes entity_id = 1;
+    string id = 1;
 }
 
 message PublishMessageBatchRequest {

@@ -58,7 +58,11 @@ where
 
         // If the model does not exist, silently ignore it.
         // This can happen if only specific namespaces are indexed.
-        let model = match ctx.storage.model(event.selector).await {
+        let model = match ctx
+            .storage
+            .model(ctx.contract_address, event.selector)
+            .await
+        {
             Ok(m) => m,
             Err(e) if e.to_string().contains("no rows") => {
                 debug!(
@@ -140,6 +144,7 @@ where
 
         ctx.storage
             .register_model(
+                ctx.contract_address,
                 event.selector,
                 &new_schema,
                 &layout,
@@ -158,8 +163,10 @@ where
 
         ctx.cache
             .register_model(
+                ctx.contract_address,
                 event.selector,
                 Model {
+                    world_address: ctx.contract_address,
                     selector: event.selector,
                     namespace,
                     name,

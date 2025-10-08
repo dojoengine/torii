@@ -17,6 +17,7 @@ pub struct EntityWithMetadata<const EVENT_MESSAGE: bool = false> {
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct Entity<const EVENT_MESSAGE: bool = false> {
+    pub world_address: Felt,
     pub hashed_keys: Felt,
     pub models: Vec<Struct>,
     pub created_at: DateTime<Utc>,
@@ -27,6 +28,7 @@ pub struct Entity<const EVENT_MESSAGE: bool = false> {
 impl<const EVENT_MESSAGE: bool> From<Entity<EVENT_MESSAGE>> for proto::types::Entity {
     fn from(entity: Entity<EVENT_MESSAGE>) -> Self {
         proto::types::Entity {
+            world_address: entity.world_address.to_bytes_be().to_vec(),
             hashed_keys: entity.hashed_keys.to_bytes_be().to_vec(),
             models: entity
                 .models
@@ -44,6 +46,7 @@ impl<const EVENT_MESSAGE: bool> TryFrom<proto::types::Entity> for Entity<EVENT_M
     type Error = ProtoError;
     fn try_from(entity: proto::types::Entity) -> Result<Self, Self::Error> {
         Ok(Self {
+            world_address: Felt::from_bytes_be_slice(&entity.world_address),
             hashed_keys: Felt::from_bytes_be_slice(&entity.hashed_keys),
             models: entity
                 .models

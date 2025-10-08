@@ -13,7 +13,7 @@ use sqlx::types::chrono::Utc;
 use starknet::providers::Provider;
 use starknet_core::types::{typed_data::TypeReference, TypedData};
 use starknet_crypto::{poseidon_hash_many, Felt};
-use torii_storage::Storage;
+use torii_storage::{utils::format_world_scoped_id, Storage};
 use tracing::{debug, info, warn};
 pub use validation::{validate_message, validate_signature};
 
@@ -47,19 +47,22 @@ pub struct Messaging<P: Provider + Sync> {
 pub trait MessagingTrait: Send + Sync {
     async fn validate_and_set_entity(
         &self,
+        world_address: Felt,
         message: &TypedData,
         signature: &[Felt],
-    ) -> Result<Felt, MessagingError>;
+    ) -> Result<String, MessagingError>;
 }
 
 #[async_trait]
 impl<P: Provider + Sync + Send> MessagingTrait for Messaging<P> {
     async fn validate_and_set_entity(
         &self,
+        world_address: Felt,
         message: &TypedData,
         signature: &[Felt],
-    ) -> Result<Felt, MessagingError> {
-        self.validate_and_set_entity(message, signature).await
+    ) -> Result<String, MessagingError> {
+        self.validate_and_set_entity(world_address, message, signature)
+            .await
     }
 }
 
@@ -74,10 +77,11 @@ impl<P: Provider + Sync> Messaging<P> {
 
     pub async fn validate_and_set_entity(
         &self,
+        world_address: Felt,
         message: &TypedData,
         signature: &[Felt],
-    ) -> Result<Felt, MessagingError> {
-        let ty = match validate_message(self.storage.clone(), message).await {
+    ) -> Result<String, MessagingError> {
+        let ty = match validate_message(world_address, self.storage.clone(), message).await {
             Ok(parsed_message) => parsed_message,
             Err(e) => {
                 warn!(
@@ -134,7 +138,10 @@ impl<P: Provider + Sync> Messaging<P> {
             return Err(MessagingError::TimestampNotFound);
         }
 
-        let entity_model = self.storage.entity_model(entity_id, model_id).await?;
+        let entity_model = self
+            .storage
+            .entity_model(world_address, entity_id, model_id)
+            .await?;
         let entity_identity = match &entity_model {
             Some(entity_model) => match get_identity_from_ty(entity_model) {
                 Ok(identity) => identity,
@@ -195,6 +202,7 @@ impl<P: Provider + Sync> Messaging<P> {
 
         if let Err(e) = set_entity(
             self.storage.clone(),
+            world_address,
             ty.clone(),
             message_timestamp.unwrap_or_else(|| Utc::now().timestamp() as u64), // Use client timestamp if available, otherwise server timestamp
             entity_id,
@@ -218,6 +226,6 @@ impl<P: Provider + Sync> Messaging<P> {
             "Message verified and set."
         );
 
-        Ok(entity_id)
+        Ok(format_world_scoped_id(&world_address, &entity_id))
     }
 }
