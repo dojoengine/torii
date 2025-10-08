@@ -548,6 +548,13 @@ impl Runner {
             activity_excluded_entrypoints,
             token_attributes: self.args.erc.token_attributes,
             trait_counts: self.args.erc.trait_counts,
+            achievement_enabled: self.args.achievement.enabled,
+            achievement_registration_model: self.args.achievement.registration_model,
+            achievement_progression_model: self.args.achievement.progression_model,
+            achievement_additional_progression_models: self
+                .args
+                .achievement
+                .additional_progression_models,
         };
 
         let (mut executor, sender) = Executor::new_with_config(
