@@ -171,6 +171,7 @@ async fn test_load_from_remote(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
         .await
@@ -340,6 +341,7 @@ async fn test_load_from_remote_erc20(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
         .await
@@ -483,6 +485,7 @@ async fn test_load_from_remote_erc721(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
     let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
@@ -680,6 +683,7 @@ async fn test_load_from_remote_erc1155(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
     let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
         .await
         .unwrap();
@@ -864,6 +868,7 @@ async fn test_load_from_remote_del(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
         .await
@@ -992,6 +997,7 @@ async fn test_update_with_set_record(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
         .await
@@ -1104,6 +1110,7 @@ async fn test_load_from_remote_update(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
         .await
@@ -1219,6 +1226,7 @@ async fn test_update_token_metadata_erc4906(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
         .await
@@ -1339,6 +1347,7 @@ async fn test_erc7572_contract_uri_updated(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let _ = bootstrap_engine(db.clone(), cache, provider, &contracts)
         .await
@@ -1495,6 +1504,7 @@ async fn test_erc20_total_supply_tracking(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let _ = bootstrap_engine(db.clone(), cache, provider.clone(), &contracts)
         .await
@@ -1670,6 +1680,7 @@ async fn test_erc721_total_supply_tracking(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let _ = bootstrap_engine(db.clone(), cache, provider.clone(), &contracts)
         .await
@@ -1864,6 +1875,7 @@ async fn test_erc1155_total_supply_tracking(sequencer: &RunnerCtx) {
         .await
         .unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let _ = bootstrap_engine(db.clone(), cache, provider.clone(), &contracts)
         .await

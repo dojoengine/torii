@@ -409,6 +409,7 @@ pub async fn spinup_types_test(
     }];
     let db = Sql::new(pool.clone(), sender, contracts).await.unwrap();
     let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
 
     let (shutdown_tx, _) = broadcast::channel(1);
     let mut engine = Engine::new(
