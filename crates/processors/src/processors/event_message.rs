@@ -6,7 +6,8 @@ use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use starknet::core::types::{Event, Felt};
 use starknet::providers::Provider;
 use starknet_crypto::poseidon_hash_many;
-use tracing::info;
+use torii_cache::CacheError;
+use tracing::{debug, info};
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
@@ -80,12 +81,20 @@ where
 
         // silently ignore if the model is not found
         let model = match ctx
-            .storage
+            .cache
             .model(ctx.contract_address, event.selector)
             .await
         {
             Ok(model) => model,
-            Err(_) => return Ok(()),
+            Err(CacheError::ModelNotFound(_)) if !ctx.config.namespaces.is_empty() => {
+                debug!(
+                    target: LOG_TARGET,
+                    selector = %event.selector,
+                    "Model not found in cache, skipping. This can happen if only specific namespaces are indexed."
+                );
+                return Ok(());
+            }
+            Err(e) => return Err(e.into()),
         };
 
         info!(

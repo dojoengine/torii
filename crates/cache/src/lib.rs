@@ -19,7 +19,7 @@ use crate::error::Error;
 
 pub mod error;
 
-pub type CacheError = Box<dyn std::error::Error + Send + Sync>;
+pub type CacheError = Error;
 
 #[async_trait]
 pub trait ReadOnlyCache: Send + Sync + std::fmt::Debug {
@@ -91,14 +91,12 @@ impl ReadOnlyCache for InMemoryCache {
         self.model_cache
             .models(world_addresses, selectors)
             .await
-            .map_err(|e| Box::new(e) as CacheError)
     }
 
     async fn model(&self, world_address: Felt, selector: Felt) -> Result<Model, CacheError> {
         self.model_cache
             .model(world_address, selector)
             .await
-            .map_err(|e| Box::new(e) as CacheError)
     }
 
     async fn is_token_registered(&self, token_id: &TokenId) -> bool {
