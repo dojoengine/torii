@@ -452,7 +452,7 @@ impl ReadOnlyStorage for Sql {
                 query_builder,
                 &query.pagination,
                 &OrderBy {
-                    field: "contract_address".to_string(),
+                    field: "t.contract_address".to_string(),
                     direction: OrderDirection::Desc,
                 },
             )
