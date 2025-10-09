@@ -45,6 +45,8 @@ pub struct SqlConfig {
     pub activity_enabled: bool,
     pub activity_session_timeout: u64,
     pub activity_excluded_entrypoints: HashSet<String>,
+    pub token_attributes: bool,
+    pub trait_counts: bool,
 }
 
 impl SqlConfig {
