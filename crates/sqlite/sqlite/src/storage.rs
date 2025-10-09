@@ -425,6 +425,7 @@ impl ReadOnlyStorage for Sql {
                     LIMIT 1
                 ), '') as token_metadata"
                     .to_string(),
+                "t.contract_address as ordering".to_string(),
             ])
             .join("JOIN contracts c ON c.contract_address = t.contract_address")
             .where_clause("t.token_id = '' OR t.token_id IS NULL");
@@ -452,7 +453,7 @@ impl ReadOnlyStorage for Sql {
                 query_builder,
                 &query.pagination,
                 &OrderBy {
-                    field: "t.contract_address".to_string(),
+                    field: "ordering".to_string(),
                     direction: OrderDirection::Desc,
                 },
             )

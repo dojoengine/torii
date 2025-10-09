@@ -1057,10 +1057,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     // Update contract's traits with proper subtraction of old traits and addition of new traits
                     if self.config.trait_counts {
                         update_contract_traits_on_metadata_change(
-                        &old_metadata,
-                        &update_metadata.metadata,
-                        &update_metadata.token_id.contract_address(),
-                        &mut *tx,
+                            &old_metadata,
+                            &update_metadata.metadata,
+                            &update_metadata.token_id.contract_address(),
+                            &mut *tx,
                         )
                         .await?;
                     }
