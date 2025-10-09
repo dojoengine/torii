@@ -546,6 +546,8 @@ impl Runner {
             activity_enabled: self.args.activity.enabled,
             activity_session_timeout: self.args.activity.session_timeout,
             activity_excluded_entrypoints,
+            token_attributes: self.args.erc.token_attributes,
+            trait_counts: self.args.erc.trait_counts,
         };
 
         let (mut executor, sender) = Executor::new_with_config(

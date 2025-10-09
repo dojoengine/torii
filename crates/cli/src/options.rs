@@ -394,6 +394,22 @@ pub struct ErcOptions {
     /// Path to a directory to store ERC artifacts
     #[arg(long)]
     pub artifacts_path: Option<Utf8PathBuf>,
+
+    /// Whether or not to index ERC721 and ERC1155 token attributes
+    #[arg(
+        long = "erc.token_attributes",
+        default_value_t = true,
+        help = "Whether or not to index ERC721 and ERC1155 token attributes."
+    )]
+    pub token_attributes: bool,
+
+    /// Whether or not to index ERC721 and ERC1155 trait counts
+    #[arg(
+        long = "erc.trait_counts",
+        default_value_t = false,
+        help = "Whether or not to index ERC721 and ERC1155 trait counts."
+    )]
+    pub trait_counts: bool,
 }
 
 impl Default for ErcOptions {
@@ -401,6 +417,8 @@ impl Default for ErcOptions {
         Self {
             max_metadata_tasks: DEFAULT_ERC_MAX_METADATA_TASKS,
             artifacts_path: None,
+            token_attributes: true,
+            trait_counts: false,
         }
     }
 }

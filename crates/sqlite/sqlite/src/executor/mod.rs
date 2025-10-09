@@ -979,15 +979,20 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 let token = query.fetch_one(&mut **tx).await?;
 
                 // Store individual token attributes for fast filtering
-                store_token_attributes(&register_nft_token.metadata, &token.id, &mut *tx).await?;
+                if self.config.token_attributes {
+                    store_token_attributes(&register_nft_token.metadata, &token.id, &mut *tx)
+                        .await?;
+                }
 
                 // Extract traits from metadata and update the token contract's traits
-                update_contract_traits_from_metadata(
-                    &register_nft_token.metadata,
-                    &register_nft_token.contract_address,
-                    &mut *tx,
-                )
-                .await?;
+                if self.config.trait_counts {
+                    update_contract_traits_from_metadata(
+                        &register_nft_token.metadata,
+                        &register_nft_token.contract_address,
+                        &mut *tx,
+                    )
+                    .await?;
+                }
 
                 info!(target: LOG_TARGET, name = %name, symbol = %symbol, contract_address = %token.contract_address, token_id = %register_nft_token.token_id, "NFT token registered.");
                 self.publish_optimistic_and_queue(BrokerMessage::TokenRegistered(token.into()));
