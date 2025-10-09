@@ -1049,16 +1049,21 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                             .unwrap_or_default();
 
                     // Update individual token attributes
-                    store_token_attributes(&update_metadata.metadata, &token.id, &mut *tx).await?;
+                    if self.config.token_attributes {
+                        store_token_attributes(&update_metadata.metadata, &token.id, &mut *tx)
+                            .await?;
+                    }
 
                     // Update contract's traits with proper subtraction of old traits and addition of new traits
-                    update_contract_traits_on_metadata_change(
+                    if self.config.trait_counts {
+                        update_contract_traits_on_metadata_change(
                         &old_metadata,
                         &update_metadata.metadata,
                         &update_metadata.token_id.contract_address(),
                         &mut *tx,
-                    )
-                    .await?;
+                        )
+                        .await?;
+                    }
                 }
 
                 info!(target: LOG_TARGET, name = %token.name, symbol = %token.symbol, contract_address = %token.contract_address, token_id = ?update_metadata.token_id, "Token metadata updated.");
