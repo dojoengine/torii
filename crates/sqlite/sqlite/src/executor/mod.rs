@@ -585,12 +585,16 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 if entity.is_historical {
                     entity_counter += 1;
 
+                    let (world_address, entity_id) = entity
+                        .entity_id
+                        .split_once(':')
+                        .expect("Invalid world-scoped ID format");
                     let data = serde_json::to_string(&entity.ty.to_json_value()?)
                         .map_err(|e| ExecutorQueryError::Parse(ParseError::FromJsonStr(e)))?;
                     if let Some(keys) = entity.keys_str {
                         sqlx::query(
                             "INSERT INTO entities_historical (id, keys, event_id, data, model_id, \
-                             executed_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *",
+                             executed_at, world_address, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
                         )
                         .bind(entity.entity_id.clone())
                         .bind(keys)
@@ -598,18 +602,22 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                         .bind(data)
                         .bind(entity.model_id.clone())
                         .bind(entity.block_timestamp.clone())
+                        .bind(world_address)
+                        .bind(entity_id)
                         .fetch_one(&mut **tx)
                         .await?;
                     } else {
                         sqlx::query(
                             "INSERT INTO entities_historical (id, event_id, data, model_id, \
-                             executed_at) VALUES (?, ?, ?, ?, ?) RETURNING *",
+                             executed_at, world_address, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
                         )
                         .bind(entity.entity_id.clone())
                         .bind(entity.event_id.clone())
                         .bind(data)
                         .bind(entity.model_id.clone())
                         .bind(entity.block_timestamp.clone())
+                        .bind(world_address)
+                        .bind(entity_id)
                         .fetch_one(&mut **tx)
                         .await?;
                     }
@@ -749,11 +757,15 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 if em_query.is_historical {
                     event_counter += 1;
 
+                    let (world_address, entity_id) = em_query
+                        .entity_id
+                        .split_once(':')
+                        .expect("Invalid world-scoped ID format");
                     let data = serde_json::to_string(&em_query.ty.to_json_value()?)
                         .map_err(|e| ExecutorQueryError::Parse(ParseError::FromJsonStr(e)))?;
                     sqlx::query(
                         "INSERT INTO event_messages_historical (id, keys, event_id, data, \
-                         model_id, executed_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *",
+                         model_id, executed_at, world_address, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
                     )
                     .bind(em_query.entity_id.clone())
                     .bind(em_query.keys_str.clone())
@@ -761,6 +773,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     .bind(data)
                     .bind(em_query.model_id.clone())
                     .bind(em_query.block_timestamp.clone())
+                    .bind(world_address)
+                    .bind(entity_id)
                     .fetch_one(&mut **tx)
                     .await?;
                 }

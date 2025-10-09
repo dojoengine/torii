@@ -687,7 +687,12 @@ impl Sql {
                 .map(|_| {
                     format!(
                         "{}.model_id = {}.world_address || ':' || ?",
-                        model_relation_table, table
+                        if historical {
+                            table
+                        } else {
+                            model_relation_table
+                        },
+                        table
                     )
                 })
                 .collect();
@@ -704,15 +709,8 @@ impl Sql {
         };
 
         let page = if historical {
-            self.fetch_historical_entities(
-                table,
-                model_relation_table,
-                &where_clause,
-                bind_values,
-                pagination,
-                &schemas,
-            )
-            .await?
+            self.fetch_historical_entities(table, &where_clause, bind_values, pagination, &schemas)
+                .await?
         } else {
             let page = self
                 .fetch_entities(
@@ -746,7 +744,6 @@ impl Sql {
     async fn fetch_historical_entities(
         &self,
         table: &str,
-        model_relation_table: &str,
         where_clause: &str,
         bind_values: Vec<String>,
         pagination: Pagination,
@@ -756,20 +753,16 @@ impl Sql {
 
         let mut query_builder = QueryBuilder::new(table)
             .select(&[
-                format!("{}.world_address", table),
-                format!("{}.id", table),
-                format!("{}.entity_id", table),
-                format!("{}.data", table),
-                format!("{}.model_id", table),
-                format!("{}.event_id", table),
-                format!("{}.created_at", table),
-                format!("{}.updated_at", table),
-                format!("{}.executed_at", table),
-                format!("group_concat({model_relation_table}.model_id) as model_ids"),
+                format!("{table}.world_address"),
+                format!("{table}.id"),
+                format!("{table}.entity_id"),
+                format!("{table}.data"),
+                format!("{table}.model_id"),
+                format!("{table}.event_id"),
+                format!("{table}.created_at"),
+                format!("{table}.updated_at"),
+                format!("{table}.executed_at"),
             ])
-            .join(&format!(
-                "JOIN {model_relation_table} ON {table}.id = {model_relation_table}.entity_id",
-            ))
             .group_by(&format!("{table}.event_id"));
 
         // Add user where clause if provided (applies to already-filtered set)
