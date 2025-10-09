@@ -8,10 +8,9 @@ cairo-version.workspace = true
 [dependencies]
 starknet.workspace = true
 dojo.workspace = true
-dojo_macros.workspace = true
 
 [dev-dependencies]
 cairo_test = "2.12"
-dojo_cairo_test = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.4" }
+dojo_cairo_test = "1.7.1"
 
 [lib]

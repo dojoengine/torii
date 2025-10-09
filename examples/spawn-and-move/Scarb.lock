@@ -6,7 +6,6 @@ name = "armory"
 version = "1.7.0-alpha.1"
 dependencies = [
  "dojo",
- "dojo_macros",
 ]
 
 [[package]]
@@ -14,16 +13,22 @@ name = "bestiary"
 version = "1.7.0-alpha.1"
 dependencies = [
  "dojo",
- "dojo_macros",
 ]
 
 [[package]]
 name = "dojo"
-version = "1.7.0-alpha.4"
-source = "git+https://github.com/dojoengine/dojo?tag=v1.7.0-alpha.4#7b78108ce7aea7753c0a9e34cb83465a76bbf2e4"
+version = "1.7.1"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:b792d9c526269f5265dd89f063da5db8daebb461f2dec2cdb712f420187b39a8"
 dependencies = [
- "dojo_macros",
+ "dojo_cairo_macros",
 ]
+
+[[package]]
+name = "dojo_cairo_macros"
+version = "1.7.1"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:18059a9ac9ec2c0c708baad382728a99970b621b1eaab780fd9a8ec2dc975c98"
 
 [[package]]
 name = "dojo_examples"
@@ -32,14 +37,8 @@ dependencies = [
  "armory",
  "bestiary",
  "dojo",
- "dojo_macros",
  "openzeppelin",
 ]
-
-[[package]]
-name = "dojo_macros"
-version = "1.7.0-alpha.4"
-source = "git+https://github.com/dojoengine/dojo?tag=v1.7.0-alpha.4#7b78108ce7aea7753c0a9e34cb83465a76bbf2e4"
 
 [[package]]
 name = "openzeppelin"

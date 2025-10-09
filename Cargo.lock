@@ -2006,7 +2006,7 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 [[package]]
 name = "dojo-metrics"
 version = "1.7.1"
-source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
+source = "git+https://github.com/dojoengine/dojo?rev=0afeb1bc#0afeb1bc63f04bf6716e4a294366232f594edb78"
 dependencies = [
  "bytes",
  "http-body-util",
@@ -2027,7 +2027,7 @@ dependencies = [
 [[package]]
 name = "dojo-test-utils"
 version = "1.7.1"
-source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
+source = "git+https://github.com/dojoengine/dojo?rev=0afeb1bc#0afeb1bc63f04bf6716e4a294366232f594edb78"
 dependencies = [
  "assert_fs",
  "camino",
@@ -2040,7 +2040,7 @@ dependencies = [
 [[package]]
 name = "dojo-types"
 version = "1.7.1"
-source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
+source = "git+https://github.com/dojoengine/dojo?rev=0afeb1bc#0afeb1bc63f04bf6716e4a294366232f594edb78"
 dependencies = [
  "anyhow",
  "cainome",
@@ -2062,7 +2062,7 @@ dependencies = [
 [[package]]
 name = "dojo-utils"
 version = "1.7.1"
-source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
+source = "git+https://github.com/dojoengine/dojo?rev=0afeb1bc#0afeb1bc63f04bf6716e4a294366232f594edb78"
 dependencies = [
  "anyhow",
  "colored_json",
@@ -2079,7 +2079,7 @@ dependencies = [
 [[package]]
 name = "dojo-world"
 version = "1.7.1"
-source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
+source = "git+https://github.com/dojoengine/dojo?rev=0afeb1bc#0afeb1bc63f04bf6716e4a294366232f594edb78"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7142,7 +7142,7 @@ dependencies = [
 [[package]]
 name = "scarb-interop"
 version = "1.7.1"
-source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
+source = "git+https://github.com/dojoengine/dojo?rev=0afeb1bc#0afeb1bc63f04bf6716e4a294366232f594edb78"
 dependencies = [
  "anyhow",
  "camino",
@@ -7170,7 +7170,7 @@ dependencies = [
 [[package]]
 name = "scarb-metadata-ext"
 version = "1.7.1"
-source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
+source = "git+https://github.com/dojoengine/dojo?rev=0afeb1bc#0afeb1bc63f04bf6716e4a294366232f594edb78"
 dependencies = [
  "anyhow",
  "camino",

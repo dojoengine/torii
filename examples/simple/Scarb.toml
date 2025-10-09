@@ -11,7 +11,6 @@ sierra-replace-ids = true
 
 [dependencies]
 starknet = "2.12"
-dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.4" }
-dojo_macros = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.4" }
+dojo = "1.7.1"
 
 [[target.starknet-contract]]

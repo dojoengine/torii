@@ -15,8 +15,7 @@ starknet = "2.12"
 
 armory = { path = "../game-lib/armory" }
 bestiary = { path = "../game-lib/bestiary" }
-dojo = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.4" }
-dojo_macros = { git = "https://github.com/dojoengine/dojo", tag = "v1.7.0-alpha.4" }
+dojo = "1.7.1"
 
 [[target.starknet-contract]]
 build-external-contracts = [
@@ -25,6 +24,9 @@ build-external-contracts = [
 	"bestiary::m_RiverSkale",
 ]
 allowed-libfuncs-list.name = "experimental"
+
+[tool.scarb]
+allow-prebuilt-plugins = ["dojo_cairo_macros"]
 
 [features]
 default = ["dungeon"]
