@@ -58,6 +58,8 @@ pub enum ParseError {
     InvalidTyEntity,
     #[error("Invalid FixedSizeArray format: {0}")]
     InvalidFixedSizeArray(String),
+    #[error("Invalid world-scoped ID format: {0}")]
+    InvalidWorldScopedId(String),
 }
 
 #[derive(Debug, thiserror::Error)]
