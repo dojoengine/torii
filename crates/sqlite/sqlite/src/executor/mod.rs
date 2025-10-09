@@ -585,7 +585,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 if entity.is_historical {
                     entity_counter += 1;
 
-                    let (world_address, entity_id) = entity.entity_id.split_once(':').expect("Invalid world-scoped ID format");
+                    let (world_address, entity_id) = entity
+                        .entity_id
+                        .split_once(':')
+                        .expect("Invalid world-scoped ID format");
                     let data = serde_json::to_string(&entity.ty.to_json_value()?)
                         .map_err(|e| ExecutorQueryError::Parse(ParseError::FromJsonStr(e)))?;
                     if let Some(keys) = entity.keys_str {
@@ -754,7 +757,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 if em_query.is_historical {
                     event_counter += 1;
 
-                    let (world_address, entity_id) = em_query.entity_id.split_once(':').expect("Invalid world-scoped ID format");
+                    let (world_address, entity_id) = em_query
+                        .entity_id
+                        .split_once(':')
+                        .expect("Invalid world-scoped ID format");
                     let data = serde_json::to_string(&em_query.ty.to_json_value()?)
                         .map_err(|e| ExecutorQueryError::Parse(ParseError::FromJsonStr(e)))?;
                     sqlx::query(

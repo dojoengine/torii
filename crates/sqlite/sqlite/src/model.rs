@@ -687,7 +687,12 @@ impl Sql {
                 .map(|_| {
                     format!(
                         "{}.model_id = {}.world_address || ':' || ?",
-                        if historical { table } else { model_relation_table }, table
+                        if historical {
+                            table
+                        } else {
+                            model_relation_table
+                        },
+                        table
                     )
                 })
                 .collect();
@@ -704,14 +709,8 @@ impl Sql {
         };
 
         let page = if historical {
-            self.fetch_historical_entities(
-                table,
-                &where_clause,
-                bind_values,
-                pagination,
-                &schemas,
-            )
-            .await?
+            self.fetch_historical_entities(table, &where_clause, bind_values, pagination, &schemas)
+                .await?
         } else {
             let page = self
                 .fetch_entities(
