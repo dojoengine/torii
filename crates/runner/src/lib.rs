@@ -149,12 +149,12 @@ impl RuntimeAllocation {
             query_threads: if query_override > 0 {
                 query_override.max(MIN_THREADS).min(cpu_count)
             } else {
-                query_threads
+                query_threads.max(MIN_THREADS)
             },
             indexer_threads: if indexer_override > 0 {
                 indexer_override.max(MIN_THREADS).min(cpu_count)
             } else {
-                indexer_threads
+                indexer_threads.max(MIN_THREADS)
             },
             main_threads: 1, // Keep main runtime lightweight
         }
