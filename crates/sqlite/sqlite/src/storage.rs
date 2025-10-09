@@ -1283,6 +1283,7 @@ impl Storage for Sql {
                     Argument::String(block_timestamp_str.clone()),
                 ],
                 QueryType::EventMessage(EventMessageQuery {
+                    world_address: world_address_str.clone(),
                     entity_id: scoped_entity_id.clone(),
                     model_id: scoped_model_id.clone(),
                     keys_str: keys_str.clone(),

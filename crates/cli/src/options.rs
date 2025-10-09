@@ -53,9 +53,9 @@ pub const DEFAULT_ACTIVITY_RETENTION_DAYS: u64 = 30;
 
 // Achievement tracking defaults
 /// Default model tag for achievement registration (trophy creation)
-pub const DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL: &str = "ns-Trophy";
+pub const DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL_NAME: &str = "TrophyCreation";
 /// Default model tag for achievement progression (trophy progression)
-pub const DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL: &str = "ns-TrophyProgression";
+pub const DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL_NAME: &str = "TrophyProgression";
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
@@ -726,51 +726,30 @@ impl Default for ActivityOptions {
 #[serde(default)]
 #[command(next_help_heading = "Achievement tracking options")]
 pub struct AchievementOptions {
-    /// Enable achievement tracking
+    /// Model name for achievement registration (trophy creation)
     #[arg(
-        long = "achievement.enabled",
-        default_value_t = true,
-        help = "Whether to track achievements and player progression. When enabled, monitors \
-                achievement registration and progression events to calculate completion status."
-    )]
-    pub enabled: bool,
-
-    /// Model tag for achievement registration (trophy creation)
-    #[arg(
-        long = "achievement.registration_model",
-        default_value = DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL,
+        long = "achievement.registration_model_name",
+        default_value = DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL_NAME,
         help = "The model tag to listen for achievement registration events. This model should \
                 contain achievement definitions with id, title, description, tasks, etc."
     )]
-    pub registration_model: String,
+    pub registration_model_name: String,
 
-    /// Model tag for achievement progression (trophy progression)
+    /// Model name for achievement progression (trophy progression)
     #[arg(
-        long = "achievement.progression_model",
-        default_value = DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL,
+        long = "achievement.progression_model_name",
+        default_value = DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL_NAME,
         help = "The model tag to listen for achievement progression events. This model should \
                 contain player_id, task_id, and count fields to track task completion."
     )]
-    pub progression_model: String,
-
-    /// Additional model tags to monitor for achievement progression
-    /// This allows tracking achievements across multiple model updates
-    #[arg(
-        long = "achievement.additional_progression_models",
-        value_delimiter = ',',
-        help = "Comma-separated list of additional model tags to monitor for achievement \
-                progression. Useful when achievements track progress across multiple game models."
-    )]
-    pub additional_progression_models: Vec<String>,
+    pub progression_model_name: String,
 }
 
 impl Default for AchievementOptions {
     fn default() -> Self {
         Self {
-            enabled: true,
-            registration_model: DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL.to_string(),
-            progression_model: DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL.to_string(),
-            additional_progression_models: vec![],
+            registration_model_name: DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL_NAME.to_string(),
+            progression_model_name: DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL_NAME.to_string(),
         }
     }
 }

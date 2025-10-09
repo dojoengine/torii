@@ -535,7 +535,6 @@ impl Runner {
             };
 
         let sql_config = SqlConfig {
-            world_address: self.args.world_address.unwrap_or_default(),
             all_model_indices: self.args.sql.all_model_indices,
             model_indices: self.args.sql.model_indices.clone(),
             historical_models: historical_models.clone(),
@@ -548,13 +547,8 @@ impl Runner {
             activity_excluded_entrypoints,
             token_attributes: self.args.erc.token_attributes,
             trait_counts: self.args.erc.trait_counts,
-            achievement_enabled: self.args.achievement.enabled,
-            achievement_registration_model: self.args.achievement.registration_model,
-            achievement_progression_model: self.args.achievement.progression_model,
-            achievement_additional_progression_models: self
-                .args
-                .achievement
-                .additional_progression_models,
+            achievement_registration_model_name: self.args.achievement.registration_model_name,
+            achievement_progression_model_name: self.args.achievement.progression_model_name,
         };
 
         let (mut executor, sender) = Executor::new_with_config(
