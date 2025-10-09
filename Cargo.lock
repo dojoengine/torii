@@ -992,9 +992,9 @@ dependencies = [
 
 [[package]]
 name = "cainome"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0634cab52751732346438836fbdb264d9ab47cfaaff51bffd9667178ce7e5ab5"
+checksum = "f296568cda6f1f4934270a321151f9f51afa737450f67ef13a8534f2bd9afdac"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1019,9 +1019,9 @@ dependencies = [
 
 [[package]]
 name = "cainome-cairo-serde"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "362d42b94a2402c8820debc2d05b0308e4aff6df0dc5c86569167437440764af"
+checksum = "95ae2d4c21db23c7730a85187c2e9d73fe00c123171839185fb13f31550f3240"
 dependencies = [
  "num-bigint",
  "serde",
@@ -1058,9 +1058,9 @@ dependencies = [
 
 [[package]]
 name = "cainome-rs"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a2f63aeefc4d30221469fffcfbdbb13e7311444ab91614729c5137c3a70cbb3"
+checksum = "93aa5c33e66b58ff6723d3e43e60fe163ac20719ea89fce921096e654b15bcd6"
 dependencies = [
  "anyhow",
  "cainome-cairo-serde",
@@ -1077,9 +1077,9 @@ dependencies = [
 
 [[package]]
 name = "cainome-rs-macro"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39a53ebb721a24c3f2351b9214a6c2d2aaafaeecf5da15ee0c244dea95a7490c"
+checksum = "9d679cd9a88b9d412ed4ed30264b80f1bec6c1aa9656e238f06be560ddebb652"
 dependencies = [
  "anyhow",
  "cainome-cairo-serde",
@@ -2005,8 +2005,8 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "dojo-metrics"
-version = "1.7.0"
-source = "git+https://github.com/Larkooo/dojo?rev=6daa3d0#6daa3d0d08e83fd61176d9164a1df42b82ba35be"
+version = "1.7.1"
+source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
 dependencies = [
  "bytes",
  "http-body-util",
@@ -2026,8 +2026,8 @@ dependencies = [
 
 [[package]]
 name = "dojo-test-utils"
-version = "1.7.0"
-source = "git+https://github.com/Larkooo/dojo?rev=6daa3d0#6daa3d0d08e83fd61176d9164a1df42b82ba35be"
+version = "1.7.1"
+source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
 dependencies = [
  "assert_fs",
  "camino",
@@ -2039,8 +2039,8 @@ dependencies = [
 
 [[package]]
 name = "dojo-types"
-version = "1.7.0"
-source = "git+https://github.com/Larkooo/dojo?rev=6daa3d0#6daa3d0d08e83fd61176d9164a1df42b82ba35be"
+version = "1.7.1"
+source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
 dependencies = [
  "anyhow",
  "cainome",
@@ -2061,8 +2061,8 @@ dependencies = [
 
 [[package]]
 name = "dojo-utils"
-version = "1.7.0"
-source = "git+https://github.com/Larkooo/dojo?rev=6daa3d0#6daa3d0d08e83fd61176d9164a1df42b82ba35be"
+version = "1.7.1"
+source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
 dependencies = [
  "anyhow",
  "colored_json",
@@ -2078,8 +2078,8 @@ dependencies = [
 
 [[package]]
 name = "dojo-world"
-version = "1.7.0"
-source = "git+https://github.com/Larkooo/dojo?rev=6daa3d0#6daa3d0d08e83fd61176d9164a1df42b82ba35be"
+version = "1.7.1"
+source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7141,8 +7141,8 @@ dependencies = [
 
 [[package]]
 name = "scarb-interop"
-version = "1.7.0"
-source = "git+https://github.com/Larkooo/dojo?rev=6daa3d0#6daa3d0d08e83fd61176d9164a1df42b82ba35be"
+version = "1.7.1"
+source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
 dependencies = [
  "anyhow",
  "camino",
@@ -7169,8 +7169,8 @@ dependencies = [
 
 [[package]]
 name = "scarb-metadata-ext"
-version = "1.7.0"
-source = "git+https://github.com/Larkooo/dojo?rev=6daa3d0#6daa3d0d08e83fd61176d9164a1df42b82ba35be"
+version = "1.7.1"
+source = "git+https://github.com/dojoengine/dojo?rev=711cb72#711cb726fd99b5dba1c7b338c3a6af00c8b51d90"
 dependencies = [
  "anyhow",
  "camino",
