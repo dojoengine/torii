@@ -1935,6 +1935,265 @@ impl TryFrom<proto::types::ActivityQuery> for ActivityQuery {
     }
 }
 
+// ===== Achievement Types =====
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct Achievement {
+    pub id: String,
+    pub world_address: Felt,
+    pub namespace: String,
+    pub entity_id: String,
+    pub hidden: bool,
+    pub index: u32,
+    pub points: u32,
+    pub start: String,
+    pub end: String,
+    pub group: String,
+    pub icon: String,
+    pub title: String,
+    pub description: String,
+    pub tasks: Vec<AchievementTask>,
+    pub data: Option<String>,
+    pub total_completions: u32,
+    pub completion_rate: f64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct AchievementTask {
+    pub task_id: String,
+    pub description: String,
+    pub total: u32,
+    pub total_completions: u32,
+    pub completion_rate: f64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct AchievementProgression {
+    pub id: String,
+    pub task_id: String,
+    pub world_address: Felt,
+    pub namespace: String,
+    pub player_id: Felt,
+    pub count: u32,
+    pub completed: bool,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct PlayerAchievementStats {
+    pub total_points: u32,
+    pub completed_achievements: u32,
+    pub total_achievements: u32,
+    pub completion_percentage: f64,
+    pub last_achievement_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+// ===== Achievement Query Types =====
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct AchievementQuery {
+    pub world_addresses: Vec<Felt>,
+    pub namespaces: Vec<String>,
+    pub hidden: Option<bool>,
+    pub pagination: Pagination,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct PlayerAchievementQuery {
+    pub world_addresses: Vec<Felt>,
+    pub namespaces: Vec<String>,
+    pub player_addresses: Vec<Felt>,
+    pub pagination: Pagination,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct PlayerAchievementEntry {
+    pub player_address: Felt,
+    pub stats: PlayerAchievementStats,
+    pub achievements: Vec<PlayerAchievementProgress>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct PlayerAchievementProgress {
+    pub achievement: Achievement,
+    pub task_progress: Vec<TaskProgress>,
+    pub completed: bool,
+    pub progress_percentage: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct TaskProgress {
+    pub task_id: String,
+    pub count: u32,
+    pub completed: bool,
+}
+
+// ===== Achievement Conversions =====
+
+impl From<Achievement> for proto::types::Achievement {
+    fn from(value: Achievement) -> Self {
+        Self {
+            id: value.id,
+            world_address: value.world_address.to_bytes_be().to_vec(),
+            namespace: value.namespace,
+            entity_id: value.entity_id,
+            hidden: value.hidden,
+            index: value.index,
+            points: value.points,
+            start: value.start,
+            end: value.end,
+            group: value.group,
+            icon: value.icon,
+            title: value.title,
+            description: value.description,
+            tasks: value.tasks.into_iter().map(Into::into).collect(),
+            data: value.data,
+            total_completions: value.total_completions,
+            completion_rate: value.completion_rate,
+            created_at: value.created_at.timestamp() as u64,
+            updated_at: value.updated_at.timestamp() as u64,
+        }
+    }
+}
+
+impl From<AchievementTask> for proto::types::AchievementTask {
+    fn from(value: AchievementTask) -> Self {
+        Self {
+            task_id: value.task_id,
+            description: value.description,
+            total: value.total,
+            total_completions: value.total_completions,
+            completion_rate: value.completion_rate,
+            created_at: value.created_at.timestamp() as u64,
+        }
+    }
+}
+
+impl From<PlayerAchievementStats> for proto::types::PlayerAchievementStats {
+    fn from(value: PlayerAchievementStats) -> Self {
+        Self {
+            total_points: value.total_points,
+            completed_achievements: value.completed_achievements,
+            total_achievements: value.total_achievements,
+            completion_percentage: value.completion_percentage,
+            last_achievement_at: value.last_achievement_at.map(|t| t.timestamp() as u64),
+            created_at: value.created_at.timestamp() as u64,
+            updated_at: value.updated_at.timestamp() as u64,
+        }
+    }
+}
+
+impl From<PlayerAchievementEntry> for proto::types::PlayerAchievementEntry {
+    fn from(value: PlayerAchievementEntry) -> Self {
+        Self {
+            player_address: value.player_address.to_bytes_be().to_vec(),
+            stats: Some(value.stats.into()),
+            achievements: value.achievements.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<PlayerAchievementProgress> for proto::types::PlayerAchievementProgress {
+    fn from(value: PlayerAchievementProgress) -> Self {
+        Self {
+            achievement: Some(value.achievement.into()),
+            task_progress: value.task_progress.into_iter().map(Into::into).collect(),
+            completed: value.completed,
+            progress_percentage: value.progress_percentage,
+        }
+    }
+}
+
+impl From<TaskProgress> for proto::types::TaskProgress {
+    fn from(value: TaskProgress) -> Self {
+        Self {
+            task_id: value.task_id,
+            count: value.count,
+            completed: value.completed,
+        }
+    }
+}
+
+impl From<AchievementQuery> for proto::types::AchievementQuery {
+    fn from(value: AchievementQuery) -> Self {
+        Self {
+            world_addresses: value
+                .world_addresses
+                .into_iter()
+                .map(|addr| addr.to_bytes_be().to_vec())
+                .collect(),
+            namespaces: value.namespaces,
+            hidden: value.hidden,
+            pagination: Some(value.pagination.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::AchievementQuery> for AchievementQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::AchievementQuery) -> Result<Self, Self::Error> {
+        Ok(Self {
+            world_addresses: value
+                .world_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+            namespaces: value.namespaces,
+            hidden: value.hidden,
+            pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
+        })
+    }
+}
+
+impl From<PlayerAchievementQuery> for proto::types::PlayerAchievementQuery {
+    fn from(value: PlayerAchievementQuery) -> Self {
+        Self {
+            world_addresses: value
+                .world_addresses
+                .into_iter()
+                .map(|addr| addr.to_bytes_be().to_vec())
+                .collect(),
+            namespaces: value.namespaces,
+            player_addresses: value
+                .player_addresses
+                .into_iter()
+                .map(|addr| addr.to_bytes_be().to_vec())
+                .collect(),
+            pagination: Some(value.pagination.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::PlayerAchievementQuery> for PlayerAchievementQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::PlayerAchievementQuery) -> Result<Self, Self::Error> {
+        Ok(Self {
+            world_addresses: value
+                .world_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+            namespaces: value.namespaces,
+            player_addresses: value
+                .player_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+            pagination: value
+                .pagination
+                .ok_or_else(|| ProtoError::MissingExpectedData("pagination".to_string()))?
+                .into(),
+        })
+    }
+}
+
 impl From<TransactionQuery> for proto::types::TransactionQuery {
     fn from(value: TransactionQuery) -> Self {
         Self {

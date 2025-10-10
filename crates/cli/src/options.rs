@@ -51,6 +51,12 @@ pub const DEFAULT_ACTIVITY_SESSION_TIMEOUT: u64 = 3600;
 /// Default days to keep activity records (30 days)
 pub const DEFAULT_ACTIVITY_RETENTION_DAYS: u64 = 30;
 
+// Achievement tracking defaults
+/// Default model tag for achievement registration (trophy creation)
+pub const DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL_NAME: &str = "TrophyCreation";
+/// Default model tag for achievement progression (trophy progression)
+pub const DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL_NAME: &str = "TrophyProgression";
+
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Relay options")]
@@ -712,6 +718,38 @@ impl Default for ActivityOptions {
             session_timeout: DEFAULT_ACTIVITY_SESSION_TIMEOUT,
             // retention_days: DEFAULT_ACTIVITY_RETENTION_DAYS,
             excluded_entrypoints: vec![],
+        }
+    }
+}
+
+#[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
+#[serde(default)]
+#[command(next_help_heading = "Achievement tracking options")]
+pub struct AchievementOptions {
+    /// Model name for achievement registration (trophy creation)
+    #[arg(
+        long = "achievement.registration_model_name",
+        default_value = DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL_NAME,
+        help = "The model tag to listen for achievement registration events. This model should \
+                contain achievement definitions with id, title, description, tasks, etc."
+    )]
+    pub registration_model_name: String,
+
+    /// Model name for achievement progression (trophy progression)
+    #[arg(
+        long = "achievement.progression_model_name",
+        default_value = DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL_NAME,
+        help = "The model tag to listen for achievement progression events. This model should \
+                contain player_id, task_id, and count fields to track task completion."
+    )]
+    pub progression_model_name: String,
+}
+
+impl Default for AchievementOptions {
+    fn default() -> Self {
+        Self {
+            registration_model_name: DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL_NAME.to_string(),
+            progression_model_name: DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL_NAME.to_string(),
         }
     }
 }

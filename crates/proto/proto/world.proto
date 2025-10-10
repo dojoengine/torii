@@ -97,6 +97,12 @@ service World {
     // Update an activities subscription
     rpc UpdateActivitiesSubscription (UpdateActivitiesSubscriptionRequest) returns (google.protobuf.Empty);
 
+    // Retrieve achievements
+    rpc RetrieveAchievements (RetrieveAchievementsRequest) returns (RetrieveAchievementsResponse);
+
+    // Retrieve player achievements (stats + progress)
+    rpc RetrievePlayerAchievements (RetrievePlayerAchievementsRequest) returns (RetrievePlayerAchievementsResponse);
+
     // Publish a torii offchain message
     rpc PublishMessage (PublishMessageRequest) returns (PublishMessageResponse);
 
@@ -432,4 +438,26 @@ message UpdateActivitiesSubscriptionRequest {
     repeated string namespaces = 3;
     // Filter by caller addresses
     repeated bytes caller_addresses = 4;
+}
+
+// A request to retrieve achievements
+message RetrieveAchievementsRequest {
+    types.AchievementQuery query = 1;
+}
+
+// A response containing achievements
+message RetrieveAchievementsResponse {
+    string next_cursor = 1;
+    repeated types.Achievement achievements = 2;
+}
+
+// A request to retrieve player achievements
+message RetrievePlayerAchievementsRequest {
+    types.PlayerAchievementQuery query = 1;
+}
+
+// A response containing player achievement data (paginated)
+message RetrievePlayerAchievementsResponse {
+    string next_cursor = 1;
+    repeated types.PlayerAchievementEntry players = 2;
 }

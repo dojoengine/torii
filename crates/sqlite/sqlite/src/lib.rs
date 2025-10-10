@@ -32,8 +32,6 @@ pub use torii_broker::MemoryBroker;
 
 #[derive(Debug, Clone, Default)]
 pub struct SqlConfig {
-    /// The default world address to use for the database
-    pub world_address: Felt,
     pub all_model_indices: bool,
     pub model_indices: Vec<ModelIndices>,
     pub historical_models: HashSet<Felt>,
@@ -45,8 +43,12 @@ pub struct SqlConfig {
     pub activity_enabled: bool,
     pub activity_session_timeout: u64,
     pub activity_excluded_entrypoints: HashSet<String>,
+    // ERC tracking configuration
     pub token_attributes: bool,
     pub trait_counts: bool,
+    // Achievement tracking configuration
+    pub achievement_registration_model_name: String,
+    pub achievement_progression_model_name: String,
 }
 
 impl SqlConfig {
@@ -59,6 +61,14 @@ impl SqlConfig {
             .iter()
             .filter(|agg| agg.model_tag == model_tag)
             .collect()
+    }
+
+    pub fn is_achievement_registration_model_name(&self, model_name: &str) -> bool {
+        self.achievement_registration_model_name == model_name
+    }
+
+    pub fn is_achievement_progression_model_name(&self, model_name: &str) -> bool {
+        self.achievement_progression_model_name == model_name
     }
 }
 
