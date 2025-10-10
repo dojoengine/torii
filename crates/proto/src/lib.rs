@@ -1973,6 +1973,7 @@ pub struct AchievementTask {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct AchievementProgression {
     pub id: String,
+    pub achievement_id: String,
     pub task_id: String,
     pub world_address: Felt,
     pub namespace: String,
@@ -2084,6 +2085,24 @@ impl From<PlayerAchievementStats> for proto::types::PlayerAchievementStats {
             total_achievements: value.total_achievements,
             completion_percentage: value.completion_percentage,
             last_achievement_at: value.last_achievement_at.map(|t| t.timestamp() as u64),
+            created_at: value.created_at.timestamp() as u64,
+            updated_at: value.updated_at.timestamp() as u64,
+        }
+    }
+}
+
+impl From<AchievementProgression> for proto::types::AchievementProgression {
+    fn from(value: AchievementProgression) -> Self {
+        Self {
+            id: value.id,
+            achievement_id: value.achievement_id,
+            task_id: value.task_id,
+            world_address: value.world_address.to_bytes_be().to_vec(),
+            namespace: value.namespace,
+            player_id: value.player_id.to_bytes_be().to_vec(),
+            count: value.count,
+            completed: value.completed,
+            completed_at: value.completed_at.map(|t| t.timestamp() as u64),
             created_at: value.created_at.timestamp() as u64,
             updated_at: value.updated_at.timestamp() as u64,
         }

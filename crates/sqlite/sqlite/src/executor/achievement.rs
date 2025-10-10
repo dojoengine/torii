@@ -156,12 +156,13 @@ pub async fn register_achievement(
 
 /// Process achievement progression (trophy progression)
 /// This is called when a player makes progress on a task
+/// Returns the progression data that can be published to subscribers
 pub async fn update_achievement_progression(
     tx: &mut SqlxTransaction<'_, Sqlite>,
     world_address: &str,
     namespace: &str,
     entity: &Ty,
-) -> QueryResult<Option<AchievementProgressionResult>> {
+) -> QueryResult<Option<torii_proto::AchievementProgression>> {
     // Extract player_id and task_id from the entity
     let player_id = extract_field_value(entity, "player_id")?.ok_or_else(|| {
         ExecutorQueryError::LeaderboardFieldExtraction(
@@ -205,21 +206,36 @@ pub async fn update_achievement_progression(
 
     let progression_id = format!("{}:{}:{}:{}", world_address, namespace, task_id, player_id);
 
-    // Check if task is completed
-    let completed = count >= task_target;
+    // Calculate completion for initial insert
+    let initial_completed = count >= task_target;
+    let initial_completed_at = if initial_completed {
+        Some(Utc::now())
+    } else {
+        None
+    };
 
-    let completed_at = if completed { Some(Utc::now()) } else { None };
-
-    // Upsert the progression
-    sqlx::query(
+    // Upsert the progression with completion logic in SQL
+    // Use RETURNING to get the final state without an extra query
+    let result: (
+        i32,
+        i32,
+        Option<chrono::DateTime<Utc>>,
+        chrono::DateTime<Utc>,
+        chrono::DateTime<Utc>,
+    ) = sqlx::query_as(
         "INSERT INTO achievement_progressions 
          (id, task_id, world_address, namespace, player_id, count, completed, completed_at) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
-         count=EXCLUDED.count,
-         completed=EXCLUDED.completed,
-         completed_at=EXCLUDED.completed_at,
-         updated_at=CURRENT_TIMESTAMP",
+         count=count+EXCLUDED.count,
+         completed=CASE WHEN count+EXCLUDED.count >= ? THEN 1 ELSE 0 END,
+         completed_at=CASE 
+             WHEN count+EXCLUDED.count >= ? AND achievement_progressions.completed = 0 
+             THEN CURRENT_TIMESTAMP 
+             ELSE achievement_progressions.completed_at 
+         END,
+         updated_at=CURRENT_TIMESTAMP
+         RETURNING count, completed, completed_at, created_at, updated_at",
     )
     .bind(&progression_id)
     .bind(&task_id)
@@ -227,17 +243,22 @@ pub async fn update_achievement_progression(
     .bind(namespace)
     .bind(&player_id)
     .bind(count)
-    .bind(if completed { 1 } else { 0 })
-    .bind(completed_at)
-    .execute(&mut **tx)
+    .bind(if initial_completed { 1 } else { 0 })
+    .bind(initial_completed_at)
+    .bind(task_target)
+    .bind(task_target)
+    .fetch_one(&mut **tx)
     .await?;
+
+    let (new_count, completed_int, completed_at, created_at, updated_at) = result;
+    let completed = completed_int == 1;
 
     info!(
         target: LOG_TARGET,
         achievement_id = %achievement_id,
         player_id = %player_id,
         task_id = %task_id,
-        count = %count,
+        count = %new_count,
         target = %task_target,
         completed = %completed,
         "Updated achievement progression"
@@ -260,16 +281,24 @@ pub async fn update_achievement_progression(
     // This ensures the stats table always reflects current progress
     update_player_achievement_stats(tx, world_address, namespace, &player_id).await?;
 
-    Ok(Some(AchievementProgressionResult {
-        progression_id,
-        achievement_id: achievement_id.to_string(),
-        player_id,
+    // Convert world_address and player_id strings to Felt for proto
+    let world_address_felt = starknet_crypto::Felt::from_hex(world_address)
+        .map_err(|e| ExecutorQueryError::Parse(ParseError::FromStr(e)))?;
+    let player_id_felt = starknet_crypto::Felt::from_hex(&player_id)
+        .map_err(|e| ExecutorQueryError::Parse(ParseError::FromStr(e)))?;
+
+    Ok(Some(torii_proto::AchievementProgression {
+        id: progression_id,
+        achievement_id: achievement_id.clone(),
         task_id,
-        count,
-        task_completed: completed,
-        achievement_completed: overall_status.completed,
-        achievement_progress: overall_status.progress,
-        total_points: overall_status.points,
+        world_address: world_address_felt,
+        namespace: namespace.to_string(),
+        player_id: player_id_felt,
+        count: new_count as u32,
+        completed,
+        completed_at,
+        created_at,
+        updated_at,
     }))
 }
 
