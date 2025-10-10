@@ -18,30 +18,34 @@ use tonic::transport::Endpoint;
 
 use torii_proto::error::ProtoError;
 use torii_proto::proto::world::{
-    world_client, PublishMessageBatchRequest, PublishMessageRequest, RetrieveActivitiesRequest,
-    RetrieveActivitiesResponse, RetrieveAggregationsRequest, RetrieveAggregationsResponse,
-    RetrieveContractsRequest, RetrieveContractsResponse, RetrieveControllersRequest,
-    RetrieveControllersResponse, RetrieveEntitiesRequest, RetrieveEntitiesResponse,
-    RetrieveEventsRequest, RetrieveEventsResponse, RetrieveTokenBalancesRequest,
-    RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
-    RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse, RetrieveTokensRequest,
-    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
-    SubscribeActivitiesRequest, SubscribeActivitiesResponse, SubscribeAggregationsRequest,
-    SubscribeAggregationsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
-    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventsRequest,
-    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
-    UpdateActivitiesSubscriptionRequest, UpdateAggregationsSubscriptionRequest,
-    UpdateEntitiesSubscriptionRequest, UpdateTokenBalancesSubscriptionRequest,
-    UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldsRequest,
+    world_client, PublishMessageBatchRequest, PublishMessageRequest, RetrieveAchievementsRequest,
+    RetrieveAchievementsResponse, RetrieveActivitiesRequest, RetrieveActivitiesResponse,
+    RetrieveAggregationsRequest, RetrieveAggregationsResponse, RetrieveContractsRequest,
+    RetrieveContractsResponse, RetrieveControllersRequest, RetrieveControllersResponse,
+    RetrieveEntitiesRequest, RetrieveEntitiesResponse, RetrieveEventsRequest,
+    RetrieveEventsResponse, RetrievePlayerAchievementsRequest, RetrievePlayerAchievementsResponse,
+    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest,
+    RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse,
+    RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest,
+    RetrieveTransactionsResponse, SubscribeAchievementProgressionsRequest,
+    SubscribeAchievementProgressionsResponse, SubscribeActivitiesRequest,
+    SubscribeActivitiesResponse, SubscribeAggregationsRequest, SubscribeAggregationsResponse,
+    SubscribeContractsRequest, SubscribeContractsResponse, SubscribeEntitiesRequest,
+    SubscribeEntityResponse, SubscribeEventsRequest, SubscribeEventsResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
+    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
+    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    UpdateAchievementProgressionsSubscriptionRequest, UpdateActivitiesSubscriptionRequest,
+    UpdateAggregationsSubscriptionRequest, UpdateEntitiesSubscriptionRequest,
+    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
+    UpdateTokenTransfersSubscriptionRequest, WorldsRequest,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    ActivityQuery, AggregationQuery, Clause, Contract, ContractQuery, ControllerQuery, Event,
-    EventQuery, KeysClause, Message, Query, SqlRow, Token, TokenBalance, TokenBalanceQuery,
-    TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
-    TransactionFilter, TransactionQuery,
+    AchievementQuery, ActivityQuery, AggregationQuery, Clause, Contract, ContractQuery,
+    ControllerQuery, Event, EventQuery, KeysClause, Message, PlayerAchievementQuery, Query, SqlRow,
+    Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery, TokenTransfer,
+    TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -259,6 +263,98 @@ impl WorldClient {
         };
         self.inner
             .update_activities_subscription(request)
+            .await
+            .map_err(Error::Grpc)?;
+        Ok(())
+    }
+
+    pub async fn retrieve_achievements(
+        &mut self,
+        query: AchievementQuery,
+    ) -> Result<RetrieveAchievementsResponse, Error> {
+        self.inner
+            .retrieve_achievements(RetrieveAchievementsRequest {
+                query: Some(query.into()),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
+    }
+
+    pub async fn retrieve_player_achievements(
+        &mut self,
+        query: PlayerAchievementQuery,
+    ) -> Result<RetrievePlayerAchievementsResponse, Error> {
+        self.inner
+            .retrieve_player_achievements(RetrievePlayerAchievementsRequest {
+                query: Some(query.into()),
+            })
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())
+    }
+
+    pub async fn subscribe_achievement_progressions(
+        &mut self,
+        world_addresses: Vec<Felt>,
+        namespaces: Vec<String>,
+        player_addresses: Vec<Felt>,
+        achievement_ids: Vec<String>,
+    ) -> Result<AchievementProgressionUpdateStreaming, Error> {
+        let request = SubscribeAchievementProgressionsRequest {
+            world_addresses: world_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().to_vec())
+                .collect(),
+            namespaces,
+            player_addresses: player_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().to_vec())
+                .collect(),
+            achievement_ids,
+        };
+        let stream = self
+            .inner
+            .subscribe_achievement_progressions(request)
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| res.into_inner())?;
+        Ok(AchievementProgressionUpdateStreaming(stream.map_ok(
+            Box::new(|res| {
+                (
+                    res.subscription_id,
+                    res.progression
+                        .map_or_else(torii_proto::AchievementProgression::default, |p| {
+                            p.try_into().expect("must able to serialize")
+                        }),
+                )
+            }),
+        )))
+    }
+
+    pub async fn update_achievement_progressions_subscription(
+        &mut self,
+        subscription_id: u64,
+        world_addresses: Vec<Felt>,
+        namespaces: Vec<String>,
+        player_addresses: Vec<Felt>,
+        achievement_ids: Vec<String>,
+    ) -> Result<(), Error> {
+        let request = UpdateAchievementProgressionsSubscriptionRequest {
+            subscription_id,
+            world_addresses: world_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().to_vec())
+                .collect(),
+            namespaces,
+            player_addresses: player_addresses
+                .into_iter()
+                .map(|a| a.to_bytes_be().to_vec())
+                .collect(),
+            achievement_ids,
+        };
+        self.inner
+            .update_achievement_progressions_subscription(request)
             .await
             .map_err(Error::Grpc)?;
         Ok(())
@@ -974,6 +1070,29 @@ pub struct ActivityUpdateStreaming(ActivityMappedStream);
 
 impl Stream for ActivityUpdateStreaming {
     type Item = <ActivityMappedStream as Stream>::Item;
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.poll_next_unpin(cx)
+    }
+}
+
+type AchievementProgressionMappedStream = MapOk<
+    tonic::Streaming<SubscribeAchievementProgressionsResponse>,
+    Box<
+        dyn Fn(
+                SubscribeAchievementProgressionsResponse,
+            ) -> (SubscriptionId, torii_proto::AchievementProgression)
+            + Send,
+    >,
+>;
+
+#[derive(Debug)]
+pub struct AchievementProgressionUpdateStreaming(AchievementProgressionMappedStream);
+
+impl Stream for AchievementProgressionUpdateStreaming {
+    type Item = <AchievementProgressionMappedStream as Stream>::Item;
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,

@@ -1960,6 +1960,37 @@ pub struct Achievement {
     pub updated_at: DateTime<Utc>,
 }
 
+impl TryFrom<proto::types::Achievement> for Achievement {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::Achievement) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: value.id,
+            world_address: Felt::from_bytes_be_slice(&value.world_address),
+            namespace: value.namespace,
+            entity_id: value.entity_id,
+            hidden: value.hidden,
+            index: value.index,
+            points: value.points,
+            start: value.start,
+            end: value.end,
+            group: value.group,
+            icon: value.icon,
+            title: value.title,
+            description: value.description,
+            tasks: value
+                .tasks
+                .into_iter()
+                .map(|t| t.try_into())
+                .collect::<Result<Vec<AchievementTask>, Self::Error>>()?,
+            data: value.data,
+            total_completions: value.total_completions,
+            completion_rate: value.completion_rate,
+            created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
+            updated_at: DateTime::from_timestamp(value.updated_at as i64, 0).unwrap(),
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct AchievementTask {
     pub task_id: String,
@@ -1970,7 +2001,21 @@ pub struct AchievementTask {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+impl TryFrom<proto::types::AchievementTask> for AchievementTask {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::AchievementTask) -> Result<Self, Self::Error> {
+        Ok(Self {
+            task_id: value.task_id,
+            description: value.description,
+            total: value.total,
+            total_completions: value.total_completions,
+            completion_rate: value.completion_rate,
+            created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
+        })
+    }
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct AchievementProgression {
     pub id: String,
     pub achievement_id: String,
@@ -1985,6 +2030,27 @@ pub struct AchievementProgression {
     pub updated_at: DateTime<Utc>,
 }
 
+impl TryFrom<proto::types::AchievementProgression> for AchievementProgression {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::AchievementProgression) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: value.id,
+            achievement_id: value.achievement_id,
+            task_id: value.task_id,
+            world_address: Felt::from_bytes_be_slice(&value.world_address),
+            namespace: value.namespace,
+            player_id: Felt::from_bytes_be_slice(&value.player_id),
+            count: value.count,
+            completed: value.completed,
+            completed_at: value
+                .completed_at
+                .map(|t| DateTime::from_timestamp(t as i64, 0).unwrap()),
+            created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
+            updated_at: DateTime::from_timestamp(value.updated_at as i64, 0).unwrap(),
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct PlayerAchievementStats {
     pub total_points: u32,
@@ -1996,6 +2062,22 @@ pub struct PlayerAchievementStats {
     pub updated_at: DateTime<Utc>,
 }
 
+impl TryFrom<proto::types::PlayerAchievementStats> for PlayerAchievementStats {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::PlayerAchievementStats) -> Result<Self, Self::Error> {
+        Ok(Self {
+            total_points: value.total_points,
+            completed_achievements: value.completed_achievements,
+            total_achievements: value.total_achievements,
+            completion_percentage: value.completion_percentage,
+            last_achievement_at: value
+                .last_achievement_at
+                .map(|t| DateTime::from_timestamp(t as i64, 0).unwrap()),
+            created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
+            updated_at: DateTime::from_timestamp(value.updated_at as i64, 0).unwrap(),
+        })
+    }
+}
 // ===== Achievement Query Types =====
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -2021,6 +2103,21 @@ pub struct PlayerAchievementEntry {
     pub achievements: Vec<PlayerAchievementProgress>,
 }
 
+impl TryFrom<proto::types::PlayerAchievementEntry> for PlayerAchievementEntry {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::PlayerAchievementEntry) -> Result<Self, Self::Error> {
+        Ok(Self {
+            player_address: Felt::from_bytes_be_slice(&value.player_address),
+            stats: value.stats.expect("stats is required").try_into()?,
+            achievements: value
+                .achievements
+                .into_iter()
+                .map(|a| a.try_into())
+                .collect::<Result<Vec<PlayerAchievementProgress>, Self::Error>>()?,
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct PlayerAchievementProgress {
     pub achievement: Achievement,
@@ -2029,11 +2126,36 @@ pub struct PlayerAchievementProgress {
     pub progress_percentage: f64,
 }
 
+impl TryFrom<proto::types::PlayerAchievementProgress> for PlayerAchievementProgress {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::PlayerAchievementProgress) -> Result<Self, Self::Error> {
+        Ok(Self {
+            achievement: value
+                .achievement
+                .expect("achievement is required")
+                .try_into()?,
+            task_progress: value.task_progress.into_iter().map(|t| t.into()).collect(),
+            completed: value.completed,
+            progress_percentage: value.progress_percentage,
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct TaskProgress {
     pub task_id: String,
     pub count: u32,
     pub completed: bool,
+}
+
+impl From<proto::types::TaskProgress> for TaskProgress {
+    fn from(value: proto::types::TaskProgress) -> Self {
+        Self {
+            task_id: value.task_id,
+            count: value.count,
+            completed: value.completed,
+        }
+    }
 }
 
 // ===== Achievement Conversions =====
