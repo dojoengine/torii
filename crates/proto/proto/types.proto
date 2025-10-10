@@ -567,6 +567,32 @@ message PlayerAchievementStats {
     uint64 updated_at = 7;
 }
 
+// Achievement progression for a specific player and task
+message AchievementProgression {
+    // Unique identifier (world:namespace:task_id:player_id)
+    string id = 1;
+    // Achievement ID this task belongs to
+    string achievement_id = 2;
+    // Task ID
+    string task_id = 3;
+    // World address
+    bytes world_address = 4;
+    // Namespace
+    string namespace = 5;
+    // Player address
+    bytes player_id = 6;
+    // Current count/progress
+    uint32 count = 7;
+    // Is the task completed
+    bool completed = 8;
+    // When the task was completed
+    optional uint64 completed_at = 9;
+    // When the progression was created
+    uint64 created_at = 10;
+    // When the progression was last updated
+    uint64 updated_at = 11;
+}
+
 // Query for achievements
 message AchievementQuery {
     // Filter by world addresses

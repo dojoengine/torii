@@ -892,16 +892,21 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     )
                     .await
                     {
-                        Ok(Some(progression_result)) => {
+                        Ok(Some(progression)) => {
                             info!(
                                 target: LOG_TARGET,
-                                achievement_id = %progression_result.achievement_id,
-                                player_id = %progression_result.player_id,
-                                task_id = %progression_result.task_id,
-                                count = %progression_result.count,
-                                task_completed = %progression_result.task_completed,
-                                achievement_completed = %progression_result.achievement_completed,
+                                world = %progression.world_address,
+                                namespace = %progression.namespace,
+                                player_id = %progression.player_id,
+                                task_id = %progression.task_id,
+                                count = %progression.count,
+                                completed = %progression.completed,
                                 "Achievement progression updated"
+                            );
+
+                            // Publish achievement progression update to subscribers
+                            torii_broker::MemoryBroker::<torii_broker::types::AchievementProgressionUpdate>::publish(
+                                progression.into(),
                             );
                         }
                         Ok(None) => {

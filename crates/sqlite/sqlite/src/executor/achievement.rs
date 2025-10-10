@@ -156,12 +156,13 @@ pub async fn register_achievement(
 
 /// Process achievement progression (trophy progression)
 /// This is called when a player makes progress on a task
+/// Returns the progression data that can be published to subscribers
 pub async fn update_achievement_progression(
     tx: &mut SqlxTransaction<'_, Sqlite>,
     world_address: &str,
     namespace: &str,
     entity: &Ty,
-) -> QueryResult<Option<AchievementProgressionResult>> {
+) -> QueryResult<Option<torii_proto::AchievementProgression>> {
     // Extract player_id and task_id from the entity
     let player_id = extract_field_value(entity, "player_id")?.ok_or_else(|| {
         ExecutorQueryError::LeaderboardFieldExtraction(
@@ -260,16 +261,24 @@ pub async fn update_achievement_progression(
     // This ensures the stats table always reflects current progress
     update_player_achievement_stats(tx, world_address, namespace, &player_id).await?;
 
-    Ok(Some(AchievementProgressionResult {
-        progression_id,
-        achievement_id: achievement_id.to_string(),
-        player_id,
+    // Convert world_address and player_id strings to Felt for proto
+    let world_address_felt = starknet_crypto::Felt::from_hex(world_address)
+        .map_err(|e| ExecutorQueryError::Parse(ParseError::FromStr(e)))?;
+    let player_id_felt = starknet_crypto::Felt::from_hex(&player_id)
+        .map_err(|e| ExecutorQueryError::Parse(ParseError::FromStr(e)))?;
+
+    Ok(Some(torii_proto::AchievementProgression {
+        id: progression_id,
+        achievement_id: achievement_id.clone(),
         task_id,
-        count,
-        task_completed: completed,
-        achievement_completed: overall_status.completed,
-        achievement_progress: overall_status.progress,
-        total_points: overall_status.points,
+        world_address: world_address_felt,
+        namespace: namespace.to_string(),
+        player_id: player_id_felt,
+        count: count as u32,
+        completed,
+        completed_at,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
     }))
 }
 
