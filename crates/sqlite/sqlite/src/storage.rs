@@ -983,6 +983,543 @@ impl ReadOnlyStorage for Sql {
             next_cursor: page.next_cursor,
         })
     }
+
+    /// Returns achievements with optional filtering by world, namespace, and hidden status.
+    async fn achievements(
+        &self,
+        query: &torii_proto::AchievementQuery,
+    ) -> Result<Page<torii_proto::Achievement>, StorageError> {
+        let executor = PaginationExecutor::new(self.pool.clone());
+        let mut query_builder = QueryBuilder::new("achievements").select(&[
+            "id".to_string(),
+            "world_address".to_string(),
+            "namespace".to_string(),
+            "entity_id".to_string(),
+            "hidden".to_string(),
+            "index_num".to_string(),
+            "points".to_string(),
+            "start".to_string(),
+            "end".to_string(),
+            "group_name".to_string(),
+            "icon".to_string(),
+            "title".to_string(),
+            "description".to_string(),
+            "tasks".to_string(),
+            "data".to_string(),
+            "total_completions".to_string(),
+            "completion_rate".to_string(),
+            "created_at".to_string(),
+            "updated_at".to_string(),
+        ]);
+
+        if !query.world_addresses.is_empty() {
+            let placeholders = vec!["?"; query.world_addresses.len()].join(", ");
+            query_builder =
+                query_builder.where_clause(&format!("world_address IN ({})", placeholders));
+            for addr in &query.world_addresses {
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
+            }
+        }
+
+        if !query.namespaces.is_empty() {
+            let placeholders = vec!["?"; query.namespaces.len()].join(", ");
+            query_builder = query_builder.where_clause(&format!("namespace IN ({})", placeholders));
+            for namespace in &query.namespaces {
+                query_builder = query_builder.bind_value(namespace.clone());
+            }
+        }
+
+        if let Some(hidden) = query.hidden {
+            query_builder = query_builder.where_clause("hidden = ?");
+            query_builder = query_builder.bind_value(if hidden {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            });
+        }
+
+        let page = executor
+            .execute_paginated_query(
+                query_builder,
+                &query.pagination,
+                &OrderBy {
+                    field: "index_num".to_string(),
+                    direction: OrderDirection::Asc,
+                },
+            )
+            .await?;
+
+        // For each achievement, fetch its tasks
+        let mut achievements = Vec::new();
+        for row in page.items {
+            let achievement = torii_sqlite_types::Achievement::from_row(&row)?;
+            let achievement_id = achievement.id.clone();
+
+            // Fetch tasks for this achievement
+            let tasks: Vec<torii_sqlite_types::AchievementTask> = sqlx::query_as(
+                "SELECT id, achievement_id, task_id, world_address, namespace, description, total, 
+                 total_completions, completion_rate, created_at 
+                 FROM achievement_tasks 
+                 WHERE achievement_id = ? 
+                 ORDER BY created_at ASC",
+            )
+            .bind(&achievement_id)
+            .fetch_all(&self.pool)
+            .await?;
+
+            // Convert to proto types (simplified, no redundant fields)
+            let proto_tasks: Vec<torii_proto::AchievementTask> = tasks
+                .into_iter()
+                .map(|t| torii_proto::AchievementTask {
+                    task_id: t.task_id,
+                    description: t.description,
+                    total: t.total as u32,
+                    total_completions: t.total_completions as u32,
+                    completion_rate: t.completion_rate,
+                    created_at: t.created_at,
+                })
+                .collect();
+
+            // Calculate total completions and completion rate from tasks
+            let (total_completions, avg_completion_rate) = if !proto_tasks.is_empty() {
+                let sum_completions: u32 = proto_tasks.iter().map(|t| t.total_completions).sum();
+                let sum_rate: f64 = proto_tasks.iter().map(|t| t.completion_rate).sum();
+                (
+                    sum_completions / proto_tasks.len() as u32,
+                    sum_rate / proto_tasks.len() as f64,
+                )
+            } else {
+                (0, 0.0)
+            };
+
+            achievements.push(torii_proto::Achievement {
+                id: achievement.id.clone(),
+                world_address: Felt::from_str(&achievement.world_address)
+                    .map_err(|e| Error::Parse(ParseError::FromStr(e)))?,
+                namespace: achievement
+                    .id
+                    .split(':')
+                    .nth(1)
+                    .unwrap_or_default()
+                    .to_string(),
+                entity_id: achievement
+                    .id
+                    .split(':')
+                    .next_back()
+                    .unwrap_or_default()
+                    .to_string(),
+                hidden: achievement.hidden != 0,
+                index: achievement.index_num as u32,
+                points: achievement.points as u32,
+                start: achievement.start,
+                end: achievement.end,
+                group: achievement.group_name,
+                icon: achievement.icon,
+                title: achievement.title,
+                description: achievement.description,
+                tasks: proto_tasks,
+                data: achievement.data,
+                total_completions,
+                completion_rate: avg_completion_rate,
+                created_at: achievement.created_at,
+                updated_at: achievement.updated_at,
+            });
+        }
+
+        Ok(Page {
+            items: achievements,
+            next_cursor: page.next_cursor,
+        })
+    }
+
+    /// Returns player achievement data grouped by player globally (across all worlds/namespaces).
+    /// Empty arrays mean no filter is applied for that dimension.
+    /// Results are paginated based on unique players (aggregated from player_achievements table).
+    async fn player_achievements(
+        &self,
+        query: &torii_proto::PlayerAchievementQuery,
+    ) -> Result<Page<torii_proto::PlayerAchievementEntry>, StorageError> {
+        use std::collections::HashMap;
+
+        let executor = PaginationExecutor::new(self.pool.clone());
+
+        // Step 1: Build paginated query for player stats grouped by player_id
+        let mut query_builder = QueryBuilder::new("player_achievements").select(&[
+            "player_id".to_string(),
+            "SUM(total_points) as total_points".to_string(),
+            "SUM(completed_achievements) as completed_achievements".to_string(),
+            "SUM(total_achievements) as total_achievements".to_string(),
+            "AVG(completion_percentage) as completion_percentage".to_string(),
+            "MAX(last_achievement_at) as last_achievement_at".to_string(),
+            "MIN(created_at) as created_at".to_string(),
+            "MAX(updated_at) as updated_at".to_string(),
+        ]);
+
+        if !query.world_addresses.is_empty() {
+            let placeholders = vec!["?"; query.world_addresses.len()].join(", ");
+            query_builder =
+                query_builder.where_clause(&format!("world_address IN ({})", placeholders));
+            for addr in &query.world_addresses {
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
+            }
+        }
+
+        if !query.namespaces.is_empty() {
+            let placeholders = vec!["?"; query.namespaces.len()].join(", ");
+            query_builder = query_builder.where_clause(&format!("namespace IN ({})", placeholders));
+            for namespace in &query.namespaces {
+                query_builder = query_builder.bind_value(namespace.clone());
+            }
+        }
+
+        if !query.player_addresses.is_empty() {
+            let placeholders = vec!["?"; query.player_addresses.len()].join(", ");
+            query_builder = query_builder.where_clause(&format!("player_id IN ({})", placeholders));
+            for addr in &query.player_addresses {
+                query_builder = query_builder.bind_value(felt_to_sql_string(addr));
+            }
+        }
+
+        query_builder = query_builder.group_by("player_id");
+
+        let page = executor
+            .execute_paginated_query(
+                query_builder,
+                &query.pagination,
+                &OrderBy {
+                    field: "total_points".to_string(),
+                    direction: OrderDirection::Desc,
+                },
+            )
+            .await?;
+
+        struct AggregatedPlayerStats {
+            player_id: String,
+            total_points: i32,
+            completed_achievements: i32,
+            total_achievements: i32,
+            completion_percentage: f64,
+            last_achievement_at: Option<String>,
+            created_at: String,
+            updated_at: String,
+        }
+
+        let aggregated_stats: Vec<AggregatedPlayerStats> = page
+            .items
+            .into_iter()
+            .map(|row| {
+                Ok(AggregatedPlayerStats {
+                    player_id: row.try_get("player_id")?,
+                    total_points: row.try_get("total_points")?,
+                    completed_achievements: row.try_get("completed_achievements")?,
+                    total_achievements: row.try_get("total_achievements")?,
+                    completion_percentage: row.try_get("completion_percentage")?,
+                    last_achievement_at: row.try_get("last_achievement_at").ok(),
+                    created_at: row.try_get("created_at")?,
+                    updated_at: row.try_get("updated_at")?,
+                })
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+        if aggregated_stats.is_empty() {
+            return Ok(Page {
+                items: vec![],
+                next_cursor: page.next_cursor,
+            });
+        }
+
+        // Step 2: Get all player_achievements rows for these players (to know which worlds/namespaces they have)
+        let player_ids: Vec<String> = aggregated_stats
+            .iter()
+            .map(|s| s.player_id.clone())
+            .collect();
+
+        let mut world_namespace_query = "SELECT DISTINCT world_address, namespace FROM player_achievements WHERE player_id IN (".to_string();
+        world_namespace_query.push_str(&vec!["?"; player_ids.len()].join(", "));
+        world_namespace_query.push(')');
+
+        // Apply world/namespace filters if specified
+        if !query.world_addresses.is_empty() {
+            world_namespace_query.push_str(" AND world_address IN (");
+            world_namespace_query.push_str(&vec!["?"; query.world_addresses.len()].join(", "));
+            world_namespace_query.push(')');
+        }
+        if !query.namespaces.is_empty() {
+            world_namespace_query.push_str(" AND namespace IN (");
+            world_namespace_query.push_str(&vec!["?"; query.namespaces.len()].join(", "));
+            world_namespace_query.push(')');
+        }
+
+        let mut wn_query = sqlx::query_as::<_, (String, String)>(&world_namespace_query);
+        for player_id in &player_ids {
+            wn_query = wn_query.bind(player_id);
+        }
+        if !query.world_addresses.is_empty() {
+            for addr in &query.world_addresses {
+                wn_query = wn_query.bind(felt_to_sql_string(addr));
+            }
+        }
+        if !query.namespaces.is_empty() {
+            for namespace in &query.namespaces {
+                wn_query = wn_query.bind(namespace);
+            }
+        }
+
+        let world_namespace_pairs: Vec<(String, String)> = wn_query.fetch_all(&self.pool).await?;
+
+        // Step 3: Fetch all achievements and tasks in ONE query using JOIN
+        // This is more efficient than separate queries for achievements and tasks
+        let mut achievements_with_tasks: HashMap<
+            (String, String),
+            Vec<(
+                torii_sqlite_types::Achievement,
+                Vec<torii_sqlite_types::AchievementTask>,
+            )>,
+        > = HashMap::new();
+
+        for (world_address, namespace) in &world_namespace_pairs {
+            // Get all achievements
+            let achievements: Vec<torii_sqlite_types::Achievement> = sqlx::query_as(
+                "SELECT id, world_address, hidden, index_num, points, start, end, group_name, 
+                 icon, title, description, tasks, data, created_at, updated_at 
+                 FROM achievements 
+                 WHERE world_address = ? AND namespace = ? 
+                 ORDER BY index_num ASC",
+            )
+            .bind(world_address)
+            .bind(namespace)
+            .fetch_all(&self.pool)
+            .await?;
+
+            let mut ach_with_tasks = Vec::new();
+
+            for achievement in achievements {
+                // Get tasks for this achievement
+                let tasks: Vec<torii_sqlite_types::AchievementTask> = sqlx::query_as(
+                    "SELECT id, achievement_id, task_id, world_address, namespace, description, total, 
+                     total_completions, completion_rate, created_at 
+                     FROM achievement_tasks 
+                     WHERE achievement_id = ? 
+                     ORDER BY created_at ASC",
+                )
+                .bind(&achievement.id)
+                .fetch_all(&self.pool)
+                .await?;
+
+                ach_with_tasks.push((achievement, tasks));
+            }
+
+            achievements_with_tasks
+                .insert((world_address.clone(), namespace.clone()), ach_with_tasks);
+        }
+
+        // Step 4: Fetch all progressions for all players in this page
+        let mut progressions_map: HashMap<String, Vec<torii_sqlite_types::AchievementProgression>> =
+            HashMap::new();
+
+        if !aggregated_stats.is_empty() {
+            let mut progressions_sql =
+                "SELECT id, task_id, world_address, namespace, player_id, count, 
+                 completed, completed_at, created_at, updated_at 
+                 FROM achievement_progressions 
+                 WHERE player_id IN ("
+                    .to_string();
+            progressions_sql.push_str(&vec!["?"; player_ids.len()].join(", "));
+            progressions_sql.push(')');
+
+            // Apply world/namespace filters if specified
+            if !query.world_addresses.is_empty() {
+                progressions_sql.push_str(" AND world_address IN (");
+                progressions_sql.push_str(&vec!["?"; query.world_addresses.len()].join(", "));
+                progressions_sql.push(')');
+            }
+            if !query.namespaces.is_empty() {
+                progressions_sql.push_str(" AND namespace IN (");
+                progressions_sql.push_str(&vec!["?"; query.namespaces.len()].join(", "));
+                progressions_sql.push(')');
+            }
+
+            let mut prog_query =
+                sqlx::query_as::<_, torii_sqlite_types::AchievementProgression>(&progressions_sql);
+            for player_id in &player_ids {
+                prog_query = prog_query.bind(player_id);
+            }
+            if !query.world_addresses.is_empty() {
+                for addr in &query.world_addresses {
+                    prog_query = prog_query.bind(felt_to_sql_string(addr));
+                }
+            }
+            if !query.namespaces.is_empty() {
+                for namespace in &query.namespaces {
+                    prog_query = prog_query.bind(namespace);
+                }
+            }
+
+            let all_progressions = prog_query.fetch_all(&self.pool).await?;
+            for prog in all_progressions {
+                // Key by player_id only since we're grouping globally
+                progressions_map
+                    .entry(prog.player_id.clone())
+                    .or_default()
+                    .push(prog);
+            }
+        }
+
+        // Step 5: Build the response by combining all data (grouped by player globally)
+        let mut player_entries = Vec::new();
+
+        for stats in aggregated_stats {
+            let player_address = Felt::from_str(&stats.player_id)
+                .map_err(|e| Error::Parse(ParseError::FromStr(e)))?;
+
+            // Parse dates
+            let last_achievement_at = stats.last_achievement_at.as_deref().and_then(|s| {
+                DateTime::parse_from_rfc3339(s)
+                    .ok()
+                    .map(|dt| dt.with_timezone(&Utc))
+            });
+            let created_at = DateTime::parse_from_rfc3339(&stats.created_at)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(Utc::now);
+            let updated_at = DateTime::parse_from_rfc3339(&stats.updated_at)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(Utc::now);
+
+            let stats_proto = torii_proto::PlayerAchievementStats {
+                total_points: stats.total_points as u32,
+                completed_achievements: stats.completed_achievements as u32,
+                total_achievements: stats.total_achievements as u32,
+                completion_percentage: stats.completion_percentage,
+                last_achievement_at,
+                created_at,
+                updated_at,
+            };
+
+            // Get all progressions for this player (across all worlds/namespaces)
+            let player_progressions = progressions_map
+                .get(&stats.player_id)
+                .cloned()
+                .unwrap_or_default();
+
+            let mut achievement_progress = Vec::new();
+
+            // Iterate through all world/namespace pairs and build achievement progress
+            for (world_address_str, namespace) in &world_namespace_pairs {
+                let achievements_with_tasks_list = achievements_with_tasks
+                    .get(&(world_address_str.clone(), namespace.clone()))
+                    .cloned()
+                    .unwrap_or_default();
+
+                for (achievement, tasks) in achievements_with_tasks_list {
+                    // Build task progress (just references with count/completed)
+                    let mut task_progress = Vec::new();
+                    let mut completed_tasks = 0;
+
+                    for task in &tasks {
+                        let progression = player_progressions
+                            .iter()
+                            .find(|p| p.task_id == task.task_id);
+
+                        let (count, completed) = if let Some(p) = progression {
+                            if p.completed != 0 {
+                                completed_tasks += 1;
+                            }
+                            (p.count as u32, p.completed != 0)
+                        } else {
+                            (0, false)
+                        };
+
+                        task_progress.push(torii_proto::TaskProgress {
+                            task_id: task.task_id.clone(),
+                            count,
+                            completed,
+                        });
+                    }
+
+                    let total_tasks = task_progress.len();
+                    let achievement_completed = total_tasks > 0 && completed_tasks == total_tasks;
+                    let progress_percentage = if total_tasks > 0 {
+                        (completed_tasks as f64 / total_tasks as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+
+                    // Build full task definitions for the achievement (simplified, no redundant fields)
+                    let proto_tasks: Vec<torii_proto::AchievementTask> = tasks
+                        .iter()
+                        .map(|task| torii_proto::AchievementTask {
+                            task_id: task.task_id.clone(),
+                            description: task.description.clone(),
+                            total: task.total as u32,
+                            total_completions: task.total_completions as u32,
+                            completion_rate: task.completion_rate,
+                            created_at: task.created_at,
+                        })
+                        .collect();
+
+                    // Calculate total completions and completion rate from tasks
+                    let (total_completions, avg_completion_rate) = if !tasks.is_empty() {
+                        let sum_completions: i32 = tasks.iter().map(|t| t.total_completions).sum();
+                        let sum_rate: f64 = tasks.iter().map(|t| t.completion_rate).sum();
+                        (
+                            sum_completions / tasks.len() as i32,
+                            sum_rate / tasks.len() as f64,
+                        )
+                    } else {
+                        (0, 0.0)
+                    };
+
+                    let world_address = Felt::from_str(world_address_str)
+                        .map_err(|e| Error::Parse(ParseError::FromStr(e)))?;
+
+                    achievement_progress.push(torii_proto::PlayerAchievementProgress {
+                        achievement: torii_proto::Achievement {
+                            id: achievement.id.clone(),
+                            world_address,
+                            namespace: namespace.clone(),
+                            entity_id: achievement
+                                .id
+                                .split(':')
+                                .next_back()
+                                .unwrap_or_default()
+                                .to_string(),
+                            hidden: achievement.hidden != 0,
+                            index: achievement.index_num as u32,
+                            points: achievement.points as u32,
+                            start: achievement.start,
+                            end: achievement.end,
+                            group: achievement.group_name,
+                            icon: achievement.icon,
+                            title: achievement.title,
+                            description: achievement.description,
+                            tasks: proto_tasks,
+                            data: achievement.data,
+                            total_completions: total_completions as u32,
+                            completion_rate: avg_completion_rate,
+                            created_at: achievement.created_at,
+                            updated_at: achievement.updated_at,
+                        },
+                        task_progress,
+                        completed: achievement_completed,
+                        progress_percentage,
+                    });
+                }
+            }
+
+            player_entries.push(torii_proto::PlayerAchievementEntry {
+                player_address,
+                stats: stats_proto,
+                achievements: achievement_progress,
+            });
+        }
+
+        Ok(Page {
+            items: player_entries,
+            next_cursor: page.next_cursor,
+        })
+    }
 }
 
 #[async_trait]

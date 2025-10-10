@@ -13,10 +13,11 @@ use torii_math::I256;
 use torii_proto::schema::Entity;
 
 use torii_proto::{
-    Activity, ActivityQuery, AggregationEntry, AggregationQuery, BalanceId, Contract,
-    ContractCursor, ContractQuery, Controller, ControllerQuery, Event, EventQuery, Model, Page,
-    Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId,
-    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
+    Achievement, AchievementQuery, Activity, ActivityQuery, AggregationEntry, AggregationQuery,
+    BalanceId, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event,
+    EventQuery, Model, Page, PlayerAchievementEntry, PlayerAchievementQuery, Query, Token,
+    TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery,
+    TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
 };
 
 pub mod utils;
@@ -102,6 +103,19 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
 
     /// Returns activities for the storage.
     async fn activities(&self, query: &ActivityQuery) -> Result<Page<Activity>, StorageError>;
+
+    /// Returns achievements with optional filtering by world, namespace, and hidden status.
+    async fn achievements(
+        &self,
+        query: &AchievementQuery,
+    ) -> Result<Page<Achievement>, StorageError>;
+
+    /// Returns player achievement data including stats and progressions.
+    /// Results are paginated by players, ordered by total points descending.
+    async fn player_achievements(
+        &self,
+        query: &PlayerAchievementQuery,
+    ) -> Result<Page<PlayerAchievementEntry>, StorageError>;
 }
 
 #[async_trait]

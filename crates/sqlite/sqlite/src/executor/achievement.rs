@@ -11,6 +11,21 @@ pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor::achievement";
 
 pub type QueryResult<T> = std::result::Result<T, ExecutorQueryError>;
 
+// Type alias for complex player achievement stats tuple from database
+type PlayerAchievementStatsRow = (
+    String,                        // id
+    String,                        // world_address
+    String,                        // namespace
+    String,                        // player_id
+    i32,                           // total_points
+    i32,                           // completed_achievements
+    i32,                           // total_achievements
+    f64,                           // completion_percentage
+    Option<chrono::DateTime<Utc>>, // last_achievement_at
+    chrono::DateTime<Utc>,         // created_at
+    chrono::DateTime<Utc>,         // updated_at
+);
+
 /// Represents a task definition from the trophy creation model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AchievementTaskDefinition {
@@ -490,19 +505,7 @@ pub async fn get_player_stats(
     namespace: &str,
     player_id: &str,
 ) -> QueryResult<Option<PlayerAchievementStats>> {
-    let stats: Option<(
-        String,
-        String,
-        String,
-        String,
-        i32,
-        i32,
-        i32,
-        f64,
-        Option<chrono::DateTime<Utc>>,
-        chrono::DateTime<Utc>,
-        chrono::DateTime<Utc>,
-    )> = sqlx::query_as(
+    let stats: Option<PlayerAchievementStatsRow> = sqlx::query_as(
         "SELECT id, world_address, namespace, player_id, total_points, completed_achievements, 
              total_achievements, completion_percentage, last_achievement_at, created_at, updated_at
              FROM player_achievements 
@@ -552,19 +555,7 @@ pub async fn get_achievement_leaderboard(
     namespace: &str,
     limit: i64,
 ) -> QueryResult<Vec<PlayerAchievementStats>> {
-    let results: Vec<(
-        String,
-        String,
-        String,
-        String,
-        i32,
-        i32,
-        i32,
-        f64,
-        Option<chrono::DateTime<Utc>>,
-        chrono::DateTime<Utc>,
-        chrono::DateTime<Utc>,
-    )> = sqlx::query_as(
+    let results: Vec<PlayerAchievementStatsRow> = sqlx::query_as(
         "SELECT id, world_address, namespace, player_id, total_points, completed_achievements, 
              total_achievements, completion_percentage, last_achievement_at, created_at, updated_at
              FROM player_achievements 

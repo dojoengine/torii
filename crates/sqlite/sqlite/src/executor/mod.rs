@@ -811,9 +811,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     model_tag.split_once('-').expect("Invalid model tag format");
 
                 let is_achievement_registration =
-                    self.config.is_achievement_registration_model_name(&name);
+                    self.config.is_achievement_registration_model_name(name);
                 let is_achievement_progression =
-                    self.config.is_achievement_progression_model_name(&name);
+                    self.config.is_achievement_progression_model_name(name);
 
                 let mut aggregation_updates = Vec::new();
                 for aggregator_config in aggregator_configs {
@@ -887,7 +887,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     match achievement::update_achievement_progression(
                         tx,
                         &em_query.world_address,
-                        &namespace,
+                        namespace,
                         &em_query.ty,
                     )
                     .await

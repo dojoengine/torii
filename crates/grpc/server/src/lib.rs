@@ -48,18 +48,20 @@ use sqlx::SqlitePool;
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
     PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest,
-    PublishMessageResponse, RetrieveActivitiesRequest, RetrieveActivitiesResponse,
-    RetrieveAggregationsRequest, RetrieveAggregationsResponse, RetrieveContractsRequest,
-    RetrieveContractsResponse, RetrieveControllersRequest, RetrieveControllersResponse,
-    RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest,
-    RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse,
-    RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest,
-    RetrieveTransactionsResponse, SubscribeActivitiesRequest, SubscribeActivitiesResponse,
-    SubscribeAggregationsRequest, SubscribeAggregationsResponse, SubscribeContractsRequest,
-    SubscribeContractsResponse, SubscribeEntitiesRequest, SubscribeEntityResponse,
-    SubscribeEventsResponse, SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse,
-    SubscribeTokenTransfersRequest, SubscribeTokenTransfersResponse, SubscribeTokensRequest,
-    SubscribeTokensResponse, SubscribeTransactionsRequest, SubscribeTransactionsResponse,
+    PublishMessageResponse, RetrieveAchievementsRequest, RetrieveAchievementsResponse,
+    RetrieveActivitiesRequest, RetrieveActivitiesResponse, RetrieveAggregationsRequest,
+    RetrieveAggregationsResponse, RetrieveContractsRequest, RetrieveContractsResponse,
+    RetrieveControllersRequest, RetrieveControllersResponse, RetrievePlayerAchievementsRequest,
+    RetrievePlayerAchievementsResponse, RetrieveTokenBalancesRequest,
+    RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
+    RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse, RetrieveTokensRequest,
+    RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
+    SubscribeActivitiesRequest, SubscribeActivitiesResponse, SubscribeAggregationsRequest,
+    SubscribeAggregationsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
+    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventsResponse,
+    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
+    SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
+    SubscribeTransactionsRequest, SubscribeTransactionsResponse,
     UpdateActivitiesSubscriptionRequest, UpdateAggregationsSubscriptionRequest,
     UpdateAggregationsSubscriptionResponse, UpdateTokenBalancesSubscriptionRequest,
     UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldsRequest,
@@ -545,6 +547,53 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
             .await;
 
         Ok(Response::new(()))
+    }
+
+    async fn retrieve_achievements(
+        &self,
+        request: Request<RetrieveAchievementsRequest>,
+    ) -> Result<Response<RetrieveAchievementsResponse>, Status> {
+        let RetrieveAchievementsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+
+        let achievements = self
+            .storage
+            .achievements(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(RetrieveAchievementsResponse {
+            achievements: achievements.items.into_iter().map(Into::into).collect(),
+            next_cursor: achievements.next_cursor.unwrap_or_default(),
+        }))
+    }
+
+    async fn retrieve_player_achievements(
+        &self,
+        request: Request<RetrievePlayerAchievementsRequest>,
+    ) -> Result<Response<RetrievePlayerAchievementsResponse>, Status> {
+        let RetrievePlayerAchievementsRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+
+        let page = self
+            .storage
+            .player_achievements(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let players: Vec<proto::types::PlayerAchievementEntry> =
+            page.items.into_iter().map(|entry| entry.into()).collect();
+
+        Ok(Response::new(RetrievePlayerAchievementsResponse {
+            next_cursor: page.next_cursor.unwrap_or_default(),
+            players,
+        }))
     }
 
     async fn retrieve_contracts(
