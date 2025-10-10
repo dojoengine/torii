@@ -608,12 +608,44 @@ pub struct Achievement {
 #[serde(rename_all = "camelCase")]
 pub struct AchievementProgression {
     pub id: String,
-    pub achievement_id: String,
-    pub player_id: String,
     pub task_id: String,
+    pub world_address: String,
+    pub namespace: String,
+    pub player_id: String,
     pub count: i32,
     pub completed: i32,
     pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AchievementTask {
+    pub id: String,
+    pub achievement_id: String,
+    pub task_id: String,
+    pub world_address: String,
+    pub namespace: String,
+    pub description: String,
+    pub total: i32,
+    pub total_completions: i32,
+    pub completion_rate: f64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(FromRow, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerAchievementStats {
+    pub id: String,
+    pub world_address: String,
+    pub namespace: String,
+    pub player_id: String,
+    pub total_points: i32,
+    pub completed_achievements: i32,
+    pub total_achievements: i32,
+    pub completion_percentage: f64,
+    pub last_achievement_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

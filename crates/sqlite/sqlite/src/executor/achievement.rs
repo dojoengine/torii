@@ -2,6 +2,7 @@ use chrono::Utc;
 use dojo_types::schema::Ty;
 use serde::{Deserialize, Serialize};
 use sqlx::{Sqlite, Transaction as SqlxTransaction};
+use torii_sqlite_types::PlayerAchievementStats;
 use tracing::{info, warn};
 
 use crate::{error::ParseError, executor::error::ExecutorQueryError};
@@ -10,9 +11,9 @@ pub(crate) const LOG_TARGET: &str = "torii::sqlite::executor::achievement";
 
 pub type QueryResult<T> = std::result::Result<T, ExecutorQueryError>;
 
-/// Represents a task within an achievement
+/// Represents a task definition from the trophy creation model
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AchievementTask {
+struct AchievementTaskDefinition {
     pub id: String,
     pub description: String,
     pub total: u32,
@@ -95,7 +96,8 @@ pub async fn register_achievement(
     .await?;
 
     // Parse and insert tasks into achievement_tasks table
-    let task_definitions: Vec<AchievementTask> = serde_json::from_str(&tasks).unwrap_or_default();
+    let task_definitions: Vec<AchievementTaskDefinition> =
+        serde_json::from_str(&tasks).unwrap_or_default();
 
     for task in &task_definitions {
         let task_composite_id = format!(
@@ -294,7 +296,8 @@ async fn calculate_achievement_status(
     let (tasks_json, points) = achievement_data.unwrap_or_else(|| ("[]".to_string(), 0));
 
     // Parse tasks to get total count
-    let tasks: Vec<AchievementTask> = serde_json::from_str(&tasks_json).unwrap_or_default();
+    let tasks: Vec<AchievementTaskDefinition> =
+        serde_json::from_str(&tasks_json).unwrap_or_default();
     let total_tasks = tasks.len();
 
     if total_tasks == 0 {
@@ -466,18 +469,18 @@ pub async fn update_player_achievement_stats(
         "Updated player achievement stats"
     );
 
-    Ok(PlayerAchievementStats {
-        id: stats_id,
-        world_address: world_address.to_string(),
-        namespace: namespace.to_string(),
-        player_id: player_id.to_string(),
-        total_points,
-        completed_achievements,
-        total_achievements: total_achievements as i32,
-        completion_percentage,
-        last_achievement_at,
-        updated_at: Utc::now(),
-    })
+    // Fetch the created/updated stats from the database to ensure we have all fields
+    let stats: PlayerAchievementStats = sqlx::query_as(
+        "SELECT id, world_address, namespace, player_id, total_points, completed_achievements, 
+             total_achievements, completion_percentage, last_achievement_at, created_at, updated_at
+             FROM player_achievements 
+             WHERE id = ?",
+    )
+    .bind(&stats_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    Ok(stats)
 }
 
 /// Get player achievement statistics
@@ -498,9 +501,10 @@ pub async fn get_player_stats(
         f64,
         Option<chrono::DateTime<Utc>>,
         chrono::DateTime<Utc>,
+        chrono::DateTime<Utc>,
     )> = sqlx::query_as(
         "SELECT id, world_address, namespace, player_id, total_points, completed_achievements, 
-             total_achievements, completion_percentage, last_achievement_at, updated_at
+             total_achievements, completion_percentage, last_achievement_at, created_at, updated_at
              FROM player_achievements 
              WHERE world_address = ? AND namespace = ? AND player_id = ?",
     )
@@ -521,6 +525,7 @@ pub async fn get_player_stats(
             total_achievements,
             completion_percentage,
             last_achievement_at,
+            created_at,
             updated_at,
         )| {
             PlayerAchievementStats {
@@ -533,6 +538,7 @@ pub async fn get_player_stats(
                 total_achievements,
                 completion_percentage,
                 last_achievement_at,
+                created_at,
                 updated_at,
             }
         },
@@ -557,9 +563,10 @@ pub async fn get_achievement_leaderboard(
         f64,
         Option<chrono::DateTime<Utc>>,
         chrono::DateTime<Utc>,
+        chrono::DateTime<Utc>,
     )> = sqlx::query_as(
         "SELECT id, world_address, namespace, player_id, total_points, completed_achievements, 
-             total_achievements, completion_percentage, last_achievement_at, updated_at
+             total_achievements, completion_percentage, last_achievement_at, created_at, updated_at
              FROM player_achievements 
              WHERE world_address = ? AND namespace = ?
              ORDER BY total_points DESC, completed_achievements DESC
@@ -584,6 +591,7 @@ pub async fn get_achievement_leaderboard(
                 total_achievements,
                 completion_percentage,
                 last_achievement_at,
+                created_at,
                 updated_at,
             )| {
                 PlayerAchievementStats {
@@ -596,26 +604,12 @@ pub async fn get_achievement_leaderboard(
                     total_achievements,
                     completion_percentage,
                     last_achievement_at,
+                    created_at,
                     updated_at,
                 }
             },
         )
         .collect())
-}
-
-/// Player achievement statistics
-#[derive(Debug, Clone)]
-pub struct PlayerAchievementStats {
-    pub id: String,
-    pub world_address: String,
-    pub namespace: String,
-    pub player_id: String,
-    pub total_points: i32,
-    pub completed_achievements: i32,
-    pub total_achievements: i32,
-    pub completion_percentage: f64,
-    pub last_achievement_at: Option<chrono::DateTime<Utc>>,
-    pub updated_at: chrono::DateTime<Utc>,
 }
 
 /// Update completion statistics for a specific task
