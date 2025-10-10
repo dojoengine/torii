@@ -3,22 +3,24 @@ pub mod error;
 use crypto_bigint::U256;
 use starknet::core::types::Felt;
 use torii_grpc_client::{
-    ActivityUpdateStreaming, AggregationUpdateStreaming, ContractUpdateStreaming,
-    EntityUpdateStreaming, EventUpdateStreaming, TokenBalanceStreaming,
+    AchievementProgressionUpdateStreaming, ActivityUpdateStreaming, AggregationUpdateStreaming,
+    ContractUpdateStreaming, EntityUpdateStreaming, EventUpdateStreaming, TokenBalanceStreaming,
     TokenTransferUpdateStreaming, TokenUpdateStreaming, TransactionUpdateStreaming, WorldClient,
 };
 use torii_proto::proto::world::{
-    RetrieveActivitiesResponse, RetrieveAggregationsResponse, RetrieveContractsResponse,
-    RetrieveControllersResponse, RetrieveEntitiesResponse, RetrieveEventsResponse,
-    RetrieveTokenBalancesResponse, RetrieveTokenContractsResponse, RetrieveTokenTransfersResponse,
-    RetrieveTokensResponse, RetrieveTransactionsResponse,
+    RetrieveAchievementsResponse, RetrieveActivitiesResponse, RetrieveAggregationsResponse,
+    RetrieveContractsResponse, RetrieveControllersResponse, RetrieveEntitiesResponse,
+    RetrieveEventsResponse, RetrievePlayerAchievementsResponse, RetrieveTokenBalancesResponse,
+    RetrieveTokenContractsResponse, RetrieveTokenTransfersResponse, RetrieveTokensResponse,
+    RetrieveTransactionsResponse,
 };
 use torii_proto::schema::Entity;
 use torii_proto::{
-    Activity, ActivityQuery, AggregationEntry, AggregationQuery, Clause, Contract, ContractQuery,
-    Controller, ControllerQuery, Event, EventQuery, KeysClause, Message, Page, Query, SqlRow,
-    Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenQuery,
-    TokenTransfer, TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery, World,
+    Achievement, AchievementQuery, Activity, ActivityQuery, AggregationEntry, AggregationQuery,
+    Clause, Contract, ContractQuery, Controller, ControllerQuery, Event, EventQuery, KeysClause,
+    Message, Page, PlayerAchievementEntry, PlayerAchievementQuery, Query, SqlRow, Token,
+    TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenQuery, TokenTransfer,
+    TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery, World,
 };
 
 use crate::error::Error;
@@ -292,6 +294,95 @@ impl Client {
                 world_addresses,
                 namespaces,
                 caller_addresses,
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Retrieves achievements matching query parameter.
+    pub async fn achievements(&self, query: AchievementQuery) -> Result<Page<Achievement>, Error> {
+        let mut grpc_client = self.inner.clone();
+        let RetrieveAchievementsResponse {
+            achievements,
+            next_cursor,
+        } = grpc_client.retrieve_achievements(query).await?;
+        Ok(Page {
+            items: achievements
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<Achievement>, _>>()?,
+            next_cursor: if next_cursor.is_empty() {
+                None
+            } else {
+                Some(next_cursor)
+            },
+        })
+    }
+
+    /// Retrieves player achievement data matching query parameter.
+    pub async fn player_achievements(
+        &self,
+        query: PlayerAchievementQuery,
+    ) -> Result<Page<PlayerAchievementEntry>, Error> {
+        let mut grpc_client = self.inner.clone();
+        let RetrievePlayerAchievementsResponse {
+            players,
+            next_cursor,
+        } = grpc_client.retrieve_player_achievements(query).await?;
+        Ok(Page {
+            items: players
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<PlayerAchievementEntry>, _>>()?,
+            next_cursor: if next_cursor.is_empty() {
+                None
+            } else {
+                Some(next_cursor)
+            },
+        })
+    }
+
+    /// Subscribe to achievement progression updates.
+    /// If no world_addresses are provided, it will subscribe to updates for all worlds.
+    /// If no namespaces are provided, it will subscribe to updates for all namespaces.
+    /// If no player_addresses are provided, it will subscribe to updates for all players.
+    /// If no achievement_ids are provided, it will subscribe to updates for all achievements.
+    pub async fn on_achievement_progression_updated(
+        &self,
+        world_addresses: Vec<Felt>,
+        namespaces: Vec<String>,
+        player_addresses: Vec<Felt>,
+        achievement_ids: Vec<String>,
+    ) -> Result<AchievementProgressionUpdateStreaming, Error> {
+        let mut grpc_client = self.inner.clone();
+        let stream = grpc_client
+            .subscribe_achievement_progressions(
+                world_addresses,
+                namespaces,
+                player_addresses,
+                achievement_ids,
+            )
+            .await?;
+        Ok(stream)
+    }
+
+    /// Update an achievement progressions subscription
+    pub async fn update_achievement_progression_subscription(
+        &self,
+        subscription_id: u64,
+        world_addresses: Vec<Felt>,
+        namespaces: Vec<String>,
+        player_addresses: Vec<Felt>,
+        achievement_ids: Vec<String>,
+    ) -> Result<(), Error> {
+        let mut grpc_client = self.inner.clone();
+        grpc_client
+            .update_achievement_progressions_subscription(
+                subscription_id,
+                world_addresses,
+                namespaces,
+                player_addresses,
+                achievement_ids,
             )
             .await?;
         Ok(())
