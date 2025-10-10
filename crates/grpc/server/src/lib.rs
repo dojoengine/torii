@@ -21,6 +21,7 @@ use proto::world::{
 };
 use starknet::core::types::Felt;
 use starknet::providers::Provider;
+use subscriptions::achievement::AchievementProgressionManager;
 use subscriptions::activity::ActivityManager;
 use subscriptions::aggregation::AggregationManager;
 use subscriptions::contract::ContractManager;
@@ -56,16 +57,17 @@ use torii_proto::proto::world::{
     RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
     RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse, RetrieveTokensRequest,
     RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
+    SubscribeAchievementProgressionsRequest, SubscribeAchievementProgressionsResponse,
     SubscribeActivitiesRequest, SubscribeActivitiesResponse, SubscribeAggregationsRequest,
     SubscribeAggregationsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
     SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventsResponse,
     SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
     SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
     SubscribeTransactionsRequest, SubscribeTransactionsResponse,
-    UpdateActivitiesSubscriptionRequest, UpdateAggregationsSubscriptionRequest,
-    UpdateAggregationsSubscriptionResponse, UpdateTokenBalancesSubscriptionRequest,
-    UpdateTokenSubscriptionRequest, UpdateTokenTransfersSubscriptionRequest, WorldsRequest,
-    WorldsResponse,
+    UpdateAchievementProgressionsSubscriptionRequest, UpdateActivitiesSubscriptionRequest,
+    UpdateAggregationsSubscriptionRequest, UpdateAggregationsSubscriptionResponse,
+    UpdateTokenBalancesSubscriptionRequest, UpdateTokenSubscriptionRequest,
+    UpdateTokenTransfersSubscriptionRequest, WorldsRequest, WorldsResponse,
 };
 use torii_proto::proto::{self};
 use torii_proto::Message;
@@ -90,6 +92,7 @@ pub struct DojoWorld<P: Provider + Sync> {
     transaction_manager: Arc<TransactionManager>,
     aggregation_manager: Arc<AggregationManager>,
     activity_manager: Arc<ActivityManager>,
+    achievement_progression_manager: Arc<AchievementProgressionManager>,
     pool: SqlitePool,
     _config: GrpcConfig,
 }
@@ -112,6 +115,8 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let transaction_manager = Arc::new(TransactionManager::new(config.clone()));
         let aggregation_manager = Arc::new(AggregationManager::new(config.clone()));
         let activity_manager = Arc::new(ActivityManager::new(config.clone()));
+        let achievement_progression_manager =
+            Arc::new(AchievementProgressionManager::new(config.clone()));
 
         // Spawn subscription services on the main runtime
         // They use try_send and non-blocking operations to avoid starving other tasks
@@ -155,6 +160,10 @@ impl<P: Provider + Sync> DojoWorld<P> {
             &activity_manager,
         )));
 
+        tokio::spawn(subscriptions::achievement::Service::new(Arc::clone(
+            &achievement_progression_manager,
+        )));
+
         Self {
             storage,
             messaging,
@@ -169,6 +178,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
             transaction_manager,
             aggregation_manager,
             activity_manager,
+            achievement_progression_manager,
             pool,
             _config: config,
         }
@@ -241,6 +251,8 @@ type SubscribeAggregationsResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeAggregationsResponse, Status>> + Send>>;
 type SubscribeActivitiesResponseStream =
     Pin<Box<dyn Stream<Item = Result<SubscribeActivitiesResponse, Status>> + Send>>;
+type SubscribeAchievementProgressionsResponseStream =
+    Pin<Box<dyn Stream<Item = Result<SubscribeAchievementProgressionsResponse, Status>> + Send>>;
 
 #[tonic::async_trait]
 impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for DojoWorld<P> {
@@ -254,6 +266,7 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
     type SubscribeTransactionsStream = SubscribeTransactionsResponseStream;
     type SubscribeAggregationsStream = SubscribeAggregationsResponseStream;
     type SubscribeActivitiesStream = SubscribeActivitiesResponseStream;
+    type SubscribeAchievementProgressionsStream = SubscribeAchievementProgressionsResponseStream;
 
     async fn worlds(
         &self,
@@ -543,6 +556,72 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         };
 
         self.activity_manager
+            .update_subscriber(subscription_id, filter)
+            .await;
+
+        Ok(Response::new(()))
+    }
+
+    async fn subscribe_achievement_progressions(
+        &self,
+        request: Request<SubscribeAchievementProgressionsRequest>,
+    ) -> ServiceResult<Self::SubscribeAchievementProgressionsStream> {
+        let SubscribeAchievementProgressionsRequest {
+            world_addresses,
+            namespaces,
+            player_addresses,
+            achievement_ids,
+        } = request.into_inner();
+
+        let filter = subscriptions::achievement::AchievementProgressionFilter {
+            world_addresses: world_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+            namespaces,
+            player_addresses: player_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+            achievement_ids,
+        };
+
+        let rx = self
+            .achievement_progression_manager
+            .add_subscriber(filter)
+            .await;
+
+        Ok(Response::new(
+            Box::pin(ReceiverStream::new(rx)) as Self::SubscribeAchievementProgressionsStream
+        ))
+    }
+
+    async fn update_achievement_progressions_subscription(
+        &self,
+        request: Request<UpdateAchievementProgressionsSubscriptionRequest>,
+    ) -> ServiceResult<()> {
+        let UpdateAchievementProgressionsSubscriptionRequest {
+            subscription_id,
+            world_addresses,
+            namespaces,
+            player_addresses,
+            achievement_ids,
+        } = request.into_inner();
+
+        let filter = subscriptions::achievement::AchievementProgressionFilter {
+            world_addresses: world_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+            namespaces,
+            player_addresses: player_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+            achievement_ids,
+        };
+
+        self.achievement_progression_manager
             .update_subscriber(subscription_id, filter)
             .await;
 

@@ -905,9 +905,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                             );
 
                             // Publish achievement progression update to subscribers
-                            torii_broker::MemoryBroker::<torii_broker::types::AchievementProgressionUpdate>::publish(
-                                progression.into(),
-                            );
+                            torii_broker::MemoryBroker::<
+                                torii_broker::types::AchievementProgressionUpdate,
+                            >::publish(progression.into());
                         }
                         Ok(None) => {
                             debug!(

@@ -49,12 +49,15 @@ impl AchievementProgressionFilter {
             self.namespaces.is_empty() || self.namespaces.contains(&progression.namespace);
 
         // Check player_address filter
-        let player_match =
-            self.player_addresses.is_empty() || self.player_addresses.contains(&progression.player_id);
+        let player_match = self.player_addresses.is_empty()
+            || self.player_addresses.contains(&progression.player_id);
 
         // Check achievement_id filter (derived from task_id or full achievement_id)
         let achievement_match = self.achievement_ids.is_empty()
-            || self.achievement_ids.iter().any(|aid| progression.id.contains(aid));
+            || self
+                .achievement_ids
+                .iter()
+                .any(|aid| progression.id.contains(aid));
 
         world_match && namespace_match && player_match && achievement_match
     }
@@ -206,4 +209,3 @@ impl Future for Service {
         Poll::Pending
     }
 }
-
