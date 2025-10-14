@@ -202,6 +202,19 @@ fn create_indexer_runtime(threads: usize) -> ManagedRuntime {
     ManagedRuntime::new(threads, "torii-indexer", 1024 * 1024) // 1MB stack (less than queries)
 }
 
+// Function to set the SQLite hard heap limit
+fn set_sqlite_hard_heap_limit(bytes: u64) {
+    // SAFETY: calling into SQLite C API; must be before any SQLite connections are created.
+    // Returns the previous limit (in bytes). 0 means “no limit”.
+    let prev = unsafe { libsqlite3_sys::sqlite3_hard_heap_limit64(bytes as i64) };
+    debug!("SQLite hard heap limit set to {} bytes (previous was {})", bytes, prev);
+}
+
+// Config sqlit memstatus
+fn config_sqlite_memstatus(enable: bool) {
+    unsafe { libsqlite3_sys::sqlite3_config(libsqlite3_sys::SQLITE_CONFIG_MEMSTATUS, enable as i32) };
+}
+
 /// Creates a responsive progress bar template based on terminal size
 fn create_progress_bar_template() -> String {
     let (terminal_width, msg_width) = if let Some((Width(w), Height(_))) = terminal_size() {
@@ -398,14 +411,12 @@ impl Runner {
         options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
 
         // Memory limits
+        config_sqlite_memstatus(true);
         options = options.pragma(
             "soft_heap_limit",
             self.args.sql.soft_memory_limit.to_string(),
         );
-        options = options.pragma(
-            "hard_heap_limit",
-            self.args.sql.hard_memory_limit.to_string(),
-        );
+        set_sqlite_hard_heap_limit(self.args.sql.hard_memory_limit);
 
         // Additional performance optimizations for indexing workload
         options = options.pragma("temp_store", "memory"); // Store temp tables in memory

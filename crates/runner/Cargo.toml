@@ -6,16 +6,16 @@ repository.workspace = true
 version.workspace = true
 
 
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+libsqlite3-sys = { version = "0.30.1", features = ["bundled"] }
 anyhow.workspace = true
 async-trait.workspace = true
 base64.workspace = true
 camino.workspace = true
 chrono.workspace = true
-ctrlc = { version = "3.4", features = [ "termination" ] }
+ctrlc = { version = "3.4", features = ["termination"] }
 dojo-metrics.workspace = true
 dojo-types.workspace = true
 dojo-utils.workspace = true
@@ -68,6 +68,6 @@ assert_matches.workspace = true
 camino.workspace = true
 
 [features]
-default = [ "jemalloc", "sqlite" ]
-jemalloc = [ "dojo-metrics/jemalloc" ]
-sqlite = [ "sqlx/sqlite" ]
+default = ["jemalloc", "sqlite"]
+jemalloc = ["dojo-metrics/jemalloc"]
+sqlite = ["sqlx/sqlite"]
