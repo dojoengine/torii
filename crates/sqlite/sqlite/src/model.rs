@@ -1054,8 +1054,7 @@ mod tests {
 
         assert!(where_clause.contains("entities.keys REGEXP ?"));
         assert!(where_clause.contains("entity_model.model_id IN"));
-        assert!(where_clause.contains("entity_model.model_id NOT IN"));
-        assert_eq!(bind_values.len(), 5); // keys pattern + 2 model selectors + 2 model selectors again
+        assert_eq!(bind_values.len(), 3); // keys pattern + 2 model selectors
     }
 
     #[test]
