@@ -207,12 +207,17 @@ fn set_sqlite_hard_heap_limit(bytes: u64) {
     // SAFETY: calling into SQLite C API; must be before any SQLite connections are created.
     // Returns the previous limit (in bytes). 0 means “no limit”.
     let prev = unsafe { libsqlite3_sys::sqlite3_hard_heap_limit64(bytes as i64) };
-    debug!("SQLite hard heap limit set to {} bytes (previous was {})", bytes, prev);
+    debug!(
+        "SQLite hard heap limit set to {} bytes (previous was {})",
+        bytes, prev
+    );
 }
 
 // Config sqlit memstatus
 fn config_sqlite_memstatus(enable: bool) {
-    unsafe { libsqlite3_sys::sqlite3_config(libsqlite3_sys::SQLITE_CONFIG_MEMSTATUS, enable as i32) };
+    unsafe {
+        libsqlite3_sys::sqlite3_config(libsqlite3_sys::SQLITE_CONFIG_MEMSTATUS, enable as i32)
+    };
 }
 
 /// Creates a responsive progress bar template based on terminal size
