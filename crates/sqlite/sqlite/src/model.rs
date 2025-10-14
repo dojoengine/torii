@@ -497,15 +497,17 @@ fn build_composite_clause(
                 if model_selectors.is_empty() {
                     where_clauses.push(format!("({table}.keys REGEXP ?)"));
                 } else {
-                    // Add bind value placeholders for each model selector
-                    let placeholders = vec!["?"; model_selectors.len()].join(", ");
+                    // Only check REGEXP if model_id is in the model selectors
+                    // If model_id is NOT in selectors, include it without checking keys
+                    // model_id format is: world_address:selector, so we construct it dynamically
+                    let selector_checks: Vec<String> = (0..model_selectors.len())
+                        .map(|_| format!("{table}.world_address || ':' || ?"))
+                        .collect();
+                    let placeholders = selector_checks.join(", ");
                     where_clauses.push(format!(
-                        "(({table}.keys REGEXP ? AND {model_relation_table}.model_id IN ({})) OR \
-                         {model_relation_table}.model_id NOT IN ({}))",
-                        placeholders, placeholders
+                        "({model_relation_table}.model_id NOT IN ({placeholders}) OR {table}.keys REGEXP ?)"
                     ));
-                    // Add each model selector twice (once for IN and once for NOT IN)
-                    bind_values.extend(model_selectors.clone());
+                    // Add model selectors once for constructing world-scoped model_ids
                     bind_values.extend(model_selectors);
                 }
             }
@@ -1052,8 +1054,7 @@ mod tests {
 
         assert!(where_clause.contains("entities.keys REGEXP ?"));
         assert!(where_clause.contains("entity_model.model_id IN"));
-        assert!(where_clause.contains("entity_model.model_id NOT IN"));
-        assert_eq!(bind_values.len(), 5); // keys pattern + 2 model selectors + 2 model selectors again
+        assert_eq!(bind_values.len(), 3); // keys pattern + 2 model selectors
     }
 
     #[test]
