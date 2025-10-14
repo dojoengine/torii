@@ -501,9 +501,7 @@ fn build_composite_clause(
                     // If model_id is NOT in selectors, include it without checking keys
                     // model_id format is: world_address:selector, so we construct it dynamically
                     let selector_checks: Vec<String> = (0..model_selectors.len())
-                        .map(|_| {
-                            format!("{table}.world_address || ':' || ?")
-                        })
+                        .map(|_| format!("{table}.world_address || ':' || ?"))
                         .collect();
                     let placeholders = selector_checks.join(", ");
                     where_clauses.push(format!(
