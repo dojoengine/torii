@@ -1053,7 +1053,7 @@ mod tests {
             build_composite_clause("entities", "entity_model", &composite, false).unwrap();
 
         assert!(where_clause.contains("entities.keys REGEXP ?"));
-        assert!(where_clause.contains("entity_model.model_id IN"));
+        assert!(where_clause.contains("entity_model.model_id NOT IN"));
         assert_eq!(bind_values.len(), 3); // keys pattern + 2 model selectors
     }
 
