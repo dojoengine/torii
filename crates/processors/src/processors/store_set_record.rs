@@ -32,6 +32,7 @@ where
 
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
+        event.from_address.hash(&mut hasher);
         event.keys[1].hash(&mut hasher);
         event.keys[2].hash(&mut hasher);
         hasher.finish()
@@ -39,6 +40,7 @@ where
 
     fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
         let mut hasher = DefaultHasher::new();
+        event.from_address.hash(&mut hasher);
         event.keys[1].hash(&mut hasher); // Use the model selector to create a unique ID
         vec![hasher.finish()] // Return the dependency on the register_model task
     }

@@ -52,6 +52,7 @@ where
         };
 
         let mut hasher = DefaultHasher::new();
+        event.from_address.hash(&mut hasher);
         selector.hash(&mut hasher);
         hasher.finish()
     }
