@@ -34,6 +34,7 @@ where
 
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
+        event.from_address.hash(&mut hasher);
         let keys = Vec::<Felt>::cairo_deserialize(&event.data, 0).unwrap_or_else(|e| {
             panic!("Expected EventEmitted keys to be well formed: {:?}", e);
         });
@@ -47,6 +48,7 @@ where
 
     fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
         let mut hasher = DefaultHasher::new();
+        event.from_address.hash(&mut hasher);
         // selector
         event.keys[1].hash(&mut hasher);
         vec![hasher.finish()]
