@@ -202,22 +202,36 @@ fn create_indexer_runtime(threads: usize) -> ManagedRuntime {
     ManagedRuntime::new(threads, "torii-indexer", 1024 * 1024) // 1MB stack (less than queries)
 }
 
-// Function to set the SQLite hard heap limit
-fn set_sqlite_hard_heap_limit(bytes: u64) {
-    // SAFETY: calling into SQLite C API; must be before any SQLite connections are created.
-    // Returns the previous limit (in bytes). 0 means “no limit”.
-    let prev = unsafe { libsqlite3_sys::sqlite3_hard_heap_limit64(bytes as i64) };
-    debug!(
-        "SQLite hard heap limit set to {} bytes (previous was {})",
-        bytes, prev
-    );
-}
-
-// Config sqlit memstatus
+// Config sqlite memstatus
 fn config_sqlite_memstatus(enable: bool) {
     unsafe {
         libsqlite3_sys::sqlite3_config(libsqlite3_sys::SQLITE_CONFIG_MEMSTATUS, enable as i32)
     };
+}
+
+// Set a high global SQLite hard heap limit to allow per-connection PRAGMA limits
+fn set_sqlite_global_heap_limit() {
+    // Set to a percentage of available system memory so that per-connection PRAGMA limits can work
+    // The per-connection hard_heap_limit PRAGMA can only be set to values <= the global limit
+
+    // Get system memory info
+    let sys = sysinfo::System::new_all();
+    let total_memory = sys.total_memory(); // in bytes
+
+    // Set global limit to 90% of total RAM to leave headroom for OS and other processes
+    // This is high enough for per-connection limits but prevents SQLite from using all RAM
+    let global_limit = (total_memory as f64 * 0.9) as i64;
+
+    // SAFETY: calling into SQLite C API; must be before any SQLite connections are created.
+    let prev = unsafe { libsqlite3_sys::sqlite3_hard_heap_limit64(global_limit) };
+
+    debug!(
+        "SQLite global hard heap limit set to {} bytes (~{}GB / 90% of {}GB total RAM, previous was {} bytes)",
+        global_limit,
+        global_limit / (1024 * 1024 * 1024),
+        total_memory / (1024 * 1024 * 1024),
+        prev
+    );
 }
 
 /// Creates a responsive progress bar template based on terminal size
@@ -415,19 +429,18 @@ impl Runner {
         // Increase busy timeout for concurrent access
         options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
 
-        // Memory limits
+        // Enable memory status tracking globally
         config_sqlite_memstatus(true);
-        options = options.pragma(
-            "soft_heap_limit",
-            self.args.sql.soft_memory_limit.to_string(),
-        );
-        set_sqlite_hard_heap_limit(self.args.sql.hard_memory_limit);
+
+        // Set global heap limit to unlimited so we can apply per-connection limits
+        set_sqlite_global_heap_limit();
 
         // Additional performance optimizations for indexing workload
         options = options.pragma("temp_store", "memory"); // Store temp tables in memory
         options = options.pragma("mmap_size", "268435456"); // 256MB memory mapping
         options = options.pragma("journal_size_limit", "67108864"); // 64MB journal limit
 
+        // Write pool: NO memory limits - critical for indexing performance
         let write_pool = SqlitePoolOptions::new()
             .min_connections(1)
             .max_connections(1)
@@ -441,7 +454,17 @@ impl Runner {
             .execute("PRAGMA wal_checkpoint(TRUNCATE);")
             .await?;
 
-        let readonly_options = options.read_only(true);
+        // Readonly pool: Apply memory limits to prevent OOM from many concurrent queries
+        let readonly_options = options
+            .read_only(true)
+            .pragma(
+                "soft_heap_limit",
+                self.args.sql.soft_memory_limit.to_string(),
+            )
+            .pragma(
+                "hard_heap_limit",
+                self.args.sql.hard_memory_limit.to_string(),
+            );
 
         // Use more connections for readonly pool to handle concurrent queries
         let max_readonly_connections = cmp::max(
