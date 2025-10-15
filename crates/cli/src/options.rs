@@ -534,7 +534,7 @@ impl Default for MessagingOptions {
     }
 }
 
-pub const DEFAULT_DATABASE_PAGE_SIZE: u64 = 32_768;
+pub const DEFAULT_DATABASE_PAGE_SIZE: u64 = 4096;
 /// Negative value is used to determine number of KiB to use for cache. Currently set as 512MB, 25%
 /// of the RAM of the smallest slot instance.
 pub const DEFAULT_DATABASE_CACHE_SIZE: i64 = -500_000;
