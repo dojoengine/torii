@@ -213,18 +213,18 @@ fn config_sqlite_memstatus(enable: bool) {
 fn set_sqlite_global_heap_limit() {
     // Set to a percentage of available system memory so that per-connection PRAGMA limits can work
     // The per-connection hard_heap_limit PRAGMA can only be set to values <= the global limit
-    
+
     // Get system memory info
     let sys = sysinfo::System::new_all();
     let total_memory = sys.total_memory(); // in bytes
-    
+
     // Set global limit to 90% of total RAM to leave headroom for OS and other processes
     // This is high enough for per-connection limits but prevents SQLite from using all RAM
     let global_limit = (total_memory as f64 * 0.9) as i64;
-    
+
     // SAFETY: calling into SQLite C API; must be before any SQLite connections are created.
     let prev = unsafe { libsqlite3_sys::sqlite3_hard_heap_limit64(global_limit) };
-    
+
     debug!(
         "SQLite global hard heap limit set to {} bytes (~{}GB / 90% of {}GB total RAM, previous was {} bytes)",
         global_limit,
@@ -431,7 +431,7 @@ impl Runner {
 
         // Enable memory status tracking globally
         config_sqlite_memstatus(true);
-        
+
         // Set global heap limit to unlimited so we can apply per-connection limits
         set_sqlite_global_heap_limit();
 
@@ -457,8 +457,14 @@ impl Runner {
         // Readonly pool: Apply memory limits to prevent OOM from many concurrent queries
         let readonly_options = options
             .read_only(true)
-            .pragma("soft_heap_limit", self.args.sql.soft_memory_limit.to_string())
-            .pragma("hard_heap_limit", self.args.sql.hard_memory_limit.to_string());
+            .pragma(
+                "soft_heap_limit",
+                self.args.sql.soft_memory_limit.to_string(),
+            )
+            .pragma(
+                "hard_heap_limit",
+                self.args.sql.hard_memory_limit.to_string(),
+            );
 
         // Use more connections for readonly pool to handle concurrent queries
         let max_readonly_connections = cmp::max(
