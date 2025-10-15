@@ -472,8 +472,10 @@ impl ErcOptions {
 
         // Check blacklist first (takes precedence)
         if self.metadata_update_blacklist.iter().any(|addr| {
-            addr.trim().eq_ignore_ascii_case(&address_str) ||
-            addr.trim().eq_ignore_ascii_case(&format!("{:x}", contract_address))
+            addr.trim().eq_ignore_ascii_case(&address_str)
+                || addr
+                    .trim()
+                    .eq_ignore_ascii_case(&format!("{:x}", contract_address))
         }) {
             return false;
         }
@@ -485,8 +487,10 @@ impl ErcOptions {
 
         // Check if address is in whitelist
         self.metadata_update_whitelist.iter().any(|addr| {
-            addr.trim().eq_ignore_ascii_case(&address_str) ||
-            addr.trim().eq_ignore_ascii_case(&format!("{:x}", contract_address))
+            addr.trim().eq_ignore_ascii_case(&address_str)
+                || addr
+                    .trim()
+                    .eq_ignore_ascii_case(&format!("{:x}", contract_address))
         })
     }
 }
