@@ -9365,6 +9365,7 @@ dependencies = [
  "hyper-reverse-proxy",
  "indexmap 2.11.1",
  "indicatif",
+ "libsqlite3-sys",
  "num_cpus",
  "rand 0.8.5",
  "reqwest 0.11.27",

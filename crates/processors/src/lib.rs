@@ -45,6 +45,9 @@ pub struct EventProcessorConfig {
     pub models: HashSet<String>,
     pub external_contracts: bool,
     pub external_contract_whitelist: HashSet<String>,
+    pub metadata_updates: bool,
+    pub metadata_update_whitelist: HashSet<Felt>,
+    pub metadata_update_blacklist: HashSet<Felt>,
 }
 
 impl Default for EventProcessorConfig {
@@ -57,6 +60,9 @@ impl Default for EventProcessorConfig {
             models: HashSet::new(),
             external_contracts: true,
             external_contract_whitelist: HashSet::new(),
+            metadata_updates: true,
+            metadata_update_whitelist: HashSet::new(),
+            metadata_update_blacklist: HashSet::new(),
         }
     }
 }
@@ -78,6 +84,26 @@ impl EventProcessorConfig {
             && (self.external_contracts
                 && (self.external_contract_whitelist.is_empty()
                     || self.external_contract_whitelist.contains(instance_name)))
+    }
+
+    pub fn should_process_metadata_updates(&self, contract_address: &Felt) -> bool {
+        // If metadata updates are globally disabled, return false
+        if !self.metadata_updates {
+            return false;
+        }
+
+        // Check blacklist first (takes precedence)
+        if self.metadata_update_blacklist.contains(contract_address) {
+            return false;
+        }
+
+        // If whitelist is empty, allow all (except blacklisted)
+        if self.metadata_update_whitelist.is_empty() {
+            return true;
+        }
+
+        // Check if address is in whitelist
+        self.metadata_update_whitelist.contains(contract_address)
     }
 }
 
@@ -106,6 +132,10 @@ where
     }
 
     fn validate(&self, event: &Event) -> bool;
+
+    fn should_process(&self, _event: &Event, _config: &EventProcessorConfig) -> bool {
+        true // Default implementation allows all events to be processed
+    }
 
     fn task_identifier(&self, event: &Event) -> TaskId;
 

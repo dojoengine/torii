@@ -175,6 +175,17 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                                 .find(|p| p.validate(event))
                                 .expect("Must find at least one processor for the event");
 
+                            // Check if this event should be processed based on configuration
+                            if !processor.should_process(event, &event_processor_config) {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    event_key = %processor.event_key(),
+                                    contract_address = ?contract_address,
+                                    "Skipping event due to configuration"
+                                );
+                                continue;
+                            }
+
                             debug!(
                                 target: LOG_TARGET,
                                 event_name = processor.event_key(),

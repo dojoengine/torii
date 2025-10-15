@@ -30,6 +30,10 @@ where
         event.keys.len() == 3 && event.data.is_empty()
     }
 
+    fn should_process(&self, event: &Event, config: &EventProcessorConfig) -> bool {
+        config.should_process_metadata_updates(&event.from_address)
+    }
+
     fn task_identifier(&self, event: &Event) -> TaskId {
         let mut hasher = DefaultHasher::new();
         event.from_address.hash(&mut hasher);
