@@ -658,6 +658,21 @@ impl Runner {
                         .clone()
                         .into_iter()
                         .collect(),
+                    metadata_updates: self.args.erc.metadata_updates,
+                    metadata_update_whitelist: self
+                        .args
+                        .erc
+                        .metadata_update_whitelist
+                        .iter()
+                        .filter_map(|s| Felt::from_hex(s.trim()).ok())
+                        .collect(),
+                    metadata_update_blacklist: self
+                        .args
+                        .erc
+                        .metadata_update_blacklist
+                        .iter()
+                        .filter_map(|s| Felt::from_hex(s.trim()).ok())
+                        .collect(),
                 },
                 world_block: self.args.indexing.world_block,
             },

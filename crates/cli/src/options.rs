@@ -416,6 +416,34 @@ pub struct ErcOptions {
         help = "Whether or not to index ERC721 and ERC1155 trait counts."
     )]
     pub trait_counts: bool,
+
+    /// Whether to process ERC-4906 metadata update events globally
+    #[arg(
+        long = "erc.metadata_updates",
+        default_value_t = true,
+        help = "Whether to process ERC-4906 metadata update events (MetadataUpdate, BatchMetadataUpdate). When false, all metadata updates are ignored."
+    )]
+    pub metadata_updates: bool,
+
+    /// Whitelist of contract addresses that should process metadata updates.
+    /// If empty, all contracts are allowed (subject to metadata_updates flag).
+    /// Format: comma-separated list of contract addresses in hex.
+    #[arg(
+        long = "erc.metadata_update_whitelist",
+        value_delimiter = ',',
+        help = "Whitelist of contract addresses (hex) that should process metadata updates. If empty, all contracts are allowed."
+    )]
+    pub metadata_update_whitelist: Vec<String>,
+
+    /// Blacklist of contract addresses that should NOT process metadata updates.
+    /// Takes precedence over whitelist.
+    /// Format: comma-separated list of contract addresses in hex.
+    #[arg(
+        long = "erc.metadata_update_blacklist",
+        value_delimiter = ',',
+        help = "Blacklist of contract addresses (hex) that should NOT process metadata updates. Takes precedence over whitelist."
+    )]
+    pub metadata_update_blacklist: Vec<String>,
 }
 
 impl Default for ErcOptions {
@@ -425,7 +453,45 @@ impl Default for ErcOptions {
             artifacts_path: None,
             token_attributes: true,
             trait_counts: false,
+            metadata_updates: true,
+            metadata_update_whitelist: vec![],
+            metadata_update_blacklist: vec![],
         }
+    }
+}
+
+impl ErcOptions {
+    /// Check if a contract address should process metadata updates
+    pub fn should_process_metadata_updates(&self, contract_address: &Felt) -> bool {
+        // If metadata updates are globally disabled, return false
+        if !self.metadata_updates {
+            return false;
+        }
+
+        let address_str = format!("{:#x}", contract_address);
+
+        // Check blacklist first (takes precedence)
+        if self.metadata_update_blacklist.iter().any(|addr| {
+            addr.trim().eq_ignore_ascii_case(&address_str)
+                || addr
+                    .trim()
+                    .eq_ignore_ascii_case(&format!("{:x}", contract_address))
+        }) {
+            return false;
+        }
+
+        // If whitelist is empty, allow all (except blacklisted)
+        if self.metadata_update_whitelist.is_empty() {
+            return true;
+        }
+
+        // Check if address is in whitelist
+        self.metadata_update_whitelist.iter().any(|addr| {
+            addr.trim().eq_ignore_ascii_case(&address_str)
+                || addr
+                    .trim()
+                    .eq_ignore_ascii_case(&format!("{:x}", contract_address))
+        })
     }
 }
 
