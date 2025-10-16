@@ -546,6 +546,8 @@ pub const DEFAULT_DATABASE_HARD_MEMORY_LIMIT: u64 = 0;
 pub const DEFAULT_DATABASE_MMAP_SIZE: u64 = 256 * 1024 * 1024;
 /// Default journal size limit in bytes (64MB)
 pub const DEFAULT_DATABASE_JOURNAL_SIZE_LIMIT: u64 = 64 * 1024 * 1024;
+/// Default temporary storage location for SQLite.
+pub const DEFAULT_DATABASE_TEMP_STORE: &str = "file";
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
@@ -721,7 +723,7 @@ pub struct SqlOptions {
     /// Temporary storage location for SQLite.
     #[arg(
         long = "sql.temp_store",
-        default_value = "file",
+        default_value = DEFAULT_DATABASE_TEMP_STORE,
         help = "Temporary storage location for SQLite. Options: 'default', 'file', 'memory'. \
                 'memory' stores temp tables in RAM (faster but uses more memory). \
                 'file' stores them on disk (slower but uses less memory). \
@@ -771,7 +773,7 @@ impl Default for SqlOptions {
             hooks: vec![],
             migrations: None,
             aggregators: vec![],
-            temp_store: "memory".to_string(),
+            temp_store: DEFAULT_DATABASE_TEMP_STORE.to_string(),
             mmap_size: DEFAULT_DATABASE_MMAP_SIZE,
             journal_size_limit: DEFAULT_DATABASE_JOURNAL_SIZE_LIMIT,
         }
