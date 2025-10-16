@@ -541,7 +541,7 @@ pub const DEFAULT_DATABASE_CACHE_SIZE: i64 = -500_000;
 /// Default soft memory limit in bytes (1GB)
 pub const DEFAULT_DATABASE_SOFT_MEMORY_LIMIT: u64 = 1024 * 1024 * 1024;
 /// Default hard memory limit in bytes (2GB)
-pub const DEFAULT_DATABASE_HARD_MEMORY_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
+pub const DEFAULT_DATABASE_HARD_MEMORY_LIMIT: u64 = 0;
 /// Default memory-mapped I/O size in bytes (256MB)
 pub const DEFAULT_DATABASE_MMAP_SIZE: u64 = 256 * 1024 * 1024;
 /// Default journal size limit in bytes (64MB)
