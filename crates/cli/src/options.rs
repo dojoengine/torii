@@ -705,6 +705,14 @@ pub struct SqlOptions {
                 abort operations to prevent excessive memory usage."
     )]
     pub hard_memory_limit: u64,
+
+    /// Shared cache mode for SQLite.
+    #[arg(
+        long = "sql.shared_cache",
+        default_value_t = false,
+        help = "Shared cache mode for SQLite. When enabled, SQLite will use a shared cache for all connections."
+    )]
+    pub shared_cache: bool,
 }
 
 impl Default for SqlOptions {
@@ -724,6 +732,7 @@ impl Default for SqlOptions {
             max_connections: DEFAULT_DATABASE_MAX_CONNECTIONS,
             soft_memory_limit: DEFAULT_DATABASE_SOFT_MEMORY_LIMIT,
             hard_memory_limit: DEFAULT_DATABASE_HARD_MEMORY_LIMIT,
+            shared_cache: false,
             hooks: vec![],
             migrations: None,
             aggregators: vec![],

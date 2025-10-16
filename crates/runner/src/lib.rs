@@ -209,31 +209,6 @@ fn config_sqlite_memstatus(enable: bool) {
     };
 }
 
-// Set a high global SQLite hard heap limit to allow per-connection PRAGMA limits
-fn set_sqlite_global_heap_limit() {
-    // Set to a percentage of available system memory so that per-connection PRAGMA limits can work
-    // The per-connection hard_heap_limit PRAGMA can only be set to values <= the global limit
-
-    // Get system memory info
-    let sys = sysinfo::System::new_all();
-    let total_memory = sys.total_memory(); // in bytes
-
-    // Set global limit to 90% of total RAM to leave headroom for OS and other processes
-    // This is high enough for per-connection limits but prevents SQLite from using all RAM
-    let global_limit = (total_memory as f64 * 0.9) as i64;
-
-    // SAFETY: calling into SQLite C API; must be before any SQLite connections are created.
-    let prev = unsafe { libsqlite3_sys::sqlite3_hard_heap_limit64(global_limit) };
-
-    debug!(
-        "SQLite global hard heap limit set to {} bytes (~{}GB / 90% of {}GB total RAM, previous was {} bytes)",
-        global_limit,
-        global_limit / (1024 * 1024 * 1024),
-        total_memory / (1024 * 1024 * 1024),
-        prev
-    );
-}
-
 /// Creates a responsive progress bar template based on terminal size
 fn create_progress_bar_template() -> String {
     let (terminal_width, msg_width) = if let Some((Width(w), Height(_))) = terminal_size() {
@@ -399,17 +374,17 @@ impl Runner {
             .create_if_missing(true)
             .with_regexp();
 
-        // Optimize SQLite threading for our runtime architecture
-        // Use total available threads instead of artificial 8-thread limit
-        let sqlite_threads = cmp::min(
-            cpu_count,
-            allocation.query_threads + allocation.indexer_threads,
-        );
+        // Optimize SQLite threading for parallelizable operations
+        // SQLite uses auxiliary threads for sorting, indexing, and complex queries
+        // Default is 0 (no parallelization), so we enable it for better performance
+        // Set to number of available CPUs for maximum parallelization potential
+        let sqlite_threads = cpu_count;
         options = options.pragma("threads", sqlite_threads.to_string());
 
         // Advanced performance settings optimized for indexing + query workload
         options = options.auto_vacuum(SqliteAutoVacuum::None);
         options = options.journal_mode(SqliteJournalMode::Wal);
+        options = options.shared_cache(self.args.sql.shared_cache);
 
         // Use NORMAL for better performance during heavy indexing
         // FULL would be safer but much slower for writes
@@ -428,12 +403,17 @@ impl Runner {
 
         // Increase busy timeout for concurrent access
         options = options.pragma("busy_timeout", self.args.sql.busy_timeout.to_string());
+        options = options.pragma(
+            "soft_heap_limit",
+            self.args.sql.soft_memory_limit.to_string(),
+        );
+        options = options.pragma(
+            "hard_heap_limit",
+            self.args.sql.hard_memory_limit.to_string(),
+        );
 
         // Enable memory status tracking globally
         config_sqlite_memstatus(true);
-
-        // Set global heap limit to unlimited so we can apply per-connection limits
-        set_sqlite_global_heap_limit();
 
         // Additional performance optimizations for indexing workload
         options = options.pragma("temp_store", "memory"); // Store temp tables in memory
@@ -446,12 +426,7 @@ impl Runner {
             .max_connections(1)
             .acquire_timeout(Duration::from_millis(self.args.sql.acquire_timeout))
             .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
-            .connect_with(
-                options
-                    .clone()
-                    .pragma("soft_heap_limit", 0.to_string())
-                    .pragma("hard_heap_limit", 0.to_string()),
-            )
+            .connect_with(options.clone())
             .await?;
 
         // Aggressive WAL cleanup
@@ -459,17 +434,8 @@ impl Runner {
             .execute("PRAGMA wal_checkpoint(TRUNCATE);")
             .await?;
 
-        // Readonly pool: Apply memory limits to prevent OOM from many concurrent queries
-        let readonly_options = options
-            .read_only(true)
-            .pragma(
-                "soft_heap_limit",
-                self.args.sql.soft_memory_limit.to_string(),
-            )
-            .pragma(
-                "hard_heap_limit",
-                self.args.sql.hard_memory_limit.to_string(),
-            );
+        // Readonly pool
+        let readonly_options = options.read_only(true);
 
         // Use more connections for readonly pool to handle concurrent queries
         let max_readonly_connections = cmp::max(
