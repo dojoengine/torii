@@ -505,7 +505,12 @@ fn build_composite_clause(
                         .collect();
                     let placeholders = selector_checks.join(", ");
                     where_clauses.push(format!(
-                        "({model_relation_table}.model_id NOT IN ({placeholders}) OR {table}.keys REGEXP ?)"
+                        "({}.model_id NOT IN ({placeholders}) OR {table}.keys REGEXP ?)",
+                        if historical {
+                            table
+                        } else {
+                            model_relation_table
+                        }
                     ));
                     // Add model selectors once for constructing world-scoped model_ids
                     bind_values.extend(model_selectors);
