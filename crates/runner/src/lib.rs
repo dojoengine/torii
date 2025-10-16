@@ -447,7 +447,8 @@ impl Runner {
             .acquire_timeout(Duration::from_millis(self.args.sql.acquire_timeout))
             .idle_timeout(Some(Duration::from_millis(self.args.sql.idle_timeout)))
             .connect_with(
-                options.clone()
+                options
+                    .clone()
                     .pragma("soft_heap_limit", 0.to_string())
                     .pragma("hard_heap_limit", 0.to_string()),
             )
