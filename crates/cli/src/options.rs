@@ -542,6 +542,10 @@ pub const DEFAULT_DATABASE_CACHE_SIZE: i64 = -500_000;
 pub const DEFAULT_DATABASE_SOFT_MEMORY_LIMIT: u64 = 1024 * 1024 * 1024;
 /// Default hard memory limit in bytes (2GB)
 pub const DEFAULT_DATABASE_HARD_MEMORY_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
+/// Default memory-mapped I/O size in bytes (256MB)
+pub const DEFAULT_DATABASE_MMAP_SIZE: u64 = 256 * 1024 * 1024;
+/// Default journal size limit in bytes (64MB)
+pub const DEFAULT_DATABASE_JOURNAL_SIZE_LIMIT: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
@@ -713,6 +717,37 @@ pub struct SqlOptions {
         help = "Shared cache mode for SQLite. When enabled, SQLite will use a shared cache for all connections."
     )]
     pub shared_cache: bool,
+
+    /// Temporary storage location for SQLite.
+    #[arg(
+        long = "sql.temp_store",
+        default_value = "memory",
+        help = "Temporary storage location for SQLite. Options: 'default', 'file', 'memory'. \
+                'memory' stores temp tables in RAM (faster but uses more memory). \
+                'file' stores them on disk (slower but uses less memory). \
+                Use 'file' on memory-constrained systems."
+    )]
+    pub temp_store: String,
+
+    /// Memory-mapped I/O size in bytes for SQLite.
+    #[arg(
+        long = "sql.mmap_size",
+        default_value_t = DEFAULT_DATABASE_MMAP_SIZE,
+        help = "Memory-mapped I/O size in bytes for SQLite. Default is 256MB. \
+                Memory mapping can improve performance but uses RAM. \
+                Set to 0 to disable or reduce on memory-constrained systems."
+    )]
+    pub mmap_size: u64,
+
+    /// Journal size limit in bytes for SQLite.
+    #[arg(
+        long = "sql.journal_size_limit",
+        default_value_t = DEFAULT_DATABASE_JOURNAL_SIZE_LIMIT,
+        help = "Journal size limit in bytes for SQLite. Default is 64MB. \
+                Limits the size of the rollback journal. \
+                Reduce this value on memory-constrained systems."
+    )]
+    pub journal_size_limit: u64,
 }
 
 impl Default for SqlOptions {
@@ -736,6 +771,9 @@ impl Default for SqlOptions {
             hooks: vec![],
             migrations: None,
             aggregators: vec![],
+            temp_store: "memory".to_string(),
+            mmap_size: DEFAULT_DATABASE_MMAP_SIZE,
+            journal_size_limit: DEFAULT_DATABASE_JOURNAL_SIZE_LIMIT,
         }
     }
 }

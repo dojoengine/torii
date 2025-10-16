@@ -416,9 +416,13 @@ impl Runner {
         config_sqlite_memstatus(true);
 
         // Additional performance optimizations for indexing workload
-        options = options.pragma("temp_store", "memory"); // Store temp tables in memory
-        options = options.pragma("mmap_size", "268435456"); // 256MB memory mapping
-        options = options.pragma("journal_size_limit", "67108864"); // 64MB journal limit
+        let temp_store = self.args.sql.temp_store.clone();
+        options = options.pragma("temp_store", temp_store);
+        options = options.pragma("mmap_size", self.args.sql.mmap_size.to_string());
+        options = options.pragma(
+            "journal_size_limit",
+            self.args.sql.journal_size_limit.to_string(),
+        );
 
         // Write pool: NO memory limits - critical for indexing performance
         let write_pool = SqlitePoolOptions::new()
