@@ -721,7 +721,7 @@ pub struct SqlOptions {
     /// Temporary storage location for SQLite.
     #[arg(
         long = "sql.temp_store",
-        default_value = "memory",
+        default_value = "file",
         help = "Temporary storage location for SQLite. Options: 'default', 'file', 'memory'. \
                 'memory' stores temp tables in RAM (faster but uses more memory). \
                 'file' stores them on disk (slower but uses less memory). \
