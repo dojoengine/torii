@@ -831,7 +831,10 @@ async fn test_member_clause(sequencer: &RunnerCtx) {
         .into_inner()
         .entities;
 
-    assert!(entities.len() >= 1, "Should find entities with remaining = 99");
+    assert!(
+        entities.len() >= 1,
+        "Should find entities with remaining = 99"
+    );
     let entity: Entity = entities.first().unwrap().clone().try_into().unwrap();
     let model_names: Vec<&str> = entity.models.iter().map(|m| m.name.as_str()).collect();
     assert!(model_names.contains(&"ns-Moves"));
@@ -972,7 +975,9 @@ async fn test_composite_clause_and(sequencer: &RunnerCtx) {
     );
 
     // Test: Composite AND clause - keys + member query
-    use torii_proto::{ComparisonOperator, CompositeClause, LogicalOperator, MemberClause, MemberValue};
+    use torii_proto::{
+        ComparisonOperator, CompositeClause, LogicalOperator, MemberClause, MemberValue,
+    };
     let query = Query {
         clause: Some(Clause::Composite(CompositeClause {
             operator: LogicalOperator::And,
@@ -1001,7 +1006,11 @@ async fn test_composite_clause_and(sequencer: &RunnerCtx) {
         .into_inner()
         .entities;
 
-    assert_eq!(entities.len(), 1, "Should find entity matching both keys and member condition");
+    assert_eq!(
+        entities.len(),
+        1,
+        "Should find entity matching both keys and member condition"
+    );
     let entity: Entity = entities.first().unwrap().clone().try_into().unwrap();
     assert_eq!(entity.hashed_keys, poseidon_hash_many(&[account.address()]));
     let model_names: Vec<&str> = entity.models.iter().map(|m| m.name.as_str()).collect();
@@ -1187,7 +1196,10 @@ async fn test_composite_clause_or(sequencer: &RunnerCtx) {
         .into_inner()
         .entities;
 
-    assert!(entities.len() >= 2, "Should find entities for both accounts");
+    assert!(
+        entities.len() >= 2,
+        "Should find entities for both accounts"
+    );
     let hashed_keys: Vec<Felt> = entities
         .iter()
         .map(|e| {
@@ -1354,8 +1366,11 @@ async fn test_historical_query(sequencer: &RunnerCtx) {
         .entities;
 
     // Historical queries should return data (may have multiple versions)
-    assert!(entities.len() >= 1, "Historical query should return entities");
-    
+    assert!(
+        entities.len() >= 1,
+        "Historical query should return entities"
+    );
+
     // Test: Non-historical query for comparison
     let query_non_historical = Query {
         clause: Some(Clause::Keys(KeysClause {
@@ -1375,7 +1390,11 @@ async fn test_historical_query(sequencer: &RunnerCtx) {
         .into_inner()
         .entities;
 
-    assert_eq!(entities_non_historical.len(), 1, "Non-historical query should return single entity");
+    assert_eq!(
+        entities_non_historical.len(),
+        1,
+        "Non-historical query should return single entity"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
