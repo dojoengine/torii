@@ -498,25 +498,31 @@ fn build_composite_clause(
                     where_clauses.push(format!("({table}.keys REGEXP ?)"));
                     bind_values.push(keys_pattern);
                 } else {
-                    // Only check REGEXP if model_id is in the model selectors
-                    // If model_id is NOT in selectors, include it without checking keys
-                    // model_id format is: world_address:selector, so we construct it dynamically
+                    // Only include entities that have at least one of the specified models with matching keys
+                    // Note: Can't use model_ids column directly in WHERE since it's computed via GROUP_CONCAT after WHERE
+                    // Using EXISTS for optimal performance - it's a semi-join that short-circuits on first match
                     let selector_checks: Vec<String> = (0..model_selectors.len())
                         .map(|_| format!("{table}.world_address || ':' || ?"))
                         .collect();
                     let placeholders = selector_checks.join(", ");
-                    where_clauses.push(format!(
-                        "(({table}.keys REGEXP ? AND {model_table}.model_id IN ({placeholders})) OR \
-                         {model_table}.model_id NOT IN ({placeholders}))",
-                        model_table = if historical {
-                            table
-                        } else {
-                            model_relation_table
-                        }
-                    ));
-                    bind_values.push(keys_pattern);
 
-                    // Add model selectors once for constructing world-scoped model_ids
+                    if historical {
+                        // For historical queries, filter directly on the historical table
+                        where_clauses.push(format!(
+                            "({table}.keys REGEXP ? AND {table}.model_id IN ({placeholders}))"
+                        ));
+                    } else {
+                        // EXISTS checks if entity has ANY of the specified models with matching keys
+                        // Very efficient with proper indexes: (entity_id, model_id) on entity_model table
+                        where_clauses.push(format!(
+                            "EXISTS (SELECT 1 FROM {model_relation_table} mr \
+                             WHERE mr.entity_id = {table}.id \
+                             AND {table}.keys REGEXP ? \
+                             AND mr.model_id IN ({placeholders}))"
+                        ));
+                    }
+
+                    bind_values.push(keys_pattern);
                     bind_values.extend(model_selectors);
                 }
             }
@@ -685,7 +691,7 @@ impl Sql {
 
         if !world_addresses.is_empty() {
             let placeholders = vec!["?"; world_addresses.len()].join(", ");
-            conditions.push(format!("{}.world_address IN ({})", table, placeholders));
+            conditions.push(format!("{table}.world_address IN ({placeholders})"));
             bind_values.extend(world_addresses.iter().map(felt_to_sql_string));
         }
 
