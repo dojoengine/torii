@@ -485,7 +485,6 @@ fn build_composite_clause(
             }
             Clause::Keys(keys) => {
                 let keys_pattern = build_keys_pattern(keys);
-                bind_values.push(keys_pattern);
                 let model_selectors: Vec<String> =
                     keys.models.iter().try_fold(Vec::new(), |mut acc, model| {
                         let selector = try_compute_selector_from_tag(model)
@@ -514,6 +513,7 @@ fn build_composite_clause(
                     ));
                     // Add model selectors once for constructing world-scoped model_ids
                     bind_values.extend(model_selectors);
+                    bind_values.push(keys_pattern);
                 }
             }
             Clause::Member(member) => {
