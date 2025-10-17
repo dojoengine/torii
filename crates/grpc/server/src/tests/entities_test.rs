@@ -832,7 +832,7 @@ async fn test_member_clause(sequencer: &RunnerCtx) {
         .entities;
 
     assert!(
-        entities.len() >= 1,
+        !entities.is_empty(),
         "Should find entities with remaining = 99"
     );
     let entity: Entity = entities.first().unwrap().clone().try_into().unwrap();
@@ -1367,7 +1367,7 @@ async fn test_historical_query(sequencer: &RunnerCtx) {
 
     // Historical queries should return data (may have multiple versions)
     assert!(
-        entities.len() >= 1,
+        !entities.is_empty(),
         "Historical query should return entities"
     );
 
