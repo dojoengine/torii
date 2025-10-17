@@ -199,6 +199,328 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
+async fn test_keys_clause_with_empty_models(sequencer: &RunnerCtx) {
+    let tempfile = NamedTempFile::new().unwrap();
+    let path = tempfile.path().to_string_lossy();
+    let options = SqliteConnectOptions::from_str(&path)
+        .unwrap()
+        .create_if_missing(true)
+        .with_regexp();
+    let pool = SqlitePoolOptions::new()
+        .min_connections(1)
+        .idle_timeout(None)
+        .max_lifetime(None)
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
+
+    let account = sequencer.account(0);
+
+    let world_local = metadata.load_dojo_world_local().unwrap();
+    let world_address = world_local.deterministic_world_address().unwrap();
+
+    let actions_address = world_local
+        .get_contract_address_local(compute_selector_from_names("ns", "actions"))
+        .unwrap();
+
+    let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
+
+    let world = WorldContract::new(world_address, &account);
+
+    world
+        .grant_writer(
+            &compute_bytearray_hash("ns"),
+            &ContractAddress(actions_address),
+        )
+        .send_with_cfg(&TxnConfig::init_wait())
+        .await
+        .unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    // spawn
+    let tx = account
+        .execute_v3(vec![Call {
+            to: actions_address,
+            selector: get_selector_from_name("spawn").unwrap(),
+            calldata: vec![],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    let (shutdown_tx, _) = broadcast::channel(1);
+
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
+    tokio::spawn(async move {
+        executor.run().await.unwrap();
+    });
+
+    let db = Sql::new(
+        pool.clone(),
+        sender,
+        &[ContractDefinition {
+            address: world_address,
+            r#type: ContractType::WORLD,
+            starting_block: None,
+        }],
+    )
+    .await
+    .unwrap();
+
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
+
+    let (shutdown_tx, _) = broadcast::channel(1);
+
+    let contracts = &[ContractDefinition {
+        address: world_address,
+        r#type: ContractType::WORLD,
+        starting_block: None,
+    }];
+    let mut engine = Engine::new(
+        Arc::new(db.clone()),
+        cache.clone(),
+        Arc::clone(&provider),
+        Arc::new(Processors {
+            ..Processors::default()
+        }),
+        EngineConfig::default(),
+        shutdown_tx,
+    );
+
+    let cursors = contracts
+        .iter()
+        .map(|c| (c.address, Default::default()))
+        .collect();
+
+    let fetcher = Fetcher::new(Arc::new(provider.clone()), FetcherConfig::default());
+
+    let data = fetcher.fetch(&cursors).await.unwrap();
+    engine
+        .process(
+            &data,
+            &contracts.iter().map(|c| (c.address, c.r#type)).collect(),
+        )
+        .await
+        .unwrap();
+
+    db.execute().await.unwrap();
+
+    let storage = Arc::new(db);
+    let messaging = Arc::new(Messaging::new(
+        MessagingConfig::default(),
+        storage.clone(),
+        provider.clone(),
+    ));
+    let grpc = DojoWorld::new(
+        storage,
+        messaging.clone(),
+        None,
+        pool.clone(),
+        GrpcConfig::default(),
+    );
+
+    // Test: Keys clause with empty models list should apply to all models
+    let query = Query {
+        clause: Some(Clause::Keys(KeysClause {
+            keys: vec![Some(account.address())],
+            pattern_matching: PatternMatching::FixedLen,
+            models: vec![], // Empty models list
+        })),
+        ..Default::default()
+    };
+    let entities = grpc
+        .retrieve_entities(Request::new(RetrieveEntitiesRequest {
+            query: Some(query.into()),
+        }))
+        .await
+        .unwrap()
+        .into_inner()
+        .entities;
+
+    assert_eq!(entities.len(), 1);
+    let entity: Entity = entities.first().unwrap().clone().try_into().unwrap();
+    assert_eq!(entity.hashed_keys, poseidon_hash_many(&[account.address()]));
+    // Should have both models
+    let model_names: Vec<&str> = entity.models.iter().map(|m| m.name.as_str()).collect();
+    assert!(model_names.contains(&"ns-Moves"));
+    assert!(model_names.contains(&"ns-Position"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[katana_runner::test(accounts = 10, db_dir = copy_spawn_and_move_db().as_str())]
+async fn test_keys_clause_with_specific_models(sequencer: &RunnerCtx) {
+    let tempfile = NamedTempFile::new().unwrap();
+    let path = tempfile.path().to_string_lossy();
+    let options = SqliteConnectOptions::from_str(&path)
+        .unwrap()
+        .create_if_missing(true)
+        .with_regexp();
+    let pool = SqlitePoolOptions::new()
+        .min_connections(1)
+        .idle_timeout(None)
+        .max_lifetime(None)
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+
+    let setup = TestSetup::from_examples("/tmp", "../../../examples/");
+    let metadata = setup.load_metadata("spawn-and-move", Profile::DEV);
+
+    let account = sequencer.account(0);
+
+    let world_local = metadata.load_dojo_world_local().unwrap();
+    let world_address = world_local.deterministic_world_address().unwrap();
+
+    let actions_address = world_local
+        .get_contract_address_local(compute_selector_from_names("ns", "actions"))
+        .unwrap();
+
+    let provider = Arc::new(JsonRpcClient::new(HttpTransport::new(sequencer.url())));
+
+    let world = WorldContract::new(world_address, &account);
+
+    world
+        .grant_writer(
+            &compute_bytearray_hash("ns"),
+            &ContractAddress(actions_address),
+        )
+        .send_with_cfg(&TxnConfig::init_wait())
+        .await
+        .unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    // spawn
+    let tx = account
+        .execute_v3(vec![Call {
+            to: actions_address,
+            selector: get_selector_from_name("spawn").unwrap(),
+            calldata: vec![],
+        }])
+        .send()
+        .await
+        .unwrap();
+
+    TransactionWaiter::new(tx.transaction_hash, &provider)
+        .await
+        .unwrap();
+
+    let (shutdown_tx, _) = broadcast::channel(1);
+
+    let (mut executor, sender) =
+        Executor::new(pool.clone(), shutdown_tx.clone(), Arc::clone(&provider))
+            .await
+            .unwrap();
+    tokio::spawn(async move {
+        executor.run().await.unwrap();
+    });
+
+    let db = Sql::new(
+        pool.clone(),
+        sender,
+        &[ContractDefinition {
+            address: world_address,
+            r#type: ContractType::WORLD,
+            starting_block: None,
+        }],
+    )
+    .await
+    .unwrap();
+
+    let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
+    let db = db.with_cache(cache.clone());
+
+    let (shutdown_tx, _) = broadcast::channel(1);
+
+    let contracts = &[ContractDefinition {
+        address: world_address,
+        r#type: ContractType::WORLD,
+        starting_block: None,
+    }];
+    let mut engine = Engine::new(
+        Arc::new(db.clone()),
+        cache.clone(),
+        Arc::clone(&provider),
+        Arc::new(Processors {
+            ..Processors::default()
+        }),
+        EngineConfig::default(),
+        shutdown_tx,
+    );
+
+    let cursors = contracts
+        .iter()
+        .map(|c| (c.address, Default::default()))
+        .collect();
+
+    let fetcher = Fetcher::new(Arc::new(provider.clone()), FetcherConfig::default());
+
+    let data = fetcher.fetch(&cursors).await.unwrap();
+    engine
+        .process(
+            &data,
+            &contracts.iter().map(|c| (c.address, c.r#type)).collect(),
+        )
+        .await
+        .unwrap();
+
+    db.execute().await.unwrap();
+
+    let storage = Arc::new(db);
+    let messaging = Arc::new(Messaging::new(
+        MessagingConfig::default(),
+        storage.clone(),
+        provider.clone(),
+    ));
+    let grpc = DojoWorld::new(
+        storage,
+        messaging.clone(),
+        None,
+        pool.clone(),
+        GrpcConfig::default(),
+    );
+
+    // Test: Keys clause with specific model - should only check keys for that model
+    let query = Query {
+        clause: Some(Clause::Keys(KeysClause {
+            keys: vec![Some(account.address())],
+            pattern_matching: PatternMatching::FixedLen,
+            models: vec!["ns-Position".to_string()], // Only Position model
+        })),
+        ..Default::default()
+    };
+    let entities = grpc
+        .retrieve_entities(Request::new(RetrieveEntitiesRequest {
+            query: Some(query.into()),
+        }))
+        .await
+        .unwrap()
+        .into_inner()
+        .entities;
+
+    assert_eq!(entities.len(), 1);
+    let entity: Entity = entities.first().unwrap().clone().try_into().unwrap();
+    assert_eq!(entity.hashed_keys, poseidon_hash_many(&[account.address()]));
+    // Should have both models (Position checked for keys, Moves included unconditionally)
+    let model_names: Vec<&str> = entity.models.iter().map(|m| m.name.as_str()).collect();
+    assert!(model_names.contains(&"ns-Moves"));
+    assert!(model_names.contains(&"ns-Position"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_entity_broker_multiple_subscriptions() {
     use crate::subscriptions::entity::{EntityManager, Service};
     use chrono::Utc;

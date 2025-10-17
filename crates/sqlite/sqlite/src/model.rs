@@ -494,7 +494,9 @@ fn build_composite_clause(
                     })?;
 
                 if model_selectors.is_empty() {
+                    // When no models are specified, apply keys comparison to all models
                     where_clauses.push(format!("({table}.keys REGEXP ?)"));
+                    bind_values.push(keys_pattern);
                 } else {
                     // Only check REGEXP if model_id is in the model selectors
                     // If model_id is NOT in selectors, include it without checking keys
