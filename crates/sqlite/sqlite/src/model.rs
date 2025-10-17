@@ -506,16 +506,18 @@ fn build_composite_clause(
                         .collect();
                     let placeholders = selector_checks.join(", ");
                     where_clauses.push(format!(
-                        "({}.model_id NOT IN ({placeholders}) OR {table}.keys REGEXP ?)",
-                        if historical {
+                        "(({table}.keys REGEXP ? AND {model_table}.model_id IN ({placeholders})) OR \
+                         {model_table}.model_id NOT IN ({placeholders}))",
+                        model_table = if historical {
                             table
                         } else {
                             model_relation_table
                         }
                     ));
+                    bind_values.push(keys_pattern);
+
                     // Add model selectors once for constructing world-scoped model_ids
                     bind_values.extend(model_selectors);
-                    bind_values.push(keys_pattern);
                 }
             }
             Clause::Member(member) => {
