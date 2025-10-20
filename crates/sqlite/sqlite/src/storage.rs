@@ -1523,22 +1523,22 @@ impl ReadOnlyStorage for Sql {
     }
 
     /// Performs a global search across all FTS5-indexed tables.
-    /// 
+    ///
     /// Uses SQLite FTS5 virtual tables for fast, ranked full-text search.
     /// FTS5 tables are created via migrations and automatically maintained via triggers.
-    /// 
+    ///
     /// Searches the following FTS5 tables:
     /// - achievements_fts: title, description, group_name
     /// - controllers_fts: username
     /// - token_attributes_fts: trait_name, trait_value
-    /// 
+    ///
     /// Query syntax supports FTS5 features:
     /// - Simple: "dragon"
     /// - Phrase: '"dragon slayer"'
     /// - Prefix: "dra*" (if prefix_matching enabled in config)
     /// - Boolean: "dragon OR knight"
     /// - Column-specific: "title:dragon"
-    /// 
+    ///
     /// Results are ranked by relevance using BM25 algorithm.
     async fn search(&self, query: &SearchQuery) -> Result<SearchResponse, StorageError> {
         // Validate query length
@@ -1588,12 +1588,17 @@ impl ReadOnlyStorage for Sql {
                  WHERE fts MATCH ?",
                 fts_table, base_table
             );
-            
+
             let mut bind_values: Vec<String> = vec![fts_query.clone()];
 
             // Add world_address filter if provided and table supports it
             if !query.world_addresses.is_empty() && base_table != "token_attributes" {
-                let placeholders = query.world_addresses.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let placeholders = query
+                    .world_addresses
+                    .iter()
+                    .map(|_| "?")
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 sql.push_str(&format!(" AND base.world_address IN ({})", placeholders));
                 for addr in &query.world_addresses {
                     bind_values.push(felt_to_sql_string(addr));
@@ -1602,7 +1607,12 @@ impl ReadOnlyStorage for Sql {
 
             // Add namespace filter if provided and table supports it
             if !query.namespaces.is_empty() && base_table == "achievements" {
-                let placeholders = query.namespaces.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let placeholders = query
+                    .namespaces
+                    .iter()
+                    .map(|_| "?")
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 sql.push_str(&format!(" AND base.namespace IN ({})", placeholders));
                 for ns in &query.namespaces {
                     bind_values.push(ns.clone());
@@ -1629,7 +1639,7 @@ impl ReadOnlyStorage for Sql {
                             table: base_table.to_string(),
                             count,
                             matches,
-                            });
+                        });
                     }
                 }
                 Err(e) => {
@@ -2390,8 +2400,8 @@ impl Sql {
         table_name: &str,
         rows: Vec<SqliteRow>,
     ) -> Result<Vec<SearchMatch>, StorageError> {
-        use std::collections::HashMap;
         use sqlx::Row;
+        use std::collections::HashMap;
 
         let mut matches = Vec::new();
 
@@ -2457,7 +2467,9 @@ impl Sql {
                         field_map.insert("trait_value".to_string(), trait_value);
                     }
                     if self.config.search.return_snippets {
-                        if let (Some(name), Some(value)) = (field_map.get("trait_name"), field_map.get("trait_value")) {
+                        if let (Some(name), Some(value)) =
+                            (field_map.get("trait_name"), field_map.get("trait_value"))
+                        {
                             field_map.insert("snippet".to_string(), format!("{}: {}", name, value));
                         }
                     }

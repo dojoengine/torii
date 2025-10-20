@@ -944,7 +944,6 @@ impl Default for SearchOptions {
     }
 }
 
-
 #[derive(Default, Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Snapshot options")]
