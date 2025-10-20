@@ -481,7 +481,7 @@ fn build_composite_clause(
                     })
                     .collect::<Vec<_>>()
                     .join(", ");
-                where_clauses.push(format!("({table}.id IN ({}))", ids));
+                where_clauses.push(format!("({table}.entity_id IN ({}))", ids));
             }
             Clause::Keys(keys) => {
                 let keys_pattern = build_keys_pattern(keys);
@@ -494,26 +494,36 @@ fn build_composite_clause(
                     })?;
 
                 if model_selectors.is_empty() {
+                    // When no models are specified, apply keys comparison to all models
                     where_clauses.push(format!("({table}.keys REGEXP ?)"));
+                    bind_values.push(keys_pattern);
                 } else {
-                    // Only check REGEXP if model_id is in the model selectors
-                    // If model_id is NOT in selectors, include it without checking keys
-                    // model_id format is: world_address:selector, so we construct it dynamically
+                    // Only include entities that have at least one of the specified models with matching keys
+                    // Note: Can't use model_ids column directly in WHERE since it's computed via GROUP_CONCAT after WHERE
+                    // Using EXISTS for optimal performance - it's a semi-join that short-circuits on first match
                     let selector_checks: Vec<String> = (0..model_selectors.len())
                         .map(|_| format!("{table}.world_address || ':' || ?"))
                         .collect();
                     let placeholders = selector_checks.join(", ");
-                    where_clauses.push(format!(
-                        "({}.model_id NOT IN ({placeholders}) OR {table}.keys REGEXP ?)",
-                        if historical {
-                            table
-                        } else {
-                            model_relation_table
-                        }
-                    ));
-                    // Add model selectors once for constructing world-scoped model_ids
-                    bind_values.extend(model_selectors);
+
+                    if historical {
+                        // For historical queries, filter directly on the historical table
+                        where_clauses.push(format!(
+                            "({table}.keys REGEXP ? AND {table}.model_id IN ({placeholders}))"
+                        ));
+                    } else {
+                        // EXISTS checks if entity has ANY of the specified models with matching keys
+                        // Very efficient with proper indexes: (entity_id, model_id) on entity_model table
+                        where_clauses.push(format!(
+                            "EXISTS (SELECT 1 FROM {model_relation_table} mr \
+                             WHERE mr.entity_id = {table}.id \
+                             AND {table}.keys REGEXP ? \
+                             AND mr.model_id IN ({placeholders}))"
+                        ));
+                    }
+
                     bind_values.push(keys_pattern);
+                    bind_values.extend(model_selectors);
                 }
             }
             Clause::Member(member) => {
@@ -681,7 +691,7 @@ impl Sql {
 
         if !world_addresses.is_empty() {
             let placeholders = vec!["?"; world_addresses.len()].join(", ");
-            conditions.push(format!("{}.world_address IN ({})", table, placeholders));
+            conditions.push(format!("{table}.world_address IN ({placeholders})"));
             bind_values.extend(world_addresses.iter().map(felt_to_sql_string));
         }
 
@@ -1013,7 +1023,7 @@ mod tests {
         let (where_clause, bind_values) =
             build_composite_clause("entities", "entity_model", &composite, false).unwrap();
 
-        assert_eq!(where_clause, "(entities.id IN (?, ?))");
+        assert_eq!(where_clause, "(entities.entity_id IN (?, ?))");
         assert_eq!(
             bind_values,
             hashed_keys
@@ -1058,7 +1068,8 @@ mod tests {
             build_composite_clause("entities", "entity_model", &composite, false).unwrap();
 
         assert!(where_clause.contains("entities.keys REGEXP ?"));
-        assert!(where_clause.contains("entity_model.model_id NOT IN"));
+        assert!(where_clause.contains("EXISTS"));
+        assert!(where_clause.contains("mr.model_id IN"));
         assert_eq!(bind_values.len(), 3); // keys pattern + 2 model selectors
     }
 
@@ -1612,7 +1623,7 @@ mod tests {
         let (where_clause, bind_values) =
             build_composite_clause("entities", "entity_model", &composite, false).unwrap();
 
-        assert!(where_clause.contains("(entities.id IN (?))"));
+        assert!(where_clause.contains("(entities.entity_id IN (?))"));
         assert!(where_clause.contains("([Player].[score] = ?)"));
         assert!(where_clause.contains("(entities.keys REGEXP ?)"));
         assert!(where_clause.contains(" AND "));
