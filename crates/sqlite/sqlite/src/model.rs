@@ -481,7 +481,7 @@ fn build_composite_clause(
                     })
                     .collect::<Vec<_>>()
                     .join(", ");
-                where_clauses.push(format!("({table}.id IN ({}))", ids));
+                where_clauses.push(format!("({table}.entity_id IN ({}))", ids));
             }
             Clause::Keys(keys) => {
                 let keys_pattern = build_keys_pattern(keys);
@@ -1068,7 +1068,7 @@ mod tests {
             build_composite_clause("entities", "entity_model", &composite, false).unwrap();
 
         assert!(where_clause.contains("entities.keys REGEXP ?"));
-        assert!(where_clause.contains("entity_model.model_id NOT IN"));
+        assert!(where_clause.contains("entity_model.model_id IN"));
         assert_eq!(bind_values.len(), 3); // keys pattern + 2 model selectors
     }
 

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -32,7 +33,7 @@ use torii_proto::{Clause, KeysClause, PatternMatching, Query};
 
 use torii_proto::schema::Entity;
 use torii_sqlite::executor::Executor;
-use torii_sqlite::Sql;
+use torii_sqlite::{Sql, SqlConfig};
 use torii_storage::proto::{ContractDefinition, ContractType};
 use torii_storage::Storage;
 
@@ -1281,7 +1282,7 @@ async fn test_historical_query(sequencer: &RunnerCtx) {
         executor.run().await.unwrap();
     });
 
-    let db = Sql::new(
+    let db = Sql::new_with_config(
         pool.clone(),
         sender,
         &[ContractDefinition {
@@ -1289,6 +1290,10 @@ async fn test_historical_query(sequencer: &RunnerCtx) {
             r#type: ContractType::WORLD,
             starting_block: None,
         }],
+        SqlConfig {
+            historical_models: HashSet::from([compute_selector_from_names("ns", "Position")]),
+            ..Default::default()
+        },
     )
     .await
     .unwrap();
