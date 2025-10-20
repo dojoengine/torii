@@ -1023,7 +1023,7 @@ mod tests {
         let (where_clause, bind_values) =
             build_composite_clause("entities", "entity_model", &composite, false).unwrap();
 
-        assert_eq!(where_clause, "(entities.id IN (?, ?))");
+        assert_eq!(where_clause, "(entities.entity_id IN (?, ?))");
         assert_eq!(
             bind_values,
             hashed_keys
@@ -1622,7 +1622,7 @@ mod tests {
         let (where_clause, bind_values) =
             build_composite_clause("entities", "entity_model", &composite, false).unwrap();
 
-        assert!(where_clause.contains("(entities.id IN (?))"));
+        assert!(where_clause.contains("(entities.entity_id IN (?))"));
         assert!(where_clause.contains("([Player].[score] = ?)"));
         assert!(where_clause.contains("(entities.keys REGEXP ?)"));
         assert!(where_clause.contains(" AND "));
