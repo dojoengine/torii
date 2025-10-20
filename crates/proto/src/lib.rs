@@ -2353,3 +2353,124 @@ impl TryFrom<proto::types::TransactionQuery> for TransactionQuery {
         })
     }
 }
+
+// ===== Search Types =====
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct SearchQuery {
+    pub query: String,
+    pub limit: u32,
+    pub world_addresses: Vec<Felt>,
+    pub namespaces: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct SearchMatch {
+    pub id: String,
+    pub fields: std::collections::HashMap<String, String>,
+    pub score: Option<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct TableSearchResults {
+    pub table: String,
+    pub count: u32,
+    pub matches: Vec<SearchMatch>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct SearchResponse {
+    pub total: u32,
+    pub results: Vec<TableSearchResults>,
+}
+
+// ===== Search Conversions =====
+
+impl From<SearchQuery> for proto::types::SearchQuery {
+    fn from(value: SearchQuery) -> Self {
+        Self {
+            query: value.query,
+            limit: value.limit,
+            world_addresses: value
+                .world_addresses
+                .into_iter()
+                .map(|addr| addr.to_bytes_be().to_vec())
+                .collect(),
+            namespaces: value.namespaces,
+        }
+    }
+}
+
+impl TryFrom<proto::types::SearchQuery> for SearchQuery {
+    type Error = ProtoError;
+    fn try_from(value: proto::types::SearchQuery) -> Result<Self, Self::Error> {
+        Ok(Self {
+            query: value.query,
+            limit: value.limit,
+            world_addresses: value
+                .world_addresses
+                .into_iter()
+                .map(|addr| Felt::from_bytes_be_slice(&addr))
+                .collect(),
+            namespaces: value.namespaces,
+        })
+    }
+}
+
+impl From<SearchMatch> for proto::types::SearchMatch {
+    fn from(value: SearchMatch) -> Self {
+        Self {
+            id: value.id,
+            fields: value.fields,
+            score: value.score,
+        }
+    }
+}
+
+impl From<proto::types::SearchMatch> for SearchMatch {
+    fn from(value: proto::types::SearchMatch) -> Self {
+        Self {
+            id: value.id,
+            fields: value.fields,
+            score: value.score,
+        }
+    }
+}
+
+impl From<TableSearchResults> for proto::types::TableSearchResults {
+    fn from(value: TableSearchResults) -> Self {
+        Self {
+            table: value.table,
+            count: value.count,
+            matches: value.matches.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<proto::types::TableSearchResults> for TableSearchResults {
+    fn from(value: proto::types::TableSearchResults) -> Self {
+        Self {
+            table: value.table,
+            count: value.count,
+            matches: value.matches.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<SearchResponse> for proto::types::SearchResponse {
+    fn from(value: SearchResponse) -> Self {
+        Self {
+            total: value.total,
+            results: value.results.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<proto::types::SearchResponse> for SearchResponse {
+    fn from(value: proto::types::SearchResponse) -> Self {
+        Self {
+            total: value.total,
+            results: value.results.into_iter().map(Into::into).collect(),
+        }
+    }
+}

@@ -15,8 +15,9 @@ use torii_proto::{
     schema::Entity, Activity, ActivityQuery, AggregationEntry, AggregationQuery, BalanceId,
     CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery, Controller,
     ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy, OrderDirection, Page,
-    Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId,
-    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
+    Query, SearchMatch, SearchQuery, SearchResponse, TableSearchResults, Token, TokenBalance,
+    TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery, TokenTransfer,
+    TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{utils::format_world_scoped_id, ReadOnlyStorage, Storage, StorageError};
@@ -1520,6 +1521,129 @@ impl ReadOnlyStorage for Sql {
             next_cursor: page.next_cursor,
         })
     }
+
+    /// Performs a global search across all FTS5-indexed tables.
+    /// 
+    /// Uses SQLite FTS5 virtual tables for fast, ranked full-text search.
+    /// FTS5 tables are created via migrations and automatically maintained via triggers.
+    /// 
+    /// Searches the following FTS5 tables:
+    /// - achievements_fts: title, description, group_name
+    /// - controllers_fts: username
+    /// - token_attributes_fts: trait_name, trait_value
+    /// 
+    /// Query syntax supports FTS5 features:
+    /// - Simple: "dragon"
+    /// - Phrase: '"dragon slayer"'
+    /// - Prefix: "dra*" (if prefix_matching enabled in config)
+    /// - Boolean: "dragon OR knight"
+    /// - Column-specific: "title:dragon"
+    /// 
+    /// Results are ranked by relevance using BM25 algorithm.
+    async fn search(&self, query: &SearchQuery) -> Result<SearchResponse, StorageError> {
+        // Validate query length
+        let search_term = query.query.trim();
+        if search_term.is_empty() {
+            return Ok(SearchResponse {
+                total: 0,
+                results: vec![],
+            });
+        }
+
+        // Validate against min_query_length from config
+        if search_term.len() < self.config.search.min_query_length {
+            return Ok(SearchResponse {
+                total: 0,
+                results: vec![],
+            });
+        }
+
+        // Apply prefix matching if enabled
+        let fts_query = if self.config.search.prefix_matching && !search_term.ends_with('*') {
+            format!("{}*", search_term)
+        } else {
+            search_term.to_string()
+        };
+
+        // FTS5 tables to search (automatically defined)
+        let fts_tables = vec![
+            ("achievements", "achievements_fts"),
+            ("controllers", "controllers_fts"),
+            ("token_attributes", "token_attributes_fts"),
+        ];
+
+        let mut all_results = Vec::new();
+        let mut total_count = 0u32;
+        let limit = if query.limit > 0 && query.limit <= self.config.search.max_results as u32 {
+            query.limit
+        } else {
+            self.config.search.max_results as u32
+        };
+
+        for (base_table, fts_table) in fts_tables {
+            // Build FTS5 query with optional filters
+            let mut sql = format!(
+                "SELECT fts.id, base.*, bm25(fts) as rank FROM {} fts 
+                 JOIN {} base ON fts.id = base.id 
+                 WHERE fts MATCH ?",
+                fts_table, base_table
+            );
+            
+            let mut bind_values: Vec<String> = vec![fts_query.clone()];
+
+            // Add world_address filter if provided and table supports it
+            if !query.world_addresses.is_empty() && base_table != "token_attributes" {
+                let placeholders = query.world_addresses.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                sql.push_str(&format!(" AND base.world_address IN ({})", placeholders));
+                for addr in &query.world_addresses {
+                    bind_values.push(felt_to_sql_string(addr));
+                }
+            }
+
+            // Add namespace filter if provided and table supports it
+            if !query.namespaces.is_empty() && base_table == "achievements" {
+                let placeholders = query.namespaces.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                sql.push_str(&format!(" AND base.namespace IN ({})", placeholders));
+                for ns in &query.namespaces {
+                    bind_values.push(ns.clone());
+                }
+            }
+
+            // Order by relevance (lower rank = more relevant in BM25)
+            sql.push_str(" ORDER BY rank ASC");
+            sql.push_str(&format!(" LIMIT {}", limit));
+
+            // Execute query
+            let mut sqlx_query = sqlx::query(&sql);
+            for value in bind_values {
+                sqlx_query = sqlx_query.bind(value);
+            }
+
+            match sqlx_query.fetch_all(&self.pool).await {
+                Ok(rows) => {
+                    let count = rows.len() as u32;
+                    if count > 0 {
+                        let matches = self.extract_fts_results(base_table, rows)?;
+                        total_count += count;
+                        all_results.push(TableSearchResults {
+                            table: base_table.to_string(),
+                            count,
+                            matches,
+                            });
+                    }
+                }
+                Err(e) => {
+                    // Log error but continue searching other tables
+                    tracing::warn!("FTS5 search failed for table {}: {}", fts_table, e);
+                }
+            }
+        }
+
+        Ok(SearchResponse {
+            total: total_count,
+            results: all_results,
+        })
+    }
 }
 
 #[async_trait]
@@ -2260,6 +2384,97 @@ impl Storage for Sql {
 }
 
 impl Sql {
+    /// Extracts search results from FTS5 query rows
+    fn extract_fts_results(
+        &self,
+        table_name: &str,
+        rows: Vec<SqliteRow>,
+    ) -> Result<Vec<SearchMatch>, StorageError> {
+        use std::collections::HashMap;
+        use sqlx::Row;
+
+        let mut matches = Vec::new();
+
+        for row in rows {
+            let mut field_map = HashMap::new();
+            let id: String = row.try_get("id").unwrap_or_default();
+
+            // Extract BM25 relevance score
+            let score: Option<f64> = row.try_get("rank").ok();
+
+            match table_name {
+                "achievements" => {
+                    if let Ok(title) = row.try_get::<String, _>("title") {
+                        field_map.insert("title".to_string(), title);
+                    }
+                    if let Ok(desc) = row.try_get::<String, _>("description") {
+                        field_map.insert("description".to_string(), desc);
+                    }
+                    if let Ok(group) = row.try_get::<String, _>("group_name") {
+                        field_map.insert("group_name".to_string(), group);
+                    }
+                    if let Ok(namespace) = row.try_get::<String, _>("namespace") {
+                        field_map.insert("namespace".to_string(), namespace);
+                    }
+                    if let Ok(world_address) = row.try_get::<String, _>("world_address") {
+                        field_map.insert("world_address".to_string(), world_address);
+                    }
+                    // Add snippet if enabled in config
+                    if self.config.search.return_snippets {
+                        // FTS5 snippet() function can be added in future enhancement
+                        // For now, return the full description or truncated version
+                        if let Some(desc) = field_map.get("description") {
+                            let snippet = if desc.len() > self.config.search.snippet_length {
+                                format!("{}...", &desc[..self.config.search.snippet_length])
+                            } else {
+                                desc.clone()
+                            };
+                            field_map.insert("snippet".to_string(), snippet);
+                        }
+                    }
+                }
+                "controllers" => {
+                    if let Ok(username) = row.try_get::<String, _>("username") {
+                        field_map.insert("username".to_string(), username);
+                    }
+                    if let Ok(address) = row.try_get::<String, _>("address") {
+                        field_map.insert("address".to_string(), address);
+                    }
+                    if self.config.search.return_snippets {
+                        if let Some(username) = field_map.get("username") {
+                            field_map.insert("snippet".to_string(), username.clone());
+                        }
+                    }
+                }
+                "token_attributes" => {
+                    if let Ok(token_id) = row.try_get::<String, _>("token_id") {
+                        field_map.insert("token_id".to_string(), token_id);
+                    }
+                    if let Ok(trait_name) = row.try_get::<String, _>("trait_name") {
+                        field_map.insert("trait_name".to_string(), trait_name);
+                    }
+                    if let Ok(trait_value) = row.try_get::<String, _>("trait_value") {
+                        field_map.insert("trait_value".to_string(), trait_value);
+                    }
+                    if self.config.search.return_snippets {
+                        if let (Some(name), Some(value)) = (field_map.get("trait_name"), field_map.get("trait_value")) {
+                            field_map.insert("snippet".to_string(), format!("{}: {}", name, value));
+                        }
+                    }
+                }
+                _ => {}
+            }
+
+            matches.push(SearchMatch {
+                id,
+                fields: field_map,
+                score,
+            });
+        }
+
+        Ok(matches)
+    }
+
     async fn fetch_transaction_calls(
         &self,
         transaction_hash: &str,

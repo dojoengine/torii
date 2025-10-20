@@ -563,6 +563,7 @@ impl Runner {
             trait_counts: self.args.erc.trait_counts,
             achievement_registration_model_name: self.args.achievement.registration_model_name,
             achievement_progression_model_name: self.args.achievement.progression_model_name,
+            search: self.args.search.clone(),
         };
 
         let (mut executor, sender) = Executor::new_with_config(
