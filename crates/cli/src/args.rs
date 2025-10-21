@@ -98,6 +98,11 @@ pub struct ToriiArgs {
     #[command(flatten)]
     #[merge]
     pub messaging: MessagingOptions,
+
+    #[cfg(feature = "server")]
+    #[command(flatten)]
+    #[merge]
+    pub search: SearchOptions,
 }
 
 impl Default for ToriiArgs {
@@ -126,6 +131,8 @@ impl Default for ToriiArgs {
             grpc: GrpcOptions::default(),
             #[cfg(feature = "server")]
             messaging: MessagingOptions::default(),
+            #[cfg(feature = "server")]
+            search: SearchOptions::default(),
         }
     }
 }

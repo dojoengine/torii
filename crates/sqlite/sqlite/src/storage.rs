@@ -15,8 +15,9 @@ use torii_proto::{
     schema::Entity, Activity, ActivityQuery, AggregationEntry, AggregationQuery, BalanceId,
     CallType, Clause, CompositeClause, Contract, ContractCursor, ContractQuery, Controller,
     ControllerQuery, Event, EventQuery, LogicalOperator, Model, OrderBy, OrderDirection, Page,
-    Query, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId,
-    TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
+    Query, SearchMatch, SearchQuery, SearchResponse, TableSearchResults, Token, TokenBalance,
+    TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery, TokenTransfer,
+    TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
 };
 use torii_sqlite_types::{HookEvent, Model as SQLModel};
 use torii_storage::{utils::format_world_scoped_id, ReadOnlyStorage, Storage, StorageError};
@@ -1518,6 +1519,200 @@ impl ReadOnlyStorage for Sql {
         Ok(Page {
             items: player_entries,
             next_cursor: page.next_cursor,
+        })
+    }
+
+    /// Performs a global search across the unified FTS5 search index.
+    ///
+    /// Uses a single SQLite FTS5 virtual table for fast, ranked full-text search
+    /// across all entity types:
+    /// - Achievements: title, description, group_name
+    /// - Controllers: username
+    /// - Token Attributes: trait_name, trait_value (NFT traits)
+    /// - Tokens: name, symbol (ERC20 only, token_id IS NULL)
+    ///
+    /// The unified index is automatically maintained via triggers.
+    ///
+    /// Query syntax supports FTS5 features:
+    /// - Simple: "dragon" or "USDC"
+    /// - Phrase: '"dragon slayer"'
+    /// - Prefix: "dra*" (if prefix_matching enabled in config)
+    /// - Boolean: "dragon OR knight"
+    /// - Column-specific: "primary_text:dragon"
+    ///
+    /// Results are ranked by relevance using BM25 algorithm and grouped by entity type.
+    async fn search(&self, query: &SearchQuery) -> Result<SearchResponse, StorageError> {
+        use std::collections::HashMap;
+
+        // Validate query length
+        let search_term = query.query.trim();
+        if search_term.is_empty() {
+            return Ok(SearchResponse {
+                total: 0,
+                results: vec![],
+            });
+        }
+
+        // Validate against min_query_length from config
+        if search_term.len() < self.config.search.min_query_length {
+            return Ok(SearchResponse {
+                total: 0,
+                results: vec![],
+            });
+        }
+
+        // Apply prefix matching if enabled
+        let fts_query = if self.config.search.prefix_matching && !search_term.ends_with('*') {
+            format!("{}*", search_term)
+        } else {
+            search_term.to_string()
+        };
+
+        let limit = if query.limit > 0 && query.limit <= self.config.search.max_results as u32 {
+            query.limit
+        } else {
+            self.config.search.max_results as u32
+        };
+
+        // Build unified search query
+        let mut sql = "SELECT entity_type, entity_id, primary_text, secondary_text, metadata, \
+                       bm25(search_index) as rank \
+                       FROM search_index \
+                       WHERE search_index MATCH ?"
+            .to_string();
+        let mut bind_values: Vec<String> = vec![fts_query];
+
+        // Add world_address filter if provided
+        if !query.world_addresses.is_empty() {
+            let addr_conditions: Vec<String> = query
+                .world_addresses
+                .iter()
+                .map(|_| "json_extract(metadata, '$.world_address') = ?".to_string())
+                .collect();
+            sql.push_str(&format!(" AND ({})", addr_conditions.join(" OR ")));
+            for addr in &query.world_addresses {
+                bind_values.push(felt_to_sql_string(addr));
+            }
+        }
+
+        // Add namespace filter if provided
+        if !query.namespaces.is_empty() {
+            let ns_conditions: Vec<String> = query
+                .namespaces
+                .iter()
+                .map(|_| "json_extract(metadata, '$.namespace') = ?".to_string())
+                .collect();
+            sql.push_str(&format!(" AND ({})", ns_conditions.join(" OR ")));
+            for ns in &query.namespaces {
+                bind_values.push(ns.clone());
+            }
+        }
+
+        // Order by relevance and limit results
+        sql.push_str(&format!(" ORDER BY rank ASC LIMIT {}", limit * 3)); // Get more for grouping
+
+        // Execute query
+        let mut sqlx_query = sqlx::query(&sql);
+        for value in bind_values {
+            sqlx_query = sqlx_query.bind(value);
+        }
+
+        let rows = match sqlx_query.fetch_all(&self.pool).await {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::warn!("Unified FTS5 search failed: {}", e);
+                return Ok(SearchResponse {
+                    total: 0,
+                    results: vec![],
+                });
+            }
+        };
+
+        // Group results by entity_type
+        let mut grouped_results: HashMap<String, Vec<SearchMatch>> = HashMap::new();
+        let mut entity_counts: HashMap<String, u32> = HashMap::new();
+
+        for row in rows {
+            let entity_type: String = row.try_get("entity_type").unwrap_or_default();
+            let entity_id: String = row.try_get("entity_id").unwrap_or_default();
+            let primary_text: String = row.try_get("primary_text").unwrap_or_default();
+            let secondary_text: String = row.try_get("secondary_text").unwrap_or_default();
+            let metadata: String = row.try_get("metadata").unwrap_or_else(|_| "{}".to_string());
+            let score: Option<f64> = row.try_get("rank").ok();
+
+            // Count per entity type
+            *entity_counts.entry(entity_type.clone()).or_insert(0) += 1;
+
+            // Apply per-type limit
+            let type_count = entity_counts.get(&entity_type).copied().unwrap_or(0);
+            if type_count > limit {
+                continue;
+            }
+
+            // Parse metadata JSON
+            let metadata_map: HashMap<String, String> =
+                serde_json::from_str(&metadata).unwrap_or_default();
+
+            let mut fields = metadata_map;
+            fields.insert("entity_id".to_string(), entity_id.clone());
+            fields.insert("primary_text".to_string(), primary_text.clone());
+            if !secondary_text.is_empty() {
+                fields.insert("secondary_text".to_string(), secondary_text.clone());
+            }
+
+            // Add snippet if enabled
+            if self.config.search.return_snippets {
+                let text = if !secondary_text.is_empty() {
+                    &secondary_text
+                } else {
+                    &primary_text
+                };
+                let snippet = if text.len() > self.config.search.snippet_length {
+                    format!("{}...", &text[..self.config.search.snippet_length])
+                } else {
+                    text.clone()
+                };
+                fields.insert("snippet".to_string(), snippet);
+            }
+
+            grouped_results
+                .entry(entity_type)
+                .or_default()
+                .push(SearchMatch {
+                    id: entity_id,
+                    fields,
+                    score,
+                });
+        }
+
+        // Convert to response format
+        let mut all_results = Vec::new();
+        let mut total_count = 0u32;
+
+        // Map entity_type to table names for compatibility
+        let type_to_table = |entity_type: &str| -> String {
+            match entity_type {
+                "achievement" => "achievements".to_string(),
+                "controller" => "controllers".to_string(),
+                "token_attribute" => "token_attributes".to_string(),
+                "token" => "tokens".to_string(),
+                _ => entity_type.to_string(),
+            }
+        };
+
+        for (entity_type, matches) in grouped_results {
+            let count = matches.len() as u32;
+            total_count += count;
+            all_results.push(TableSearchResults {
+                table: type_to_table(&entity_type),
+                count,
+                matches,
+            });
+        }
+
+        Ok(SearchResponse {
+            total: total_count,
+            results: all_results,
         })
     }
 }

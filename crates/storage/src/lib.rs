@@ -15,9 +15,10 @@ use torii_proto::schema::Entity;
 use torii_proto::{
     Achievement, AchievementQuery, Activity, ActivityQuery, AggregationEntry, AggregationQuery,
     BalanceId, Contract, ContractCursor, ContractQuery, Controller, ControllerQuery, Event,
-    EventQuery, Model, Page, PlayerAchievementEntry, PlayerAchievementQuery, Query, Token,
-    TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenId, TokenQuery,
-    TokenTransfer, TokenTransferQuery, Transaction, TransactionCall, TransactionQuery,
+    EventQuery, Model, Page, PlayerAchievementEntry, PlayerAchievementQuery, Query, SearchQuery,
+    SearchResponse, Token, TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery,
+    TokenId, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction, TransactionCall,
+    TransactionQuery,
 };
 
 pub mod utils;
@@ -116,6 +117,10 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
         &self,
         query: &PlayerAchievementQuery,
     ) -> Result<Page<PlayerAchievementEntry>, StorageError>;
+
+    /// Performs a global search across configured tables.
+    /// Searches achievements, controllers, token attributes, entities, and other configured tables.
+    async fn search(&self, query: &SearchQuery) -> Result<SearchResponse, StorageError>;
 }
 
 #[async_trait]

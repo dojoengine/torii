@@ -49,6 +49,8 @@ pub struct SqlConfig {
     // Achievement tracking configuration
     pub achievement_registration_model_name: String,
     pub achievement_progression_model_name: String,
+    // Search API configuration
+    pub search: torii_cli::SearchOptions,
 }
 
 impl SqlConfig {

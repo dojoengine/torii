@@ -57,6 +57,14 @@ pub const DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL_NAME: &str = "TrophyCreation";
 /// Default model tag for achievement progression (trophy progression)
 pub const DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL_NAME: &str = "TrophyProgression";
 
+// Search API defaults
+/// Default maximum number of search results to return per table
+pub const DEFAULT_SEARCH_MAX_RESULTS: usize = 100;
+/// Default minimum search query length
+pub const DEFAULT_SEARCH_MIN_QUERY_LENGTH: usize = 2;
+/// Default snippet length for search result highlighting
+pub const DEFAULT_SEARCH_SNIPPET_LENGTH: usize = 64;
+
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Relay options")]
@@ -793,7 +801,7 @@ pub struct ActivityOptions {
                 calls into sessions for efficient activity queries. Requires transaction indexing \
                 to be enabled (--indexing.transactions)."
     )]
-    pub enabled: bool,
+    pub activity_enabled: bool,
 
     /// Session timeout in seconds
     #[arg(
@@ -829,7 +837,7 @@ pub struct ActivityOptions {
 impl Default for ActivityOptions {
     fn default() -> Self {
         Self {
-            enabled: false,
+            activity_enabled: false,
             session_timeout: DEFAULT_ACTIVITY_SESSION_TIMEOUT,
             // retention_days: DEFAULT_ACTIVITY_RETENTION_DAYS,
             excluded_entrypoints: vec![],
@@ -865,6 +873,73 @@ impl Default for AchievementOptions {
         Self {
             registration_model_name: DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL_NAME.to_string(),
             progression_model_name: DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL_NAME.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
+#[serde(default)]
+#[command(next_help_heading = "Search API options (SQLite FTS5)")]
+pub struct SearchOptions {
+    /// Enable global search API with FTS5
+    #[arg(
+        long = "search.enabled",
+        default_value_t = false,
+        help = "Enable global search API using SQLite FTS5 full-text search. \
+                Automatically searches all FTS5-indexed tables (achievements, controllers, token_attributes)."
+    )]
+    pub search_enabled: bool,
+
+    /// Maximum number of search results to return per table
+    #[arg(
+        long = "search.max_results",
+        default_value_t = DEFAULT_SEARCH_MAX_RESULTS,
+        help = "Maximum number of search results to return per table. Default is 100."
+    )]
+    pub max_results: usize,
+
+    /// Minimum search query length
+    #[arg(
+        long = "search.min_query_length",
+        default_value_t = DEFAULT_SEARCH_MIN_QUERY_LENGTH,
+        help = "Minimum length of search query string. Queries shorter than this will be rejected. Default is 2."
+    )]
+    pub min_query_length: usize,
+
+    /// Return snippets with highlighted matches
+    #[arg(
+        long = "search.return_snippets",
+        default_value_t = true,
+        help = "Return text snippets with match highlights in search results using FTS5 snippet() function. Default is true."
+    )]
+    pub return_snippets: bool,
+
+    /// Snippet length for search result highlighting
+    #[arg(
+        long = "search.snippet_length",
+        default_value_t = DEFAULT_SEARCH_SNIPPET_LENGTH,
+        help = "Maximum length of text snippets in search results. Default is 64 characters."
+    )]
+    pub snippet_length: usize,
+
+    /// Enable prefix matching (e.g., 'dra*' matches 'dragon')
+    #[arg(
+        long = "search.prefix_matching",
+        default_value_t = true,
+        help = "Enable prefix matching in FTS5 queries. Allows wildcard searches like 'dra*'. Default is true."
+    )]
+    pub prefix_matching: bool,
+}
+
+impl Default for SearchOptions {
+    fn default() -> Self {
+        Self {
+            search_enabled: false,
+            max_results: DEFAULT_SEARCH_MAX_RESULTS,
+            min_query_length: DEFAULT_SEARCH_MIN_QUERY_LENGTH,
+            return_snippets: true,
+            snippet_length: DEFAULT_SEARCH_SNIPPET_LENGTH,
+            prefix_matching: true,
         }
     }
 }
@@ -1265,3 +1340,6 @@ fn parse_aggregator_config(part: &str) -> anyhow::Result<AggregatorConfig> {
         order,
     })
 }
+
+// Parses clap cli argument which is expected to be in the format:
+// - table_name:field1,field2,field3
