@@ -10,7 +10,6 @@ version.workspace = true
 
 [dependencies]
 torii-broker.workspace = true
-torii-cli.workspace = true
 torii-sqlite-types.workspace = true
 
 anyhow.workspace = true

@@ -1554,7 +1554,7 @@ impl ReadOnlyStorage for Sql {
         }
 
         // Validate against min_query_length from config
-        if search_term.len() < self.config.search.min_query_length {
+        if search_term.len() < self.config.search_min_query_length {
             return Ok(SearchResponse {
                 total: 0,
                 results: vec![],
@@ -1562,16 +1562,16 @@ impl ReadOnlyStorage for Sql {
         }
 
         // Apply prefix matching if enabled
-        let fts_query = if self.config.search.prefix_matching && !search_term.ends_with('*') {
+        let fts_query = if self.config.search_prefix_matching && !search_term.ends_with('*') {
             format!("{}*", search_term)
         } else {
             search_term.to_string()
         };
 
-        let limit = if query.limit > 0 && query.limit <= self.config.search.max_results as u32 {
+        let limit = if query.limit > 0 && query.limit <= self.config.search_max_results as u32 {
             query.limit
         } else {
-            self.config.search.max_results as u32
+            self.config.search_max_results as u32
         };
 
         // Build unified search query
@@ -1636,14 +1636,14 @@ impl ReadOnlyStorage for Sql {
             }
 
             // Add snippet if enabled
-            if self.config.search.return_snippets {
+            if self.config.search_return_snippets {
                 let text = if !secondary_text.is_empty() {
                     &secondary_text
                 } else {
                     &primary_text
                 };
-                let snippet = if text.len() > self.config.search.snippet_length {
-                    format!("{}...", &text[..self.config.search.snippet_length])
+                let snippet = if text.len() > self.config.search_snippet_length {
+                    format!("{}...", &text[..self.config.search_snippet_length])
                 } else {
                     text.clone()
                 };
