@@ -1554,7 +1554,7 @@ impl ReadOnlyStorage for Sql {
         }
 
         // Validate against min_query_length from config
-        if search_term.len() < self.config.search.min_query_length {
+        if search_term.len() < self.config.search_min_query_length {
             return Ok(SearchResponse {
                 total: 0,
                 results: vec![],
@@ -1562,54 +1562,29 @@ impl ReadOnlyStorage for Sql {
         }
 
         // Apply prefix matching if enabled
-        let fts_query = if self.config.search.prefix_matching && !search_term.ends_with('*') {
+        let fts_query = if self.config.search_prefix_matching && !search_term.ends_with('*') {
             format!("{}*", search_term)
         } else {
             search_term.to_string()
         };
 
-        let limit = if query.limit > 0 && query.limit <= self.config.search.max_results as u32 {
+        let limit = if query.limit > 0 && query.limit <= self.config.search_max_results as u32 {
             query.limit
         } else {
-            self.config.search.max_results as u32
+            self.config.search_max_results as u32
         };
 
         // Build unified search query
-        let mut sql = "SELECT entity_type, entity_id, primary_text, secondary_text, metadata, \
-                       bm25(search_index) as rank \
-                       FROM search_index \
-                       WHERE search_index MATCH ?"
-            .to_string();
-        let mut bind_values: Vec<String> = vec![fts_query];
-
-        // Add world_address filter if provided
-        if !query.world_addresses.is_empty() {
-            let addr_conditions: Vec<String> = query
-                .world_addresses
-                .iter()
-                .map(|_| "json_extract(metadata, '$.world_address') = ?".to_string())
-                .collect();
-            sql.push_str(&format!(" AND ({})", addr_conditions.join(" OR ")));
-            for addr in &query.world_addresses {
-                bind_values.push(felt_to_sql_string(addr));
-            }
-        }
-
-        // Add namespace filter if provided
-        if !query.namespaces.is_empty() {
-            let ns_conditions: Vec<String> = query
-                .namespaces
-                .iter()
-                .map(|_| "json_extract(metadata, '$.namespace') = ?".to_string())
-                .collect();
-            sql.push_str(&format!(" AND ({})", ns_conditions.join(" OR ")));
-            for ns in &query.namespaces {
-                bind_values.push(ns.clone());
-            }
-        }
-
-        // Order by relevance and limit results
-        sql.push_str(&format!(" ORDER BY rank ASC LIMIT {}", limit * 3)); // Get more for grouping
+        let sql = format!(
+            "SELECT entity_type, entity_id, primary_text, secondary_text, metadata, \
+             bm25(search_index) as rank \
+             FROM search_index \
+             WHERE search_index MATCH ? \
+             ORDER BY rank ASC \
+             LIMIT {}",
+            limit * 3 // Get more results for proper grouping by entity type
+        );
+        let bind_values: Vec<String> = vec![fts_query];
 
         // Execute query
         let mut sqlx_query = sqlx::query(&sql);
@@ -1661,14 +1636,14 @@ impl ReadOnlyStorage for Sql {
             }
 
             // Add snippet if enabled
-            if self.config.search.return_snippets {
+            if self.config.search_return_snippets {
                 let text = if !secondary_text.is_empty() {
                     &secondary_text
                 } else {
                     &primary_text
                 };
-                let snippet = if text.len() > self.config.search.snippet_length {
-                    format!("{}...", &text[..self.config.search.snippet_length])
+                let snippet = if text.len() > self.config.search_snippet_length {
+                    format!("{}...", &text[..self.config.search_snippet_length])
                 } else {
                     text.clone()
                 };

@@ -1,19 +1,3 @@
--- Drop existing FTS5 tables and triggers
-DROP TRIGGER IF EXISTS achievements_fts_insert;
-DROP TRIGGER IF EXISTS achievements_fts_update;
-DROP TRIGGER IF EXISTS achievements_fts_delete;
-DROP TABLE IF EXISTS achievements_fts;
-
-DROP TRIGGER IF EXISTS controllers_fts_insert;
-DROP TRIGGER IF EXISTS controllers_fts_update;
-DROP TRIGGER IF EXISTS controllers_fts_delete;
-DROP TABLE IF EXISTS controllers_fts;
-
-DROP TRIGGER IF EXISTS token_attributes_fts_insert;
-DROP TRIGGER IF EXISTS token_attributes_fts_update;
-DROP TRIGGER IF EXISTS token_attributes_fts_delete;
-DROP TABLE IF EXISTS token_attributes_fts;
-
 -- ========================================
 -- Unified Search Index (FTS5)
 -- ========================================
@@ -227,24 +211,41 @@ WHERE token_id IS NULL;
 --   - token_attribute: Searchable by trait_name, trait_value (NFT traits)
 --   - token: Searchable by name, symbol (ERC20 tokens only, token_id IS NULL)
 --
--- Search all types:
---   SELECT * FROM search_index WHERE search_index MATCH 'dragon' ORDER BY rank;
+-- Query Examples:
+--   
+--   Search all types:
+--     SELECT * FROM search_index WHERE search_index MATCH 'dragon' ORDER BY rank;
 --
--- Search specific type:
---   SELECT * FROM search_index 
---   WHERE search_index MATCH 'USDC' AND entity_type = 'token' 
---   ORDER BY rank;
+--   Search specific type:
+--     SELECT * FROM search_index 
+--     WHERE search_index MATCH 'USDC' AND entity_type = 'token' 
+--     ORDER BY rank;
 --
--- Search with metadata filter:
---   SELECT * FROM search_index 
---   WHERE search_index MATCH 'dragon' 
---   AND json_extract(metadata, '$.namespace') = 'my_game'
---   ORDER BY rank;
+--   Search tokens by symbol:
+--     SELECT * FROM search_index 
+--     WHERE search_index MATCH 'ETH' AND entity_type = 'token'
+--     ORDER BY rank;
 --
--- Search tokens by symbol:
---   SELECT * FROM search_index 
---   WHERE search_index MATCH 'ETH' AND entity_type = 'token'
---   ORDER BY rank;
+--   Phrase search:
+--     SELECT * FROM search_index 
+--     WHERE search_index MATCH '"dragon slayer"'
+--     ORDER BY rank;
+--
+--   Boolean search:
+--     SELECT * FROM search_index 
+--     WHERE search_index MATCH 'dragon OR knight'
+--     ORDER BY rank;
+--
+--   Prefix search:
+--     SELECT * FROM search_index 
+--     WHERE search_index MATCH 'dra*'
+--     ORDER BY rank;
+--
+--   Filter by metadata (if needed):
+--     SELECT * FROM search_index 
+--     WHERE search_index MATCH 'dragon' 
+--     AND json_extract(metadata, '$.namespace') = 'my_game'
+--     ORDER BY rank;
 --
 -- Add new searchable entity type:
 --   1. Create triggers for INSERT/UPDATE/DELETE with optional WHEN clause

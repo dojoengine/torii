@@ -657,10 +657,6 @@ message SearchQuery {
     string query = 1;
     // Maximum results to return per table
     uint32 limit = 2;
-    // Filter by world addresses (optional)
-    repeated bytes world_addresses = 3;
-    // Filter by namespaces (optional)
-    repeated string namespaces = 4;
 }
 
 // A single search result match
