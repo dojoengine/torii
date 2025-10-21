@@ -140,6 +140,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Processors<P
         ];
 
         for (contract_type, processors) in event_processors {
+            event_processors_map.entry(contract_type).or_default();
+
             for processor in processors {
                 let key = get_selector_from_name(processor.event_key().as_str())
                     .expect("Event key is ASCII so this should never fail");
