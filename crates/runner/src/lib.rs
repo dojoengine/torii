@@ -500,7 +500,7 @@ impl Runner {
         }
 
         // Validate activity tracking configuration
-        if self.args.activity.enabled && !self.args.indexing.transactions {
+        if self.args.activity.activity_enabled && !self.args.indexing.transactions {
             return Err(anyhow::anyhow!(
                 "Activity tracking is enabled but transaction indexing is disabled. \
                  Activity tracking requires transaction data to function. \
@@ -556,7 +556,7 @@ impl Runner {
             aggregators: self.args.sql.aggregators.clone(),
             wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
             optimize_interval: self.args.sql.optimize_interval,
-            activity_enabled: self.args.activity.enabled,
+            activity_enabled: self.args.activity.activity_enabled,
             activity_session_timeout: self.args.activity.session_timeout,
             activity_excluded_entrypoints,
             token_attributes: self.args.erc.token_attributes,

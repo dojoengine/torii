@@ -1583,10 +1583,10 @@ impl ReadOnlyStorage for Sql {
         for (base_table, fts_table) in fts_tables {
             // Build FTS5 query with optional filters
             let mut sql = format!(
-                "SELECT fts.id, base.*, bm25(fts) as rank FROM {} fts 
+                "SELECT fts.id, base.*, bm25({}) as rank FROM {} fts 
                  JOIN {} base ON fts.id = base.id 
-                 WHERE fts MATCH ?",
-                fts_table, base_table
+                 WHERE {} MATCH ?",
+                fts_table, fts_table, base_table, fts_table
             );
 
             let mut bind_values: Vec<String> = vec![fts_query.clone()];

@@ -57,11 +57,12 @@ use torii_proto::proto::world::{
     RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest, RetrieveTokenContractsResponse,
     RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse, RetrieveTokensRequest,
     RetrieveTokensResponse, RetrieveTransactionsRequest, RetrieveTransactionsResponse,
-    SubscribeAchievementProgressionsRequest, SubscribeAchievementProgressionsResponse,
-    SubscribeActivitiesRequest, SubscribeActivitiesResponse, SubscribeAggregationsRequest,
-    SubscribeAggregationsResponse, SubscribeContractsRequest, SubscribeContractsResponse,
-    SubscribeEntitiesRequest, SubscribeEntityResponse, SubscribeEventsResponse,
-    SubscribeTokenBalancesRequest, SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
+    SearchRequest, SearchResponse, SubscribeAchievementProgressionsRequest,
+    SubscribeAchievementProgressionsResponse, SubscribeActivitiesRequest,
+    SubscribeActivitiesResponse, SubscribeAggregationsRequest, SubscribeAggregationsResponse,
+    SubscribeContractsRequest, SubscribeContractsResponse, SubscribeEntitiesRequest,
+    SubscribeEntityResponse, SubscribeEventsResponse, SubscribeTokenBalancesRequest,
+    SubscribeTokenBalancesResponse, SubscribeTokenTransfersRequest,
     SubscribeTokenTransfersResponse, SubscribeTokensRequest, SubscribeTokensResponse,
     SubscribeTransactionsRequest, SubscribeTransactionsResponse,
     UpdateAchievementProgressionsSubscriptionRequest, UpdateActivitiesSubscriptionRequest,
@@ -672,6 +673,27 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         Ok(Response::new(RetrievePlayerAchievementsResponse {
             next_cursor: page.next_cursor.unwrap_or_default(),
             players,
+        }))
+    }
+
+    async fn search(
+        &self,
+        request: Request<SearchRequest>,
+    ) -> Result<Response<SearchResponse>, Status> {
+        let SearchRequest { query } = request.into_inner();
+        let query = query
+            .ok_or_else(|| Status::invalid_argument("Missing query argument"))?
+            .try_into()
+            .map_err(|e: ProtoError| Status::invalid_argument(e.to_string()))?;
+
+        let response = self
+            .storage
+            .search(&query)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(SearchResponse {
+            response: Some(response.into()),
         }))
     }
 

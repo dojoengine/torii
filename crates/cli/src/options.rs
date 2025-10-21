@@ -801,7 +801,7 @@ pub struct ActivityOptions {
                 calls into sessions for efficient activity queries. Requires transaction indexing \
                 to be enabled (--indexing.transactions)."
     )]
-    pub enabled: bool,
+    pub activity_enabled: bool,
 
     /// Session timeout in seconds
     #[arg(
@@ -837,7 +837,7 @@ pub struct ActivityOptions {
 impl Default for ActivityOptions {
     fn default() -> Self {
         Self {
-            enabled: false,
+            activity_enabled: false,
             session_timeout: DEFAULT_ACTIVITY_SESSION_TIMEOUT,
             // retention_days: DEFAULT_ACTIVITY_RETENTION_DAYS,
             excluded_entrypoints: vec![],
@@ -888,7 +888,7 @@ pub struct SearchOptions {
         help = "Enable global search API using SQLite FTS5 full-text search. \
                 Automatically searches all FTS5-indexed tables (achievements, controllers, token_attributes)."
     )]
-    pub enabled: bool,
+    pub search_enabled: bool,
 
     /// Maximum number of search results to return per table
     #[arg(
@@ -934,7 +934,7 @@ pub struct SearchOptions {
 impl Default for SearchOptions {
     fn default() -> Self {
         Self {
-            enabled: false,
+            search_enabled: false,
             max_results: DEFAULT_SEARCH_MAX_RESULTS,
             min_query_length: DEFAULT_SEARCH_MIN_QUERY_LENGTH,
             return_snippets: true,
