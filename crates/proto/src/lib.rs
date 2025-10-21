@@ -2360,8 +2360,6 @@ impl TryFrom<proto::types::TransactionQuery> for TransactionQuery {
 pub struct SearchQuery {
     pub query: String,
     pub limit: u32,
-    pub world_addresses: Vec<Felt>,
-    pub namespaces: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -2391,12 +2389,6 @@ impl From<SearchQuery> for proto::types::SearchQuery {
         Self {
             query: value.query,
             limit: value.limit,
-            world_addresses: value
-                .world_addresses
-                .into_iter()
-                .map(|addr| addr.to_bytes_be().to_vec())
-                .collect(),
-            namespaces: value.namespaces,
         }
     }
 }
@@ -2407,12 +2399,6 @@ impl TryFrom<proto::types::SearchQuery> for SearchQuery {
         Ok(Self {
             query: value.query,
             limit: value.limit,
-            world_addresses: value
-                .world_addresses
-                .into_iter()
-                .map(|addr| Felt::from_bytes_be_slice(&addr))
-                .collect(),
-            namespaces: value.namespaces,
         })
     }
 }

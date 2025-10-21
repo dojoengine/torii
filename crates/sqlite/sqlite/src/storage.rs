@@ -1575,41 +1575,16 @@ impl ReadOnlyStorage for Sql {
         };
 
         // Build unified search query
-        let mut sql = "SELECT entity_type, entity_id, primary_text, secondary_text, metadata, \
-                       bm25(search_index) as rank \
-                       FROM search_index \
-                       WHERE search_index MATCH ?"
-            .to_string();
-        let mut bind_values: Vec<String> = vec![fts_query];
-
-        // Add world_address filter if provided
-        if !query.world_addresses.is_empty() {
-            let addr_conditions: Vec<String> = query
-                .world_addresses
-                .iter()
-                .map(|_| "json_extract(metadata, '$.world_address') = ?".to_string())
-                .collect();
-            sql.push_str(&format!(" AND ({})", addr_conditions.join(" OR ")));
-            for addr in &query.world_addresses {
-                bind_values.push(felt_to_sql_string(addr));
-            }
-        }
-
-        // Add namespace filter if provided
-        if !query.namespaces.is_empty() {
-            let ns_conditions: Vec<String> = query
-                .namespaces
-                .iter()
-                .map(|_| "json_extract(metadata, '$.namespace') = ?".to_string())
-                .collect();
-            sql.push_str(&format!(" AND ({})", ns_conditions.join(" OR ")));
-            for ns in &query.namespaces {
-                bind_values.push(ns.clone());
-            }
-        }
-
-        // Order by relevance and limit results
-        sql.push_str(&format!(" ORDER BY rank ASC LIMIT {}", limit * 3)); // Get more for grouping
+        let sql = format!(
+            "SELECT entity_type, entity_id, primary_text, secondary_text, metadata, \
+             bm25(search_index) as rank \
+             FROM search_index \
+             WHERE search_index MATCH ? \
+             ORDER BY rank ASC \
+             LIMIT {}",
+            limit * 3 // Get more results for proper grouping by entity type
+        );
+        let bind_values: Vec<String> = vec![fts_query];
 
         // Execute query
         let mut sqlx_query = sqlx::query(&sql);
