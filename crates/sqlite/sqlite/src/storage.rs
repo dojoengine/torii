@@ -1522,25 +1522,28 @@ impl ReadOnlyStorage for Sql {
         })
     }
 
-    /// Performs a global search across all FTS5-indexed tables.
+    /// Performs a global search across the unified FTS5 search index.
     ///
-    /// Uses SQLite FTS5 virtual tables for fast, ranked full-text search.
-    /// FTS5 tables are created via migrations and automatically maintained via triggers.
+    /// Uses a single SQLite FTS5 virtual table for fast, ranked full-text search
+    /// across all entity types:
+    /// - Achievements: title, description, group_name
+    /// - Controllers: username
+    /// - Token Attributes: trait_name, trait_value (NFT traits)
+    /// - Tokens: name, symbol (ERC20 only, token_id IS NULL)
     ///
-    /// Searches the following FTS5 tables:
-    /// - achievements_fts: title, description, group_name
-    /// - controllers_fts: username
-    /// - token_attributes_fts: trait_name, trait_value
+    /// The unified index is automatically maintained via triggers.
     ///
     /// Query syntax supports FTS5 features:
-    /// - Simple: "dragon"
+    /// - Simple: "dragon" or "USDC"
     /// - Phrase: '"dragon slayer"'
     /// - Prefix: "dra*" (if prefix_matching enabled in config)
     /// - Boolean: "dragon OR knight"
-    /// - Column-specific: "title:dragon"
+    /// - Column-specific: "primary_text:dragon"
     ///
-    /// Results are ranked by relevance using BM25 algorithm.
+    /// Results are ranked by relevance using BM25 algorithm and grouped by entity type.
     async fn search(&self, query: &SearchQuery) -> Result<SearchResponse, StorageError> {
+        use std::collections::HashMap;
+
         // Validate query length
         let search_term = query.query.trim();
         if search_term.is_empty() {
@@ -1565,88 +1568,146 @@ impl ReadOnlyStorage for Sql {
             search_term.to_string()
         };
 
-        // FTS5 tables to search (automatically defined)
-        let fts_tables = vec![
-            ("achievements", "achievements_fts"),
-            ("controllers", "controllers_fts"),
-            ("token_attributes", "token_attributes_fts"),
-        ];
-
-        let mut all_results = Vec::new();
-        let mut total_count = 0u32;
         let limit = if query.limit > 0 && query.limit <= self.config.search.max_results as u32 {
             query.limit
         } else {
             self.config.search.max_results as u32
         };
 
-        for (base_table, fts_table) in fts_tables {
-            // Build FTS5 query with optional filters
-            let mut sql = format!(
-                "SELECT fts.id, base.*, bm25({}) as rank FROM {} fts 
-                 JOIN {} base ON fts.id = base.id 
-                 WHERE {} MATCH ?",
-                fts_table, fts_table, base_table, fts_table
-            );
+        // Build unified search query
+        let mut sql = "SELECT entity_type, entity_id, primary_text, secondary_text, metadata, \
+                       bm25(search_index) as rank \
+                       FROM search_index \
+                       WHERE search_index MATCH ?"
+            .to_string();
+        let mut bind_values: Vec<String> = vec![fts_query];
 
-            let mut bind_values: Vec<String> = vec![fts_query.clone()];
+        // Add world_address filter if provided
+        if !query.world_addresses.is_empty() {
+            let addr_conditions: Vec<String> = query
+                .world_addresses
+                .iter()
+                .map(|_| "json_extract(metadata, '$.world_address') = ?".to_string())
+                .collect();
+            sql.push_str(&format!(" AND ({})", addr_conditions.join(" OR ")));
+            for addr in &query.world_addresses {
+                bind_values.push(felt_to_sql_string(addr));
+            }
+        }
 
-            // Add world_address filter if provided and table supports it
-            if !query.world_addresses.is_empty() && base_table != "token_attributes" {
-                let placeholders = query
-                    .world_addresses
-                    .iter()
-                    .map(|_| "?")
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                sql.push_str(&format!(" AND base.world_address IN ({})", placeholders));
-                for addr in &query.world_addresses {
-                    bind_values.push(felt_to_sql_string(addr));
-                }
+        // Add namespace filter if provided
+        if !query.namespaces.is_empty() {
+            let ns_conditions: Vec<String> = query
+                .namespaces
+                .iter()
+                .map(|_| "json_extract(metadata, '$.namespace') = ?".to_string())
+                .collect();
+            sql.push_str(&format!(" AND ({})", ns_conditions.join(" OR ")));
+            for ns in &query.namespaces {
+                bind_values.push(ns.clone());
+            }
+        }
+
+        // Order by relevance and limit results
+        sql.push_str(&format!(" ORDER BY rank ASC LIMIT {}", limit * 3)); // Get more for grouping
+
+        // Execute query
+        let mut sqlx_query = sqlx::query(&sql);
+        for value in bind_values {
+            sqlx_query = sqlx_query.bind(value);
+        }
+
+        let rows = match sqlx_query.fetch_all(&self.pool).await {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::warn!("Unified FTS5 search failed: {}", e);
+                return Ok(SearchResponse {
+                    total: 0,
+                    results: vec![],
+                });
+            }
+        };
+
+        // Group results by entity_type
+        let mut grouped_results: HashMap<String, Vec<SearchMatch>> = HashMap::new();
+        let mut entity_counts: HashMap<String, u32> = HashMap::new();
+
+        for row in rows {
+            let entity_type: String = row.try_get("entity_type").unwrap_or_default();
+            let entity_id: String = row.try_get("entity_id").unwrap_or_default();
+            let primary_text: String = row.try_get("primary_text").unwrap_or_default();
+            let secondary_text: String = row.try_get("secondary_text").unwrap_or_default();
+            let metadata: String = row.try_get("metadata").unwrap_or_else(|_| "{}".to_string());
+            let score: Option<f64> = row.try_get("rank").ok();
+
+            // Count per entity type
+            *entity_counts.entry(entity_type.clone()).or_insert(0) += 1;
+
+            // Apply per-type limit
+            let type_count = entity_counts.get(&entity_type).copied().unwrap_or(0);
+            if type_count > limit {
+                continue;
             }
 
-            // Add namespace filter if provided and table supports it
-            if !query.namespaces.is_empty() && base_table == "achievements" {
-                let placeholders = query
-                    .namespaces
-                    .iter()
-                    .map(|_| "?")
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                sql.push_str(&format!(" AND base.namespace IN ({})", placeholders));
-                for ns in &query.namespaces {
-                    bind_values.push(ns.clone());
-                }
+            // Parse metadata JSON
+            let metadata_map: HashMap<String, String> =
+                serde_json::from_str(&metadata).unwrap_or_default();
+
+            let mut fields = metadata_map;
+            fields.insert("entity_id".to_string(), entity_id.clone());
+            fields.insert("primary_text".to_string(), primary_text.clone());
+            if !secondary_text.is_empty() {
+                fields.insert("secondary_text".to_string(), secondary_text.clone());
             }
 
-            // Order by relevance (lower rank = more relevant in BM25)
-            sql.push_str(" ORDER BY rank ASC");
-            sql.push_str(&format!(" LIMIT {}", limit));
-
-            // Execute query
-            let mut sqlx_query = sqlx::query(&sql);
-            for value in bind_values {
-                sqlx_query = sqlx_query.bind(value);
+            // Add snippet if enabled
+            if self.config.search.return_snippets {
+                let text = if !secondary_text.is_empty() {
+                    &secondary_text
+                } else {
+                    &primary_text
+                };
+                let snippet = if text.len() > self.config.search.snippet_length {
+                    format!("{}...", &text[..self.config.search.snippet_length])
+                } else {
+                    text.clone()
+                };
+                fields.insert("snippet".to_string(), snippet);
             }
 
-            match sqlx_query.fetch_all(&self.pool).await {
-                Ok(rows) => {
-                    let count = rows.len() as u32;
-                    if count > 0 {
-                        let matches = self.extract_fts_results(base_table, rows)?;
-                        total_count += count;
-                        all_results.push(TableSearchResults {
-                            table: base_table.to_string(),
-                            count,
-                            matches,
-                        });
-                    }
-                }
-                Err(e) => {
-                    // Log error but continue searching other tables
-                    tracing::warn!("FTS5 search failed for table {}: {}", fts_table, e);
-                }
+            grouped_results
+                .entry(entity_type)
+                .or_default()
+                .push(SearchMatch {
+                    id: entity_id,
+                    fields,
+                    score,
+                });
+        }
+
+        // Convert to response format
+        let mut all_results = Vec::new();
+        let mut total_count = 0u32;
+
+        // Map entity_type to table names for compatibility
+        let type_to_table = |entity_type: &str| -> String {
+            match entity_type {
+                "achievement" => "achievements".to_string(),
+                "controller" => "controllers".to_string(),
+                "token_attribute" => "token_attributes".to_string(),
+                "token" => "tokens".to_string(),
+                _ => entity_type.to_string(),
             }
+        };
+
+        for (entity_type, matches) in grouped_results {
+            let count = matches.len() as u32;
+            total_count += count;
+            all_results.push(TableSearchResults {
+                table: type_to_table(&entity_type),
+                count,
+                matches,
+            });
         }
 
         Ok(SearchResponse {
@@ -2394,99 +2455,6 @@ impl Storage for Sql {
 }
 
 impl Sql {
-    /// Extracts search results from FTS5 query rows
-    fn extract_fts_results(
-        &self,
-        table_name: &str,
-        rows: Vec<SqliteRow>,
-    ) -> Result<Vec<SearchMatch>, StorageError> {
-        use sqlx::Row;
-        use std::collections::HashMap;
-
-        let mut matches = Vec::new();
-
-        for row in rows {
-            let mut field_map = HashMap::new();
-            let id: String = row.try_get("id").unwrap_or_default();
-
-            // Extract BM25 relevance score
-            let score: Option<f64> = row.try_get("rank").ok();
-
-            match table_name {
-                "achievements" => {
-                    if let Ok(title) = row.try_get::<String, _>("title") {
-                        field_map.insert("title".to_string(), title);
-                    }
-                    if let Ok(desc) = row.try_get::<String, _>("description") {
-                        field_map.insert("description".to_string(), desc);
-                    }
-                    if let Ok(group) = row.try_get::<String, _>("group_name") {
-                        field_map.insert("group_name".to_string(), group);
-                    }
-                    if let Ok(namespace) = row.try_get::<String, _>("namespace") {
-                        field_map.insert("namespace".to_string(), namespace);
-                    }
-                    if let Ok(world_address) = row.try_get::<String, _>("world_address") {
-                        field_map.insert("world_address".to_string(), world_address);
-                    }
-                    // Add snippet if enabled in config
-                    if self.config.search.return_snippets {
-                        // FTS5 snippet() function can be added in future enhancement
-                        // For now, return the full description or truncated version
-                        if let Some(desc) = field_map.get("description") {
-                            let snippet = if desc.len() > self.config.search.snippet_length {
-                                format!("{}...", &desc[..self.config.search.snippet_length])
-                            } else {
-                                desc.clone()
-                            };
-                            field_map.insert("snippet".to_string(), snippet);
-                        }
-                    }
-                }
-                "controllers" => {
-                    if let Ok(username) = row.try_get::<String, _>("username") {
-                        field_map.insert("username".to_string(), username);
-                    }
-                    if let Ok(address) = row.try_get::<String, _>("address") {
-                        field_map.insert("address".to_string(), address);
-                    }
-                    if self.config.search.return_snippets {
-                        if let Some(username) = field_map.get("username") {
-                            field_map.insert("snippet".to_string(), username.clone());
-                        }
-                    }
-                }
-                "token_attributes" => {
-                    if let Ok(token_id) = row.try_get::<String, _>("token_id") {
-                        field_map.insert("token_id".to_string(), token_id);
-                    }
-                    if let Ok(trait_name) = row.try_get::<String, _>("trait_name") {
-                        field_map.insert("trait_name".to_string(), trait_name);
-                    }
-                    if let Ok(trait_value) = row.try_get::<String, _>("trait_value") {
-                        field_map.insert("trait_value".to_string(), trait_value);
-                    }
-                    if self.config.search.return_snippets {
-                        if let (Some(name), Some(value)) =
-                            (field_map.get("trait_name"), field_map.get("trait_value"))
-                        {
-                            field_map.insert("snippet".to_string(), format!("{}: {}", name, value));
-                        }
-                    }
-                }
-                _ => {}
-            }
-
-            matches.push(SearchMatch {
-                id,
-                fields: field_map,
-                score,
-            });
-        }
-
-        Ok(matches)
-    }
-
     async fn fetch_transaction_calls(
         &self,
         transaction_hash: &str,
