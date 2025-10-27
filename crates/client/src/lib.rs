@@ -18,9 +18,10 @@ use torii_proto::schema::Entity;
 use torii_proto::{
     Achievement, AchievementQuery, Activity, ActivityQuery, AggregationEntry, AggregationQuery,
     Clause, Contract, ContractQuery, Controller, ControllerQuery, Event, EventQuery, KeysClause,
-    Message, Page, PlayerAchievementEntry, PlayerAchievementQuery, Query, SqlRow, Token,
-    TokenBalance, TokenBalanceQuery, TokenContract, TokenContractQuery, TokenQuery, TokenTransfer,
-    TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery, World,
+    Message, Page, PlayerAchievementEntry, PlayerAchievementQuery, Query, SearchQuery,
+    SearchResponse, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContract,
+    TokenContractQuery, TokenQuery, TokenTransfer, TokenTransferQuery, Transaction,
+    TransactionFilter, TransactionQuery, World,
 };
 
 use crate::error::Error;
@@ -703,5 +704,42 @@ impl Client {
         let mut grpc_client = self.inner.clone();
         let rows = grpc_client.execute_sql(query).await?;
         Ok(rows)
+    }
+
+    /// Perform a full-text search across indexed entities using FTS5.
+    ///
+    /// # Arguments
+    /// * `query` - Search query containing the search text and optional limit
+    ///
+    /// # Returns
+    /// A `SearchResponse` containing results grouped by table with relevance scores
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use torii_client::Client;
+    /// # use torii_proto::SearchQuery;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = Client::new("http://localhost:8080".to_string()).await?;
+    /// let results = client.search(SearchQuery {
+    ///     query: "dragon".to_string(),
+    ///     limit: 10,
+    /// }).await?;
+    /// println!("Found {} total matches", results.total);
+    /// for table_results in results.results {
+    ///     println!("Table {}: {} matches", table_results.table, table_results.count);
+    ///     for match_result in table_results.matches {
+    ///         println!("  ID: {}, Score: {:?}", match_result.id, match_result.score);
+    ///         for (field, value) in match_result.fields {
+    ///             println!("    {}: {}", field, value);
+    ///         }
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn search(&self, query: SearchQuery) -> Result<SearchResponse, Error> {
+        let mut grpc_client = self.inner.clone();
+        let response = grpc_client.search(query).await?;
+        Ok(response)
     }
 }
