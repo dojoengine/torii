@@ -27,7 +27,7 @@ use torii_proto::proto::world::{
     RetrieveTokenBalancesRequest, RetrieveTokenBalancesResponse, RetrieveTokenContractsRequest,
     RetrieveTokenContractsResponse, RetrieveTokenTransfersRequest, RetrieveTokenTransfersResponse,
     RetrieveTokensRequest, RetrieveTokensResponse, RetrieveTransactionsRequest,
-    RetrieveTransactionsResponse, SubscribeAchievementProgressionsRequest,
+    RetrieveTransactionsResponse, SearchRequest, SubscribeAchievementProgressionsRequest,
     SubscribeAchievementProgressionsResponse, SubscribeActivitiesRequest,
     SubscribeActivitiesResponse, SubscribeAggregationsRequest, SubscribeAggregationsResponse,
     SubscribeContractsRequest, SubscribeContractsResponse, SubscribeEntitiesRequest,
@@ -43,9 +43,9 @@ use torii_proto::proto::world::{
 use torii_proto::schema::Entity;
 use torii_proto::{
     AchievementQuery, ActivityQuery, AggregationQuery, Clause, Contract, ContractQuery,
-    ControllerQuery, Event, EventQuery, KeysClause, Message, PlayerAchievementQuery, Query, SqlRow,
-    Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery, TokenTransfer,
-    TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery,
+    ControllerQuery, Event, EventQuery, KeysClause, Message, PlayerAchievementQuery, Query,
+    SearchQuery, SqlRow, Token, TokenBalance, TokenBalanceQuery, TokenContractQuery, TokenQuery,
+    TokenTransfer, TokenTransferQuery, Transaction, TransactionFilter, TransactionQuery,
 };
 
 pub use torii_proto as types;
@@ -907,6 +907,30 @@ impl WorldClient {
                     .into_iter()
                     .map(|r| r.into())
                     .collect()
+            })
+    }
+
+    /// Perform a full-text search across indexed entities.
+    /// Returns search results grouped by table with relevance scores.
+    pub async fn search(
+        &mut self,
+        query: SearchQuery,
+    ) -> Result<torii_proto::SearchResponse, Error> {
+        let request = SearchRequest {
+            query: Some(query.into()),
+        };
+        self.inner
+            .search(request)
+            .await
+            .map_err(Error::Grpc)
+            .map(|res| {
+                res.into_inner()
+                    .response
+                    .map(|r| r.into())
+                    .unwrap_or_else(|| torii_proto::SearchResponse {
+                        total: 0,
+                        results: vec![],
+                    })
             })
     }
 }
