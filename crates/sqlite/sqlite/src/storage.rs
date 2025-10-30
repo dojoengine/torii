@@ -263,7 +263,7 @@ impl ReadOnlyStorage for Sql {
         let executor = PaginationExecutor::new(self.pool.clone());
         let mut query_builder = QueryBuilder::new("tokens")
             .alias("t")
-            .select(&["t.*".to_string()]);
+            .select(&["t.*".to_string(), "t.id as ordering".to_string()]);
 
         let mut join_conditions = Vec::new();
         let mut where_conditions = Vec::new();
@@ -318,7 +318,7 @@ impl ReadOnlyStorage for Sql {
                 query_builder,
                 &query.pagination,
                 &OrderBy {
-                    field: "id".to_string(),
+                    field: "ordering".to_string(),
                     direction: OrderDirection::Desc,
                 },
             )
