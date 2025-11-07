@@ -1,8 +1,17 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
+
 use dashmap::DashMap;
 use dojo_types::schema::Ty;
+use futures::Stream;
+use futures_util::StreamExt;
 use rand::Rng;
 use starknet_crypto::Felt;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use torii_broker::types::EventMessageUpdate;
+use torii_broker::MemoryBroker;
 use torii_proto::schema::EntityWithMetadata;
 use torii_proto::Clause;
 use tracing::{error, trace};
@@ -87,8 +96,27 @@ impl EventMessageManager {
     }
 }
 
-// Process event message updates for subscribers - called by dispatcher
-pub(super) fn process_event_message(subs: &EventMessageManager, event: &EntityWithMetadata<true>) {
+#[must_use = "Service does nothing unless polled"]
+#[allow(missing_debug_implementations)]
+pub struct Service {
+    simple_broker: Pin<Box<dyn Stream<Item = EntityWithMetadata<true>> + Send>>,
+    subs_manager: Arc<EventMessageManager>,
+}
+
+impl Service {
+    pub fn new(subs_manager: Arc<EventMessageManager>) -> Self {
+        Self {
+            simple_broker: if subs_manager.config.optimistic {
+                Box::pin(MemoryBroker::<EventMessageUpdate>::subscribe_optimistic())
+            } else {
+                Box::pin(MemoryBroker::<EventMessageUpdate>::subscribe())
+            },
+            subs_manager,
+        }
+    }
+
+    // Process updates synchronously - no async overhead
+    fn process_event_message(subs: &EventMessageManager, event: &EntityWithMetadata<true>) {
         let mut closed_stream = Vec::new();
 
         for sub in subs.subscribers.iter() {
@@ -134,11 +162,27 @@ pub(super) fn process_event_message(subs: &EventMessageManager, event: &EntityWi
             }
         }
 
-    // Clean up closed subscribers
-    if !closed_stream.is_empty() {
-        for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
-            subs.subscribers.remove(&id);
+        // Clean up closed subscribers
+        if !closed_stream.is_empty() {
+            for id in closed_stream {
+                trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
+                subs.subscribers.remove(&id);
+            }
         }
+    }
+}
+
+impl Future for Service {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+
+        // Process updates inline for minimum latency
+        while let Poll::Ready(Some(event)) = this.simple_broker.poll_next_unpin(cx) {
+            Self::process_event_message(&this.subs_manager, &event);
+        }
+
+        Poll::Pending
     }
 }

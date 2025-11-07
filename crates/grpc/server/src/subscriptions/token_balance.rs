@@ -9,13 +9,11 @@ use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use rand::Rng;
 use starknet_crypto::Felt;
-use tokio::sync::mpsc::{
-    channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
-};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use torii_broker::types::TokenBalanceUpdate;
 use torii_broker::MemoryBroker;
 use torii_proto::TokenBalance;
-use tracing::{error, trace};
+use tracing::trace;
 
 use torii_proto::proto::world::SubscribeTokenBalancesResponse;
 
@@ -95,46 +93,29 @@ impl TokenBalanceManager {
             subscriber.token_ids = token_ids.into_iter().collect();
         }
     }
-
-    pub(super) async fn remove_subscriber(&self, id: u64) {
-        self.subscribers.remove(&id);
-    }
 }
 
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
     simple_broker: Pin<Box<dyn Stream<Item = TokenBalance> + Send>>,
-    balance_sender: UnboundedSender<TokenBalance>,
+    subs_manager: Arc<TokenBalanceManager>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<TokenBalanceManager>) -> Self {
-        let (balance_sender, balance_receiver) = unbounded_channel();
-        let service = Self {
+        Self {
             simple_broker: if subs_manager.config.optimistic {
                 Box::pin(MemoryBroker::<TokenBalanceUpdate>::subscribe_optimistic())
             } else {
                 Box::pin(MemoryBroker::<TokenBalanceUpdate>::subscribe())
             },
-            balance_sender,
-        };
-
-        tokio::spawn(Self::publish_updates(subs_manager, balance_receiver));
-
-        service
-    }
-
-    async fn publish_updates(
-        subs: Arc<TokenBalanceManager>,
-        mut balance_receiver: UnboundedReceiver<TokenBalance>,
-    ) {
-        while let Some(balance) = balance_receiver.recv().await {
-            Self::process_balance_update(&subs, &balance).await;
+            subs_manager,
         }
     }
 
-    async fn process_balance_update(subs: &Arc<TokenBalanceManager>, balance: &TokenBalance) {
+    // Process updates synchronously - no async overhead
+    fn process_balance(subs: &TokenBalanceManager, balance: &TokenBalance) {
         let mut closed_stream = Vec::new();
 
         for sub in subs.subscribers.iter() {
@@ -186,66 +167,8 @@ impl Service {
         }
 
         for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing balance stream.");
-            subs.remove_subscriber(id).await
-        }
-    }
-
-    // Synchronous version for dispatcher - no async overhead
-    pub(super) fn process_balance_sync(subs: &TokenBalanceManager, balance: &TokenBalance) {
-        let mut closed_stream = Vec::new();
-
-        for sub in subs.subscribers.iter() {
-            let idx = sub.key();
-            let sub = sub.value();
-
-            // Skip if contract address filter doesn't match
-            if !sub.contract_addresses.is_empty()
-                && !sub.contract_addresses.contains(&balance.contract_address)
-            {
-                continue;
-            }
-
-            // Skip if account address filter doesn't match
-            if !sub.account_addresses.is_empty()
-                && !sub.account_addresses.contains(&balance.account_address)
-            {
-                continue;
-            }
-
-            // Skip if token ID filter doesn't match
-            if !sub.token_ids.is_empty()
-                && balance.token_id.is_some()
-                && !sub.token_ids.contains(&balance.token_id.unwrap())
-            {
-                continue;
-            }
-
-            let resp = SubscribeTokenBalancesResponse {
-                subscription_id: *idx,
-                balance: Some(balance.clone().into()),
-            };
-
-            match sub.sender.try_send(Ok(resp)) {
-                Ok(_) => {
-                    trace!(target = LOG_TARGET, subscription_id = %idx, "Balance update sent to subscriber");
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    error!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
-                    closed_stream.push(*idx);
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    trace!(target = LOG_TARGET, subscription_id = %idx, "Subscriber channel closed");
-                    closed_stream.push(*idx);
-                }
-            }
-        }
-
-        if !closed_stream.is_empty() {
-            for id in closed_stream {
-                trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
-                subs.subscribers.remove(&id);
-            }
+            trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
+            subs.subscribers.remove(&id);
         }
     }
 }
@@ -256,10 +179,9 @@ impl Future for Service {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
+        // Process updates inline for minimum latency
         while let Poll::Ready(Some(balance)) = this.simple_broker.poll_next_unpin(cx) {
-            if let Err(e) = this.balance_sender.send(balance) {
-                error!(target = LOG_TARGET, error = ?e, "Sending balance update to processor.");
-            }
+            Self::process_balance(&this.subs_manager, &balance);
         }
 
         Poll::Pending

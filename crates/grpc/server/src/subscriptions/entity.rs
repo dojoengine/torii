@@ -1,8 +1,16 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
+
 use dashmap::DashMap;
 use dojo_types::schema::Ty;
+use futures::Stream;
+use futures_util::StreamExt;
 use rand::Rng;
 use starknet_crypto::Felt;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use torii_broker::{types::EntityUpdate, MemoryBroker};
 use torii_proto::schema::EntityWithMetadata;
 use tracing::{error, trace};
 
@@ -85,8 +93,27 @@ impl EntityManager {
     }
 }
 
-// Process entity updates for subscribers - called by dispatcher
-pub(super) fn process_entity_update(subs: &EntityManager, entity: &EntityWithMetadata) {
+#[must_use = "Service does nothing unless polled"]
+#[allow(missing_debug_implementations)]
+pub struct Service {
+    simple_broker: Pin<Box<dyn Stream<Item = EntityWithMetadata> + Send>>,
+    subs_manager: Arc<EntityManager>,
+}
+
+impl Service {
+    pub fn new(subs_manager: Arc<EntityManager>) -> Self {
+        Self {
+            simple_broker: if subs_manager.config.optimistic {
+                Box::pin(MemoryBroker::<EntityUpdate>::subscribe_optimistic())
+            } else {
+                Box::pin(MemoryBroker::<EntityUpdate>::subscribe())
+            },
+            subs_manager,
+        }
+    }
+
+    // Process updates synchronously - no async overhead
+    fn process_entity_update(subs: &EntityManager, entity: &EntityWithMetadata) {
         let mut closed_stream = Vec::new();
 
         for sub in subs.subscribers.iter() {
@@ -132,11 +159,27 @@ pub(super) fn process_entity_update(subs: &EntityManager, entity: &EntityWithMet
             }
         }
 
-    // Clean up closed subscribers
-    if !closed_stream.is_empty() {
-        for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
-            subs.subscribers.remove(&id);
+        // Clean up closed subscribers
+        if !closed_stream.is_empty() {
+            for id in closed_stream {
+                trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
+                subs.subscribers.remove(&id);
+            }
         }
+    }
+}
+
+impl Future for Service {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+
+        // Process updates inline for minimum latency - no task spawning
+        while let Poll::Ready(Some(entity)) = this.simple_broker.poll_next_unpin(cx) {
+            Self::process_entity_update(&this.subs_manager, &entity);
+        }
+
+        Poll::Pending
     }
 }

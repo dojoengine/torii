@@ -1,9 +1,18 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
+
 use dashmap::DashMap;
+use futures::Stream;
+use futures_util::StreamExt;
 use rand::Rng;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+use torii_broker::types::EventUpdate;
+use torii_broker::MemoryBroker;
 use torii_proto::EventWithMetadata;
 use torii_proto::KeysClause;
-use tracing::{error, trace};
+use tracing::trace;
 
 use crate::GrpcConfig;
 
@@ -54,14 +63,29 @@ impl EventManager {
 
         receiver
     }
-
-    pub(super) async fn remove_subscriber(&self, id: usize) {
-        self.subscribers.remove(&id);
-    }
 }
 
-// Process event updates for subscribers - called by dispatcher
-pub(super) fn process_event(subs: &EventManager, event: &EventWithMetadata) {
+#[must_use = "Service does nothing unless polled"]
+#[allow(missing_debug_implementations)]
+pub struct Service {
+    simple_broker: Pin<Box<dyn Stream<Item = EventWithMetadata> + Send>>,
+    subs_manager: Arc<EventManager>,
+}
+
+impl Service {
+    pub fn new(subs_manager: Arc<EventManager>) -> Self {
+        Self {
+            simple_broker: if subs_manager.config.optimistic {
+                Box::pin(MemoryBroker::<EventUpdate>::subscribe_optimistic())
+            } else {
+                Box::pin(MemoryBroker::<EventUpdate>::subscribe())
+            },
+            subs_manager,
+        }
+    }
+
+    // Process updates synchronously - no async overhead
+    fn process_event(subs: &EventManager, event: &EventWithMetadata) {
         let mut closed_stream = Vec::new();
 
         let event = event.event.clone();
@@ -106,8 +130,24 @@ pub(super) fn process_event(subs: &EventManager, event: &EventWithMetadata) {
             }
         }
 
-    for id in closed_stream {
-        trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
-        subs.subscribers.remove(&id);
+        for id in closed_stream {
+            trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
+            subs.subscribers.remove(&id);
+        }
+    }
+}
+
+impl Future for Service {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+
+        // Process updates inline for minimum latency
+        while let Poll::Ready(Some(event)) = this.simple_broker.poll_next_unpin(cx) {
+            Self::process_event(&this.subs_manager, &event);
+        }
+
+        Poll::Pending
     }
 }

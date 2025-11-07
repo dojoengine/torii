@@ -6,15 +6,13 @@ use std::task::{Context, Poll};
 use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use rand::Rng;
-use tokio::sync::mpsc::{
-    channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
-};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use torii_broker::types::ContractUpdate;
 use torii_broker::MemoryBroker;
 use torii_proto::{Contract, ContractQuery};
 use torii_storage::ReadOnlyStorage;
 use torii_storage::StorageError;
-use tracing::{error, trace};
+use tracing::trace;
 
 use torii_proto::proto::world::SubscribeContractsResponse;
 
@@ -65,46 +63,29 @@ impl ContractManager {
 
         Ok(receiver)
     }
-
-    pub(super) async fn remove_subscriber(&self, id: usize) {
-        self.subscribers.remove(&id);
-    }
 }
 
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
     simple_broker: Pin<Box<dyn Stream<Item = Contract> + Send>>,
-    update_sender: UnboundedSender<Contract>,
+    subs_manager: Arc<ContractManager>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<ContractManager>) -> Self {
-        let (update_sender, update_receiver) = unbounded_channel();
-        let service = Self {
+        Self {
             simple_broker: if subs_manager.config.optimistic {
                 Box::pin(MemoryBroker::<ContractUpdate>::subscribe_optimistic())
             } else {
                 Box::pin(MemoryBroker::<ContractUpdate>::subscribe())
             },
-            update_sender,
-        };
-
-        tokio::spawn(Self::publish_updates(subs_manager, update_receiver));
-
-        service
-    }
-
-    async fn publish_updates(
-        subs: Arc<ContractManager>,
-        mut update_receiver: UnboundedReceiver<Contract>,
-    ) {
-        while let Some(update) = update_receiver.recv().await {
-            Self::process_update(&subs, &update).await;
+            subs_manager,
         }
     }
 
-    async fn process_update(subs: &Arc<ContractManager>, contract: &Contract) {
+    // Process updates synchronously - no async overhead
+    fn process_contract(subs: &ContractManager, contract: &Contract) {
         let mut closed_stream = Vec::new();
 
         for sub in subs.subscribers.iter() {
@@ -150,8 +131,24 @@ impl Service {
             }
         }
 
-    for id in closed_stream {
-        trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
-        subs.subscribers.remove(&id);
+        for id in closed_stream {
+            trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
+            subs.subscribers.remove(&id);
+        }
+    }
+}
+
+impl Future for Service {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+
+        // Process updates inline for minimum latency
+        while let Poll::Ready(Some(contract)) = this.simple_broker.poll_next_unpin(cx) {
+            Self::process_contract(&this.subs_manager, &contract);
+        }
+
+        Poll::Pending
     }
 }
