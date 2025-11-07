@@ -85,21 +85,27 @@ pub fn create_grpc_proxy_client(
     http_connector.set_nodelay(true);
 
     // Build client with HTTP/2 keepalive settings to match gRPC server and detect stale connections
+    // Enable adaptive window sizing for optimal streaming performance
     let client = if settings.http2_keepalive_interval > 0 && settings.http2_keepalive_timeout > 0 {
         Client::builder()
             .http2_only(true)
             .http2_keep_alive_interval(Duration::from_secs(settings.http2_keepalive_interval))
             .http2_keep_alive_timeout(Duration::from_secs(settings.http2_keepalive_timeout))
             .http2_keep_alive_while_idle(true)
+            .http2_adaptive_window(true)
             .build(http_connector)
     } else if settings.http2_keepalive_interval > 0 {
         Client::builder()
             .http2_only(true)
             .http2_keep_alive_interval(Duration::from_secs(settings.http2_keepalive_interval))
             .http2_keep_alive_while_idle(true)
+            .http2_adaptive_window(true)
             .build(http_connector)
     } else {
-        Client::builder().http2_only(true).build(http_connector)
+        Client::builder()
+            .http2_only(true)
+            .http2_adaptive_window(true)
+            .build(http_connector)
     };
 
     ReverseProxy::new(client)

@@ -1287,8 +1287,9 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
         .tcp_keepalive(Some(tcp_keepalive))
         .http2_keepalive_interval(Some(http2_keepalive_interval))
         .http2_keepalive_timeout(Some(http2_keepalive_timeout))
-        .initial_stream_window_size(Some(1024 * 1024))
-        .initial_connection_window_size(Some(1024 * 1024 * 10))
+        // Enable adaptive flow control for optimal streaming performance
+        // This automatically adjusts window sizes based on throughput and prevents flow control bottlenecks
+        .http2_adaptive_window(Some(true))
         // Should be enabled by default.
         .tcp_nodelay(true)
         .layer(
