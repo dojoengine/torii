@@ -119,51 +119,22 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let achievement_progression_manager =
             Arc::new(AchievementProgressionManager::new(config.clone()));
 
-        // Spawn subscription services on the main runtime
-        // They use try_send and non-blocking operations to avoid starving other tasks
-        tokio::spawn(subscriptions::entity::Service::new(Arc::clone(
-            &entity_manager,
-        )));
-
-        tokio::spawn(subscriptions::event_message::Service::new(Arc::clone(
-            &event_message_manager,
-        )));
-
-        tokio::spawn(subscriptions::event::Service::new(Arc::clone(
-            &event_manager,
-        )));
-
-        tokio::spawn(subscriptions::contract::Service::new(Arc::clone(
-            &contract_manager,
-        )));
-
-        tokio::spawn(subscriptions::token_balance::Service::new(Arc::clone(
-            &token_balance_manager,
-        )));
-
-        tokio::spawn(subscriptions::token::Service::new(Arc::clone(
-            &token_manager,
-        )));
-
-        tokio::spawn(subscriptions::token_transfer::Service::new(Arc::clone(
-            &token_transfer_manager,
-        )));
-
-        tokio::spawn(subscriptions::transaction::Service::new(Arc::clone(
-            &transaction_manager,
-        )));
-
-        tokio::spawn(subscriptions::aggregation::Service::new(Arc::clone(
-            &aggregation_manager,
-        )));
-
-        tokio::spawn(subscriptions::activity::Service::new(Arc::clone(
-            &activity_manager,
-        )));
-
-        tokio::spawn(subscriptions::achievement::Service::new(Arc::clone(
-            &achievement_progression_manager,
-        )));
+        // Spawn unified broker dispatcher - single task handling all subscription types
+        // This replaces 11 separate service spawns for better efficiency
+        tokio::spawn(subscriptions::dispatcher::BrokerDispatcher::new(
+            config.clone(),
+            Arc::clone(&entity_manager),
+            Arc::clone(&event_message_manager),
+            Arc::clone(&event_manager),
+            Arc::clone(&contract_manager),
+            Arc::clone(&token_manager),
+            Arc::clone(&token_balance_manager),
+            Arc::clone(&token_transfer_manager),
+            Arc::clone(&transaction_manager),
+            Arc::clone(&aggregation_manager),
+            Arc::clone(&activity_manager),
+            Arc::clone(&achievement_progression_manager),
+        ));
 
         Self {
             storage,

@@ -150,25 +150,8 @@ impl Service {
             }
         }
 
-        for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing contract updates stream.");
-            subs.remove_subscriber(id).await
-        }
-    }
-}
-
-impl Future for Service {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-
-        while let Poll::Ready(Some(update)) = this.simple_broker.poll_next_unpin(cx) {
-            if let Err(e) = this.update_sender.send(update) {
-                error!(target = LOG_TARGET, error = ?e, "Sending contract update to processor.");
-            }
-        }
-
-        Poll::Pending
+    for id in closed_stream {
+        trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
+        subs.subscribers.remove(&id);
     }
 }

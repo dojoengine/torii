@@ -62,8 +62,10 @@ where
     /// Publish an update message that all subscription streams can receive.
     pub fn publish(msg: Update<T>) {
         with_senders::<Update<T>, _, _>(|senders| {
+            // Use unbounded_send instead of start_send for better performance
+            // Unbounded channels never block or fail
             for (_, sender) in senders.0.iter_mut() {
-                sender.start_send(msg.clone()).ok();
+                let _ = sender.unbounded_send(msg.clone());
             }
         });
     }

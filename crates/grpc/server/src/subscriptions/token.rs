@@ -176,6 +176,57 @@ impl Service {
             subs.remove_subscriber(id).await
         }
     }
+
+    // Synchronous version for dispatcher - no async overhead
+    pub(super) fn process_token_sync(subs: &TokenManager, token: &Token) {
+        let mut closed_stream = Vec::new();
+
+        for sub in subs.subscribers.iter() {
+            let idx = sub.key();
+            let sub = sub.value();
+
+            // Skip if contract address filter doesn't match
+            if !sub.contract_addresses.is_empty()
+                && !sub.contract_addresses.contains(&token.contract_address)
+            {
+                continue;
+            }
+
+            // Skip if token ID filter doesn't match
+            if !sub.token_ids.is_empty()
+                && token.token_id.is_some()
+                && !sub.token_ids.contains(&token.token_id.unwrap())
+            {
+                continue;
+            }
+
+            let resp = SubscribeTokensResponse {
+                subscription_id: *idx,
+                token: Some(token.clone().into()),
+            };
+
+            match sub.sender.try_send(Ok(resp)) {
+                Ok(_) => {
+                    trace!(target = LOG_TARGET, subscription_id = %idx, "Token update sent to subscriber");
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    error!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
+                    closed_stream.push(*idx);
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    trace!(target = LOG_TARGET, subscription_id = %idx, "Subscriber channel closed");
+                    closed_stream.push(*idx);
+                }
+            }
+        }
+
+        if !closed_stream.is_empty() {
+            for id in closed_stream {
+                trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
+                subs.subscribers.remove(&id);
+            }
+        }
+    }
 }
 
 impl Future for Service {

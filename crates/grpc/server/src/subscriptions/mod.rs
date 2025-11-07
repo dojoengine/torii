@@ -9,6 +9,7 @@ pub mod achievement;
 pub mod activity;
 pub mod aggregation;
 pub mod contract;
+pub mod dispatcher;
 pub mod entity;
 pub mod error;
 pub mod event;

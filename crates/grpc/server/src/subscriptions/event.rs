@@ -1,17 +1,6 @@
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::task::{Context, Poll};
-
 use dashmap::DashMap;
-use futures::Stream;
-use futures_util::StreamExt;
 use rand::Rng;
-use tokio::sync::mpsc::{
-    channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
-};
-use torii_broker::types::EventUpdate;
-use torii_broker::MemoryBroker;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use torii_proto::EventWithMetadata;
 use torii_proto::KeysClause;
 use tracing::{error, trace};
@@ -71,40 +60,8 @@ impl EventManager {
     }
 }
 
-#[must_use = "Service does nothing unless polled"]
-#[allow(missing_debug_implementations)]
-pub struct Service {
-    simple_broker: Pin<Box<dyn Stream<Item = EventWithMetadata> + Send>>,
-    event_sender: UnboundedSender<EventWithMetadata>,
-}
-
-impl Service {
-    pub fn new(subs_manager: Arc<EventManager>) -> Self {
-        let (event_sender, event_receiver) = unbounded_channel();
-        let service = Self {
-            simple_broker: if subs_manager.config.optimistic {
-                Box::pin(MemoryBroker::<EventUpdate>::subscribe_optimistic())
-            } else {
-                Box::pin(MemoryBroker::<EventUpdate>::subscribe())
-            },
-            event_sender,
-        };
-
-        tokio::spawn(Self::publish_updates(subs_manager, event_receiver));
-
-        service
-    }
-
-    async fn publish_updates(
-        subs: Arc<EventManager>,
-        mut event_receiver: UnboundedReceiver<EventWithMetadata>,
-    ) {
-        while let Some(event) = event_receiver.recv().await {
-            Self::process_event(&subs, &event).await;
-        }
-    }
-
-    async fn process_event(subs: &Arc<EventManager>, event: &EventWithMetadata) {
+// Process event updates for subscribers - called by dispatcher
+pub(super) fn process_event(subs: &EventManager, event: &EventWithMetadata) {
         let mut closed_stream = Vec::new();
 
         let event = event.event.clone();
@@ -149,25 +106,8 @@ impl Service {
             }
         }
 
-        for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing events stream.");
-            subs.remove_subscriber(id).await
-        }
-    }
-}
-
-impl Future for Service {
-    type Output = ();
-
-    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> std::task::Poll<Self::Output> {
-        let pin = self.get_mut();
-
-        while let Poll::Ready(Some(event)) = pin.simple_broker.poll_next_unpin(cx) {
-            if let Err(e) = pin.event_sender.send(event) {
-                error!(target = LOG_TARGET, error = ?e, "Sending event to processor.");
-            }
-        }
-
-        Poll::Pending
+    for id in closed_stream {
+        trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
+        subs.subscribers.remove(&id);
     }
 }
