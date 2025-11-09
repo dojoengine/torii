@@ -417,12 +417,12 @@ impl ReadOnlyStorage for Sql {
                 "t.total_supply as total_supply".to_string(),
                 "t.traits as traits".to_string(),
                 "COALESCE((
-                    SELECT metadata 
-                    FROM tokens tk 
-                    WHERE tk.contract_address = t.contract_address 
-                    AND tk.token_id != '' 
+                    SELECT metadata
+                    FROM tokens tk
+                    WHERE tk.contract_address = t.contract_address
+                    AND tk.token_id != ''
                     AND tk.token_id IS NOT NULL
-                    ORDER BY tk.token_id 
+                    ORDER BY tk.token_id
                     LIMIT 1
                 ), '') as token_metadata"
                     .to_string(),
@@ -640,6 +640,15 @@ impl ReadOnlyStorage for Sql {
             if !keys_pattern.is_empty() {
                 query_builder = query_builder.where_clause("keys REGEXP ?");
                 query_builder = query_builder.bind_value(keys_pattern);
+            }
+        }
+
+        if !query.transaction_hashes.is_empty() {
+            let placeholders = vec!["?"; query.transaction_hashes.len()].join(", ");
+            query_builder =
+                query_builder.where_clause(&format!("transaction_hash IN ({})", placeholders));
+            for hash in &query.transaction_hashes {
+                query_builder = query_builder.bind_value(felt_to_sql_string(hash));
             }
         }
 
@@ -1058,10 +1067,10 @@ impl ReadOnlyStorage for Sql {
 
             // Fetch tasks for this achievement
             let tasks: Vec<torii_sqlite_types::AchievementTask> = sqlx::query_as(
-                "SELECT id, achievement_id, task_id, world_address, namespace, description, total, 
-                 total_completions, completion_rate, created_at 
-                 FROM achievement_tasks 
-                 WHERE achievement_id = ? 
+                "SELECT id, achievement_id, task_id, world_address, namespace, description, total,
+                 total_completions, completion_rate, created_at
+                 FROM achievement_tasks
+                 WHERE achievement_id = ?
                  ORDER BY created_at ASC",
             )
             .bind(&achievement_id)
@@ -1281,10 +1290,10 @@ impl ReadOnlyStorage for Sql {
         for (world_address, namespace) in &world_namespace_pairs {
             // Get all achievements
             let achievements: Vec<torii_sqlite_types::Achievement> = sqlx::query_as(
-                "SELECT id, world_address, hidden, index_num, points, start, end, group_name, 
-                 icon, title, description, tasks, data, created_at, updated_at 
-                 FROM achievements 
-                 WHERE world_address = ? AND namespace = ? 
+                "SELECT id, world_address, hidden, index_num, points, start, end, group_name,
+                 icon, title, description, tasks, data, created_at, updated_at
+                 FROM achievements
+                 WHERE world_address = ? AND namespace = ?
                  ORDER BY index_num ASC",
             )
             .bind(world_address)
@@ -1297,10 +1306,10 @@ impl ReadOnlyStorage for Sql {
             for achievement in achievements {
                 // Get tasks for this achievement
                 let tasks: Vec<torii_sqlite_types::AchievementTask> = sqlx::query_as(
-                    "SELECT id, achievement_id, task_id, world_address, namespace, description, total, 
-                     total_completions, completion_rate, created_at 
-                     FROM achievement_tasks 
-                     WHERE achievement_id = ? 
+                    "SELECT id, achievement_id, task_id, world_address, namespace, description, total,
+                     total_completions, completion_rate, created_at
+                     FROM achievement_tasks
+                     WHERE achievement_id = ?
                      ORDER BY created_at ASC",
                 )
                 .bind(&achievement.id)
@@ -1320,9 +1329,9 @@ impl ReadOnlyStorage for Sql {
 
         if !aggregated_stats.is_empty() {
             let mut progressions_sql =
-                "SELECT id, task_id, world_address, namespace, player_id, count, 
-                 completed, completed_at, created_at, updated_at 
-                 FROM achievement_progressions 
+                "SELECT id, task_id, world_address, namespace, player_id, count,
+                 completed, completed_at, created_at, updated_at
+                 FROM achievement_progressions
                  WHERE player_id IN ("
                     .to_string();
             progressions_sql.push_str(&vec!["?"; player_ids.len()].join(", "));
@@ -2215,12 +2224,17 @@ impl Storage for Sql {
         let hash = Argument::FieldElement(transaction_hash);
         let executed_at = Argument::String(utc_dt_string_from_timestamp(block_timestamp));
 
+        // Skip inserting if we've already processed an event from this transaction.
+        // Event IDs may differ across re-processing, but transaction_hash is the
+        // canonical identifier for whether we've seen this transaction before.
         self.executor
             .send(QueryMessage::new(
-                "INSERT INTO events (id, keys, data, transaction_hash, executed_at) VALUES \
-             (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING *"
+                "INSERT INTO events (id, keys, data, transaction_hash, executed_at) \
+             SELECT ?, ?, ?, ?, ? \
+             WHERE NOT EXISTS (SELECT 1 FROM events WHERE transaction_hash = ?) \
+             RETURNING *"
                     .to_string(),
-                vec![id, keys, data, hash, executed_at],
+                vec![id.clone(), keys, data, hash.clone(), executed_at, hash],
                 QueryType::StoreEvent,
             ))
             .map_err(|e| {

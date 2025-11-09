@@ -11,6 +11,7 @@ use erc::{
 };
 use metrics::{counter, histogram};
 use serde_json;
+use sqlx::Row;
 use sqlx::{FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
@@ -475,9 +476,9 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 // Track activities for WORLD contract interactions
                 // Get the world contract address if this is a WORLD transaction
                 let world_address: Option<String> = sqlx::query_scalar(
-                    "SELECT contract_address FROM contracts 
+                    "SELECT contract_address FROM contracts
                      WHERE contract_address IN (
-                         SELECT contract_address FROM transaction_contract 
+                         SELECT contract_address FROM transaction_contract
                          WHERE transaction_hash = ?
                      ) AND contract_type = 'WORLD'
                      LIMIT 1",

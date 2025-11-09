@@ -17,7 +17,7 @@ use starknet::providers::{Provider, ProviderRequestData, ProviderResponseData};
 use starknet_crypto::Felt;
 use tokio::time::{sleep, Instant};
 use torii_storage::proto::ContractCursor;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::error::Error;
 use crate::{
@@ -73,6 +73,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 .values()
                 .any(|c| c.head == Some(latest_block.block_number))
         {
+            println!("fetching preconfirmed block");
             let preconfirmed_start = Instant::now();
             let preconfirmed_result = self
                 .fetch_preconfirmed_block(latest_block.block_number, &cursors)
@@ -318,6 +319,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         ))
     }
 
+    #[tracing::instrument(skip(self, cursors), level = "info")]
     async fn fetch_preconfirmed_block(
         &self,
         latest_block_number: u64,
@@ -342,17 +344,17 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                 "Retrieved preconfirmed block"
             );
 
-            // if the preconfirmed block number is not incremented by one of the latest block number that we fetched, then it means
-            // a new block got mined just after we fetched the latest block information
-            if latest_block_number.saturating_add(1) != preconf.block_number {
-                debug!(
-                    target: LOG_TARGET,
-                    preconf_block_number = preconf.block_number,
-                    expected_block_number = latest_block_number.saturating_add(1),
-                    "Skipping preconfirmed block - block number mismatch (new block mined)"
-                );
-                return Ok((None, cursors.clone()));
-            }
+            // // if the preconfirmed block number is not incremented by one of the latest block number that we fetched, then it means
+            // // a new block got mined just after we fetched the latest block information
+            // if latest_block_number.saturating_add(1) != preconf.block_number {
+            //     debug!(
+            //         target: LOG_TARGET,
+            //         preconf_block_number = preconf.block_number,
+            //         expected_block_number = latest_block_number.saturating_add(1),
+            //         "Skipping preconfirmed block - block number mismatch (new block mined)"
+            //     );
+            //     return Ok((None, cursors.clone()));
+            // }
 
             preconf
         } else {
@@ -532,6 +534,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         let mut contract_batches: HashMap<Felt, ContractEventBatch> = HashMap::new();
         let mut current_requests = initial_requests;
 
+        info!("starting to do get events requests");
         while !current_requests.is_empty() {
             let mut next_requests = Vec::new();
 
@@ -669,6 +672,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
             current_requests = next_requests;
         }
+        info!("completed get events requests");
 
         // Convert HashMap values to Vec
         Ok(contract_batches.into_values().collect())

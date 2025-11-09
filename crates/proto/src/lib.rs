@@ -1566,6 +1566,7 @@ impl From<proto::types::Event> for Event {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
 pub struct EventQuery {
     pub keys: Option<KeysClause>,
+    pub transaction_hashes: Vec<Felt>,
     pub pagination: Pagination,
 }
 
@@ -1573,6 +1574,11 @@ impl From<EventQuery> for proto::types::EventQuery {
     fn from(value: EventQuery) -> Self {
         Self {
             keys: value.keys.map(|k| k.into()),
+            transaction_hashes: value
+                .transaction_hashes
+                .into_iter()
+                .map(|h| h.to_bytes_be().to_vec())
+                .collect(),
             pagination: Some(value.pagination.into()),
         }
     }
@@ -1582,6 +1588,11 @@ impl From<proto::types::EventQuery> for EventQuery {
     fn from(value: proto::types::EventQuery) -> Self {
         Self {
             keys: value.keys.map(|k| k.into()),
+            transaction_hashes: value
+                .transaction_hashes
+                .into_iter()
+                .map(|h| Felt::from_bytes_be_slice(&h))
+                .collect(),
             pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
         }
     }
@@ -1754,7 +1765,7 @@ impl TryFrom<proto::types::Transaction> for Transaction {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Hash, Eq, Clone, Default)]
 pub struct TransactionFilter {
     pub transaction_hashes: Vec<Felt>,
     pub caller_addresses: Vec<Felt>,

@@ -18,7 +18,10 @@ use torii_processors::{
     BlockProcessorContext, EventProcessorConfig, EventProcessorContext, Processors,
     TransactionProcessorContext,
 };
-use torii_storage::proto::{Contract, ContractCursor, ContractQuery, ContractType};
+use torii_storage::proto::{
+    Contract, ContractCursor, ContractQuery, ContractType, EventQuery, Pagination,
+    TransactionFilter, TransactionQuery,
+};
 use torii_storage::utils::format_event_id;
 use torii_storage::Storage;
 use tracing::{debug, error, info, trace};
@@ -397,6 +400,48 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         transaction: &Option<TransactionContent>,
         cursors: &HashMap<Felt, ContractType>,
     ) -> Result<(), ProcessError> {
+        use std::sync::Mutex;
+
+        static PROCESSED_TRANSACTIONS: LazyLock<Mutex<HashSet<Felt>>> =
+            LazyLock::new(|| Mutex::new(HashSet::new()));
+
+        // Check the cache first
+        {
+            let cache = PROCESSED_TRANSACTIONS.lock().unwrap();
+            if cache.contains(&transaction_hash) {
+                info!(
+                    target: LOG_TARGET,
+                    transaction_hash = %format!("{:#x}", transaction_hash),
+                    "Transaction hash found in cache, already processed"
+                );
+                return Ok(());
+            }
+        }
+
+        {
+            // Skip processing if we've already processed events from this transaction
+            let existing_events = self
+                .storage
+                .events(EventQuery {
+                    keys: None,
+                    transaction_hashes: vec![transaction_hash],
+                    pagination: Pagination {
+                        limit: Some(1),
+                        ..Default::default()
+                    },
+                })
+                .await?;
+
+            if dbg!(!existing_events.items.is_empty()) {
+                info!(
+                    target: LOG_TARGET,
+                    transaction_hash = %format!("{:#x}", transaction_hash),
+                    "Skipping already processed transaction"
+                );
+                return Ok(());
+            }
+        }
+
         let mut unique_contracts = HashSet::new();
         let mut unique_models = HashSet::new();
         // Contract -> Cursor
@@ -449,6 +494,12 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 &unique_models,
             )
             .await?;
+        }
+
+        // Add to cache after successful processing
+        {
+            let mut cache = PROCESSED_TRANSACTIONS.lock().unwrap();
+            cache.insert(transaction_hash);
         }
 
         Ok(())

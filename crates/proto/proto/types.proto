@@ -69,7 +69,8 @@ message Query {
 
 message EventQuery {
     KeysClause keys = 1;
-    Pagination pagination = 2;
+    repeated bytes transaction_hashes = 2;
+    Pagination pagination = 3;
 }
 
 message Clause {
