@@ -414,7 +414,6 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     transaction_hash = %format!("{:#x}", transaction_hash),
                     "Transaction hash found in cache, already processed"
                 );
-                return Ok(());
             }
         }
 
@@ -432,7 +431,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 })
                 .await?;
 
-            if dbg!(!existing_events.items.is_empty()) {
+            if !existing_events.items.is_empty() {
                 info!(
                     target: LOG_TARGET,
                     transaction_hash = %format!("{:#x}", transaction_hash),

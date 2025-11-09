@@ -2224,17 +2224,12 @@ impl Storage for Sql {
         let hash = Argument::FieldElement(transaction_hash);
         let executed_at = Argument::String(utc_dt_string_from_timestamp(block_timestamp));
 
-        // Skip inserting if we've already processed an event from this transaction.
-        // Event IDs may differ across re-processing, but transaction_hash is the
-        // canonical identifier for whether we've seen this transaction before.
         self.executor
             .send(QueryMessage::new(
-                "INSERT INTO events (id, keys, data, transaction_hash, executed_at) \
-             SELECT ?, ?, ?, ?, ? \
-             WHERE NOT EXISTS (SELECT 1 FROM events WHERE transaction_hash = ?) \
-             RETURNING *"
+                "INSERT INTO events (id, keys, data, transaction_hash, executed_at) VALUES \
+                (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING *"
                     .to_string(),
-                vec![id.clone(), keys, data, hash.clone(), executed_at, hash],
+                vec![id, keys, data, hash, executed_at],
                 QueryType::StoreEvent,
             ))
             .map_err(|e| {
