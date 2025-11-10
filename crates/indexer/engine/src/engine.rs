@@ -414,6 +414,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     transaction_hash = %format!("{:#x}", transaction_hash),
                     "Transaction hash found in cache, already processed"
                 );
+
+                return Ok(());
             }
         }
 
