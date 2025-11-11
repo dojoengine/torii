@@ -20,7 +20,6 @@ use torii_processors::{
 };
 use torii_storage::proto::{
     Contract, ContractCursor, ContractQuery, ContractType, EventQuery, Pagination,
-    TransactionFilter, TransactionQuery,
 };
 use torii_storage::utils::format_event_id;
 use torii_storage::Storage;

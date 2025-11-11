@@ -11,7 +11,6 @@ use erc::{
 };
 use metrics::{counter, histogram};
 use serde_json;
-use sqlx::Row;
 use sqlx::{FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
