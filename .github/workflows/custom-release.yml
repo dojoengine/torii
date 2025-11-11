@@ -1,0 +1,10 @@
+# Due to workflow limitation of github, this file is merely here
+# to support triggering the workflow on a dev branch, without having
+# to merge it into main.
+#
+# It is useful to make releases which publish a container to the github container registry.
+# CAUTION: it is recommended that you always enforce those custom releases to contain a preview tag, with `-custom.X` suffix where
+# custom is a descriptive name for the release and X is the version number.
+#
+# gh workflow run custom-release.yml --ref feat/your-branch -f preview=v1.7.0-custom.1
+#
