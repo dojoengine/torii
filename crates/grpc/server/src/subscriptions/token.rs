@@ -9,12 +9,10 @@ use dashmap::DashMap;
 use futures::{Stream, StreamExt};
 use rand::Rng;
 use starknet_crypto::Felt;
-use tokio::sync::mpsc::{
-    channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
-};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use torii_broker::types::TokenUpdate;
 use torii_broker::MemoryBroker;
-use tracing::{error, trace};
+use tracing::trace;
 
 use torii_proto::proto::world::SubscribeTokensResponse;
 use torii_proto::Token;
@@ -88,46 +86,29 @@ impl TokenManager {
             subscriber.token_ids = token_ids.into_iter().collect();
         }
     }
-
-    pub(super) async fn remove_subscriber(&self, id: u64) {
-        self.subscribers.remove(&id);
-    }
 }
 
 #[must_use = "Service does nothing unless polled"]
 #[allow(missing_debug_implementations)]
 pub struct Service {
     simple_broker: Pin<Box<dyn Stream<Item = Token> + Send>>,
-    token_sender: UnboundedSender<Token>,
+    subs_manager: Arc<TokenManager>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<TokenManager>) -> Self {
-        let (token_sender, token_receiver) = unbounded_channel();
-        let service = Self {
+        Self {
             simple_broker: if subs_manager.config.optimistic {
                 Box::pin(MemoryBroker::<TokenUpdate>::subscribe_optimistic())
             } else {
                 Box::pin(MemoryBroker::<TokenUpdate>::subscribe())
             },
-            token_sender,
-        };
-
-        tokio::spawn(Self::publish_updates(subs_manager, token_receiver));
-
-        service
-    }
-
-    async fn publish_updates(
-        subs: Arc<TokenManager>,
-        mut token_receiver: UnboundedReceiver<Token>,
-    ) {
-        while let Some(token) = token_receiver.recv().await {
-            Self::process_token_update(&subs, &token).await;
+            subs_manager,
         }
     }
 
-    async fn process_token_update(subs: &Arc<TokenManager>, token: &Token) {
+    // Process updates synchronously - no async overhead
+    fn process_token(subs: &TokenManager, token: &Token) {
         let mut closed_stream = Vec::new();
 
         for sub in subs.subscribers.iter() {
@@ -172,8 +153,8 @@ impl Service {
         }
 
         for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing token stream.");
-            subs.remove_subscriber(id).await
+            trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
+            subs.subscribers.remove(&id);
         }
     }
 }
@@ -184,10 +165,9 @@ impl Future for Service {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
+        // Process updates inline for minimum latency
         while let Poll::Ready(Some(token)) = this.simple_broker.poll_next_unpin(cx) {
-            if let Err(e) = this.token_sender.send(token) {
-                error!(target = LOG_TARGET, error = ?e, "Sending token update to processor.");
-            }
+            Self::process_token(&this.subs_manager, &token);
         }
 
         Poll::Pending

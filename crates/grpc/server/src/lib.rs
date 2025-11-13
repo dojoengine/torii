@@ -119,48 +119,37 @@ impl<P: Provider + Sync> DojoWorld<P> {
         let achievement_progression_manager =
             Arc::new(AchievementProgressionManager::new(config.clone()));
 
-        // Spawn subscription services on the main runtime
-        // They use try_send and non-blocking operations to avoid starving other tasks
+        // Spawn subscription services - each polls its broker stream and dispatches to subscribers
         tokio::spawn(subscriptions::entity::Service::new(Arc::clone(
             &entity_manager,
         )));
-
         tokio::spawn(subscriptions::event_message::Service::new(Arc::clone(
             &event_message_manager,
         )));
-
         tokio::spawn(subscriptions::event::Service::new(Arc::clone(
             &event_manager,
         )));
-
         tokio::spawn(subscriptions::contract::Service::new(Arc::clone(
             &contract_manager,
         )));
-
-        tokio::spawn(subscriptions::token_balance::Service::new(Arc::clone(
-            &token_balance_manager,
-        )));
-
         tokio::spawn(subscriptions::token::Service::new(Arc::clone(
             &token_manager,
         )));
-
+        tokio::spawn(subscriptions::token_balance::Service::new(Arc::clone(
+            &token_balance_manager,
+        )));
         tokio::spawn(subscriptions::token_transfer::Service::new(Arc::clone(
             &token_transfer_manager,
         )));
-
         tokio::spawn(subscriptions::transaction::Service::new(Arc::clone(
             &transaction_manager,
         )));
-
         tokio::spawn(subscriptions::aggregation::Service::new(Arc::clone(
             &aggregation_manager,
         )));
-
         tokio::spawn(subscriptions::activity::Service::new(Arc::clone(
             &activity_manager,
         )));
-
         tokio::spawn(subscriptions::achievement::Service::new(Arc::clone(
             &achievement_progression_manager,
         )));
@@ -1298,8 +1287,9 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
         .tcp_keepalive(Some(tcp_keepalive))
         .http2_keepalive_interval(Some(http2_keepalive_interval))
         .http2_keepalive_timeout(Some(http2_keepalive_timeout))
-        .initial_stream_window_size(Some(1024 * 1024))
-        .initial_connection_window_size(Some(1024 * 1024 * 10))
+        // Enable adaptive flow control for optimal streaming performance
+        // This automatically adjusts window sizes based on throughput and prevents flow control bottlenecks
+        .http2_adaptive_window(Some(true))
         // Should be enabled by default.
         .tcp_nodelay(true)
         .layer(

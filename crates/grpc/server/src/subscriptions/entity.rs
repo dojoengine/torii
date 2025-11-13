@@ -9,9 +9,7 @@ use futures::Stream;
 use futures_util::StreamExt;
 use rand::Rng;
 use starknet_crypto::Felt;
-use tokio::sync::mpsc::{
-    channel, unbounded_channel, Receiver, Sender, UnboundedReceiver, UnboundedSender,
-};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use torii_broker::{types::EntityUpdate, MemoryBroker};
 use torii_proto::schema::EntityWithMetadata;
 use tracing::{error, trace};
@@ -89,6 +87,7 @@ impl EntityManager {
         }
     }
 
+    #[allow(dead_code)]
     pub(super) async fn remove_subscriber(&self, id: u64) {
         self.subscribers.remove(&id);
     }
@@ -98,36 +97,23 @@ impl EntityManager {
 #[allow(missing_debug_implementations)]
 pub struct Service {
     simple_broker: Pin<Box<dyn Stream<Item = EntityWithMetadata> + Send>>,
-    entity_sender: UnboundedSender<EntityWithMetadata>,
+    subs_manager: Arc<EntityManager>,
 }
 
 impl Service {
     pub fn new(subs_manager: Arc<EntityManager>) -> Self {
-        let (entity_sender, entity_receiver) = unbounded_channel();
-        let service = Self {
+        Self {
             simple_broker: if subs_manager.config.optimistic {
                 Box::pin(MemoryBroker::<EntityUpdate>::subscribe_optimistic())
             } else {
                 Box::pin(MemoryBroker::<EntityUpdate>::subscribe())
             },
-            entity_sender,
-        };
-
-        tokio::spawn(Self::publish_updates(subs_manager, entity_receiver));
-
-        service
-    }
-
-    async fn publish_updates(
-        subs: Arc<EntityManager>,
-        mut entity_receiver: UnboundedReceiver<EntityWithMetadata>,
-    ) {
-        while let Some(update) = entity_receiver.recv().await {
-            Self::process_entity_update(&subs, &update).await;
+            subs_manager,
         }
     }
 
-    async fn process_entity_update(subs: &Arc<EntityManager>, entity: &EntityWithMetadata) {
+    // Process updates synchronously - no async overhead
+    fn process_entity_update(subs: &EntityManager, entity: &EntityWithMetadata) {
         let mut closed_stream = Vec::new();
 
         for sub in subs.subscribers.iter() {
@@ -135,11 +121,6 @@ impl Service {
             let sub = sub.value();
 
             // Check if the subscriber is interested in this entity
-            // If we have a clause of hashed keys, then check that the id of the entity
-            // is in the list of hashed keys.
-
-            // If we have a clause of keys, then check that the key pattern of the entity
-            // matches the key pattern of the subscriber.
             if let Some(clause) = &sub.clause {
                 if !sub.world_addresses.is_empty()
                     && !sub.world_addresses.contains(&entity.entity.world_address)
@@ -165,23 +146,25 @@ impl Service {
             // Use try_send to avoid blocking on slow subscribers
             match sub.sender.try_send(Ok(resp)) {
                 Ok(_) => {
-                    // Message sent successfully
+                    trace!(target = LOG_TARGET, subscription_id = %idx, "Entity update sent to subscriber");
                 }
                 Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    // Channel is full, subscriber is too slow - disconnect them
-                    trace!(target = LOG_TARGET, subscription_id = %idx, "Disconnecting slow subscriber - channel full");
+                    error!(target = LOG_TARGET, subscription_id = %idx, entity_id = ?entity.entity.hashed_keys, "Disconnecting slow subscriber - channel full");
                     closed_stream.push(*idx);
                 }
                 Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                    // Channel is closed, subscriber has disconnected
+                    trace!(target = LOG_TARGET, subscription_id = %idx, "Subscriber channel closed");
                     closed_stream.push(*idx);
                 }
             }
         }
 
-        for id in closed_stream {
-            trace!(target = LOG_TARGET, id = %id, "Closing entity stream.");
-            subs.remove_subscriber(id).await
+        // Clean up closed subscribers
+        if !closed_stream.is_empty() {
+            for id in closed_stream {
+                trace!(target = LOG_TARGET, id = %id, "Removing closed subscriber.");
+                subs.subscribers.remove(&id);
+            }
         }
     }
 }
@@ -192,10 +175,9 @@ impl Future for Service {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
 
+        // Process updates inline for minimum latency - no task spawning
         while let Poll::Ready(Some(entity)) = this.simple_broker.poll_next_unpin(cx) {
-            if let Err(e) = this.entity_sender.send(entity) {
-                error!(target = LOG_TARGET, error = %e, "Sending entity update to processor.");
-            }
+            Self::process_entity_update(&this.subs_manager, &entity);
         }
 
         Poll::Pending

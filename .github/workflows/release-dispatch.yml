@@ -26,12 +26,12 @@ jobs:
       - run: |
           VERSION=${{ inputs.version }}
           VERSION=${VERSION#v}
-          cargo install cargo-release
+          cargo install cargo-release --locked
           cargo release version $VERSION --execute --no-confirm && cargo release replace --execute --no-confirm
 
       - id: version_info
         run: |
-          cargo install cargo-get
+          cargo install cargo-get --locked
           echo "version=$(cargo get workspace.package.version)" >> $GITHUB_OUTPUT
 
       - uses: peter-evans/create-pull-request@v7
