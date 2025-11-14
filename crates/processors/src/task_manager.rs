@@ -30,6 +30,7 @@ pub struct ParallelizedEvent {
     pub block_timestamp: u64,
     pub event_id: String,
     pub event: Event,
+    pub at_head: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -90,29 +91,38 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
         parallelized_event: ParallelizedEvent,
     ) {
         if let Some(task_data) = self.task_network.get_mut(&task_identifier) {
+            // When at head, treat Latest mode as Historical to process all events
             match parallelized_event.indexing_mode {
-                IndexingMode::Latest(event_key) => {
+                IndexingMode::Latest(event_key) if !parallelized_event.at_head => {
+                    // During historical sync: deduplicate by keeping only latest
                     task_data
                         .latest_only_events
                         .insert(event_key, parallelized_event);
                 }
-                IndexingMode::Historical => {
+                IndexingMode::Latest(_) | IndexingMode::Historical => {
+                    // At head or explicitly historical: process all events
                     task_data.events.push(parallelized_event);
                 }
             }
         } else {
             let task_data = match parallelized_event.indexing_mode {
-                IndexingMode::Latest(event_key) => TaskData {
-                    latest_only_events: LinkedHashMap::from_iter(vec![(
-                        event_key,
-                        parallelized_event.clone(),
-                    )]),
-                    ..Default::default()
-                },
-                IndexingMode::Historical => TaskData {
-                    events: vec![parallelized_event.clone()],
-                    ..Default::default()
-                },
+                IndexingMode::Latest(event_key) if !parallelized_event.at_head => {
+                    // During historical sync: deduplicate by keeping only latest
+                    TaskData {
+                        latest_only_events: LinkedHashMap::from_iter(vec![(
+                            event_key,
+                            parallelized_event.clone(),
+                        )]),
+                        ..Default::default()
+                    }
+                }
+                IndexingMode::Latest(_) | IndexingMode::Historical => {
+                    // At head or explicitly historical: process all events
+                    TaskData {
+                        events: vec![parallelized_event.clone()],
+                        ..Default::default()
+                    }
+                }
             };
 
             if let Err(e) = self.task_network.add_task_with_dependencies(
@@ -145,7 +155,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
         let nft_metadata_semaphore = self.nft_metadata_semaphore.clone();
 
         self.task_network
-            .process_tasks(move |task_id, task_data| {
+            .process_tasks(move |task_id, mut task_data| {
                 let storage = storage.clone();
                 let processors = processors.clone();
                 let provider = provider.clone();
@@ -154,6 +164,23 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                 let nft_metadata_semaphore = nft_metadata_semaphore.clone();
 
                 async move {
+                    // If any events are at_head, upgrade deferred latest_only_events to at_head too
+                    // This ensures historical metadata updates are processed when we reach head
+                    let has_at_head_events = task_data.events.iter().any(|e| e.at_head);
+                    if has_at_head_events {
+                        for event in task_data.latest_only_events.values_mut() {
+                            if !event.at_head {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    event_id = %event.event_id,
+                                    block_number = event.block_number,
+                                    "Upgrading deferred event to at_head for processing"
+                                );
+                                event.at_head = true;
+                            }
+                        }
+                    }
+
                     // Process all events for this task sequentially
                     for ParallelizedEvent {
                         contract_type,
@@ -162,6 +189,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                         block_number,
                         block_timestamp,
                         event_id,
+                        at_head,
                         ..
                     } in task_data
                         .events
@@ -206,6 +234,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                                 event: event.clone(),
                                 config: event_processor_config.clone(),
                                 nft_metadata_semaphore: nft_metadata_semaphore.clone(),
+                                at_head: *at_head,
                             };
 
                             // Record processor timing and success/error metrics

@@ -43,6 +43,29 @@ where
         hasher.finish()
     }
 
+    // Deduplicate batch metadata updates during historical sync, but process all when at head
+    fn indexing_mode(&self, event: &Event, config: &crate::EventProcessorConfig) -> crate::IndexingMode {
+        // If metadata_updates_only_at_head is disabled, process all updates historically
+        if !config.metadata_updates_only_at_head {
+            return crate::IndexingMode::Historical;
+        }
+
+        // When at head, process all metadata updates as they come
+        // This is determined at runtime in the task manager based on ParallelizedEvent.at_head
+        // For now, we use Latest mode and the processor will check at_head at runtime
+        let mut hasher = DefaultHasher::new();
+        event.from_address.hash(&mut hasher);
+        event.keys[0].hash(&mut hasher);
+        // Include from_token_id and to_token_id in the hash to deduplicate per range
+        if event.keys.len() >= 5 {
+            event.keys[1].hash(&mut hasher); // from_token_id.low
+            event.keys[2].hash(&mut hasher); // from_token_id.high
+            event.keys[3].hash(&mut hasher); // to_token_id.low
+            event.keys[4].hash(&mut hasher); // to_token_id.high
+        }
+        crate::IndexingMode::Latest(hasher.finish())
+    }
+
     // Maybe dont need to depend on all of token ids.
     // fn task_dependencies(&self, event: &Event) -> Vec<TaskId> {
     //     let mut dependencies = Vec::new();
@@ -70,6 +93,30 @@ where
 
         let to_token_id = U256Cainome::cairo_deserialize(&ctx.event.keys, 3)?;
         let to_token_id = U256::from_words(to_token_id.low, to_token_id.high);
+
+        // If metadata_updates_only_at_head is enabled and we're not at head, skip processing
+        // This defers metadata fetching until we're truly at chain head for fresh data
+        if ctx.config.metadata_updates_only_at_head && !ctx.at_head {
+            debug!(
+                target: LOG_TARGET,
+                token_address = ?token_address,
+                from_token_id = ?from_token_id,
+                to_token_id = ?to_token_id,
+                block_number = ctx.block_number,
+                "Deferring batch metadata update - will process when at head"
+            );
+            return Ok(());
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            token_address = ?token_address,
+            from_token_id = ?from_token_id,
+            to_token_id = ?to_token_id,
+            block_number = ctx.block_number,
+            at_head = ctx.at_head,
+            "Processing batch NFT metadata update"
+        );
 
         let mut tasks = Vec::new();
         let mut token_id = from_token_id;

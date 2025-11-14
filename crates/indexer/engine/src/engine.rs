@@ -343,6 +343,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     block.timestamp,
                     &tx.transaction,
                     cursors,
+                    false, // Processing historical range, not at head
                 )
                 .await?;
             }
@@ -375,6 +376,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     data.timestamp,
                     &tx.transaction,
                     cursors,
+                    true, // Processing at head (preconfirmed block)
                 )
                 .await
             {
@@ -396,6 +398,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         block_timestamp: u64,
         transaction: &Option<TransactionContent>,
         cursors: &HashMap<Felt, ContractType>,
+        at_head: bool,
     ) -> Result<(), ProcessError> {
         let mut unique_contracts = HashSet::new();
         let mut unique_models = HashSet::new();
@@ -434,6 +437,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 event,
                 transaction_hash,
                 contract_type,
+                at_head,
             )
             .await?;
         }
@@ -510,6 +514,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         event: &Event,
         transaction_hash: Felt,
         contract_type: ContractType,
+        at_head: bool,
     ) -> Result<(), ProcessError> {
         if self.config.flags.contains(IndexingFlags::RAW_EVENTS) {
             self.storage
@@ -533,6 +538,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 event_id: event_id.to_string(),
                 event: event.clone(),
                 nft_metadata_semaphore: self.nft_metadata_semaphore.clone(),
+                at_head,
             };
             if self.processors.catch_all_event.validate(event) {
                 if let Err(e) = self.processors.catch_all_event.process(&ctx).await {
@@ -591,6 +597,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 event: event.clone(),
                 block_number,
                 block_timestamp,
+                at_head,
             },
         );
 

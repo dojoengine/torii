@@ -49,10 +49,24 @@ where
         vec![hasher.finish()]
     }
 
-    // We can dedup singular metadata updates. To only keep the latest one.
-    fn indexing_mode(&self, event: &Event, _config: &EventProcessorConfig) -> IndexingMode {
+    // Deduplicate metadata updates during historical sync, but process all when at head
+    fn indexing_mode(&self, event: &Event, config: &EventProcessorConfig) -> IndexingMode {
+        // If metadata_updates_only_at_head is disabled, process all updates historically
+        if !config.metadata_updates_only_at_head {
+            return IndexingMode::Historical;
+        }
+
+        // When at head, process all metadata updates as they come
+        // This is determined at runtime in the task manager based on ParallelizedEvent.at_head
+        // For now, we use Latest mode and the processor will check at_head at runtime
         let mut hasher = DefaultHasher::new();
+        event.from_address.hash(&mut hasher);
         event.keys[0].hash(&mut hasher);
+        // Include token_id in the hash to deduplicate per token
+        if event.keys.len() >= 3 {
+            event.keys[1].hash(&mut hasher); // token_id.low
+            event.keys[2].hash(&mut hasher); // token_id.high
+        }
         IndexingMode::Latest(hasher.finish())
     }
 
@@ -60,6 +74,28 @@ where
         let token_address = ctx.event.from_address;
         let token_id = U256Cainome::cairo_deserialize(&ctx.event.keys, 1)?;
         let token_id = U256::from_words(token_id.low, token_id.high);
+
+        // If metadata_updates_only_at_head is enabled and we're not at head, skip processing
+        // This defers metadata fetching until we're truly at chain head for fresh data
+        if ctx.config.metadata_updates_only_at_head && !ctx.at_head {
+            debug!(
+                target: LOG_TARGET,
+                token_address = ?token_address,
+                token_id = ?token_id,
+                block_number = ctx.block_number,
+                "Deferring metadata update - will process when at head"
+            );
+            return Ok(());
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            token_address = ?token_address,
+            token_id = ?token_id,
+            block_number = ctx.block_number,
+            at_head = ctx.at_head,
+            "Processing NFT metadata update"
+        );
 
         let id = TokenId::Nft(token_address, token_id);
         if !ctx.cache.is_token_registered(&id).await {
