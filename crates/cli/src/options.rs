@@ -452,6 +452,15 @@ pub struct ErcOptions {
         help = "Blacklist of contract addresses (hex) that should NOT process metadata updates. Takes precedence over whitelist."
     )]
     pub metadata_update_blacklist: Vec<String>,
+
+    /// Only apply metadata updates at head (latest block), deduplicating updates from historical blocks.
+    /// When enabled, only the latest metadata update for each token will be processed.
+    #[arg(
+        long = "erc.metadata_updates_only_at_head",
+        default_value_t = true,
+        help = "Only apply metadata updates at head (latest block), skipping duplicates from historical blocks. Default is true."
+    )]
+    pub metadata_updates_only_at_head: bool,
 }
 
 impl Default for ErcOptions {
@@ -464,6 +473,7 @@ impl Default for ErcOptions {
             metadata_updates: true,
             metadata_update_whitelist: vec![],
             metadata_update_blacklist: vec![],
+            metadata_updates_only_at_head: true,
         }
     }
 }

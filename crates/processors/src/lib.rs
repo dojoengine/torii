@@ -34,6 +34,8 @@ pub struct EventProcessorContext<P: Provider + Sync + Send + 'static> {
     pub event: Event,
     pub config: EventProcessorConfig,
     pub nft_metadata_semaphore: Arc<Semaphore>,
+    /// True if processing at chain head (preconfirmed/pending block), false if processing historical range
+    pub at_head: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -48,6 +50,7 @@ pub struct EventProcessorConfig {
     pub metadata_updates: bool,
     pub metadata_update_whitelist: HashSet<Felt>,
     pub metadata_update_blacklist: HashSet<Felt>,
+    pub metadata_updates_only_at_head: bool,
 }
 
 impl Default for EventProcessorConfig {
@@ -63,6 +66,7 @@ impl Default for EventProcessorConfig {
             metadata_updates: true,
             metadata_update_whitelist: HashSet::new(),
             metadata_update_blacklist: HashSet::new(),
+            metadata_updates_only_at_head: true,
         }
     }
 }
