@@ -301,7 +301,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
 
         self.process_range(range, contracts, is_at_head).await?;
         if let Some(preconfirmed_block) = preconfirmed_block {
-            self.process_pending(preconfirmed_block, contracts, true).await?;
+            self.process_pending(preconfirmed_block, contracts, true)
+                .await?;
         }
 
         // Process parallelized events
