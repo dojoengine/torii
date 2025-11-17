@@ -406,6 +406,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn process_transaction_with_events(
         &mut self,
         transaction_hash: Felt,
@@ -522,6 +523,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn process_event(
         &mut self,
         block_number: u64,
