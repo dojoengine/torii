@@ -30,6 +30,7 @@ pub struct ParallelizedEvent {
     pub block_timestamp: u64,
     pub event_id: String,
     pub event: Event,
+    pub is_at_head: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -162,6 +163,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                         block_number,
                         block_timestamp,
                         event_id,
+                        is_at_head,
                         ..
                     } in task_data
                         .events
@@ -206,6 +208,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                                 event: event.clone(),
                                 config: event_processor_config.clone(),
                                 nft_metadata_semaphore: nft_metadata_semaphore.clone(),
+                                is_at_head: *is_at_head,
                             };
 
                             // Record processor timing and success/error metrics
