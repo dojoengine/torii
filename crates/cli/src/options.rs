@@ -452,6 +452,16 @@ pub struct ErcOptions {
         help = "Blacklist of contract addresses (hex) that should NOT process metadata updates. Takes precedence over whitelist."
     )]
     pub metadata_update_blacklist: Vec<String>,
+
+    /// Whether to only process metadata updates when the indexer is at head (caught up with chain).
+    /// When true, metadata updates are deferred until the indexer has caught up with the latest block.
+    /// This prevents metadata fetching from slowing down initial sync.
+    #[arg(
+        long = "erc.metadata_updates_only_at_head",
+        default_value_t = false,
+        help = "Only process ERC-4906 metadata updates when indexer is at head (caught up). Helps speed up initial sync by deferring metadata fetching."
+    )]
+    pub metadata_updates_only_at_head: bool,
 }
 
 impl Default for ErcOptions {
@@ -464,6 +474,7 @@ impl Default for ErcOptions {
             metadata_updates: true,
             metadata_update_whitelist: vec![],
             metadata_update_blacklist: vec![],
+            metadata_updates_only_at_head: false,
         }
     }
 }

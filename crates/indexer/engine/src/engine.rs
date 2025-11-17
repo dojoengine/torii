@@ -286,9 +286,23 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             cursors,
         } = fetch_result;
 
-        self.process_range(range, contracts).await?;
+        // Determine if we're at head by checking if we have a preconfirmed block
+        // or if all cursors are at the same (maximum) block
+        let is_at_head = preconfirmed_block.is_some() || {
+            // If all cursors have the same head value, we're likely at head
+            let heads: Vec<u64> = cursors.cursors.values().filter_map(|c| c.head).collect();
+            if heads.is_empty() {
+                false
+            } else {
+                let max_head = *heads.iter().max().unwrap();
+                heads.iter().all(|&h| h == max_head)
+            }
+        };
+
+        self.process_range(range, contracts, is_at_head).await?;
         if let Some(preconfirmed_block) = preconfirmed_block {
-            self.process_pending(preconfirmed_block, contracts).await?;
+            self.process_pending(preconfirmed_block, contracts, true)
+                .await?;
         }
 
         // Process parallelized events
@@ -324,6 +338,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         &mut self,
         range: &FetchRangeResult,
         cursors: &HashMap<Felt, ContractType>,
+        is_at_head: bool,
     ) -> Result<(), ProcessError> {
         let mut processed_blocks = HashSet::new();
 
@@ -343,6 +358,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     block.timestamp,
                     &tx.transaction,
                     cursors,
+                    is_at_head,
                 )
                 .await?;
             }
@@ -361,6 +377,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         &mut self,
         data: &FetchPreconfirmedBlockResult,
         cursors: &HashMap<Felt, ContractType>,
+        is_at_head: bool,
     ) -> Result<(), ProcessError> {
         for (tx_hash, tx) in &data.transactions {
             if tx.events.is_empty() {
@@ -375,6 +392,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     data.timestamp,
                     &tx.transaction,
                     cursors,
+                    is_at_head,
                 )
                 .await
             {
@@ -388,6 +406,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn process_transaction_with_events(
         &mut self,
         transaction_hash: Felt,
@@ -396,6 +415,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         block_timestamp: u64,
         transaction: &Option<TransactionContent>,
         cursors: &HashMap<Felt, ContractType>,
+        is_at_head: bool,
     ) -> Result<(), ProcessError> {
         let mut unique_contracts = HashSet::new();
         let mut unique_models = HashSet::new();
@@ -434,6 +454,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 event,
                 transaction_hash,
                 contract_type,
+                is_at_head,
             )
             .await?;
         }
@@ -502,6 +523,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn process_event(
         &mut self,
         block_number: u64,
@@ -510,6 +532,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         event: &Event,
         transaction_hash: Felt,
         contract_type: ContractType,
+        is_at_head: bool,
     ) -> Result<(), ProcessError> {
         if self.config.flags.contains(IndexingFlags::RAW_EVENTS) {
             self.storage
@@ -533,6 +556,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 event_id: event_id.to_string(),
                 event: event.clone(),
                 nft_metadata_semaphore: self.nft_metadata_semaphore.clone(),
+                is_at_head,
             };
             if self.processors.catch_all_event.validate(event) {
                 if let Err(e) = self.processors.catch_all_event.process(&ctx).await {
@@ -591,6 +615,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 event: event.clone(),
                 block_number,
                 block_timestamp,
+                is_at_head,
             },
         );
 

@@ -34,7 +34,13 @@ where
     }
 
     fn should_process(&self, event: &Event, config: &crate::EventProcessorConfig) -> bool {
-        config.should_process_metadata_updates(&event.from_address)
+        if !config.should_process_metadata_updates(&event.from_address) {
+            return false;
+        }
+
+        // If metadata_updates_only_at_head is enabled, defer processing until we're at head
+        // This check will be performed again at process time with the actual is_at_head value
+        true
     }
 
     fn task_identifier(&self, event: &Event) -> TaskId {
@@ -64,6 +70,16 @@ where
     // }
 
     async fn process(&self, ctx: &EventProcessorContext<P>) -> Result<(), Error> {
+        // If metadata_updates_only_at_head is enabled and we're not at head, skip processing
+        if ctx.config.metadata_updates_only_at_head && !ctx.is_at_head {
+            debug!(
+                target: LOG_TARGET,
+                token_address = ?ctx.event.from_address,
+                "Skipping batch metadata update - not at head yet"
+            );
+            return Ok(());
+        }
+
         let token_address = ctx.event.from_address;
         let from_token_id = U256Cainome::cairo_deserialize(&ctx.event.keys, 1)?;
         let from_token_id = U256::from_words(from_token_id.low, from_token_id.high);
