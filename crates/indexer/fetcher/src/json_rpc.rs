@@ -451,7 +451,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                             Some(starknet::core::types::TransactionReceiptWithBlockInfo {
                                 receipt: t.receipt.clone(),
                                 block: starknet::core::types::ReceiptBlock::PreConfirmed {
-                                    block_number: block_number,
+                                    block_number,
                                 },
                             })
                         } else {
