@@ -290,7 +290,12 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         }
 
         // Step 8: Fetch transaction receipts if enabled
-        if self.config.flags.contains(FetchingFlags::TRANSACTION_RECEIPTS) && !blocks.is_empty() {
+        if self
+            .config
+            .flags
+            .contains(FetchingFlags::TRANSACTION_RECEIPTS)
+            && !blocks.is_empty()
+        {
             let mut receipt_requests = Vec::new();
             let mut block_numbers_for_receipts = Vec::new();
             for (block_number, block) in &blocks {
@@ -310,8 +315,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
 
             if !receipt_requests.is_empty() {
                 let receipts_start = Instant::now();
-                let receipt_results =
-                    self.chunked_batch_requests(&receipt_requests).await?;
+                let receipt_results = self.chunked_batch_requests(&receipt_requests).await?;
 
                 histogram!("torii_fetcher_receipts_duration_seconds")
                     .record(receipts_start.elapsed().as_secs_f64());
@@ -324,8 +328,9 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     match result {
                         ProviderResponseData::GetTransactionReceipt(receipt) => {
                             if let Some(block) = blocks.get_mut(&block_number) {
-                                if let Some(tx) =
-                                    block.transactions.get_mut(receipt.receipt.transaction_hash())
+                                if let Some(tx) = block
+                                    .transactions
+                                    .get_mut(receipt.receipt.transaction_hash())
                                 {
                                     tx.receipt = Some(receipt);
                                 }
@@ -431,7 +436,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             "Processing preconfirmed block transactions"
         );
 
-        let fetch_receipts = self.config.flags.contains(FetchingFlags::TRANSACTION_RECEIPTS);
+        let fetch_receipts = self
+            .config
+            .flags
+            .contains(FetchingFlags::TRANSACTION_RECEIPTS);
         let mut transactions: IndexMap<Felt, FetchTransaction> =
             IndexMap::from_iter(preconf_block.transactions.iter().map(|t| {
                 (

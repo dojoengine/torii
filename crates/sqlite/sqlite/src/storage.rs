@@ -2206,7 +2206,7 @@ impl Storage for Sql {
         &self,
         receipt_with_block: &starknet::core::types::TransactionReceiptWithBlockInfo,
     ) -> Result<(), StorageError> {
-        use starknet::core::types::{TransactionReceipt, ExecutionResult, ReceiptBlock};
+        use starknet::core::types::{ExecutionResult, ReceiptBlock, TransactionReceipt};
 
         let receipt = &receipt_with_block.receipt;
         let block = &receipt_with_block.block;
@@ -2253,8 +2253,9 @@ impl Storage for Sql {
             TransactionReceipt::Deploy(r) => &r.execution_resources,
             TransactionReceipt::DeployAccount(r) => &r.execution_resources,
         };
-        let execution_resources_json = serde_json::to_string(execution_resources)
-            .map_err(|e| StorageError::from(Box::new(e) as Box<dyn std::error::Error + Send + Sync>))?;
+        let execution_resources_json = serde_json::to_string(execution_resources).map_err(|e| {
+            StorageError::from(Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        })?;
 
         // Extract execution status and revert reason
         let (execution_status, revert_reason) = match execution_result {
@@ -2264,9 +2265,10 @@ impl Storage for Sql {
 
         // Extract block info
         let (block_hash, block_number) = match block {
-            ReceiptBlock::Block { block_hash, block_number } => {
-                (Some(format!("{:#x}", block_hash)), *block_number)
-            }
+            ReceiptBlock::Block {
+                block_hash,
+                block_number,
+            } => (Some(format!("{:#x}", block_hash)), *block_number),
             ReceiptBlock::PreConfirmed { block_number } => (None, *block_number),
         };
 
