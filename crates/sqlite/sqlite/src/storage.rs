@@ -2201,6 +2201,32 @@ impl Storage for Sql {
         Ok(())
     }
 
+    /// Stores a transaction receipt with the storage.
+    async fn store_transaction_receipt(
+        &self,
+        transaction_hash: Felt,
+        receipt_json: String,
+    ) -> Result<(), StorageError> {
+        self.executor
+            .send(QueryMessage::other(
+                "INSERT INTO transaction_receipts (id, transaction_hash, receipt_json, actual_fee, finality_status, block_hash, block_number, execution_result) \
+                 VALUES (?, ?, ?, '', '', '', 0, '') \
+                 ON CONFLICT(transaction_hash) DO UPDATE SET receipt_json=excluded.receipt_json \
+                 RETURNING *"
+                    .to_string(),
+                vec![
+                    Argument::FieldElement(transaction_hash),
+                    Argument::FieldElement(transaction_hash),
+                    Argument::String(receipt_json),
+                ],
+            ))
+            .map_err(|e| {
+                Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e))))
+            })?;
+
+        Ok(())
+    }
+
     /// Stores an event with the storage.
     async fn store_event(
         &self,

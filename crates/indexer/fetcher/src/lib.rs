@@ -19,6 +19,7 @@ bitflags! {
     pub struct FetchingFlags: u32 {
         const TRANSACTIONS = 0b00000001;
         const PRECONFIRMED_BLOCK = 0b00000010;
+        const TRANSACTION_RECEIPTS = 0b00000100;
     }
 }
 
@@ -59,6 +60,9 @@ pub struct FetchTransaction {
     // is enabled
     pub transaction: Option<TransactionContent>,
     pub events: Vec<Event>,
+    // this is Some if the transaction_receipts indexing flag
+    // is enabled
+    pub receipt: Option<starknet::core::types::TransactionReceiptWithBlockInfo>,
 }
 
 #[derive(Debug, Clone)]
