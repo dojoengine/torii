@@ -2204,20 +2204,99 @@ impl Storage for Sql {
     /// Stores a transaction receipt with the storage.
     async fn store_transaction_receipt(
         &self,
-        transaction_hash: Felt,
-        receipt_json: String,
+        receipt_with_block: &starknet::core::types::TransactionReceiptWithBlockInfo,
     ) -> Result<(), StorageError> {
+        use starknet::core::types::{TransactionReceipt, ExecutionResult, ReceiptBlock};
+
+        let receipt = &receipt_with_block.receipt;
+        let block = &receipt_with_block.block;
+
+        // Extract common fields from all receipt types
+        let (transaction_hash, actual_fee, finality_status, execution_result) = match receipt {
+            TransactionReceipt::Invoke(r) => (
+                r.transaction_hash,
+                &r.actual_fee,
+                &r.finality_status,
+                &r.execution_result,
+            ),
+            TransactionReceipt::L1Handler(r) => (
+                r.transaction_hash,
+                &r.actual_fee,
+                &r.finality_status,
+                &r.execution_result,
+            ),
+            TransactionReceipt::Declare(r) => (
+                r.transaction_hash,
+                &r.actual_fee,
+                &r.finality_status,
+                &r.execution_result,
+            ),
+            TransactionReceipt::Deploy(r) => (
+                r.transaction_hash,
+                &r.actual_fee,
+                &r.finality_status,
+                &r.execution_result,
+            ),
+            TransactionReceipt::DeployAccount(r) => (
+                r.transaction_hash,
+                &r.actual_fee,
+                &r.finality_status,
+                &r.execution_result,
+            ),
+        };
+
+        // Get execution resources as JSON
+        let execution_resources = match receipt {
+            TransactionReceipt::Invoke(r) => &r.execution_resources,
+            TransactionReceipt::L1Handler(r) => &r.execution_resources,
+            TransactionReceipt::Declare(r) => &r.execution_resources,
+            TransactionReceipt::Deploy(r) => &r.execution_resources,
+            TransactionReceipt::DeployAccount(r) => &r.execution_resources,
+        };
+        let execution_resources_json = serde_json::to_string(execution_resources)
+            .map_err(|e| StorageError::from(Box::new(e) as Box<dyn std::error::Error + Send + Sync>))?;
+
+        // Extract execution status and revert reason
+        let (execution_status, revert_reason) = match execution_result {
+            ExecutionResult::Succeeded => ("SUCCEEDED".to_string(), None),
+            ExecutionResult::Reverted { reason } => ("REVERTED".to_string(), Some(reason.clone())),
+        };
+
+        // Extract block info
+        let (block_hash, block_number) = match block {
+            ReceiptBlock::Block { block_hash, block_number } => {
+                (Some(format!("{:#x}", block_hash)), *block_number)
+            }
+            ReceiptBlock::PreConfirmed { block_number } => (None, *block_number),
+        };
+
         self.executor
             .send(QueryMessage::other(
-                "INSERT INTO transaction_receipts (id, transaction_hash, receipt_json, actual_fee, finality_status, block_hash, block_number, execution_result) \
-                 VALUES (?, ?, ?, '', '', '', 0, '') \
-                 ON CONFLICT(transaction_hash) DO UPDATE SET receipt_json=excluded.receipt_json \
+                "INSERT INTO transaction_receipts (id, transaction_hash, actual_fee_amount, actual_fee_unit, \
+                 execution_status, finality_status, revert_reason, execution_resources, block_hash, block_number) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
+                 ON CONFLICT(transaction_hash) DO UPDATE SET \
+                 actual_fee_amount=excluded.actual_fee_amount, \
+                 actual_fee_unit=excluded.actual_fee_unit, \
+                 execution_status=excluded.execution_status, \
+                 finality_status=excluded.finality_status, \
+                 revert_reason=excluded.revert_reason, \
+                 execution_resources=excluded.execution_resources, \
+                 block_hash=excluded.block_hash, \
+                 block_number=excluded.block_number \
                  RETURNING *"
                     .to_string(),
                 vec![
                     Argument::FieldElement(transaction_hash),
                     Argument::FieldElement(transaction_hash),
-                    Argument::String(receipt_json),
+                    Argument::String(format!("{:#x}", actual_fee.amount)),
+                    Argument::String(format!("{:?}", actual_fee.unit)),
+                    Argument::String(execution_status),
+                    Argument::String(format!("{:?}", finality_status)),
+                    Argument::String(revert_reason.unwrap_or_default()),
+                    Argument::String(execution_resources_json),
+                    Argument::String(block_hash.unwrap_or_default()),
+                    Argument::String(block_number.to_string()),
                 ],
             ))
             .map_err(|e| {

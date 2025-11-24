@@ -477,10 +477,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
 
         // Store receipt if available
         if let Some(receipt) = receipt {
-            let receipt_json = serde_json::to_string(receipt)
-                .map_err(|e| ProcessError::Other(format!("Failed to serialize receipt: {}", e)))?;
             self.storage
-                .store_transaction_receipt(transaction_hash, receipt_json)
+                .store_transaction_receipt(receipt)
                 .await?;
         }
 
