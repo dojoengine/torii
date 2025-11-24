@@ -462,6 +462,16 @@ pub struct ErcOptions {
         help = "Only process ERC-4906 metadata updates when indexer is at head (caught up). Helps speed up initial sync by deferring metadata fetching."
     )]
     pub metadata_updates_only_at_head: bool,
+
+    /// Whether to process metadata updates asynchronously without blocking the event processor.
+    /// When true, metadata fetching is spawned as a background task that updates the database once complete.
+    /// This prevents slow metadata fetching from blocking the indexing pipeline.
+    #[arg(
+        long = "erc.async_metadata_updates",
+        default_value_t = false,
+        help = "Process ERC-4906 metadata updates asynchronously without blocking. Metadata is fetched in background and database is updated when complete."
+    )]
+    pub async_metadata_updates: bool,
 }
 
 impl Default for ErcOptions {
@@ -475,6 +485,7 @@ impl Default for ErcOptions {
             metadata_update_whitelist: vec![],
             metadata_update_blacklist: vec![],
             metadata_updates_only_at_head: false,
+            async_metadata_updates: false,
         }
     }
 }

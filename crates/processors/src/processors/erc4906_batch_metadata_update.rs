@@ -113,6 +113,33 @@ where
             token_id += U256::from(1u8);
         }
 
+        // If async mode is enabled, don't wait for tasks to complete
+        if ctx.config.async_metadata_updates {
+            // Spawn a task to handle errors without blocking
+            tokio::spawn(async move {
+                for result in try_join_all(tasks).await.unwrap_or_default().into_iter() {
+                    if let Err(e) = result {
+                        debug!(
+                            target: LOG_TARGET,
+                            token_address = ?token_address,
+                            error = ?e,
+                            "Failed to update token metadata in batch async mode"
+                        );
+                    }
+                }
+                debug!(
+                    target: LOG_TARGET,
+                    token_address = ?token_address,
+                    from_token_id = ?from_token_id,
+                    to_token_id = ?to_token_id,
+                    "NFT metadata updated for token range (async)"
+                );
+            });
+
+            return Ok(());
+        }
+
+        // Blocking mode (original behavior)
         for result in try_join_all(tasks).await?.into_iter() {
             result?;
         }

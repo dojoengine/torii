@@ -82,6 +82,64 @@ where
             return Ok(());
         }
 
+        // If async mode is enabled, spawn a background task
+        if ctx.config.async_metadata_updates {
+            let storage = ctx.storage.clone();
+            let provider = ctx.provider.clone();
+            let semaphore = ctx.nft_metadata_semaphore.clone();
+
+            tokio::spawn(async move {
+                let _permit = match semaphore.acquire().await {
+                    Ok(permit) => permit,
+                    Err(e) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            token_address = ?token_address,
+                            token_id = ?token_id,
+                            error = ?e,
+                            "Failed to acquire semaphore for async metadata update"
+                        );
+                        return;
+                    }
+                };
+
+                match fetch_token_metadata(token_address, token_id, &provider).await {
+                    Ok(metadata) => {
+                        if let Err(e) =
+                            storage.update_token_metadata(id, metadata).await
+                        {
+                            debug!(
+                                target: LOG_TARGET,
+                                token_address = ?token_address,
+                                token_id = ?token_id,
+                                error = ?e,
+                                "Failed to update token metadata in async mode"
+                            );
+                        } else {
+                            debug!(
+                                target: LOG_TARGET,
+                                token_address = ?token_address,
+                                token_id = ?token_id,
+                                "NFT metadata updated for single token (async)"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            token_address = ?token_address,
+                            token_id = ?token_id,
+                            error = ?e,
+                            "Failed to fetch token metadata in async mode"
+                        );
+                    }
+                }
+            });
+
+            return Ok(());
+        }
+
+        // Blocking mode (original behavior)
         let _permit = ctx
             .nft_metadata_semaphore
             .acquire()
