@@ -16,3 +16,4 @@ CREATE TABLE transaction_receipts (
     UNIQUE (transaction_hash)
 );
 
+CREATE INDEX idx_transaction_receipts_block_number ON transaction_receipts(block_number);
