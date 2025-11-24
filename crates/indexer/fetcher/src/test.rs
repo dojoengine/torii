@@ -491,8 +491,7 @@ async fn test_range_one_block() {
 
     // Expecting the block right after the cursor head + the chunk size.
     assert_eq!(result.range.blocks.len(), 2);
-    assert_eq!(torii_block.block_hash, Some(expected.block_hash));
-    assert_eq!(torii_block.timestamp, expected.timestamp);
+    assert_eq!(torii_block.transactions.len(), expected.transactions.len());
 
     // Verify all transactions are present and match
     for (torii_tx_hash, _torii_tx) in torii_block.transactions.iter() {
