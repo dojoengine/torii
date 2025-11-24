@@ -184,6 +184,14 @@ pub struct IndexingOptions {
     )]
     pub transactions: bool,
 
+    /// Whether or not to fetch and store transaction receipts
+    #[arg(
+        long = "indexing.transaction_receipts",
+        default_value_t = false,
+        help = "Whether or not to fetch and store transaction receipts in the database."
+    )]
+    pub transaction_receipts: bool,
+
     /// ERC contract addresses to index
     #[arg(
         long = "indexing.contracts",
@@ -277,6 +285,7 @@ impl Default for IndexingOptions {
             polling_interval: DEFAULT_POLLING_INTERVAL,
             max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
             transactions: false,
+            transaction_receipts: false,
             contracts: vec![],
             namespaces: vec![],
             models: vec![],

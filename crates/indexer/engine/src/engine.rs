@@ -357,6 +357,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     *block_number,
                     block.timestamp,
                     &tx.transaction,
+                    &tx.receipt,
                     cursors,
                     is_at_head,
                 )
@@ -391,6 +392,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     data.block_number,
                     data.timestamp,
                     &tx.transaction,
+                    &tx.receipt,
                     cursors,
                     is_at_head,
                 )
@@ -414,6 +416,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         block_number: u64,
         block_timestamp: u64,
         transaction: &Option<TransactionContent>,
+        receipt: &Option<starknet::core::types::TransactionReceiptWithBlockInfo>,
         cursors: &HashMap<Felt, ContractType>,
         is_at_head: bool,
     ) -> Result<(), ProcessError> {
@@ -470,6 +473,11 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 &unique_models,
             )
             .await?;
+        }
+
+        // Store receipt if available
+        if let Some(receipt) = receipt {
+            self.storage.store_transaction_receipt(receipt).await?;
         }
 
         Ok(())

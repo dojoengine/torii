@@ -244,6 +244,13 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         unique_models: &HashSet<Felt>,
     ) -> Result<(), StorageError>;
 
+    /// Stores a transaction receipt with the storage.
+    /// It should insert or update the receipt if it already exists.
+    async fn store_transaction_receipt(
+        &self,
+        receipt: &starknet::core::types::TransactionReceiptWithBlockInfo,
+    ) -> Result<(), StorageError>;
+
     /// Stores an event with the storage.
     async fn store_event(
         &self,

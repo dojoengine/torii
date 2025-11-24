@@ -192,6 +192,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                                 FetchTransaction {
                                     transaction: None,
                                     events: vec![],
+                                    receipt: None,
                                 },
                             )
                         }));
@@ -288,7 +289,60 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             }
         }
 
-        // Step 8: Update cursor timestamps
+        // Step 8: Fetch transaction receipts if enabled
+        if self
+            .config
+            .flags
+            .contains(FetchingFlags::TRANSACTION_RECEIPTS)
+            && !blocks.is_empty()
+        {
+            let mut receipt_requests = Vec::new();
+            let mut block_numbers_for_receipts = Vec::new();
+            for (block_number, block) in &blocks {
+                for (transaction_hash, tx) in &block.transactions {
+                    if tx.events.is_empty() {
+                        continue;
+                    }
+
+                    receipt_requests.push(ProviderRequestData::GetTransactionReceipt(
+                        starknet::core::types::requests::GetTransactionReceiptRequest {
+                            transaction_hash: *transaction_hash,
+                        },
+                    ));
+                    block_numbers_for_receipts.push(*block_number);
+                }
+            }
+
+            if !receipt_requests.is_empty() {
+                let receipts_start = Instant::now();
+                let receipt_results = self.chunked_batch_requests(&receipt_requests).await?;
+
+                histogram!("torii_fetcher_receipts_duration_seconds")
+                    .record(receipts_start.elapsed().as_secs_f64());
+                counter!("torii_fetcher_receipts_fetched_total")
+                    .increment(receipt_results.len() as u64);
+
+                for (block_number, result) in
+                    block_numbers_for_receipts.into_iter().zip(receipt_results)
+                {
+                    match result {
+                        ProviderResponseData::GetTransactionReceipt(receipt) => {
+                            if let Some(block) = blocks.get_mut(&block_number) {
+                                if let Some(tx) = block
+                                    .transactions
+                                    .get_mut(receipt.receipt.transaction_hash())
+                                {
+                                    tx.receipt = Some(receipt);
+                                }
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+        }
+
+        // Step 9: Update cursor timestamps
         for (_, cursor) in cursors.iter_mut() {
             if let Some(head) = cursor.head {
                 if let Some(block) = blocks.get(&head) {
@@ -382,6 +436,10 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             "Processing preconfirmed block transactions"
         );
 
+        let fetch_receipts = self
+            .config
+            .flags
+            .contains(FetchingFlags::TRANSACTION_RECEIPTS);
         let mut transactions: IndexMap<Felt, FetchTransaction> =
             IndexMap::from_iter(preconf_block.transactions.iter().map(|t| {
                 (
@@ -389,6 +447,16 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                     FetchTransaction {
                         transaction: Some(t.transaction.clone()),
                         events: vec![],
+                        receipt: if fetch_receipts {
+                            Some(starknet::core::types::TransactionReceiptWithBlockInfo {
+                                receipt: t.receipt.clone(),
+                                block: starknet::core::types::ReceiptBlock::PreConfirmed {
+                                    block_number,
+                                },
+                            })
+                        } else {
+                            None
+                        },
                     },
                 )
             }));
