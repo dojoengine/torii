@@ -357,6 +357,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     *block_number,
                     block.timestamp,
                     &tx.transaction,
+                    &tx.receipt,
                     cursors,
                     is_at_head,
                 )
@@ -391,6 +392,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                     data.block_number,
                     data.timestamp,
                     &tx.transaction,
+                    &tx.receipt,
                     cursors,
                     is_at_head,
                 )
@@ -414,6 +416,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         block_number: u64,
         block_timestamp: u64,
         transaction: &Option<TransactionContent>,
+        receipt: &Option<torii_indexer_fetcher::ReceiptData>,
         cursors: &HashMap<Felt, ContractType>,
         is_at_head: bool,
     ) -> Result<(), ProcessError> {
@@ -472,6 +475,11 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             .await?;
         }
 
+        // Process transaction receipt if available
+        if let Some(receipt_data) = receipt {
+            self.process_receipt(receipt_data).await?;
+        }
+
         Ok(())
     }
 
@@ -492,6 +500,58 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         }
 
         trace!(target: LOG_TARGET, block_number = %block_number, "Processed block.");
+        Ok(())
+    }
+
+    async fn process_receipt(
+        &mut self,
+        receipt: &torii_indexer_fetcher::ReceiptData,
+    ) -> Result<(), ProcessError> {
+        use starknet::core::types::{TransactionExecutionStatus, TransactionFinalityStatus, PriceUnit};
+
+        // Serialize execution resources to JSON
+        let execution_resources_json = serde_json::to_string(&receipt.execution_resources)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        // Convert execution status to string
+        let execution_status = match receipt.execution_status {
+            TransactionExecutionStatus::Succeeded => "SUCCEEDED",
+            TransactionExecutionStatus::Reverted => "REVERTED",
+        };
+
+        // Convert finality status to string
+        let finality_status = match receipt.finality_status {
+            TransactionFinalityStatus::AcceptedOnL2 => "ACCEPTED_ON_L2",
+            TransactionFinalityStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
+            TransactionFinalityStatus::PreConfirmed => "PRE_CONFIRMED",
+        };
+
+        // Convert price unit to string
+        let actual_fee_unit = match receipt.actual_fee_unit {
+            PriceUnit::Wei => "WEI",
+            PriceUnit::Fri => "FRI",
+        };
+
+        self.storage
+            .store_transaction_receipt(
+                receipt.transaction_hash,
+                receipt.actual_fee_amount,
+                actual_fee_unit,
+                execution_status,
+                finality_status,
+                receipt.revert_reason.as_deref(),
+                &execution_resources_json,
+                receipt.block_hash,
+                receipt.block_number,
+            )
+            .await?;
+
+        trace!(
+            target: LOG_TARGET,
+            transaction_hash = %format!("{:#x}", receipt.transaction_hash),
+            "Processed transaction receipt."
+        );
+
         Ok(())
     }
 

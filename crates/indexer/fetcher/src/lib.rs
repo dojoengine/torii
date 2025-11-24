@@ -10,7 +10,10 @@ pub use error::Error;
 pub mod json_rpc;
 use bitflags::bitflags;
 pub use json_rpc::Fetcher;
-use starknet::core::types::{Event, TransactionContent};
+use starknet::core::types::{
+    Event, ExecutionResources, PriceUnit, TransactionContent, TransactionExecutionStatus,
+    TransactionFinalityStatus,
+};
 use starknet_crypto::Felt;
 use torii_storage::proto::ContractCursor;
 
@@ -58,7 +61,21 @@ pub struct FetchTransaction {
     // this is Some if the transactions indexing flag
     // is enabled
     pub transaction: Option<TransactionContent>,
+    pub receipt: Option<ReceiptData>,
     pub events: Vec<Event>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReceiptData {
+    pub transaction_hash: Felt,
+    pub actual_fee_amount: Felt,
+    pub actual_fee_unit: PriceUnit,
+    pub execution_status: TransactionExecutionStatus,
+    pub finality_status: TransactionFinalityStatus,
+    pub revert_reason: Option<String>,
+    pub execution_resources: ExecutionResources,
+    pub block_hash: Felt,
+    pub block_number: u64,
 }
 
 #[derive(Debug, Clone)]

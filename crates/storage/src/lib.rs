@@ -244,6 +244,22 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
         unique_models: &HashSet<Felt>,
     ) -> Result<(), StorageError>;
 
+    /// Stores a transaction receipt with the storage.
+    /// It should insert or update the receipt if it already exists.
+    #[allow(clippy::too_many_arguments)]
+    async fn store_transaction_receipt(
+        &self,
+        transaction_hash: Felt,
+        actual_fee_amount: Felt,
+        actual_fee_unit: &str,
+        execution_status: &str,
+        finality_status: &str,
+        revert_reason: Option<&str>,
+        execution_resources_json: &str,
+        block_hash: Felt,
+        block_number: u64,
+    ) -> Result<(), StorageError>;
+
     /// Stores an event with the storage.
     async fn store_event(
         &self,

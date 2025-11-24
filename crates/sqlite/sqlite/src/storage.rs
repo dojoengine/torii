@@ -2201,6 +2201,58 @@ impl Storage for Sql {
         Ok(())
     }
 
+    /// Stores a transaction receipt with the storage.
+    async fn store_transaction_receipt(
+        &self,
+        transaction_hash: Felt,
+        actual_fee_amount: Felt,
+        actual_fee_unit: &str,
+        execution_status: &str,
+        finality_status: &str,
+        revert_reason: Option<&str>,
+        execution_resources_json: &str,
+        block_hash: Felt,
+        block_number: u64,
+    ) -> Result<(), StorageError> {
+        // Store the transaction receipt in the transaction_receipts table
+        self.executor
+            .send(QueryMessage::new(
+                "INSERT INTO transaction_receipts (id, transaction_hash, actual_fee_amount, \
+                 actual_fee_unit, execution_status, finality_status, revert_reason, \
+                 execution_resources, block_hash, block_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
+                 ON CONFLICT(transaction_hash) DO UPDATE SET \
+                 actual_fee_amount=excluded.actual_fee_amount, \
+                 actual_fee_unit=excluded.actual_fee_unit, \
+                 execution_status=excluded.execution_status, \
+                 finality_status=excluded.finality_status, \
+                 revert_reason=excluded.revert_reason, \
+                 execution_resources=excluded.execution_resources, \
+                 block_hash=excluded.block_hash, \
+                 block_number=excluded.block_number"
+                    .to_string(),
+                vec![
+                    Argument::FieldElement(transaction_hash),
+                    Argument::FieldElement(transaction_hash),
+                    Argument::FieldElement(actual_fee_amount),
+                    Argument::String(actual_fee_unit.to_string()),
+                    Argument::String(execution_status.to_string()),
+                    Argument::String(finality_status.to_string()),
+                    if let Some(reason) = revert_reason {
+                        Argument::String(reason.to_string())
+                    } else {
+                        Argument::Null
+                    },
+                    Argument::String(execution_resources_json.to_string()),
+                    Argument::FieldElement(block_hash),
+                    Argument::String(block_number.to_string()),
+                ],
+                QueryType::Other,
+            ))
+            .map_err(|e| Error::ExecutorQuery(Box::new(ExecutorQueryError::SendError(Box::new(e)))))?;
+
+        Ok(())
+    }
+
     /// Stores an event with the storage.
     async fn store_event(
         &self,

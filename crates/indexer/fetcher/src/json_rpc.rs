@@ -22,7 +22,7 @@ use tracing::{debug, error, trace, warn};
 use crate::error::Error;
 use crate::{
     Cursors, FetchPreconfirmedBlockResult, FetchRangeBlock, FetchRangeResult, FetchResult,
-    FetchTransaction, FetcherConfig, FetchingFlags,
+    FetchTransaction, FetcherConfig, FetchingFlags, ReceiptData,
 };
 
 pub(crate) const LOG_TARGET: &str = "torii::indexer::fetcher";
@@ -191,6 +191,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
                                 *tx_hash,
                                 FetchTransaction {
                                     transaction: None,
+                                    receipt: None,
                                     events: vec![],
                                 },
                             )
@@ -318,6 +319,72 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
         ))
     }
 
+    fn extract_receipt_data(
+        tx_with_receipt: &starknet::core::types::TransactionWithReceipt,
+        block_hash: Felt,
+        block_number: u64,
+    ) -> ReceiptData {
+        use starknet::core::types::TransactionReceipt;
+        
+        let receipt = &tx_with_receipt.receipt;
+        
+        // Extract common fields from the receipt enum
+        let (actual_fee_amount, actual_fee_unit, execution_status, finality_status, revert_reason, execution_resources) = match receipt {
+            TransactionReceipt::Invoke(r) => (
+                r.actual_fee.amount,
+                r.actual_fee.unit,
+                r.execution_result.status(),
+                r.finality_status,
+                r.execution_result.revert_reason().map(|s| s.to_string()),
+                r.execution_resources.clone(),
+            ),
+            TransactionReceipt::L1Handler(r) => (
+                r.actual_fee.amount,
+                r.actual_fee.unit,
+                r.execution_result.status(),
+                r.finality_status,
+                r.execution_result.revert_reason().map(|s| s.to_string()),
+                r.execution_resources.clone(),
+            ),
+            TransactionReceipt::Declare(r) => (
+                r.actual_fee.amount,
+                r.actual_fee.unit,
+                r.execution_result.status(),
+                r.finality_status,
+                r.execution_result.revert_reason().map(|s| s.to_string()),
+                r.execution_resources.clone(),
+            ),
+            TransactionReceipt::Deploy(r) => (
+                r.actual_fee.amount,
+                r.actual_fee.unit,
+                r.execution_result.status(),
+                r.finality_status,
+                r.execution_result.revert_reason().map(|s| s.to_string()),
+                r.execution_resources.clone(),
+            ),
+            TransactionReceipt::DeployAccount(r) => (
+                r.actual_fee.amount,
+                r.actual_fee.unit,
+                r.execution_result.status(),
+                r.finality_status,
+                r.execution_result.revert_reason().map(|s| s.to_string()),
+                r.execution_resources.clone(),
+            ),
+        };
+        
+        ReceiptData {
+            transaction_hash: *receipt.transaction_hash(),
+            actual_fee_amount,
+            actual_fee_unit,
+            execution_status,
+            finality_status,
+            revert_reason,
+            execution_resources,
+            block_hash,
+            block_number,
+        }
+    }
+
     async fn fetch_preconfirmed_block(
         &self,
         latest_block_number: u64,
@@ -382,12 +449,15 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Fetcher<P> {
             "Processing preconfirmed block transactions"
         );
 
+        // For preconfirmed blocks, the block hash is not yet finalized, use zero as placeholder
+        let block_hash = Felt::ZERO;
         let mut transactions: IndexMap<Felt, FetchTransaction> =
             IndexMap::from_iter(preconf_block.transactions.iter().map(|t| {
                 (
                     *t.receipt.transaction_hash(),
                     FetchTransaction {
                         transaction: Some(t.transaction.clone()),
+                        receipt: Some(Self::extract_receipt_data(t, block_hash, block_number)),
                         events: vec![],
                     },
                 )
