@@ -105,9 +105,7 @@ where
 
                 match fetch_token_metadata(token_address, token_id, &provider).await {
                     Ok(metadata) => {
-                        if let Err(e) =
-                            storage.update_token_metadata(id, metadata).await
-                        {
+                        if let Err(e) = storage.update_token_metadata(id, metadata).await {
                             debug!(
                                 target: LOG_TARGET,
                                 token_address = ?token_address,
