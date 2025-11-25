@@ -477,7 +477,9 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
 
         // Store receipt if available
         if let Some(receipt) = receipt {
-            self.storage.store_transaction_receipt(receipt).await?;
+            self.storage
+                .store_transaction_receipt(receipt, block_timestamp)
+                .await?;
         }
 
         Ok(())

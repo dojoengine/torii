@@ -2205,6 +2205,7 @@ impl Storage for Sql {
     async fn store_transaction_receipt(
         &self,
         receipt_with_block: &starknet::core::types::TransactionReceiptWithBlockInfo,
+        block_timestamp: u64,
     ) -> Result<(), StorageError> {
         use starknet::core::types::{ExecutionResult, ReceiptBlock, TransactionReceipt};
 
@@ -2275,8 +2276,8 @@ impl Storage for Sql {
         self.executor
             .send(QueryMessage::other(
                 "INSERT INTO transaction_receipts (id, transaction_hash, actual_fee_amount, actual_fee_unit, \
-                 execution_status, finality_status, revert_reason, execution_resources, block_hash, block_number) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
+                 execution_status, finality_status, revert_reason, execution_resources, block_hash, block_number, block_timestamp) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
                  ON CONFLICT(transaction_hash) DO UPDATE SET \
                  actual_fee_amount=excluded.actual_fee_amount, \
                  actual_fee_unit=excluded.actual_fee_unit, \
@@ -2285,7 +2286,8 @@ impl Storage for Sql {
                  revert_reason=excluded.revert_reason, \
                  execution_resources=excluded.execution_resources, \
                  block_hash=excluded.block_hash, \
-                 block_number=excluded.block_number \
+                 block_number=excluded.block_number, \
+                 block_timestamp=excluded.block_timestamp \
                  RETURNING *"
                     .to_string(),
                 vec![
@@ -2299,6 +2301,7 @@ impl Storage for Sql {
                     Argument::String(execution_resources_json),
                     Argument::String(block_hash.unwrap_or_default()),
                     Argument::String(block_number.to_string()),
+                    Argument::String(block_timestamp.to_string()),
                 ],
             ))
             .map_err(|e| {
