@@ -249,6 +249,7 @@ pub trait Storage: ReadOnlyStorage + Send + Sync + Debug {
     async fn store_transaction_receipt(
         &self,
         receipt: &starknet::core::types::TransactionReceiptWithBlockInfo,
+        block_timestamp: u64,
     ) -> Result<(), StorageError>;
 
     /// Stores an event with the storage.

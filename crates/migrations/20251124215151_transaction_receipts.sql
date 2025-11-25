@@ -12,8 +12,10 @@ CREATE TABLE transaction_receipts (
     execution_resources TEXT NOT NULL,
     block_hash TEXT,
     block_number INTEGER NOT NULL,
+    block_timestamp INTEGER NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (transaction_hash)
 );
 
 CREATE INDEX idx_transaction_receipts_block_number ON transaction_receipts(block_number);
+CREATE INDEX idx_transaction_receipts_block_timestamp ON transaction_receipts(block_timestamp);
