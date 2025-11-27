@@ -392,7 +392,7 @@ impl StaticHandler {
 
         let metadata: serde_json::Value =
             serde_json::from_str(&query_result.0).context("Failed to parse token metadata")?;
-        
+
         Ok((metadata, query_result.1))
     }
 
@@ -526,7 +526,7 @@ impl StaticHandler {
         db_timestamp: Option<&str>,
     ) -> anyhow::Result<String> {
         let is_contract = !token_id.contains(':');
-        
+
         // For both tokens and contracts, we can use the same query since contract address is the ID for contracts
         let query_str = format!("SELECT metadata FROM {TOKENS_TABLE} WHERE id = ?");
         let query_result = sqlx::query_as::<_, (String,)>(&query_str)
@@ -539,14 +539,15 @@ impl StaticHandler {
             Ok(result) => {
                 let metadata: serde_json::Value =
                     serde_json::from_str(&result.0).context("Failed to parse metadata")?;
-                
+
                 // Check if image field exists
                 if metadata.get("image").is_some() {
                     metadata
                 } else if is_contract {
                     // Fallback: try to find first token with this contract address
                     debug!(target: LOG_TARGET, contract_address = %token_id, "No image found in contract metadata, searching for first token");
-                    let (fallback_metadata, fallback_token_id) = self.get_first_token_metadata(token_id).await?;
+                    let (fallback_metadata, fallback_token_id) =
+                        self.get_first_token_metadata(token_id).await?;
                     debug!(target: LOG_TARGET, contract_address = %token_id, fallback_token = %fallback_token_id, "Using fallback token image");
                     fallback_metadata
                 } else {
@@ -556,12 +557,16 @@ impl StaticHandler {
             Err(_) if is_contract => {
                 // Fallback: try to find first token with this contract address
                 debug!(target: LOG_TARGET, contract_address = %token_id, "Contract metadata not found, searching for first token");
-                let (fallback_metadata, fallback_token_id) = self.get_first_token_metadata(token_id).await?;
+                let (fallback_metadata, fallback_token_id) =
+                    self.get_first_token_metadata(token_id).await?;
                 debug!(target: LOG_TARGET, contract_address = %token_id, fallback_token = %fallback_token_id, "Using fallback token image");
                 fallback_metadata
             }
             Err(e) => {
-                return Err(anyhow::anyhow!("Failed to fetch metadata from database: {}", e));
+                return Err(anyhow::anyhow!(
+                    "Failed to fetch metadata from database: {}",
+                    e
+                ));
             }
         };
 
