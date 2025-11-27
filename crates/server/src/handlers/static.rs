@@ -377,6 +377,25 @@ impl StaticHandler {
         Ok(query_result.0)
     }
 
+    async fn get_first_token_metadata(
+        &self,
+        contract_address: &str,
+    ) -> Result<(serde_json::Value, String)> {
+        // Find the first token with this contract address
+        let pattern = format!("{}:%", contract_address);
+        let query_str = format!("SELECT metadata, id FROM {TOKENS_TABLE} WHERE id LIKE ? LIMIT 1");
+        let query_result = sqlx::query_as::<_, (String, String)>(&query_str)
+            .bind(&pattern)
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to find any tokens for contract address")?;
+
+        let metadata: serde_json::Value =
+            serde_json::from_str(&query_result.0).context("Failed to parse token metadata")?;
+        
+        Ok((metadata, query_result.1))
+    }
+
     async fn check_if_image_outdated(
         &self,
         token_image_dir: &Utf8PathBuf,
@@ -506,16 +525,46 @@ impl StaticHandler {
         token_id: &str,
         db_timestamp: Option<&str>,
     ) -> anyhow::Result<String> {
+        let is_contract = !token_id.contains(':');
+        
         // For both tokens and contracts, we can use the same query since contract address is the ID for contracts
         let query_str = format!("SELECT metadata FROM {TOKENS_TABLE} WHERE id = ?");
         let query_result = sqlx::query_as::<_, (String,)>(&query_str)
             .bind(token_id)
             .fetch_one(&self.pool)
-            .await
-            .context("Failed to fetch metadata from database")?;
+            .await;
 
-        let metadata: serde_json::Value =
-            serde_json::from_str(&query_result.0).context("Failed to parse metadata")?;
+        // Try to get metadata and image_uri, with fallback for contracts
+        let metadata = match query_result {
+            Ok(result) => {
+                let metadata: serde_json::Value =
+                    serde_json::from_str(&result.0).context("Failed to parse metadata")?;
+                
+                // Check if image field exists
+                if metadata.get("image").is_some() {
+                    metadata
+                } else if is_contract {
+                    // Fallback: try to find first token with this contract address
+                    debug!(target: LOG_TARGET, contract_address = %token_id, "No image found in contract metadata, searching for first token");
+                    let (fallback_metadata, fallback_token_id) = self.get_first_token_metadata(token_id).await?;
+                    debug!(target: LOG_TARGET, contract_address = %token_id, fallback_token = %fallback_token_id, "Using fallback token image");
+                    fallback_metadata
+                } else {
+                    return Err(anyhow::anyhow!("Image URL not found in metadata"));
+                }
+            }
+            Err(_) if is_contract => {
+                // Fallback: try to find first token with this contract address
+                debug!(target: LOG_TARGET, contract_address = %token_id, "Contract metadata not found, searching for first token");
+                let (fallback_metadata, fallback_token_id) = self.get_first_token_metadata(token_id).await?;
+                debug!(target: LOG_TARGET, contract_address = %token_id, fallback_token = %fallback_token_id, "Using fallback token image");
+                fallback_metadata
+            }
+            Err(e) => {
+                return Err(anyhow::anyhow!("Failed to fetch metadata from database: {}", e));
+            }
+        };
+
         let image_uri = metadata
             .get("image")
             .context("Image URL not found in metadata")?
