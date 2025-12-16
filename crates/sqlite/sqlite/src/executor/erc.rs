@@ -44,6 +44,20 @@ pub struct TokenTrait {
     pub trait_value: String,
 }
 
+/// Extract the name from NFT metadata JSON if present
+pub fn extract_name_from_metadata(metadata: &str) -> Option<String> {
+    if metadata.is_empty() {
+        return None;
+    }
+
+    let metadata_json: serde_json::Value = serde_json::from_str(metadata).ok()?;
+    metadata_json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Extract traits from NFT metadata JSON
 pub fn extract_traits_from_json(metadata: &str) -> Result<Vec<TokenTrait>, serde_json::Error> {
     let metadata_json: serde_json::Value = serde_json::from_str(metadata)?;
@@ -472,6 +486,34 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_extract_name_from_metadata() {
+        // Test with valid name
+        let metadata = r#"{"name": "Cool NFT #42", "description": "A cool NFT"}"#;
+        assert_eq!(
+            extract_name_from_metadata(metadata),
+            Some("Cool NFT #42".to_string())
+        );
+
+        // Test with empty name
+        let metadata = r#"{"name": "", "description": "A cool NFT"}"#;
+        assert_eq!(extract_name_from_metadata(metadata), None);
+
+        // Test with no name field
+        let metadata = r#"{"description": "A cool NFT"}"#;
+        assert_eq!(extract_name_from_metadata(metadata), None);
+
+        // Test with empty metadata
+        assert_eq!(extract_name_from_metadata(""), None);
+
+        // Test with invalid JSON
+        assert_eq!(extract_name_from_metadata("invalid json"), None);
+
+        // Test with name as number (should return None)
+        let metadata = r#"{"name": 123}"#;
+        assert_eq!(extract_name_from_metadata(metadata), None);
+    }
 
     #[test]
     fn test_extract_traits_from_json() {

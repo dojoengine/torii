@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use cainome::cairo_serde::{ByteArray, CairoSerde};
 use dojo_types::schema::{Struct, Ty};
 use erc::{
-    store_token_attributes, update_contract_traits_from_metadata,
+    extract_name_from_metadata, store_token_attributes, update_contract_traits_from_metadata,
     update_contract_traits_on_metadata_change, UpdateTokenMetadataQuery,
 };
 use metrics::{counter, histogram};
@@ -969,7 +969,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
 
                 // If we find a token already registered for this contract_address we dont need to
                 // refetch the data since its same for all tokens of this contract
-                let (name, symbol) = match res {
+                let (contract_name, symbol) = match res {
                     Ok((name, symbol)) => {
                         debug!(
                             target: LOG_TARGET,
@@ -1057,6 +1057,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                         }
                     }
                 };
+
+                // Try to get name from token metadata, fallback to contract name
+                let name = extract_name_from_metadata(&register_nft_token.metadata)
+                    .unwrap_or(contract_name);
 
                 let query = sqlx::query_as::<_, torii_sqlite_types::Token>(
                     "INSERT INTO tokens (id, contract_address, token_id, name, symbol, decimals, \
