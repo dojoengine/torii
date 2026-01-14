@@ -223,7 +223,8 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                                             self.cached_fetch = None;
 
                                             // Wait for controller sync to complete before executing
-                                            self.join_controllers_sync(controller_sync_handle).await?;
+                                            // Controller sync failures are logged but don't block processing commit
+                                            self.join_controllers_sync(controller_sync_handle).await;
                                             self.storage.execute().await?;
                                         },
                                         Err(e) => {
@@ -662,27 +663,25 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
     async fn join_controllers_sync(
         &self,
         handle: Option<tokio::task::JoinHandle<Result<usize, torii_controllers::error::Error>>>,
-    ) -> Result<(), Error> {
+    ) {
         if let Some(handle) = handle {
             match handle.await {
                 Ok(Ok(num_controllers)) => {
                     if num_controllers > 0 {
                         info!(target: LOG_TARGET, num_controllers = num_controllers, "Synced controllers.");
                     }
-                    Ok(())
                 }
-                Ok(Err(e)) => Err(Error::ControllerSync(e)),
+                Ok(Err(e)) => {
+                    counter!("torii_indexer_errors_total", "operation" => "controller_sync")
+                        .increment(1);
+                    error!(target: LOG_TARGET, error = ?e, "Syncing controllers failed, but continuing with processing commit.");
+                }
                 Err(e) => {
-                    error!(target: LOG_TARGET, error = ?e, "Syncing controllers panicked.");
-                    Err(Error::ControllerSync(
-                        torii_controllers::error::Error::ApiError(
-                            "Syncing controllers panicked".to_string(),
-                        ),
-                    ))
+                    counter!("torii_indexer_errors_total", "operation" => "controller_sync")
+                        .increment(1);
+                    error!(target: LOG_TARGET, error = ?e, "Syncing controllers panicked, but continuing with processing commit.");
                 }
             }
-        } else {
-            Ok(())
         }
     }
 
