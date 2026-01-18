@@ -7,8 +7,6 @@ use std::task::{Context, Poll};
 use dashmap::DashMap;
 use futures_channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use futures_util::{Stream, StreamExt};
-#[cfg(feature = "redis")]
-use serde::{de::DeserializeOwned, Serialize};
 use slab::Slab;
 
 use crate::types::Update;
@@ -61,43 +59,15 @@ impl<T> MemoryBroker<Update<T>>
 where
     T: std::fmt::Debug + Clone + Send + Sync + 'static,
 {
-    /// Publish an update message to local subscribers only.
-    ///
-    /// This is used internally by the Redis broker to dispatch messages received
-    /// from other replicas without re-publishing to Redis (which would cause a loop).
-    pub fn publish_local(msg: Update<T>) {
+    /// Publish an update message that all subscription streams can receive.
+    pub fn publish(msg: Update<T>) {
         with_senders::<Update<T>, _, _>(|senders| {
+            // Use unbounded_send instead of start_send for better performance
+            // Unbounded channels never block or fail
             for (_, sender) in senders.0.iter_mut() {
                 let _ = sender.unbounded_send(msg.clone());
             }
         });
-    }
-
-    /// Publish an update message that all subscription streams can receive.
-    ///
-    /// In single-replica mode, this only publishes to local subscribers.
-    /// In multi-replica mode (when Redis is configured), this also publishes
-    /// to Redis so that subscribers on other replicas receive the update.
-    #[cfg(not(feature = "redis"))]
-    pub fn publish(msg: Update<T>) {
-        Self::publish_local(msg);
-    }
-
-    /// Publish an update message that all subscription streams can receive.
-    ///
-    /// In single-replica mode, this only publishes to local subscribers.
-    /// In multi-replica mode (when Redis is configured), this also publishes
-    /// to Redis so that subscribers on other replicas receive the update.
-    #[cfg(feature = "redis")]
-    pub fn publish(msg: Update<T>)
-    where
-        T: Serialize + DeserializeOwned,
-    {
-        // Always publish to local subscribers first for lowest latency
-        Self::publish_local(msg.clone());
-
-        // Also publish to Redis if configured (async, non-blocking)
-        crate::redis::publish_to_redis(msg);
     }
 
     /// Subscribe to all updates, regardless if they're optimistic or not.

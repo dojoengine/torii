@@ -72,4 +72,3 @@ camino.workspace = true
 default = ["jemalloc", "sqlite"]
 jemalloc = ["dojo-metrics/jemalloc"]
 sqlite = ["sqlx/sqlite"]
-redis = ["torii-broker/redis"]

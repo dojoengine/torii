@@ -48,10 +48,6 @@ pub struct ToriiArgs {
 
     #[command(flatten)]
     #[merge]
-    pub broker: BrokerOptions,
-
-    #[command(flatten)]
-    #[merge]
     pub indexing: IndexingOptions,
 
     #[command(flatten)]
@@ -125,7 +121,6 @@ impl Default for ToriiArgs {
             achievement: AchievementOptions::default(),
             snapshot: SnapshotOptions::default(),
             runner: RunnerOptions::default(),
-            broker: BrokerOptions::default(),
             #[cfg(feature = "server")]
             metrics: MetricsOptions::default(),
             #[cfg(feature = "server")]

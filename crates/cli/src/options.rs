@@ -1056,34 +1056,6 @@ impl Default for RunnerOptions {
 
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
-#[command(next_help_heading = "Broker options")]
-pub struct BrokerOptions {
-    /// Redis URL for distributed broker (enables cross-replica subscription updates).
-    ///
-    /// When set, Torii uses Redis Pub/Sub to broadcast subscription updates across
-    /// all replicas. This is required for multi-replica deployments where clients
-    /// may connect to any replica but need to receive updates from all indexers.
-    ///
-    /// Example: redis://localhost:6379
-    ///
-    /// If not set, Torii uses an in-memory broker (single-replica mode).
-    #[arg(
-        long = "broker.redis_url",
-        value_name = "URL",
-        env = "TORII_BROKER_REDIS_URL",
-        help = "Redis URL for distributed broker. Required for multi-replica deployments."
-    )]
-    pub redis_url: Option<String>,
-}
-
-impl Default for BrokerOptions {
-    fn default() -> Self {
-        Self { redis_url: None }
-    }
-}
-
-#[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
-#[serde(default)]
 #[command(next_help_heading = "GRPC options")]
 pub struct GrpcOptions {
     /// gRPC server listening interface.
