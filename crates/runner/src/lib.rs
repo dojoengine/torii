@@ -41,6 +41,8 @@ use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
 use torii_broker::types::ModelUpdate;
 use torii_broker::MemoryBroker;
+#[cfg(feature = "redis")]
+use torii_broker::{init_redis, start_all_listeners};
 use torii_cache::InMemoryCache;
 use torii_cli::ToriiArgs;
 use torii_controllers::sync::ControllersSync;
@@ -284,6 +286,27 @@ impl Runner {
             let _ = shutdown_tx_clone.send(());
         })
         .expect("Error setting Ctrl-C handler");
+
+        // Initialize Redis broker if configured (for multi-replica deployments)
+        #[cfg(feature = "redis")]
+        if let Some(redis_url) = &self.args.broker.redis_url {
+            match init_redis(redis_url).await {
+                Ok(()) => {
+                    info!(target: LOG_TARGET, redis_url = %redis_url, "Redis broker initialized for distributed subscriptions");
+                    // Start Redis subscription listeners for all update types
+                    start_all_listeners().await;
+                    info!(target: LOG_TARGET, "Redis subscription listeners started - subscriptions will work across replicas");
+                }
+                Err(e) => {
+                    error!(target: LOG_TARGET, redis_url = %redis_url, error = ?e, "Failed to initialize Redis broker");
+                    return Err(anyhow::anyhow!(
+                        "Failed to connect to Redis at {}: {}. Multi-replica subscriptions require Redis.",
+                        redis_url,
+                        e
+                    ));
+                }
+            }
+        }
 
         let transport = HttpTransport::new(self.args.rpc.clone()).with_header(
             "User-Agent".to_string(),
