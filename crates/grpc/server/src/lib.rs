@@ -45,7 +45,7 @@ use crate::subscriptions::transaction::TransactionManager;
 
 use self::subscriptions::entity::EntityManager;
 use self::subscriptions::event_message::EventMessageManager;
-use sqlx::SqlitePool;
+use torii_sqlite::caching_pool::{CachedQueryResult, CachingPool};
 use torii_proto::proto::world::world_server::WorldServer;
 use torii_proto::proto::world::{
     PublishMessageBatchRequest, PublishMessageBatchResponse, PublishMessageRequest,
@@ -94,7 +94,7 @@ pub struct DojoWorld<P: Provider + Sync> {
     aggregation_manager: Arc<AggregationManager>,
     activity_manager: Arc<ActivityManager>,
     achievement_progression_manager: Arc<AchievementProgressionManager>,
-    pool: SqlitePool,
+    pool: CachingPool,
     _config: GrpcConfig,
 }
 
@@ -103,7 +103,7 @@ impl<P: Provider + Sync> DojoWorld<P> {
         storage: Arc<dyn ReadOnlyStorage>,
         messaging: Arc<Messaging<P>>,
         cross_messaging_tx: Option<UnboundedSender<Message>>,
-        pool: SqlitePool,
+        pool: CachingPool,
         config: GrpcConfig,
     ) -> Self {
         let entity_manager = Arc::new(EntityManager::new(config.clone()));
@@ -1185,17 +1185,22 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
     ) -> Result<Response<proto::types::SqlQueryResponse>, Status> {
         let proto::types::SqlQueryRequest { query } = request.into_inner();
 
-        // Execute the query
-        let rows = sqlx::query(&query)
-            .fetch_all(&self.pool)
+        let result = self
+            .pool
+            .fetch_all_cached(&query, &[])
             .await
             .map_err(|e| Status::invalid_argument(format!("Query error: {:?}", e)))?;
 
-        // Map rows to proto types
-        let proto_rows: Vec<proto::types::SqlRow> = rows
-            .iter()
-            .map(torii_sqlite::utils::map_row_to_proto)
-            .collect();
+        let proto_rows: Vec<proto::types::SqlRow> = match result {
+            CachedQueryResult::Cached(rows) => rows
+                .iter()
+                .map(torii_sqlite::utils::map_cached_row_to_proto)
+                .collect(),
+            CachedQueryResult::Fresh(rows) => rows
+                .iter()
+                .map(torii_sqlite::utils::map_row_to_proto)
+                .collect(),
+        };
 
         Ok(Response::new(proto::types::SqlQueryResponse {
             rows: proto_rows,
@@ -1248,7 +1253,7 @@ pub async fn new<P: Provider + Sync + Send + 'static>(
     storage: Arc<dyn ReadOnlyStorage>,
     messaging: Arc<Messaging<P>>,
     cross_messaging_tx: UnboundedSender<Message>,
-    pool: SqlitePool,
+    pool: CachingPool,
     config: GrpcConfig,
     bind_addr: Option<SocketAddr>,
 ) -> Result<

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cainome::cairo_serde::{ByteArray, CairoSerde};
@@ -39,6 +40,7 @@ use crate::utils::{
 };
 use crate::SqlConfig;
 use torii_broker::MemoryBroker;
+use torii_cache::query_cache::QueryCache;
 
 pub mod achievement;
 pub mod activity;
@@ -192,6 +194,8 @@ pub struct Executor<'c, P: Provider + Sync + Send + Clone + 'static> {
     db_path: PathBuf,
     // Timestamp of last optimization
     last_optimization: Option<Instant>,
+    // Optional query cache for invalidation after writes
+    query_cache: Option<Arc<dyn QueryCache>>,
 }
 
 #[derive(Debug)]
@@ -274,6 +278,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             provider,
             crate::SqlConfig::default(),
             PathBuf::from(""),
+            None,
         )
         .await
     }
@@ -284,6 +289,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         provider: P,
         config: SqlConfig,
         db_path: PathBuf,
+        query_cache: Option<Arc<dyn QueryCache>>,
     ) -> Result<(Self, UnboundedSender<QueryMessage>)> {
         let (tx, rx) = unbounded_channel();
         let transaction = pool.begin().await?;
@@ -301,6 +307,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 config,
                 db_path,
                 last_optimization: None,
+                query_cache,
             },
             tx,
         ))
@@ -338,6 +345,7 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
     async fn handle_query_message(&mut self, query_message: QueryMessage) -> QueryResult<()> {
         let start_time = Instant::now();
         let query_type_str = format!("{}", query_message.query_type);
+        let query_type_for_invalidation = query_message.query_type.clone();
 
         let tx = self.transaction.as_mut().unwrap();
 
@@ -1177,6 +1185,8 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
             }
         }
 
+        self.invalidate_query_cache(&query_type_for_invalidation).await;
+
         // Record metrics
         let duration = start_time.elapsed();
         histogram!(
@@ -1192,6 +1202,29 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         .increment(1);
 
         Ok(())
+    }
+
+    async fn invalidate_query_cache(&self, query_type: &QueryType) {
+        let cache = match &self.query_cache {
+            Some(cache) => cache,
+            None => return,
+        };
+
+        let tables: &[&str] = match query_type {
+            QueryType::SetEntity(_) | QueryType::DeleteEntity(_) => {
+                &["entities", "entities_historical"]
+            }
+            QueryType::ApplyBalanceDiff(_) => &["token_balances", "tokens"],
+            QueryType::StoreTokenTransfer => &["token_transfers"],
+            QueryType::RegisterNftToken(_) => &["tokens"],
+            QueryType::RegisterTokenContract(_) => &["token_contracts"],
+            _ => return,
+        };
+
+        for table in tables {
+            let pattern = format!("torii:query:{}:*", table);
+            let _ = cache.invalidate_pattern(&pattern).await;
+        }
     }
 
     async fn execute(&mut self) -> Result<()> {

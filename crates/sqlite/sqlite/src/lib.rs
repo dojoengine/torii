@@ -6,6 +6,7 @@ use dojo_types::schema::Ty;
 use sqlx::{Pool, Sqlite};
 use starknet::core::types::Felt;
 use tokio::sync::mpsc::UnboundedSender;
+use torii_cache::query_cache::QueryCache;
 use torii_cache::Cache;
 use torii_proto::ContractDefinition;
 use torii_storage::Storage;
@@ -15,7 +16,9 @@ use crate::executor::error::ExecutorQueryError;
 use crate::executor::{Argument, QueryMessage};
 use crate::utils::utc_dt_string_from_timestamp;
 use torii_sqlite_types::{AggregatorConfig, Hook, ModelIndices};
+use crate::caching_pool::CachingPool;
 
+pub mod caching_pool;
 pub mod constants;
 pub mod cursor;
 pub mod error;
@@ -84,6 +87,7 @@ pub struct Sql {
     pub executor: UnboundedSender<QueryMessage>,
     pub config: SqlConfig,
     pub cache: Option<Arc<dyn Cache>>,
+    pub query_cache: Option<Arc<dyn QueryCache>>,
 }
 
 impl Sql {
@@ -120,6 +124,7 @@ impl Sql {
             executor,
             config,
             cache: None,
+            query_cache: None,
         };
 
         db.execute().await?;
@@ -131,6 +136,19 @@ impl Sql {
         Self {
             cache: Some(cache),
             ..self
+        }
+    }
+
+    pub fn with_query_cache(self, query_cache: Arc<dyn QueryCache>) -> Self {
+        Self { query_cache: Some(query_cache), ..self }
+    }
+
+    pub fn caching_pool(&self) -> CachingPool {
+        let pool = CachingPool::new(self.pool.clone());
+        if let Some(cache) = self.query_cache.clone() {
+            pool.with_cache(cache)
+        } else {
+            pool
         }
     }
 

@@ -45,6 +45,10 @@ pub const DEFAULT_DATABASE_MAX_CONNECTIONS: u32 = 100;
 pub const DEFAULT_MESSAGING_MAX_AGE: u64 = 300_000;
 pub const DEFAULT_MESSAGING_FUTURE_TOLERANCE: u64 = 60_000;
 
+// Query cache defaults
+/// Default TTL for query cache entries in seconds (60 seconds)
+pub const DEFAULT_QUERY_CACHE_TTL: u64 = 60;
+
 // Activity tracking defaults
 /// Default session timeout in seconds (1 hour)
 pub const DEFAULT_ACTIVITY_SESSION_TIMEOUT: u64 = 3600;
@@ -398,6 +402,39 @@ impl Default for MetricsOptions {
             metrics_addr: DEFAULT_METRICS_ADDR,
             metrics_port: DEFAULT_METRICS_PORT,
         }
+    }
+}
+
+#[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
+#[serde(default)]
+#[command(next_help_heading = "Query cache options")]
+pub struct QueryCacheOptions {
+    /// Enable query result caching for improved read performance.
+    ///
+    /// When enabled, SELECT query results are cached in memory (and optionally Redis).
+    /// This can significantly improve read performance for frequently accessed data.
+    #[arg(long = "cache.enabled", default_value_t = false)]
+    pub cache_enabled: bool,
+
+    /// Cache TTL (time-to-live) in seconds.
+    ///
+    /// Cached query results will be automatically invalidated after this duration.
+    /// Additionally, caches are invalidated immediately when data is modified.
+    #[arg(long = "cache.ttl", default_value_t = DEFAULT_QUERY_CACHE_TTL)]
+    pub cache_ttl: u64,
+
+    /// Redis URL for distributed caching.
+    ///
+    /// When provided, query results are cached in Redis in addition to in-memory cache.
+    /// This enables cache sharing across multiple Torii instances.
+    /// Format: redis://[username:password@]host[:port][/database]
+    #[arg(long = "cache.redis_url", value_name = "URL")]
+    pub redis_url: Option<String>,
+}
+
+impl Default for QueryCacheOptions {
+    fn default() -> Self {
+        Self { cache_enabled: false, cache_ttl: DEFAULT_QUERY_CACHE_TTL, redis_url: None }
     }
 }
 

@@ -20,6 +20,7 @@ use tonic::Request;
 use torii_libp2p_relay::Relay;
 use torii_messaging::{Messaging, MessagingConfig};
 use torii_proto::proto::world::PublishMessageRequest;
+use torii_sqlite::caching_pool::CachingPool;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::Sql;
 use torii_storage::proto::{ContractDefinition, ContractType};
@@ -115,7 +116,7 @@ async fn test_publish_message(sequencer: &RunnerCtx) {
         db.clone(),
         messaging,
         None,
-        pool.clone(),
+        CachingPool::new(pool.clone()),
         GrpcConfig::default(),
     );
 
@@ -437,7 +438,7 @@ async fn test_cross_messaging_between_relay_servers(sequencer: &RunnerCtx) {
         db1,
         messaging1,
         Some(cross_messaging_tx1),
-        pool1.clone(),
+        CachingPool::new(pool1.clone()),
         GrpcConfig::default(),
     );
 
@@ -636,7 +637,7 @@ async fn test_publish_message_with_bad_signature_fails(sequencer: &RunnerCtx) {
         db.clone(),
         messaging,
         None,
-        pool.clone(),
+        CachingPool::new(pool.clone()),
         GrpcConfig::default(),
     );
 
@@ -831,7 +832,7 @@ async fn test_timestamp_validation_logic(sequencer: &RunnerCtx) {
         db.clone(),
         messaging,
         None,
-        pool.clone(),
+        CachingPool::new(pool.clone()),
         GrpcConfig::default(),
     );
 
