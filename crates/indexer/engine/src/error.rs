@@ -12,8 +12,6 @@ pub enum Error {
     Storage(#[from] torii_storage::StorageError),
     #[error(transparent)]
     Provider(#[from] starknet::providers::ProviderError),
-    #[error(transparent)]
-    ControllerSync(#[from] torii_controllers::error::Error),
 }
 
 #[derive(Error, Debug)]
