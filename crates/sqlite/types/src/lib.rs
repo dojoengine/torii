@@ -54,10 +54,9 @@ pub struct Entity {
 
 impl<const EVENT_MESSAGE: bool> From<Entity> for torii_proto::schema::Entity<EVENT_MESSAGE> {
     fn from(value: Entity) -> Self {
-        let models = if value.deleted {
-            vec![]
-        } else {
-            vec![value.updated_model.unwrap().as_struct().unwrap().clone()]
+        let models = match &value.updated_model {
+            Some(model) => vec![model.as_struct().unwrap().clone()],
+            None => vec![],
         };
 
         // Use the dedicated entity_id column (no parsing needed!)
