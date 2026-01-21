@@ -54,10 +54,9 @@ pub struct Entity {
 
 impl<const EVENT_MESSAGE: bool> From<Entity> for torii_proto::schema::Entity<EVENT_MESSAGE> {
     fn from(value: Entity) -> Self {
-        let models = if value.deleted {
-            vec![]
-        } else {
-            vec![value.updated_model.unwrap().as_struct().unwrap().clone()]
+        let models = match &value.updated_model {
+            Some(model) => vec![model.as_struct().unwrap().clone()],
+            None => vec![],
         };
 
         // Use the dedicated entity_id column (no parsing needed!)
@@ -655,4 +654,90 @@ pub struct AchievementConfig {
     pub registration_model: String,
     pub progression_model: String,
     pub additional_progression_models: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dojo_types::schema::{Struct, Ty};
+
+    #[test]
+    fn test_entity_conversion_preserves_model_on_deletion() {
+        let now = Utc::now();
+
+        let entity = Entity {
+            id: "0xworld:0xentity".to_string(),
+            entity_id: "0x123".to_string(),
+            world_address: "0xabc".to_string(),
+            keys: "0x1/0x2".to_string(),
+            event_id: "event_123".to_string(),
+            executed_at: now,
+            created_at: now,
+            updated_at: now,
+            updated_model: Some(Ty::Struct(Struct {
+                name: "Game-Player".to_string(),
+                children: vec![],
+            })),
+            deleted: true,
+        };
+
+        let proto_entity: torii_proto::schema::Entity<false> = entity.into();
+
+        assert_eq!(proto_entity.models.len(), 1);
+        assert_eq!(proto_entity.models[0].name, "Game-Player");
+        assert!(proto_entity.models[0].children.is_empty());
+    }
+
+    #[test]
+    fn test_entity_conversion_empty_models_when_none() {
+        let now = Utc::now();
+
+        let entity = Entity {
+            id: "0xworld:0xentity".to_string(),
+            entity_id: "0x123".to_string(),
+            world_address: "0xabc".to_string(),
+            keys: "0x1/0x2".to_string(),
+            event_id: "event_123".to_string(),
+            executed_at: now,
+            created_at: now,
+            updated_at: now,
+            updated_model: None,
+            deleted: false,
+        };
+
+        let proto_entity: torii_proto::schema::Entity<false> = entity.into();
+
+        assert!(proto_entity.models.is_empty());
+    }
+
+    #[test]
+    fn test_entity_conversion_normal_update() {
+        let now = Utc::now();
+
+        let entity = Entity {
+            id: "0xworld:0xentity".to_string(),
+            entity_id: "0x123".to_string(),
+            world_address: "0xabc".to_string(),
+            keys: "0x1/0x2".to_string(),
+            event_id: "event_123".to_string(),
+            executed_at: now,
+            created_at: now,
+            updated_at: now,
+            updated_model: Some(Ty::Struct(Struct {
+                name: "Game-Player".to_string(),
+                children: vec![dojo_types::schema::Member {
+                    name: "score".to_string(),
+                    ty: Ty::Primitive(dojo_types::primitive::Primitive::U32(Some(100))),
+                    key: false,
+                }],
+            })),
+            deleted: false,
+        };
+
+        let proto_entity: torii_proto::schema::Entity<false> = entity.into();
+
+        assert_eq!(proto_entity.models.len(), 1);
+        assert_eq!(proto_entity.models[0].name, "Game-Player");
+        assert_eq!(proto_entity.models[0].children.len(), 1);
+    }
 }
