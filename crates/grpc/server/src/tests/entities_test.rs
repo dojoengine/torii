@@ -32,6 +32,7 @@ use torii_proto::proto::world::RetrieveEntitiesRequest;
 use torii_proto::{Clause, KeysClause, PatternMatching, Query};
 
 use torii_proto::schema::Entity;
+use torii_sqlite::caching_pool::CachingPool;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::{Sql, SqlConfig};
 use torii_storage::proto::{ContractDefinition, ContractType};
@@ -169,7 +170,7 @@ async fn test_entities_queries(sequencer: &RunnerCtx) {
         storage,
         messaging.clone(),
         None,
-        pool.clone(),
+        CachingPool::new(pool.clone()),
         GrpcConfig::default(),
     );
 
@@ -329,7 +330,7 @@ async fn test_keys_clause_with_empty_models(sequencer: &RunnerCtx) {
         storage,
         messaging.clone(),
         None,
-        pool.clone(),
+        CachingPool::new(pool.clone()),
         GrpcConfig::default(),
     );
 
@@ -490,7 +491,7 @@ async fn test_keys_clause_with_specific_models(sequencer: &RunnerCtx) {
         storage,
         messaging.clone(),
         None,
-        pool.clone(),
+        CachingPool::new(pool.clone()),
         GrpcConfig::default(),
     );
 
@@ -651,7 +652,7 @@ async fn test_hashed_keys_clause(sequencer: &RunnerCtx) {
         storage,
         messaging.clone(),
         None,
-        pool.clone(),
+        CachingPool::new(pool.clone()),
         GrpcConfig::default(),
     );
 
@@ -808,7 +809,7 @@ async fn test_member_clause(sequencer: &RunnerCtx) {
         storage,
         messaging.clone(),
         None,
-        pool.clone(),
+        CachingPool::new(pool.clone()),
         GrpcConfig::default(),
     );
 
@@ -971,7 +972,7 @@ async fn test_composite_clause_and(sequencer: &RunnerCtx) {
         storage,
         messaging.clone(),
         None,
-        pool.clone(),
+        CachingPool::new(pool.clone()),
         GrpcConfig::default(),
     );
 
@@ -1164,7 +1165,7 @@ async fn test_composite_clause_or(sequencer: &RunnerCtx) {
         storage,
         messaging.clone(),
         None,
-        pool.clone(),
+        CachingPool::new(pool.clone()),
         GrpcConfig::default(),
     );
 
@@ -1347,7 +1348,7 @@ async fn test_historical_query(sequencer: &RunnerCtx) {
         storage,
         messaging.clone(),
         None,
-        pool.clone(),
+        CachingPool::new(pool.clone()),
         GrpcConfig::default(),
     );
 

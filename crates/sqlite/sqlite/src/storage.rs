@@ -10,6 +10,7 @@ use dojo_world::{config::WorldMetadata, contracts::abigen::model::Layout};
 use sqlx::{sqlite::SqliteRow, FromRow, Row};
 use starknet::core::types::U256;
 use starknet_crypto::{poseidon_hash_many, Felt};
+use torii_cache::query_cache::{CachedRow, CachedValue};
 use torii_math::I256;
 use torii_proto::{
     schema::Entity, Activity, ActivityQuery, AggregationEntry, AggregationQuery, BalanceId,
@@ -40,11 +41,138 @@ use crate::{
         error::ExecutorQueryError, ApplyBalanceDiffQuery, Argument, DeleteEntityQuery, EntityQuery,
         EventMessageQuery, QueryMessage, QueryType, StoreTransactionQuery, UpdateCursorsQuery,
     },
+    error::QueryError,
     utils::{felt_to_sql_string, felts_to_sql_string, utc_dt_string_from_timestamp},
     Sql,
 };
 
 pub const LOG_TARGET: &str = "torii::sqlite::storage";
+
+fn cached_value_to_string(value: &CachedValue, column: &str) -> Result<String, Error> {
+    match value {
+        CachedValue::Text(text) => Ok(text.clone()),
+        CachedValue::Integer(int_val) => Ok(int_val.to_string()),
+        CachedValue::Real(real_val) => Ok(real_val.to_string()),
+        CachedValue::Blob(_) | CachedValue::Null => Err(Error::Query(QueryError::InvalidCursor(
+            format!("Unsupported value for column {}", column),
+        ))),
+    }
+}
+
+fn cached_row_string(row: &CachedRow, column: &str) -> Result<String, Error> {
+    let value = row.get(column).ok_or_else(|| {
+        Error::Query(QueryError::InvalidCursor(format!(
+            "Missing column {}",
+            column
+        )))
+    })?;
+    cached_value_to_string(value, column)
+}
+
+fn cached_row_optional_string(row: &CachedRow, column: &str) -> Result<Option<String>, Error> {
+    let value = row.get(column).ok_or_else(|| {
+        Error::Query(QueryError::InvalidCursor(format!(
+            "Missing column {}",
+            column
+        )))
+    })?;
+
+    match value {
+        CachedValue::Null => Ok(None),
+        _ => cached_value_to_string(value, column).map(Some),
+    }
+}
+
+fn cached_row_u8(row: &CachedRow, column: &str) -> Result<u8, Error> {
+    let value = row.get(column).ok_or_else(|| {
+        Error::Query(QueryError::InvalidCursor(format!(
+            "Missing column {}",
+            column
+        )))
+    })?;
+
+    match value {
+        CachedValue::Integer(int_val) => Ok(*int_val as u8),
+        CachedValue::Text(text) => text.parse::<u8>().map_err(|_| {
+            Error::Query(QueryError::InvalidCursor(format!(
+                "Invalid u8 value for column {}",
+                column
+            )))
+        }),
+        _ => Err(Error::Query(QueryError::InvalidCursor(format!(
+            "Unsupported u8 value for column {}",
+            column
+        )))),
+    }
+}
+
+fn cached_row_datetime(row: &CachedRow, column: &str) -> Result<DateTime<Utc>, Error> {
+    let value = row.get(column).ok_or_else(|| {
+        Error::Query(QueryError::InvalidCursor(format!(
+            "Missing column {}",
+            column
+        )))
+    })?;
+
+    match value {
+        CachedValue::Text(text) => DateTime::parse_from_rfc3339(text)
+            .map(|dt| dt.with_timezone(&Utc))
+            .map_err(|_| {
+                Error::Query(QueryError::InvalidCursor(format!(
+                    "Invalid datetime for column {}",
+                    column
+                )))
+            }),
+        CachedValue::Integer(int_val) => DateTime::from_timestamp(*int_val, 0).ok_or_else(|| {
+            Error::Query(QueryError::InvalidCursor(format!(
+                "Invalid timestamp for column {}",
+                column
+            )))
+        }),
+        _ => Err(Error::Query(QueryError::InvalidCursor(format!(
+            "Unsupported datetime value for column {}",
+            column
+        )))),
+    }
+}
+
+fn token_from_cached_row(row: &CachedRow) -> Result<torii_sqlite_types::Token, Error> {
+    Ok(torii_sqlite_types::Token {
+        id: cached_row_string(row, "id")?,
+        contract_address: cached_row_string(row, "contract_address")?,
+        token_id: cached_row_string(row, "token_id")?,
+        name: cached_row_string(row, "name")?,
+        symbol: cached_row_string(row, "symbol")?,
+        decimals: cached_row_u8(row, "decimals")?,
+        metadata: cached_row_string(row, "metadata")?,
+        total_supply: cached_row_optional_string(row, "total_supply")?,
+    })
+}
+
+fn token_balance_from_cached_row(row: &CachedRow) -> Result<torii_sqlite_types::TokenBalance, Error> {
+    Ok(torii_sqlite_types::TokenBalance {
+        id: cached_row_string(row, "id")?,
+        balance: cached_row_string(row, "balance")?,
+        account_address: cached_row_string(row, "account_address")?,
+        contract_address: cached_row_string(row, "contract_address")?,
+        token_id: cached_row_string(row, "token_id")?,
+    })
+}
+
+fn token_transfer_from_cached_row(
+    row: &CachedRow,
+) -> Result<torii_sqlite_types::TokenTransfer, Error> {
+    Ok(torii_sqlite_types::TokenTransfer {
+        id: cached_row_string(row, "id")?,
+        contract_address: cached_row_string(row, "contract_address")?,
+        from_address: cached_row_string(row, "from_address")?,
+        to_address: cached_row_string(row, "to_address")?,
+        amount: cached_row_string(row, "amount")?,
+        token_id: cached_row_string(row, "token_id")?,
+        executed_at: cached_row_datetime(row, "executed_at")?,
+        event_id: cached_row_optional_string(row, "event_id")?,
+    })
+}
 
 #[async_trait]
 impl ReadOnlyStorage for Sql {
@@ -313,6 +441,30 @@ impl ReadOnlyStorage for Sql {
             query_builder = query_builder.where_clause(&where_conditions.join(" AND ").to_string());
         }
 
+        if self.query_cache.is_some() {
+            let caching_pool = self.caching_pool();
+            let page = executor
+                .execute_paginated_query_cached(
+                    &caching_pool,
+                    query_builder,
+                    &query.pagination,
+                    &OrderBy {
+                        field: "ordering".to_string(),
+                        direction: OrderDirection::Desc,
+                    },
+                )
+                .await?;
+            let items: Vec<Token> = page
+                .items
+                .into_iter()
+                .map(|row| Result::<Token, Error>::Ok(token_from_cached_row(&row)?.into()))
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(Page {
+                items,
+                next_cursor: page.next_cursor,
+            });
+        }
+
         let page = executor
             .execute_paginated_query(
                 query_builder,
@@ -371,6 +523,34 @@ impl ReadOnlyStorage for Sql {
                 query_builder =
                     query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
             }
+        }
+
+        if self.query_cache.is_some() {
+            let caching_pool = self.caching_pool();
+            let page = executor
+                .execute_paginated_query_cached(
+                    &caching_pool,
+                    query_builder,
+                    &query.pagination,
+                    &OrderBy {
+                        field: "id".to_string(),
+                        direction: OrderDirection::Desc,
+                    },
+                )
+                .await?;
+            let items: Vec<TokenBalance> = page
+                .items
+                .into_iter()
+                .map(|row| {
+                    Result::<TokenBalance, Error>::Ok(
+                        token_balance_from_cached_row(&row)?.into(),
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(Page {
+                items,
+                next_cursor: page.next_cursor,
+            });
         }
 
         let page = executor
@@ -710,6 +890,36 @@ impl ReadOnlyStorage for Sql {
                 query_builder =
                     query_builder.bind_value(u256_to_sql_string(&U256::from(*token_id)));
             }
+        }
+
+        if self.query_cache.is_some() {
+            let caching_pool = self.caching_pool();
+            let page = executor
+                .execute_paginated_query_cached(
+                    &caching_pool,
+                    query_builder,
+                    &query.pagination,
+                    &OrderBy {
+                        field: "id".to_string(),
+                        direction: OrderDirection::Desc,
+                    },
+                )
+                .await?;
+
+            let items: Vec<TokenTransfer> = page
+                .items
+                .into_iter()
+                .map(|row| {
+                    Result::<TokenTransfer, Error>::Ok(
+                        token_transfer_from_cached_row(&row)?.into(),
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            return Ok(Page {
+                items,
+                next_cursor: page.next_cursor,
+            });
         }
 
         let page = executor

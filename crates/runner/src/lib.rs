@@ -41,6 +41,9 @@ use tokio::sync::broadcast::Sender;
 use tokio_stream::StreamExt;
 use torii_broker::types::ModelUpdate;
 use torii_broker::MemoryBroker;
+use torii_cache::query_cache::{InMemoryQueryCache, QueryCache, QueryCacheConfig};
+#[cfg(feature = "redis")]
+use torii_cache::query_cache::{RedisQueryCache, TieredQueryCache};
 use torii_cache::InMemoryCache;
 use torii_cli::ToriiArgs;
 use torii_controllers::sync::ControllersSync;
@@ -51,6 +54,7 @@ use torii_libp2p_relay::Relay;
 use torii_messaging::{Messaging, MessagingConfig};
 use torii_processors::{EventProcessorConfig, Processors};
 use torii_server::proxy::{Proxy, ProxySettings};
+use torii_sqlite::caching_pool::CachingPool;
 use torii_sqlite::executor::Executor;
 use torii_sqlite::{Sql, SqlConfig};
 use torii_storage::proto::{ContractDefinition, ContractType};
@@ -570,12 +574,56 @@ impl Runner {
             search_snippet_length: self.args.search.snippet_length,
         };
 
+        let query_cache: Option<Arc<dyn QueryCache>> = if self.args.query_cache.cache_enabled {
+            let query_cache_config = QueryCacheConfig {
+                enabled: true,
+                ttl_seconds: self.args.query_cache.cache_ttl,
+            };
+
+            #[cfg(feature = "redis")]
+            {
+                if let Some(url) = &self.args.query_cache.redis_url {
+                    match RedisQueryCache::new(url, query_cache_config.clone()).await {
+                        Ok(redis_cache) => {
+                            info!(target: LOG_TARGET, redis_url = %url, ttl = self.args.query_cache.cache_ttl, "Query cache enabled with Redis");
+                            Some(Arc::new(TieredQueryCache::new(
+                                Arc::new(redis_cache),
+                                Arc::new(InMemoryQueryCache::new(query_cache_config)),
+                            )))
+                        }
+                        Err(error) => {
+                            warn!(target: LOG_TARGET, error = %error, "Failed to connect to Redis, falling back to in-memory query cache");
+                            Some(Arc::new(InMemoryQueryCache::new(query_cache_config)))
+                        }
+                    }
+                } else {
+                    info!(target: LOG_TARGET, ttl = self.args.query_cache.cache_ttl, "Query cache enabled with in-memory backend");
+                    Some(Arc::new(InMemoryQueryCache::new(query_cache_config)))
+                }
+            }
+
+            #[cfg(not(feature = "redis"))]
+            {
+                if self.args.query_cache.redis_url.is_some() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Redis URL provided but torii was built without the redis feature; using in-memory query cache"
+                    );
+                }
+                info!(target: LOG_TARGET, ttl = self.args.query_cache.cache_ttl, "Query cache enabled with in-memory backend");
+                Some(Arc::new(InMemoryQueryCache::new(query_cache_config)))
+            }
+        } else {
+            None
+        };
+
         let (mut executor, sender) = Executor::new_with_config(
             write_pool.clone(),
             shutdown_tx.clone(),
             provider.clone(),
             sql_config.clone(),
             database_path.clone(),
+            query_cache.clone(),
         )
         .await?;
         let executor_handle = tokio::spawn(async move { executor.run().await });
@@ -589,6 +637,12 @@ impl Runner {
         .await?;
         let cache = Arc::new(InMemoryCache::new(Arc::new(db.clone())).await.unwrap());
         let db = db.with_cache(cache.clone());
+
+        let db = if let Some(cache) = query_cache.clone() {
+            db.with_query_cache(cache)
+        } else {
+            db
+        };
 
         let processors = Arc::new(Processors::default());
 
@@ -711,6 +765,12 @@ impl Runner {
             provider.clone(),
         ));
 
+        let caching_pool = if let Some(cache) = query_cache.clone() {
+            CachingPool::new(readonly_pool.clone()).with_cache(cache)
+        } else {
+            CachingPool::new(readonly_pool.clone())
+        };
+
         let (mut libp2p_relay_server, cross_messaging_tx) = Relay::new_with_peers(
             messaging.clone(),
             self.args.relay.port,
@@ -728,7 +788,7 @@ impl Runner {
             storage.clone(),
             messaging.clone(),
             cross_messaging_tx,
-            readonly_pool.clone(),
+            caching_pool.clone(),
             GrpcConfig {
                 subscription_buffer_size: self.args.grpc.subscription_buffer_size,
                 optimistic: self.args.grpc.optimistic,

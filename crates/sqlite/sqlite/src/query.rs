@@ -1,10 +1,13 @@
 use sqlx::{sqlite::SqliteRow, Pool, Sqlite};
+use torii_cache::query_cache::CachedRow;
 use torii_proto::{OrderBy, OrderDirection, Page, Pagination, PaginationDirection};
 
 use crate::{
+    caching_pool::CachingPool,
     constants::SQL_DEFAULT_LIMIT,
     cursor::{
-        build_cursor_conditions, build_cursor_values, decode_cursor_values, encode_cursor_values,
+        build_cursor_conditions, build_cursor_values, build_cursor_values_cached,
+        decode_cursor_values, encode_cursor_values,
     },
     error::Error,
 };
@@ -206,6 +209,75 @@ impl PaginationExecutor {
             rows.truncate(original_limit as usize);
             if let Some(last_row) = rows.last() {
                 let cursor_values = build_cursor_values(&pagination, last_row)?;
+                next_cursor = Some(encode_cursor_values(&cursor_values)?);
+            }
+        }
+
+        Ok(Page {
+            items: rows,
+            next_cursor,
+        })
+    }
+
+    pub async fn execute_paginated_query_cached(
+        &self,
+        caching_pool: &CachingPool,
+        mut query_builder: QueryBuilder,
+        pagination: &Pagination,
+        default_order_by: &OrderBy,
+    ) -> Result<Page<CachedRow>, Error> {
+        let mut pagination = pagination.clone();
+        pagination.order_by.push(default_order_by.clone());
+
+        let original_limit = pagination.limit.unwrap_or(SQL_DEFAULT_LIMIT as u32);
+        let fetch_limit = original_limit + 1;
+
+        let cursor_values: Option<Vec<String>> = pagination
+            .cursor
+            .as_ref()
+            .map(|cursor_str| decode_cursor_values(cursor_str))
+            .transpose()?;
+
+        let (cursor_conditions, cursor_binds) =
+            build_cursor_conditions(&pagination, cursor_values.as_deref())?;
+
+        for condition in cursor_conditions {
+            query_builder = query_builder.where_clause(&condition);
+        }
+
+        for bind in cursor_binds {
+            query_builder = query_builder.bind_value(bind);
+        }
+
+        for order_by in &pagination.order_by {
+            let field = format!("[{}]", order_by.field);
+            let direction = match (&order_by.direction, &pagination.direction) {
+                (OrderDirection::Asc, PaginationDirection::Forward) => OrderDirection::Asc,
+                (OrderDirection::Asc, PaginationDirection::Backward) => OrderDirection::Desc,
+                (OrderDirection::Desc, PaginationDirection::Forward) => OrderDirection::Desc,
+                (OrderDirection::Desc, PaginationDirection::Backward) => OrderDirection::Asc,
+            };
+            query_builder = query_builder.order_by(&field, direction);
+        }
+
+        query_builder = query_builder.limit(fetch_limit);
+
+        let bind_values = query_builder.bind_values().to_vec();
+        let query = query_builder.build();
+
+        let mut rows = caching_pool.fetch_all_cached(&query, &bind_values).await?.into_cached_rows();
+        let has_more = rows.len() >= fetch_limit as usize;
+
+        if pagination.direction == PaginationDirection::Backward {
+            rows.reverse();
+        }
+
+        let mut next_cursor = None;
+
+        if has_more {
+            rows.truncate(original_limit as usize);
+            if let Some(last_row) = rows.last() {
+                let cursor_values = build_cursor_values_cached(&pagination, last_row)?;
                 next_cursor = Some(encode_cursor_values(&cursor_values)?);
             }
         }

@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use sqlx::{Column, Row, TypeInfo};
 use starknet::core::types::U256;
 use starknet_crypto::Felt;
+use torii_cache::query_cache::{CachedRow, CachedValue};
 
 use crate::constants::SQL_FELT_DELIMITER;
 
@@ -212,6 +213,37 @@ pub fn map_row_to_proto(row: &sqlx::sqlite::SqliteRow) -> torii_proto::proto::ty
             }
         };
         fields.insert(column.name().to_string(), value);
+    }
+
+    torii_proto::proto::types::SqlRow { fields }
+}
+
+// Map a cached row to proto SqlRow type
+pub fn map_cached_row_to_proto(row: &CachedRow) -> torii_proto::proto::types::SqlRow {
+    use std::collections::HashMap;
+    use torii_proto::proto::types::{sql_value, SqlValue};
+
+    let mut fields = HashMap::new();
+
+    for (column, value) in row.columns.iter().zip(row.values.iter()) {
+        let value = match value {
+            CachedValue::Null => SqlValue {
+                value_type: Some(sql_value::ValueType::Null(true)),
+            },
+            CachedValue::Integer(int_val) => SqlValue {
+                value_type: Some(sql_value::ValueType::Integer(*int_val)),
+            },
+            CachedValue::Real(real_val) => SqlValue {
+                value_type: Some(sql_value::ValueType::Real(*real_val)),
+            },
+            CachedValue::Text(text) => SqlValue {
+                value_type: Some(sql_value::ValueType::Text(text.clone())),
+            },
+            CachedValue::Blob(blob) => SqlValue {
+                value_type: Some(sql_value::ValueType::Blob(blob.clone())),
+            },
+        };
+        fields.insert(column.name.clone(), value);
     }
 
     torii_proto::proto::types::SqlRow { fields }

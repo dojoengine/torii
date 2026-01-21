@@ -4,17 +4,25 @@ edition.workspace = true
 repository.workspace = true
 version.workspace = true
 
+[features]
+default = []
+redis = ["dep:redis"]
+
 [dependencies]
 async-trait.workspace = true
+bincode.workspace = true
 dashmap.workspace = true
 dojo-types.workspace = true
 dojo-world.workspace = true
+redis = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 starknet.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 torii-math.workspace = true
-torii-sqlite-types.workspace = true
-serde_json.workspace = true
-torii-storage.workspace = true
 torii-proto.workspace = true
+torii-sqlite-types.workspace = true
+torii-storage.workspace = true

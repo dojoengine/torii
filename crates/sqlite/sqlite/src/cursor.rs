@@ -5,6 +5,7 @@ use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use sqlx::sqlite::SqliteRow;
 use sqlx::Row;
+use torii_cache::query_cache::{CachedRow, CachedValue};
 use std::io::prelude::*;
 use torii_proto::{OrderDirection, Pagination, PaginationDirection};
 
@@ -111,6 +112,36 @@ pub fn build_cursor_values(pagination: &Pagination, row: &SqliteRow) -> Result<V
                 }
             }
         }
+    }
+    Ok(values)
+}
+
+pub fn build_cursor_values_cached(
+    pagination: &Pagination,
+    row: &CachedRow,
+) -> Result<Vec<String>, Error> {
+    let mut values = Vec::new();
+    for ob in &pagination.order_by {
+        let value = row.get(&ob.field).ok_or_else(|| {
+            Error::Query(QueryError::InvalidCursor(format!(
+                "Missing cursor column {}",
+                ob.field
+            )))
+        })?;
+
+        let string_value = match value {
+            CachedValue::Text(text) => text.clone(),
+            CachedValue::Integer(int_val) => int_val.to_string(),
+            CachedValue::Real(real_val) => real_val.to_string(),
+            CachedValue::Blob(_) | CachedValue::Null => {
+                return Err(Error::Query(QueryError::InvalidCursor(format!(
+                    "Unsupported cursor value for column {}",
+                    ob.field
+                ))))
+            }
+        };
+
+        values.push(string_value);
     }
     Ok(values)
 }

@@ -18,6 +18,7 @@ use torii_storage::ReadOnlyStorage;
 use crate::error::Error;
 
 pub mod error;
+pub mod query_cache;
 
 pub type CacheError = Error;
 

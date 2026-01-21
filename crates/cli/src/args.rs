@@ -64,6 +64,10 @@ pub struct ToriiArgs {
 
     #[command(flatten)]
     #[merge]
+    pub query_cache: QueryCacheOptions,
+
+    #[command(flatten)]
+    #[merge]
     pub activity: ActivityOptions,
 
     #[command(flatten)]
@@ -117,6 +121,7 @@ impl Default for ToriiArgs {
             events: EventsOptions::default(),
             erc: ErcOptions::default(),
             sql: SqlOptions::default(),
+            query_cache: QueryCacheOptions::default(),
             activity: ActivityOptions::default(),
             achievement: AchievementOptions::default(),
             snapshot: SnapshotOptions::default(),
