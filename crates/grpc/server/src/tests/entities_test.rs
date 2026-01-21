@@ -1458,7 +1458,9 @@ async fn test_entity_broker_delete_clause_matches_updated_model() {
     let response = timeout(Duration::from_secs(2), receiver.recv())
         .await
         .expect("timed out waiting for broker update");
-    let response = response.expect("receiver closed").expect("subscriber error");
+    let response = response
+        .expect("receiver closed")
+        .expect("subscriber error");
     assert!(response.entity.is_some());
 }
 
