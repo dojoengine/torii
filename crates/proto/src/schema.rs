@@ -13,8 +13,6 @@ pub struct EntityWithMetadata<const EVENT_MESSAGE: bool = false> {
     pub entity: Entity<EVENT_MESSAGE>,
     pub event_id: String,
     pub keys: Vec<Felt>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub updated_model: Option<Ty>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]

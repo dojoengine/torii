@@ -1403,68 +1403,6 @@ async fn test_historical_query(sequencer: &RunnerCtx) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_entity_broker_delete_clause_matches_updated_model() {
-    use crate::subscriptions::entity::{EntityManager, Service};
-    use chrono::Utc;
-    use dojo_types::schema::{Struct, Ty};
-    use std::time::Duration;
-    use tokio::time::timeout;
-    use torii_broker::{types::EntityUpdate, MemoryBroker};
-    use torii_proto::schema::{Entity, EntityWithMetadata};
-
-    let config = GrpcConfig::default();
-    let entity_manager = Arc::new(EntityManager::new(config));
-
-    let service = Service::new(entity_manager.clone());
-    tokio::spawn(service);
-
-    let clause = Clause::Keys(KeysClause {
-        keys: vec![],
-        pattern_matching: PatternMatching::FixedLen,
-        models: vec!["ns-Model".to_string()],
-    });
-    let mut receiver = entity_manager.add_subscriber(Some(clause), vec![]).await;
-
-    // Skip the initial empty response
-    if let Ok(Some(response)) = timeout(Duration::from_secs(1), receiver.recv()).await {
-        match response {
-            Ok(resp) => assert!(resp.entity.is_none()),
-            Err(e) => panic!("Subscriber received error: {:?}", e),
-        }
-    }
-
-    let now = Utc::now();
-    let entity = Entity {
-        hashed_keys: Felt::from(1_u64),
-        world_address: Felt::ZERO,
-        models: vec![], // Simulate deletion payload where models are empty.
-        created_at: now,
-        updated_at: now,
-        executed_at: now,
-    };
-    let updated_model = Ty::Struct(Struct {
-        name: "ns-Model".to_string(),
-        children: vec![],
-    });
-    let entity_with_metadata = EntityWithMetadata {
-        entity,
-        event_id: "delete_event".to_string(),
-        keys: vec![],
-        updated_model: Some(updated_model),
-    };
-
-    MemoryBroker::publish(EntityUpdate::new(entity_with_metadata, false));
-
-    let response = timeout(Duration::from_secs(2), receiver.recv())
-        .await
-        .expect("timed out waiting for broker update");
-    let response = response
-        .expect("receiver closed")
-        .expect("subscriber error");
-    assert!(response.entity.is_some());
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn test_entity_broker_multiple_subscriptions() {
     use crate::subscriptions::entity::{EntityManager, Service};
     use chrono::Utc;
@@ -1515,7 +1453,6 @@ async fn test_entity_broker_multiple_subscriptions() {
             entity,
             event_id: format!("event_{}", update_id),
             keys,
-            updated_model: None,
         };
 
         // Publish the update to the broker
@@ -1784,7 +1721,6 @@ async fn test_entity_broker_stress_test() {
                 entity,
                 event_id: format!("stress_event_{}", update_id),
                 keys,
-                updated_model: None,
             };
 
             // Publish the update to the broker

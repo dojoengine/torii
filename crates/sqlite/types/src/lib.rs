@@ -54,18 +54,11 @@ pub struct Entity {
 
 impl<const EVENT_MESSAGE: bool> From<Entity> for torii_proto::schema::Entity<EVENT_MESSAGE> {
     fn from(value: Entity) -> Self {
-        // Always include model info so clause matching works for deletions too.
-        // The `deleted` flag indicates deletion status - no need to empty models.
-        let updated_model = value.updated_model.as_ref().unwrap_or_else(|| {
-            if value.deleted {
-                panic!("deleted entity missing updated_model: {}", value.id);
-            }
-            panic!("entity missing updated_model: {}", value.id);
-        });
-        let model_struct = updated_model.as_struct().unwrap_or_else(|| {
-            panic!("entity updated_model is not a struct: {}", value.id);
-        });
-        let models = vec![model_struct.clone()];
+        let models = if value.deleted {
+            vec![]
+        } else {
+            vec![value.updated_model.unwrap().as_struct().unwrap().clone()]
+        };
 
         // Use the dedicated entity_id column (no parsing needed!)
         Self {
@@ -81,8 +74,6 @@ impl<const EVENT_MESSAGE: bool> From<Entity> for torii_proto::schema::Entity<EVE
 
 impl<const EVENT_MESSAGE: bool> From<Entity> for EntityWithMetadata<EVENT_MESSAGE> {
     fn from(value: Entity) -> Self {
-        let updated_model = value.updated_model.clone();
-        let event_id = value.event_id.clone();
         let keys = value
             .keys
             .split('/')
@@ -95,10 +86,9 @@ impl<const EVENT_MESSAGE: bool> From<Entity> for EntityWithMetadata<EVENT_MESSAG
             })
             .collect();
         Self {
-            event_id,
+            event_id: value.event_id.clone(),
             entity: value.into(),
             keys,
-            updated_model,
         }
     }
 }
@@ -210,58 +200,6 @@ impl From<Event> for torii_proto::Event {
                 .map(|d| Felt::from_str(d).unwrap())
                 .collect(),
             transaction_hash: Felt::from_str(&value.transaction_hash).unwrap(),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::Utc;
-    use dojo_types::schema::{Struct, Ty};
-
-    fn sample_entity(updated_model: Option<Ty>, deleted: bool) -> Entity {
-        let now = Utc::now();
-        Entity {
-            id: "0x1:0x2".to_string(),
-            entity_id: "0x2".to_string(),
-            world_address: "0x1".to_string(),
-            keys: "0x1/0x2".to_string(),
-            event_id: "event_1".to_string(),
-            executed_at: now,
-            created_at: now,
-            updated_at: now,
-            updated_model,
-            deleted,
-        }
-    }
-
-    #[test]
-    #[should_panic(expected = "deleted entity missing updated_model")]
-    fn deleted_entity_requires_updated_model() {
-        let entity = sample_entity(None, true);
-        let _: torii_proto::schema::Entity = entity.into();
-    }
-
-    #[test]
-    fn deleted_entity_includes_model_info() {
-        let model = Struct {
-            name: "ns-Model".to_string(),
-            children: vec![],
-        };
-        let entity = sample_entity(Some(Ty::Struct(model.clone())), true);
-
-        let proto_entity: torii_proto::schema::Entity = entity.clone().into();
-        assert_eq!(proto_entity.models.len(), 1);
-        assert_eq!(proto_entity.models[0].name, model.name);
-
-        let entity_with_metadata: EntityWithMetadata = entity.into();
-        let updated_model = entity_with_metadata
-            .updated_model
-            .expect("updated_model missing");
-        match updated_model {
-            Ty::Struct(struct_ty) => assert_eq!(struct_ty.name, "ns-Model"),
-            _ => panic!("expected updated_model to be a struct"),
         }
     }
 }

@@ -118,10 +118,6 @@ impl Service {
     // Process updates synchronously - no async overhead
     fn process_event_message(subs: &EventMessageManager, event: &EntityWithMetadata<true>) {
         let mut closed_stream = Vec::new();
-        let updated_model = event
-            .updated_model
-            .clone()
-            .or_else(|| event.entity.models.first().map(|m| Ty::Struct(m.clone())));
 
         for sub in subs.subscribers.iter() {
             let idx = sub.key();
@@ -138,7 +134,7 @@ impl Service {
                 if !match_entity(
                     event.entity.hashed_keys,
                     &event.keys,
-                    &updated_model,
+                    &event.entity.models.first().map(|m| Ty::Struct(m.clone())),
                     clause,
                 ) {
                     continue;
