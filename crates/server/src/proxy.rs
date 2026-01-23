@@ -167,6 +167,7 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
         graphql_addr: Option<SocketAddr>,
         artifacts_dir: Utf8PathBuf,
         pool: Arc<SqlitePool>,
+        sql_endpoint_enabled: bool,
         storage: Arc<S>,
         provider: P,
         version_spec: String,
@@ -176,7 +177,7 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
         let grpc_proxy_client = Arc::new(create_grpc_proxy_client(&proxy_settings));
         let websocket_proxy_client = Arc::new(create_websocket_proxy_client());
 
-        let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(vec![
+        let handlers: Vec<Box<dyn Handler>> = vec![
             Box::new(GraphQLHandler::new(
                 graphql_addr,
                 grpc_proxy_client.clone(),
@@ -185,9 +186,11 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
             Box::new(GrpcHandler::new(grpc_addr, grpc_proxy_client.clone())),
             Box::new(McpHandler::new(pool.clone())),
             Box::new(MetadataHandler::new(storage.clone(), provider)),
-            Box::new(SqlHandler::new(pool.clone())),
+            Box::new(SqlHandler::new(pool.clone(), sql_endpoint_enabled)),
             Box::new(StaticHandler::new(artifacts_dir, (*pool).clone())),
-        ]));
+        ];
+
+        let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(handlers));
 
         Self {
             addr,

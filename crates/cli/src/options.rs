@@ -330,6 +330,14 @@ pub struct ServerOptions {
     #[arg(value_delimiter = ',')]
     pub http_cors_origins: Option<Vec<String>>,
 
+    /// Enable the SQL playground and query endpoint at /sql.
+    #[arg(
+        long = "http.sql",
+        default_value_t = true,
+        help = "Enable the SQL playground and query endpoint at /sql."
+    )]
+    pub sql_endpoint: bool,
+
     /// Path to the SSL certificate file (.pem)
     #[arg(
         long = "http.tls_cert_path",
@@ -360,6 +368,7 @@ impl Default for ServerOptions {
             http_addr: DEFAULT_HTTP_ADDR,
             http_port: DEFAULT_HTTP_PORT,
             http_cors_origins: None,
+            sql_endpoint: true,
             tls_cert_path: None,
             tls_key_path: None,
             mkcert: false,
