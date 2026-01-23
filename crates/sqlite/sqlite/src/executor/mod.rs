@@ -708,6 +708,10 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     name: entity.ty.name(),
                     children: vec![],
                 }));
+                // Match model is used only for clause member matching in subscriptions
+                // the only usage here is to receive model deletion updated in subscriptions
+                // cc. fix(grpc): preserve pre-deletion model values for MemberClause filter…#407
+                entity_updated.match_model = Some(entity.ty.clone());
 
                 let count = sqlx::query_scalar::<_, i64>(
                     "SELECT count(*) FROM entity_model WHERE entity_id = ?",

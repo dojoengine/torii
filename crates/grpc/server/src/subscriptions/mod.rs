@@ -383,3 +383,107 @@ pub(crate) fn match_keys(keys: &[Felt], clauses: &[KeysClause]) -> bool {
 
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dojo_types::primitive::Primitive;
+    use dojo_types::schema::{Member, Struct, Ty};
+    use torii_proto::MemberClause;
+
+    fn create_test_model(name: &str, score: u32) -> Ty {
+        Ty::Struct(Struct {
+            name: name.to_string(),
+            children: vec![Member {
+                name: "score".to_string(),
+                ty: Ty::Primitive(Primitive::U32(Some(score))),
+                key: false,
+            }],
+        })
+    }
+
+    #[test]
+    fn test_member_clause_matches_deletion_with_matching_value() {
+        let id = Felt::from(1u64);
+        let keys = vec![Felt::from(1u64), Felt::from(2u64)];
+        let model = Some(create_test_model("Game-Player", 150));
+
+        let clause = Clause::Member(MemberClause {
+            model: "Game-Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Gte,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        });
+
+        assert!(match_entity(id, &keys, &model, &clause));
+    }
+
+    #[test]
+    fn test_member_clause_rejects_deletion_with_non_matching_value() {
+        let id = Felt::from(1u64);
+        let keys = vec![Felt::from(1u64), Felt::from(2u64)];
+        let model = Some(create_test_model("Game-Player", 50));
+
+        let clause = Clause::Member(MemberClause {
+            model: "Game-Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Gte,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        });
+
+        assert!(!match_entity(id, &keys, &model, &clause));
+    }
+
+    #[test]
+    fn test_member_clause_with_none_model_returns_false() {
+        let id = Felt::from(1u64);
+        let keys = vec![Felt::from(1u64), Felt::from(2u64)];
+        let model: Option<Ty> = None;
+
+        let clause = Clause::Member(MemberClause {
+            model: "Game-Player".to_string(),
+            member: "score".to_string(),
+            operator: ComparisonOperator::Gte,
+            value: MemberValue::Primitive(Primitive::U32(Some(100))),
+        });
+
+        assert!(!match_entity(id, &keys, &model, &clause));
+    }
+
+    #[test]
+    fn test_keys_clause_matches_deletion() {
+        let id = Felt::from(1u64);
+        let keys = vec![Felt::from(1u64), Felt::from(2u64)];
+        let model = Some(create_test_model("Game-Player", 100));
+
+        let clause = Clause::Keys(KeysClause {
+            keys: vec![Some(Felt::from(1u64)), None],
+            pattern_matching: PatternMatching::VariableLen,
+            models: vec![],
+        });
+
+        assert!(match_entity(id, &keys, &model, &clause));
+    }
+
+    #[test]
+    fn test_hashed_keys_clause_matches_deletion() {
+        let id = Felt::from(123u64);
+        let keys = vec![Felt::from(1u64), Felt::from(2u64)];
+        let model = Some(create_test_model("Game-Player", 100));
+
+        let clause = Clause::HashedKeys(vec![Felt::from(123u64), Felt::from(456u64)]);
+
+        assert!(match_entity(id, &keys, &model, &clause));
+    }
+
+    #[test]
+    fn test_hashed_keys_clause_rejects_non_matching_id() {
+        let id = Felt::from(789u64);
+        let keys = vec![Felt::from(1u64), Felt::from(2u64)];
+        let model = Some(create_test_model("Game-Player", 100));
+
+        let clause = Clause::HashedKeys(vec![Felt::from(123u64), Felt::from(456u64)]);
+
+        assert!(!match_entity(id, &keys, &model, &clause));
+    }
+}

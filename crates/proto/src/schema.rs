@@ -13,6 +13,8 @@ pub struct EntityWithMetadata<const EVENT_MESSAGE: bool = false> {
     pub entity: Entity<EVENT_MESSAGE>,
     pub event_id: String,
     pub keys: Vec<Felt>,
+    pub deleted: bool,
+    pub match_model: Option<Ty>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Hash, Eq, Clone)]

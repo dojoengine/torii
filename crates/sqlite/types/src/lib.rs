@@ -50,6 +50,8 @@ pub struct Entity {
     pub updated_model: Option<Ty>,
     #[sqlx(skip)]
     pub deleted: bool,
+    #[sqlx(skip)]
+    pub match_model: Option<Ty>,
 }
 
 impl<const EVENT_MESSAGE: bool> From<Entity> for torii_proto::schema::Entity<EVENT_MESSAGE> {
@@ -84,10 +86,14 @@ impl<const EVENT_MESSAGE: bool> From<Entity> for EntityWithMetadata<EVENT_MESSAG
                 }
             })
             .collect();
+        let deleted = value.deleted;
+        let match_model = value.match_model.clone();
         Self {
             event_id: value.event_id.clone(),
             entity: value.into(),
             keys,
+            deleted,
+            match_model,
         }
     }
 }
@@ -679,6 +685,7 @@ mod tests {
                 children: vec![],
             })),
             deleted: true,
+            match_model: None,
         };
 
         let proto_entity: torii_proto::schema::Entity<false> = entity.into();
@@ -703,6 +710,7 @@ mod tests {
             updated_at: now,
             updated_model: None,
             deleted: false,
+            match_model: None,
         };
 
         let proto_entity: torii_proto::schema::Entity<false> = entity.into();
@@ -732,6 +740,7 @@ mod tests {
                 }],
             })),
             deleted: false,
+            match_model: None,
         };
 
         let proto_entity: torii_proto::schema::Entity<false> = entity.into();
@@ -739,5 +748,40 @@ mod tests {
         assert_eq!(proto_entity.models.len(), 1);
         assert_eq!(proto_entity.models[0].name, "Game-Player");
         assert_eq!(proto_entity.models[0].children.len(), 1);
+    }
+
+    #[test]
+    fn test_entity_with_metadata_propagates_match_model() {
+        let now = Utc::now();
+
+        let match_model = Some(Ty::Struct(Struct {
+            name: "Game-Player".to_string(),
+            children: vec![dojo_types::schema::Member {
+                name: "score".to_string(),
+                ty: Ty::Primitive(dojo_types::primitive::Primitive::U32(Some(150))),
+                key: false,
+            }],
+        }));
+
+        let entity = Entity {
+            id: "0xworld:0xentity".to_string(),
+            entity_id: "0x123".to_string(),
+            world_address: "0xabc".to_string(),
+            keys: "0x1/0x2".to_string(),
+            event_id: "event_123".to_string(),
+            executed_at: now,
+            created_at: now,
+            updated_at: now,
+            updated_model: None,
+            deleted: true,
+            match_model: match_model.clone(),
+        };
+
+        let entity_with_metadata: torii_proto::schema::EntityWithMetadata<false> = entity.into();
+
+        assert!(entity_with_metadata.deleted);
+        assert!(entity_with_metadata.match_model.is_some());
+        let propagated_model = entity_with_metadata.match_model.unwrap();
+        assert_eq!(propagated_model.name(), "Game-Player");
     }
 }
