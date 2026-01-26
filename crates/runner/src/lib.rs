@@ -740,7 +740,7 @@ impl Runner {
                     self.args.grpc.http2_keepalive_timeout,
                 ),
                 max_message_size: self.args.grpc.max_message_size,
-                sql_api_enabled: self.args.server.sql_api_enabled,
+                raw_sql: self.args.server.raw_sql,
             },
             Some(grpc_bind_addr),
         )
@@ -758,7 +758,7 @@ impl Runner {
             None,
             absolute_path.clone(),
             Arc::new(readonly_pool.clone()),
-            self.args.server.sql_api_enabled,
+            self.args.server.raw_sql,
             storage.clone(),
             provider.clone(),
             self.version_spec.clone(),
@@ -839,7 +839,7 @@ impl Runner {
         info!(target: LOG_TARGET, endpoint = %addr, protocol = %protocol, "Starting torii endpoint.");
         info!(target: LOG_TARGET, endpoint = %grpc_addr, "Serving gRPC endpoint.");
         info!(target: LOG_TARGET, endpoint = %gql_endpoint, "Serving Graphql playground.");
-        if self.args.server.sql_api_enabled {
+        if self.args.server.raw_sql {
             info!(target: LOG_TARGET, endpoint = %sql_endpoint, "Serving SQL playground.");
         } else {
             info!(target: LOG_TARGET, "SQL endpoint is disabled.");
