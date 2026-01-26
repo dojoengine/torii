@@ -167,7 +167,7 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
         graphql_addr: Option<SocketAddr>,
         artifacts_dir: Utf8PathBuf,
         pool: Arc<SqlitePool>,
-        sql_endpoint_enabled: bool,
+        sql_api_enabled: bool,
         storage: Arc<S>,
         provider: P,
         version_spec: String,
@@ -186,7 +186,7 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
             Box::new(GrpcHandler::new(grpc_addr, grpc_proxy_client.clone())),
             Box::new(McpHandler::new(pool.clone())),
             Box::new(MetadataHandler::new(storage.clone(), provider)),
-            Box::new(SqlHandler::new(pool.clone(), sql_endpoint_enabled)),
+            Box::new(SqlHandler::new(pool.clone(), sql_api_enabled)),
             Box::new(StaticHandler::new(artifacts_dir, (*pool).clone())),
         ];
 

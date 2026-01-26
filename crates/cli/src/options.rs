@@ -336,7 +336,7 @@ pub struct ServerOptions {
         default_value_t = true,
         help = "Enable the SQL playground and query endpoint at /sql."
     )]
-    pub sql_endpoint: bool,
+    pub sql_api_enabled: bool,
 
     /// Path to the SSL certificate file (.pem)
     #[arg(
@@ -368,7 +368,7 @@ impl Default for ServerOptions {
             http_addr: DEFAULT_HTTP_ADDR,
             http_port: DEFAULT_HTTP_PORT,
             http_cors_origins: None,
-            sql_endpoint: true,
+            sql_api_enabled: true,
             tls_cert_path: None,
             tls_key_path: None,
             mkcert: false,
