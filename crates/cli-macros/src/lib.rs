@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, parse_quote, Attribute, ItemStruct, LitStr, Meta, NestedMeta};
+use syn::{parse_macro_input, parse_quote, Attribute, ItemStruct, LitStr, Meta};
 
 #[proc_macro_attribute]
 pub fn prefixed_args(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -63,20 +63,18 @@ pub fn prefixed_args(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 fn parse_prefix(attr: TokenStream) -> String {
-    let meta = parse_macro_input!(attr as syn::AttributeArgs);
+    let meta =
+        parse_macro_input!(attr with syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated);
     for nested in meta {
-        match nested {
-            NestedMeta::Meta(Meta::NameValue(name_value)) if name_value.path.is_ident("prefix") => {
-                if let syn::Expr::Lit(expr_lit) = name_value.value {
-                    if let syn::Lit::Str(lit_str) = expr_lit.lit {
-                        return lit_str.value();
-                    }
+        if let Meta::NameValue(name_value) = nested {
+            if !name_value.path.is_ident("prefix") {
+                continue;
+            }
+            if let syn::Expr::Lit(expr_lit) = name_value.value {
+                if let syn::Lit::Str(lit_str) = expr_lit.lit {
+                    return lit_str.value();
                 }
             }
-            NestedMeta::Lit(syn::Lit::Str(lit_str)) => {
-                return lit_str.value();
-            }
-            _ => {}
         }
     }
 
