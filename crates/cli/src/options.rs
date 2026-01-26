@@ -333,6 +333,7 @@ pub struct ServerOptions {
     /// Enable the SQL playground and query endpoint at /sql.
     #[arg(
         long = "http.sql",
+        action = clap::ArgAction::Set,
         default_value_t = true,
         help = "Enable the SQL playground and query endpoint at /sql."
     )]
