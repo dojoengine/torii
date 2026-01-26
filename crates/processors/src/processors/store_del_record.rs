@@ -93,13 +93,7 @@ where
             "Store delete record."
         );
 
-        // Prepopulate entity with data, so after deletion we have the model values for
-        // subscriptions to match member clauses in deleted entities.
-        let entity = ctx
-            .storage
-            .entity_model(ctx.contract_address, event.entity_id, event.selector)
-            .await?
-            .unwrap_or(model.schema);
+        let entity = model.schema;
 
         ctx.storage
             .delete_entity(
