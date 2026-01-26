@@ -1183,6 +1183,10 @@ impl<P: Provider + Sync + Send + 'static> proto::world::world_server::World for 
         &self,
         request: Request<proto::types::SqlQueryRequest>,
     ) -> Result<Response<proto::types::SqlQueryResponse>, Status> {
+        if !self._config.raw_sql {
+            return Err(Status::permission_denied("SQL endpoint is disabled."));
+        }
+
         let proto::types::SqlQueryRequest { query } = request.into_inner();
 
         // Execute the query
@@ -1227,6 +1231,7 @@ pub struct GrpcConfig {
     pub http2_keepalive_interval: Duration,
     pub http2_keepalive_timeout: Duration,
     pub max_message_size: usize,
+    pub raw_sql: bool,
 }
 
 impl Default for GrpcConfig {
@@ -1238,6 +1243,7 @@ impl Default for GrpcConfig {
             http2_keepalive_interval: Duration::from_secs(30),
             http2_keepalive_timeout: Duration::from_secs(10),
             max_message_size: 16 * 1024 * 1024,
+            raw_sql: true,
         }
     }
 }
