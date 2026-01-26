@@ -406,9 +406,6 @@ mod test {
         );
         assert_eq!(torii_args.server.addr, IpAddr::V4(Ipv4Addr::LOCALHOST));
         assert_eq!(torii_args.server.port, 7777);
-        assert_eq!(
-            torii_args.server.cors_origins,
-            Some(vec!["*".to_string()])
-        );
+        assert_eq!(torii_args.server.cors_origins, Some(vec!["*".to_string()]));
     }
 }

@@ -855,10 +855,7 @@ impl Runner {
         }
 
         if self.args.metrics.enabled {
-            let addr = SocketAddr::new(
-                self.args.metrics.addr,
-                self.args.metrics.port,
-            );
+            let addr = SocketAddr::new(self.args.metrics.addr, self.args.metrics.port);
             info!(target: LOG_TARGET, %addr, "Starting metrics endpoint.");
             let prometheus_handle = PrometheusRecorder::install("torii")?;
             let server = dojo_metrics::Server::new(prometheus_handle).with_process_metrics();

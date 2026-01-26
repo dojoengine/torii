@@ -214,10 +214,7 @@ pub struct IndexingOptions {
     /// Warning: In the current implementation, this will break the indexing of tokens, if any.
     /// Since the tokens require the chain to be indexed from the beginning, to ensure correct
     /// balance updates.
-    #[arg(
-        help = "The block number to start indexing from.",
-        default_value_t = 0
-    )]
+    #[arg(help = "The block number to start indexing from.", default_value_t = 0)]
     pub world_block: u64,
 
     /// Whether or not to index Cartridge controllers.
@@ -287,10 +284,7 @@ impl Default for IndexingOptions {
 #[command(next_help_heading = "Events indexing options")]
 pub struct EventsOptions {
     /// Whether or not to index raw events
-    #[arg(
-        default_value_t = false,
-        help = "Whether or not to index raw events."
-    )]
+    #[arg(default_value_t = false, help = "Whether or not to index raw events.")]
     pub raw: bool,
 }
 
@@ -957,10 +951,7 @@ pub struct SnapshotOptions {
 #[command(next_help_heading = "Runner options")]
 pub struct RunnerOptions {
     /// Open World Explorer on the browser.
-    #[arg(
-        default_value_t = false,
-        help = "Open World Explorer on the browser."
-    )]
+    #[arg(default_value_t = false, help = "Open World Explorer on the browser.")]
     pub explorer: bool,
 
     /// Check if contracts are deployed before starting torii.
