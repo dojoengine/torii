@@ -63,8 +63,9 @@ pub fn prefixed_args(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 fn parse_prefix(attr: TokenStream) -> String {
-    let meta =
-        parse_macro_input!(attr with syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated);
+    let meta = parse_macro_input!(
+        attr with syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated
+    );
     for nested in meta {
         if let Meta::NameValue(name_value) = nested {
             if !name_value.path.is_ident("prefix") {
