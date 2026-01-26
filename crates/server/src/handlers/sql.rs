@@ -12,11 +12,12 @@ use super::Handler;
 #[derive(Debug)]
 pub struct SqlHandler {
     pool: Arc<SqlitePool>,
+    enabled: bool,
 }
 
 impl SqlHandler {
-    pub fn new(pool: Arc<SqlitePool>) -> Self {
-        Self { pool }
+    pub fn new(pool: Arc<SqlitePool>, enabled: bool) -> Self {
+        Self { pool, enabled }
     }
 
     pub async fn execute_query(&self, query: String) -> Response<Body> {
@@ -46,6 +47,14 @@ impl SqlHandler {
         }
     }
 
+    fn disabled_response(&self) -> Response<Body> {
+        Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .header(CONTENT_TYPE, "text/plain")
+            .body(Body::from("SQL endpoint is disabled."))
+            .unwrap()
+    }
+
     async fn serve_playground(&self) -> Response<Body> {
         let html = include_str!("../../static/sql-playground.html");
 
@@ -58,6 +67,10 @@ impl SqlHandler {
     }
 
     async fn handle_request(&self, req: Request<Body>) -> Response<Body> {
+        if !self.enabled {
+            return self.disabled_response();
+        }
+
         if req.method() == Method::GET && req.uri().query().unwrap_or_default().is_empty() {
             self.serve_playground().await
         } else {
