@@ -5,6 +5,7 @@ members = [
 	"bin/torii",
 	"crates/broker",
 	"crates/cli",
+	"crates/cli-macros",
 	"crates/client",
 	"crates/messaging",
 	"crates/server",
