@@ -28,4 +28,8 @@ pub enum ExecutorQueryError {
     RecvError(#[from] tokio::sync::oneshot::error::RecvError),
     #[error("Leaderboard field extraction failed: {0}")]
     LeaderboardFieldExtraction(String),
+    #[error("Model not found: {0}")]
+    ModelNotFound(String),
+    #[error("Model mapping error: {0}")]
+    ModelMappingError(String),
 }

@@ -131,10 +131,19 @@ impl Service {
                     continue;
                 }
 
+                // When deleted, use match_model which preserves the entity's model values
+                // before deletion for MemberClause matching
+                // cc. fix(grpc): preserve pre-deletion model values for MemberClause filter…#407
+                let model_for_matching = if let Some(match_model) = &event.match_model {
+                    Some(match_model.clone())
+                } else {
+                    event.entity.models.first().map(|m| Ty::Struct(m.clone()))
+                };
+
                 if !match_entity(
                     event.entity.hashed_keys,
                     &event.keys,
-                    &event.entity.models.first().map(|m| Ty::Struct(m.clone())),
+                    &model_for_matching,
                     clause,
                 ) {
                     continue;

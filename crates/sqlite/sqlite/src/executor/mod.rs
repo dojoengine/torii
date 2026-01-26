@@ -11,6 +11,7 @@ use erc::{
 };
 use metrics::{counter, histogram};
 use serde_json;
+use sqlx::sqlite::SqliteRow;
 use sqlx::{FromRow, Pool, Sqlite, Transaction as SqlxTransaction};
 use starknet::core::types::requests::CallRequest;
 use starknet::core::types::{BlockId, BlockTag, Felt, FunctionCall, U256};
@@ -28,12 +29,13 @@ use torii_broker::types::{
 };
 use torii_math::I256;
 use torii_proto::{BalanceId, ContractCursor, TokenId, TransactionCall};
-use torii_sqlite_types::TokenTransfer as SQLTokenTransfer;
+use torii_sqlite_types::{Model as SQLModel, TokenTransfer as SQLTokenTransfer};
 use tracing::{debug, error, info, warn};
 
 use crate::constants::TOKENS_TABLE;
 use crate::error::ParseError;
 use crate::executor::error::{ExecutorError, ExecutorQueryError};
+use crate::model::map_row_to_ty;
 use crate::utils::{
     felt_and_u256_to_sql_string, felt_to_sql_string, felts_to_sql_string, u256_to_sql_string,
 };
@@ -683,6 +685,18 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 ));
             }
             QueryType::DeleteEntity(entity) => {
+                // When deleting, we shouldn't need to load the entity.
+                // However, since some member clauses may be set by some subscriptions,
+                // we need to load the entity to get the model values to ensure
+                // they can be matched against MemberClause filters of the active subscriptions.
+                let model =
+                    Self::entity_model(tx, entity.model_id.clone(), entity.entity_id.clone())
+                        .await?;
+
+                // Model is expected to be found at this point.
+                let model =
+                    model.ok_or(ExecutorQueryError::ModelNotFound(entity.model_id.clone()))?;
+
                 let delete_model = query.execute(&mut **tx).await?;
                 if delete_model.rows_affected() == 0 {
                     return Ok(());
@@ -708,6 +722,11 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                     name: entity.ty.name(),
                     children: vec![],
                 }));
+
+                // Match model is used only for clause member matching in subscriptions
+                // the only usage here is to receive model deletion updated in subscriptions
+                // cc. PR fix(grpc): preserve pre-deletion model values for MemberClause filter…#407
+                entity_updated.match_model = Some(model.clone());
 
                 let count = sqlx::query_scalar::<_, i64>(
                     "SELECT count(*) FROM entity_model WHERE entity_id = ?",
@@ -1192,6 +1211,44 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
         .increment(1);
 
         Ok(())
+    }
+
+    /// Retrieves the entity model from the database.
+    ///
+    /// # Arguments
+    ///
+    /// * `tx` - The transaction to use.
+    /// * `model_id` - The ID of the model to retrieve.
+    /// * `entity_id` - The ID of the entity to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the entity model if found, otherwise `None`.
+    async fn entity_model(
+        tx: &mut SqlxTransaction<'_, Sqlite>,
+        model_id: String,
+        entity_id: String,
+    ) -> QueryResult<Option<Ty>> {
+        let model = sqlx::query_as::<_, SQLModel>("SELECT * FROM models WHERE id = ?")
+            .bind(model_id.clone())
+            .fetch_one(&mut **tx)
+            .await?;
+
+        let model: torii_proto::Model = model.into();
+        let mut schema = model.schema;
+
+        let query = format!("SELECT * FROM [{}] WHERE internal_id = ?", schema.name());
+        let mut query = sqlx::query(&query);
+        query = query.bind(entity_id.clone());
+        let row: Option<SqliteRow> = query.fetch_optional(&mut **tx).await?;
+        match row {
+            Some(row) => {
+                map_row_to_ty("", "", &mut schema, &row)
+                    .map_err(|_| ExecutorQueryError::ModelMappingError(model_id.clone()))?;
+                Ok(Some(schema))
+            }
+            None => Ok(None),
+        }
     }
 
     async fn execute(&mut self) -> Result<()> {
