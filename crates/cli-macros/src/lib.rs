@@ -55,7 +55,8 @@ pub fn prefixed_args(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             let long_value = format!("{}.{}", prefix, field_name);
             let long_lit = LitStr::new(&long_value, proc_macro2::Span::call_site());
-            let long_attr: Attribute = parse_quote!(#[arg(long = #long_lit)]);
+            let id_lit = LitStr::new(&long_value, proc_macro2::Span::call_site());
+            let long_attr: Attribute = parse_quote!(#[arg(long = #long_lit, id = #id_lit)]);
             field.attrs.push(long_attr);
         }
     }

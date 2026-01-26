@@ -367,14 +367,14 @@ pub struct MetricsOptions {
     pub enabled: bool,
 
     /// The metrics will be served at the given address.
-    #[arg(requires = "enabled")]
+    #[arg(requires = "metrics.enabled")]
     #[arg(value_name = "ADDRESS")]
     #[arg(default_value_t = DEFAULT_METRICS_ADDR)]
     #[serde(alias = "metrics_addr")]
     pub addr: IpAddr,
 
     /// The metrics will be served at the given port.
-    #[arg(requires = "enabled")]
+    #[arg(requires = "metrics.enabled")]
     #[arg(value_name = "PORT")]
     #[arg(default_value_t = DEFAULT_METRICS_PORT)]
     #[serde(alias = "metrics_port")]
