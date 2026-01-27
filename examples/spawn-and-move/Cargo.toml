@@ -5,6 +5,9 @@ name = "dojo-examples-spawn-and-move"
 repository.workspace = true
 version.workspace = true
 
+[lints]
+workspace = true
+
 [package.metadata.release]
 pre-release-replacements = [
 	{ file = "Scarb.lock", search = "^name = \"dojo\"\nversion = \".*\"$", replace = "name = \"dojo\"\nversion = \"{{version}}\"", min = 1 },

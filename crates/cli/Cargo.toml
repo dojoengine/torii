@@ -5,6 +5,9 @@ name = "torii-cli"
 repository.workspace = true
 version.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow.workspace = true
 camino.workspace = true
