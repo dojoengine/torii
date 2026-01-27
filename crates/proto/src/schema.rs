@@ -331,3 +331,114 @@ impl TryFrom<proto::types::Ty> for Ty {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dojo_types::schema::{Member, Struct};
+
+    #[test]
+    fn test_nested_struct_proto_conversion_preserves_values() {
+        // Create a nested struct with primitive values
+        let nested_struct = Struct {
+            name: "TroopGuards".to_string(),
+            children: vec![
+                Member {
+                    name: "knight_count".to_string(),
+                    ty: Ty::Primitive(Primitive::U32(Some(100))),
+                    key: false,
+                },
+                Member {
+                    name: "crossbowman_count".to_string(),
+                    ty: Ty::Primitive(Primitive::U32(Some(50))),
+                    key: false,
+                },
+            ],
+        };
+
+        let main_struct = Struct {
+            name: "Game-Structure".to_string(),
+            children: vec![Member {
+                name: "troop_guards".to_string(),
+                ty: Ty::Struct(nested_struct),
+                key: false,
+            }],
+        };
+
+        // Convert to proto
+        let proto_struct: proto::types::Struct = main_struct.into();
+
+        // Verify main struct
+        assert_eq!(proto_struct.name, "Game-Structure");
+        assert_eq!(proto_struct.children.len(), 1);
+
+        // Verify nested struct
+        let troop_guards = &proto_struct.children[0];
+        assert_eq!(troop_guards.name, "troop_guards");
+        assert!(!troop_guards.key);
+
+        let nested_ty = troop_guards.ty.as_ref().expect("ty should be present");
+        if let Some(proto::types::ty::TyType::Struct(nested)) = &nested_ty.ty_type {
+            assert_eq!(nested.name, "TroopGuards");
+            assert_eq!(nested.children.len(), 2);
+
+            // Verify knight_count
+            let knight_count = &nested.children[0];
+            assert_eq!(knight_count.name, "knight_count");
+            let knight_ty = knight_count.ty.as_ref().expect("ty should be present");
+            if let Some(proto::types::ty::TyType::Primitive(prim)) = &knight_ty.ty_type {
+                if let Some(proto::types::primitive::PrimitiveType::U32(val)) = prim.primitive_type
+                {
+                    assert_eq!(val, 100, "knight_count should be 100, got {}", val);
+                } else {
+                    panic!("knight_count should be U32");
+                }
+            } else {
+                panic!("knight_count should be Primitive");
+            }
+
+            // Verify crossbowman_count
+            let crossbowman_count = &nested.children[1];
+            assert_eq!(crossbowman_count.name, "crossbowman_count");
+            let crossbowman_ty = crossbowman_count.ty.as_ref().expect("ty should be present");
+            if let Some(proto::types::ty::TyType::Primitive(prim)) = &crossbowman_ty.ty_type {
+                if let Some(proto::types::primitive::PrimitiveType::U32(val)) = prim.primitive_type
+                {
+                    assert_eq!(val, 50, "crossbowman_count should be 50, got {}", val);
+                } else {
+                    panic!("crossbowman_count should be U32");
+                }
+            } else {
+                panic!("crossbowman_count should be Primitive");
+            }
+        } else {
+            panic!("troop_guards ty should be Struct");
+        }
+    }
+
+    #[test]
+    fn test_primitive_none_becomes_zero_in_proto() {
+        // Test that None primitive values become zero after conversion
+        let prim = Primitive::U32(None);
+        let proto_prim: proto::types::Primitive = prim.into();
+
+        if let Some(proto::types::primitive::PrimitiveType::U32(val)) = proto_prim.primitive_type {
+            assert_eq!(val, 0, "None U32 should become 0 in proto");
+        } else {
+            panic!("Should be U32");
+        }
+    }
+
+    #[test]
+    fn test_primitive_some_value_preserved_in_proto() {
+        // Test that Some(value) is preserved after conversion
+        let prim = Primitive::U32(Some(42));
+        let proto_prim: proto::types::Primitive = prim.into();
+
+        if let Some(proto::types::primitive::PrimitiveType::U32(val)) = proto_prim.primitive_type {
+            assert_eq!(val, 42, "Some(42) should become 42 in proto");
+        } else {
+            panic!("Should be U32");
+        }
+    }
+}

@@ -784,4 +784,139 @@ mod tests {
         let propagated_model = entity_with_metadata.match_model.unwrap();
         assert_eq!(propagated_model.name(), "Game-Player");
     }
+
+    #[test]
+    fn test_entity_conversion_preserves_nested_struct_values() {
+        use dojo_types::schema::Member;
+
+        let now = Utc::now();
+
+        // Create a nested struct similar to TroopGuards
+        let nested_struct = Ty::Struct(Struct {
+            name: "TroopGuards".to_string(),
+            children: vec![
+                Member {
+                    name: "knight_count".to_string(),
+                    ty: Ty::Primitive(dojo_types::primitive::Primitive::U32(Some(100))),
+                    key: false,
+                },
+                Member {
+                    name: "crossbowman_count".to_string(),
+                    ty: Ty::Primitive(dojo_types::primitive::Primitive::U32(Some(50))),
+                    key: false,
+                },
+                Member {
+                    name: "paladin_count".to_string(),
+                    ty: Ty::Primitive(dojo_types::primitive::Primitive::U32(Some(25))),
+                    key: false,
+                },
+            ],
+        });
+
+        // Create the main model with nested struct
+        let entity = Entity {
+            id: "0xworld:0xentity".to_string(),
+            entity_id: "0x123".to_string(),
+            world_address: "0xabc".to_string(),
+            keys: "0x1/0x2".to_string(),
+            event_id: "event_123".to_string(),
+            executed_at: now,
+            created_at: now,
+            updated_at: now,
+            updated_model: Some(Ty::Struct(Struct {
+                name: "Game-Structure".to_string(),
+                children: vec![
+                    Member {
+                        name: "base".to_string(),
+                        ty: Ty::Struct(Struct {
+                            name: "Position".to_string(),
+                            children: vec![
+                                Member {
+                                    name: "coord_x".to_string(),
+                                    ty: Ty::Primitive(dojo_types::primitive::Primitive::U32(Some(
+                                        10,
+                                    ))),
+                                    key: false,
+                                },
+                                Member {
+                                    name: "coord_y".to_string(),
+                                    ty: Ty::Primitive(dojo_types::primitive::Primitive::U32(Some(
+                                        20,
+                                    ))),
+                                    key: false,
+                                },
+                            ],
+                        }),
+                        key: false,
+                    },
+                    Member {
+                        name: "troop_guards".to_string(),
+                        ty: nested_struct,
+                        key: false,
+                    },
+                ],
+            })),
+            deleted: false,
+            match_model: None,
+        };
+
+        // Convert to proto Entity
+        let proto_entity: torii_proto::schema::Entity<false> = entity.into();
+
+        // Verify structure
+        assert_eq!(proto_entity.models.len(), 1);
+        let model = &proto_entity.models[0];
+        assert_eq!(model.name, "Game-Structure");
+        assert_eq!(model.children.len(), 2);
+
+        // Find the troop_guards member
+        let troop_guards = model
+            .children
+            .iter()
+            .find(|c| c.name == "troop_guards")
+            .expect("troop_guards member should exist");
+
+        // Verify nested struct values are preserved
+        if let Ty::Struct(nested) = &troop_guards.ty {
+            assert_eq!(nested.name, "TroopGuards");
+            assert_eq!(nested.children.len(), 3);
+
+            // Verify each primitive value
+            let knight_count = nested
+                .children
+                .iter()
+                .find(|c| c.name == "knight_count")
+                .expect("knight_count should exist");
+            if let Ty::Primitive(dojo_types::primitive::Primitive::U32(val)) = &knight_count.ty {
+                assert_eq!(*val, Some(100), "knight_count should be 100, not zero");
+            } else {
+                panic!("knight_count should be U32 primitive");
+            }
+
+            let crossbowman_count = nested
+                .children
+                .iter()
+                .find(|c| c.name == "crossbowman_count")
+                .expect("crossbowman_count should exist");
+            if let Ty::Primitive(dojo_types::primitive::Primitive::U32(val)) = &crossbowman_count.ty
+            {
+                assert_eq!(*val, Some(50), "crossbowman_count should be 50, not zero");
+            } else {
+                panic!("crossbowman_count should be U32 primitive");
+            }
+
+            let paladin_count = nested
+                .children
+                .iter()
+                .find(|c| c.name == "paladin_count")
+                .expect("paladin_count should exist");
+            if let Ty::Primitive(dojo_types::primitive::Primitive::U32(val)) = &paladin_count.ty {
+                assert_eq!(*val, Some(25), "paladin_count should be 25, not zero");
+            } else {
+                panic!("paladin_count should be U32 primitive");
+            }
+        } else {
+            panic!("troop_guards should be a Struct type");
+        }
+    }
 }
