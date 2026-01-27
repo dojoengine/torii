@@ -9,10 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if target.contains("wasm32") {
         if feature_server {
-            return Err(format!(
-                "feature `server` is not supported on target `{target}`"
-            )
-            .into());
+            return Err(format!("feature `server` is not supported on target `{target}`").into());
         }
 
         wasm_tonic_build::configure()
