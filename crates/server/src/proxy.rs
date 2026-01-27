@@ -196,9 +196,7 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
 
         // Get hostname if the flag is enabled
         let hostname = if hostname_header_enabled {
-            hostname::get()
-                .ok()
-                .and_then(|h| h.into_string().ok())
+            hostname::get().ok().and_then(|h| h.into_string().ok())
         } else {
             None
         };
@@ -395,7 +393,14 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
                             let hostname = hostname.clone();
                             async move {
                                 let handlers = handlers.read().await;
-                                handle(remote_addr, req, &handlers, &version_spec, hostname.as_deref()).await
+                                handle(
+                                    remote_addr,
+                                    req,
+                                    &handlers,
+                                    &version_spec,
+                                    hostname.as_deref(),
+                                )
+                                .await
                             }
                         });
 
@@ -449,9 +454,9 @@ async fn handle(
     if let Some(hostname_value) = hostname {
         response.headers_mut().insert(
             HeaderName::from_static("x-torii-host"),
-            hostname_value.parse().unwrap_or_else(|_| {
-                http::HeaderValue::from_static("unknown")
-            }),
+            hostname_value
+                .parse()
+                .unwrap_or_else(|_| http::HeaderValue::from_static("unknown")),
         );
     }
 
