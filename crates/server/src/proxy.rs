@@ -173,7 +173,6 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
         provider: P,
         version_spec: String,
         proxy_settings: ProxySettings,
-        hostname_header_enabled: bool,
     ) -> Self {
         // Create proxy clients with configured settings
         let grpc_proxy_client = Arc::new(create_grpc_proxy_client(&proxy_settings));
@@ -194,12 +193,8 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
 
         let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(handlers));
 
-        // Get hostname if the flag is enabled
-        let hostname = if hostname_header_enabled {
-            hostname::get().ok().and_then(|h| h.into_string().ok())
-        } else {
-            None
-        };
+        // Get hostname once at startup
+        let hostname = hostname::get().ok().and_then(|h| h.into_string().ok());
 
         Self {
             addr,
@@ -450,14 +445,13 @@ async fn handle(
             .unwrap()
     });
 
-    // Add hostname header if configured
+    // Add hostname header
     if let Some(hostname_value) = hostname {
-        response.headers_mut().insert(
-            HeaderName::from_static("x-torii-host"),
-            hostname_value
-                .parse()
-                .unwrap_or_else(|_| http::HeaderValue::from_static("unknown")),
-        );
+        if let Ok(header_value) = hostname_value.parse() {
+            response
+                .headers_mut()
+                .insert(HeaderName::from_static("x-torii-host"), header_value);
+        }
     }
 
     Ok(response)

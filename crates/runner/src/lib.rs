@@ -767,7 +767,6 @@ impl Runner {
                 http2_keepalive_interval: self.args.grpc.http2_keepalive_interval,
                 http2_keepalive_timeout: self.args.grpc.http2_keepalive_timeout,
             },
-            self.args.server.hostname_header,
         );
 
         // Handle mkcert certificate generation
