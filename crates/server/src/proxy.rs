@@ -345,7 +345,6 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
                                                     }
                                                 });
 
-
                                             if let Err(e) = hyper::server::conn::Http::new()
                                                 .serve_connection(tls_stream, service)
                                                 .with_upgrades() // Enable connection upgrades for WebSocket over TLS
