@@ -34,6 +34,20 @@ use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
 use strum_macros::{AsRefStr, EnumIter, FromRepr};
 
+fn timestamp_to_datetime(value: u64, field: &'static str) -> Result<DateTime<Utc>, ProtoError> {
+    DateTime::from_timestamp(value as i64, 0)
+        .ok_or_else(|| ProtoError::MissingExpectedData(field.to_string()))
+}
+
+fn optional_timestamp_to_datetime(
+    value: Option<u64>,
+    field: &'static str,
+) -> Result<Option<DateTime<Utc>>, ProtoError> {
+    value
+        .map(|timestamp| timestamp_to_datetime(timestamp, field))
+        .transpose()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TokenId {
     Contract(Felt),
@@ -307,8 +321,8 @@ impl TryFrom<proto::types::Contract> for Contract {
             last_pending_block_tx: value
                 .last_pending_block_tx
                 .map(|tx| Felt::from_bytes_be_slice(&tx)),
-            updated_at: DateTime::from_timestamp(value.updated_at as i64, 0).unwrap(),
-            created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
+            updated_at: timestamp_to_datetime(value.updated_at, "updated_at")?,
+            created_at: timestamp_to_datetime(value.created_at, "created_at")?,
         })
     }
 }
@@ -399,7 +413,7 @@ impl TryFrom<proto::types::Controller> for Controller {
         Ok(Self {
             address: Felt::from_bytes_be_slice(&value.address),
             username: value.username,
-            deployed_at: DateTime::from_timestamp(value.deployed_at_timestamp as i64, 0).unwrap(),
+            deployed_at: timestamp_to_datetime(value.deployed_at_timestamp, "deployed_at")?,
         })
     }
 }
@@ -559,7 +573,7 @@ impl TryFrom<proto::types::TokenTransfer> for TokenTransfer {
             to_address: Felt::from_bytes_be_slice(&value.to_address),
             amount: U256::from_be_slice(&value.amount),
             token_id: value.token_id.map(|id| U256::from_be_slice(&id)),
-            executed_at: DateTime::from_timestamp(value.executed_at as i64, 0).unwrap(),
+            executed_at: timestamp_to_datetime(value.executed_at, "executed_at")?,
             event_id: value.event_id,
         })
     }
@@ -1231,9 +1245,10 @@ impl TryFrom<proto::types::Model> for Model {
     }
 }
 
-impl From<Model> for proto::types::Model {
-    fn from(value: Model) -> Self {
-        Self {
+impl TryFrom<Model> for proto::types::Model {
+    type Error = ProtoError;
+    fn try_from(value: Model) -> Result<Self, Self::Error> {
+        Ok(Self {
             selector: value.selector.to_bytes_be().to_vec(),
             namespace: value.namespace,
             name: value.name,
@@ -1242,10 +1257,10 @@ impl From<Model> for proto::types::Model {
             use_legacy_store: value.use_legacy_store,
             class_hash: value.class_hash.to_bytes_be().to_vec(),
             contract_address: value.contract_address.to_bytes_be().to_vec(),
-            layout: serde_json::to_vec(&value.layout).unwrap(),
-            schema: serde_json::to_vec(&value.schema).unwrap(),
+            layout: serde_json::to_vec(&value.layout).map_err(ProtoError::FromJson)?,
+            schema: serde_json::to_vec(&value.schema).map_err(ProtoError::FromJson)?,
             world_address: value.world_address.to_bytes_be().to_vec(),
-        }
+        })
     }
 }
 
@@ -1739,7 +1754,7 @@ impl TryFrom<proto::types::Transaction> for Transaction {
             nonce: Felt::from_bytes_be_slice(&value.nonce),
             block_number: value.block_number,
             transaction_type: value.transaction_type,
-            block_timestamp: DateTime::from_timestamp(value.block_timestamp as i64, 0).unwrap(),
+            block_timestamp: timestamp_to_datetime(value.block_timestamp, "block_timestamp")?,
             calls: value
                 .calls
                 .into_iter()
@@ -1869,11 +1884,11 @@ impl TryFrom<proto::types::Activity> for Activity {
             world_address: Felt::from_bytes_be_slice(&value.world_address),
             namespace: value.namespace,
             caller_address: Felt::from_bytes_be_slice(&value.caller_address),
-            session_start: DateTime::from_timestamp(value.session_start as i64, 0).unwrap(),
-            session_end: DateTime::from_timestamp(value.session_end as i64, 0).unwrap(),
+            session_start: timestamp_to_datetime(value.session_start, "session_start")?,
+            session_end: timestamp_to_datetime(value.session_end, "session_end")?,
             action_count: value.action_count,
             actions: value.actions,
-            updated_at: DateTime::from_timestamp(value.updated_at as i64, 0).unwrap(),
+            updated_at: timestamp_to_datetime(value.updated_at, "updated_at")?,
         })
     }
 }
@@ -1924,12 +1939,8 @@ impl TryFrom<proto::types::ActivityQuery> for ActivityQuery {
                 .into_iter()
                 .map(|a| Felt::from_bytes_be_slice(&a))
                 .collect(),
-            from_time: value
-                .from_time
-                .map(|t| DateTime::from_timestamp(t as i64, 0).unwrap()),
-            to_time: value
-                .to_time
-                .map(|t| DateTime::from_timestamp(t as i64, 0).unwrap()),
+            from_time: optional_timestamp_to_datetime(value.from_time, "from_time")?,
+            to_time: optional_timestamp_to_datetime(value.to_time, "to_time")?,
             pagination: value.pagination.map(|p| p.into()).unwrap_or_default(),
         })
     }
@@ -1985,8 +1996,8 @@ impl TryFrom<proto::types::Achievement> for Achievement {
             data: value.data,
             total_completions: value.total_completions,
             completion_rate: value.completion_rate,
-            created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
-            updated_at: DateTime::from_timestamp(value.updated_at as i64, 0).unwrap(),
+            created_at: timestamp_to_datetime(value.created_at, "created_at")?,
+            updated_at: timestamp_to_datetime(value.updated_at, "updated_at")?,
         })
     }
 }
@@ -2010,7 +2021,7 @@ impl TryFrom<proto::types::AchievementTask> for AchievementTask {
             total: value.total,
             total_completions: value.total_completions,
             completion_rate: value.completion_rate,
-            created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
+            created_at: timestamp_to_datetime(value.created_at, "created_at")?,
         })
     }
 }
@@ -2042,11 +2053,9 @@ impl TryFrom<proto::types::AchievementProgression> for AchievementProgression {
             player_id: Felt::from_bytes_be_slice(&value.player_id),
             count: value.count,
             completed: value.completed,
-            completed_at: value
-                .completed_at
-                .map(|t| DateTime::from_timestamp(t as i64, 0).unwrap()),
-            created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
-            updated_at: DateTime::from_timestamp(value.updated_at as i64, 0).unwrap(),
+            completed_at: optional_timestamp_to_datetime(value.completed_at, "completed_at")?,
+            created_at: timestamp_to_datetime(value.created_at, "created_at")?,
+            updated_at: timestamp_to_datetime(value.updated_at, "updated_at")?,
         })
     }
 }
@@ -2070,11 +2079,12 @@ impl TryFrom<proto::types::PlayerAchievementStats> for PlayerAchievementStats {
             completed_achievements: value.completed_achievements,
             total_achievements: value.total_achievements,
             completion_percentage: value.completion_percentage,
-            last_achievement_at: value
-                .last_achievement_at
-                .map(|t| DateTime::from_timestamp(t as i64, 0).unwrap()),
-            created_at: DateTime::from_timestamp(value.created_at as i64, 0).unwrap(),
-            updated_at: DateTime::from_timestamp(value.updated_at as i64, 0).unwrap(),
+            last_achievement_at: optional_timestamp_to_datetime(
+                value.last_achievement_at,
+                "last_achievement_at",
+            )?,
+            created_at: timestamp_to_datetime(value.created_at, "created_at")?,
+            updated_at: timestamp_to_datetime(value.updated_at, "updated_at")?,
         })
     }
 }
@@ -2108,7 +2118,10 @@ impl TryFrom<proto::types::PlayerAchievementEntry> for PlayerAchievementEntry {
     fn try_from(value: proto::types::PlayerAchievementEntry) -> Result<Self, Self::Error> {
         Ok(Self {
             player_address: Felt::from_bytes_be_slice(&value.player_address),
-            stats: value.stats.expect("stats is required").try_into()?,
+            stats: value
+                .stats
+                .ok_or_else(|| ProtoError::MissingExpectedData("stats".to_string()))?
+                .try_into()?,
             achievements: value
                 .achievements
                 .into_iter()
@@ -2132,7 +2145,7 @@ impl TryFrom<proto::types::PlayerAchievementProgress> for PlayerAchievementProgr
         Ok(Self {
             achievement: value
                 .achievement
-                .expect("achievement is required")
+                .ok_or_else(|| ProtoError::MissingExpectedData("achievement".to_string()))?
                 .try_into()?,
             task_progress: value.task_progress.into_iter().map(|t| t.into()).collect(),
             completed: value.completed,
