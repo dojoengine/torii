@@ -8,7 +8,7 @@ set -x
 set -o pipefail
 
 run_clippy() {
-  cargo +nightly-2025-05-01 clippy --all-targets "$@" --exclude torii-proto -- -D warnings -D future-incompatible -D nonstandard-style -D rust-2018-idioms -D unused -D missing-debug-implementations
+  cargo +nightly-2025-05-01 clippy --all-targets --no-deps "$@" --exclude torii-proto -- -D warnings -D future-incompatible -D nonstandard-style -D rust-2018-idioms -D unused -D missing-debug-implementations
 }
 
 run_clippy --all-features --workspace
