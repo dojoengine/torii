@@ -52,3 +52,6 @@ filetime = "0.2"
 tokio-rustls = "0.24.1"
 rustls = "0.21.12"
 rustls-pemfile = "1.0.4"
+
+# Hostname support
+hostname = "0.4"

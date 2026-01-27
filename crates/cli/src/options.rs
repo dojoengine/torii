@@ -361,6 +361,13 @@ pub struct ServerOptions {
         help = "Use mkcert to automatically generate and install local development certificates for HTTPS. This will create certificates for localhost and 127.0.0.1."
     )]
     pub mkcert: bool,
+
+    /// Add X-Torii-Host response header with hostname
+    #[arg(
+        long = "http.hostname_header",
+        help = "When set, adds X-Torii-Host response header with the system hostname to every response."
+    )]
+    pub hostname_header: bool,
 }
 
 impl Default for ServerOptions {
@@ -373,6 +380,7 @@ impl Default for ServerOptions {
             tls_cert_path: None,
             tls_key_path: None,
             mkcert: false,
+            hostname_header: false,
         }
     }
 }

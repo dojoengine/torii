@@ -139,6 +139,7 @@ pub struct Proxy<P: Provider + Sync + Send + Debug + 'static> {
     tls_config: Option<Arc<ServerConfig>>,
     grpc_proxy_client: Arc<ReverseProxy<HttpConnector<GaiResolver>>>,
     websocket_proxy_client: Arc<ReverseProxy<HttpConnector<GaiResolver>>>,
+    hostname: Option<String>,
     _provider: std::marker::PhantomData<P>,
 }
 
@@ -172,6 +173,7 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
         provider: P,
         version_spec: String,
         proxy_settings: ProxySettings,
+        hostname_header_enabled: bool,
     ) -> Self {
         // Create proxy clients with configured settings
         let grpc_proxy_client = Arc::new(create_grpc_proxy_client(&proxy_settings));
@@ -192,6 +194,15 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
 
         let handlers: Arc<RwLock<Vec<Box<dyn Handler>>>> = Arc::new(RwLock::new(handlers));
 
+        // Get hostname if the flag is enabled
+        let hostname = if hostname_header_enabled {
+            hostname::get()
+                .ok()
+                .and_then(|h| h.into_string().ok())
+        } else {
+            None
+        };
+
         Self {
             addr,
             allowed_origins,
@@ -200,6 +211,7 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
             tls_config: None,
             grpc_proxy_client,
             websocket_proxy_client,
+            hostname,
             _provider: std::marker::PhantomData,
         }
     }
@@ -316,6 +328,7 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
                                 let handlers = self.handlers.clone();
                                 let version_spec = self.version_spec.clone();
                                 let cors_layer = cors_layer.clone();
+                                let hostname = self.hostname.clone();
 
                                 tokio::spawn(async move {
                                     match tls_acceptor.accept(stream).await {
@@ -325,9 +338,10 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
                                                 .service_fn(move |req| {
                                                     let handlers = handlers.clone();
                                                     let version_spec = version_spec.clone();
+                                                    let hostname = hostname.clone();
                                                     async move {
                                                         let handlers = handlers.read().await;
-                                                        handle(remote_addr.ip(), req, &handlers, &version_spec).await
+                                                        handle(remote_addr.ip(), req, &handlers, &version_spec, hostname.as_deref()).await
                                                     }
                                                 });
 
@@ -365,11 +379,13 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
         } else {
             // HTTP server
             let cors_layer = self.create_cors_layer();
+            let hostname = self.hostname.clone();
             let make_svc = make_service_fn(move |conn: &AddrStream| {
                 let remote_addr = conn.remote_addr().ip();
                 let handlers = self.handlers.clone();
                 let version_spec = self.version_spec.clone();
                 let cors_layer = cors_layer.clone();
+                let hostname = hostname.clone();
 
                 let service =
                     ServiceBuilder::new()
@@ -377,9 +393,10 @@ impl<P: Provider + Sync + Send + Debug + 'static> Proxy<P> {
                         .service_fn(move |req| {
                             let handlers = handlers.clone();
                             let version_spec = version_spec.clone();
+                            let hostname = hostname.clone();
                             async move {
                                 let handlers = handlers.read().await;
-                                handle(remote_addr, req, &handlers, &version_spec).await
+                                handle(remote_addr, req, &handlers, &version_spec, hostname.as_deref()).await
                             }
                         });
 
@@ -403,24 +420,41 @@ async fn handle(
     req: Request<Body>,
     handlers: &[Box<dyn Handler>],
     version_spec: &str,
+    hostname: Option<&str>,
 ) -> Result<Response<Body>, Infallible> {
+    let mut response = None;
+
     for handler in handlers.iter() {
         if handler.should_handle(&req) {
-            return Ok(handler.handle(req, client_ip).await);
+            response = Some(handler.handle(req, client_ip).await);
+            break;
         }
     }
 
     // Default response if no handler matches
-    let json = json!({
-        "service": "torii",
-        "version": version_spec,
-        "success": true,
+    let mut response = response.unwrap_or_else(|| {
+        let json = json!({
+            "service": "torii",
+            "version": version_spec,
+            "success": true,
+        });
 
+        Response::builder()
+            .status(StatusCode::OK)
+            .header(CONTENT_TYPE, "application/json")
+            .body(Body::from(json.to_string()))
+            .unwrap()
     });
 
-    Ok(Response::builder()
-        .status(StatusCode::OK)
-        .header(CONTENT_TYPE, "application/json")
-        .body(Body::from(json.to_string()))
-        .unwrap())
+    // Add hostname header if configured
+    if let Some(hostname_value) = hostname {
+        response.headers_mut().insert(
+            HeaderName::from_static("x-torii-host"),
+            hostname_value.parse().unwrap_or_else(|_| {
+                http::HeaderValue::from_static("unknown")
+            }),
+        );
+    }
+
+    Ok(response)
 }
