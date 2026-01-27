@@ -5,6 +5,9 @@ name = "torii-proto"
 repository.workspace = true
 version.workspace = true
 
+[lints]
+workspace = true
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-prost.workspace = true
 wasm-tonic.workspace = true

@@ -5,6 +5,9 @@ name = "torii-grpc-server"
 repository.workspace = true
 version.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 dojo-types.workspace = true
 futures.workspace = true

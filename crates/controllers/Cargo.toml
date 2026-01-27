@@ -4,6 +4,9 @@ edition.workspace = true
 repository.workspace = true
 version.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 chrono.workspace = true
 reqwest.workspace = true

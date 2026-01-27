@@ -3,6 +3,9 @@ name = "torii-broker"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 dashmap = "6.0"
 futures-channel = "0.3"
