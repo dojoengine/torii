@@ -21,7 +21,7 @@ edition = "2021"
 license = "Apache-2.0"
 license-file = "LICENSE"
 repository = "https://github.com/dojoengine/torii"
-version = "1.8.11"
+version = "1.8.12"
 
 [workspace.lints.clippy]
 # Enable pedantic lints for stricter code quality
