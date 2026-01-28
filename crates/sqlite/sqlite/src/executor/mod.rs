@@ -571,6 +571,13 @@ impl<P: Provider + Sync + Send + Clone + 'static> Executor<'_, P> {
                 let mut entity_updated = torii_sqlite_types::Entity::from_row(&row)?;
                 entity_updated.updated_model = Some(entity.ty.clone());
 
+                // Load full entity from DB for subscription matching
+                // This ensures MemberClause filters work with partial updates (write_member)
+                let full_model =
+                    Self::entity_model(tx, entity.model_id.clone(), entity.entity_id.clone())
+                        .await?;
+                entity_updated.match_model = full_model;
+
                 if entity_updated.keys.is_empty() {
                     warn!(target: LOG_TARGET, "Entity has been updated without being set before. Keys are not known and non-updated values will be NULL.");
                 }
