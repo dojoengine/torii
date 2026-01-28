@@ -87,8 +87,9 @@ where
             let storage = ctx.storage.clone();
             let provider = ctx.provider.clone();
             let semaphore = ctx.nft_metadata_semaphore.clone();
+            let runtime = ctx.nft_metadata_runtime.clone();
 
-            tokio::spawn(async move {
+            runtime.spawn(async move {
                 let _permit = match semaphore.acquire().await {
                     Ok(permit) => permit,
                     Err(e) => {
