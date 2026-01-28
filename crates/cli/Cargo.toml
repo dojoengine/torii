@@ -18,6 +18,7 @@ torii-sqlite-types.workspace = true
 url.workspace = true
 merge-options.workspace = true
 torii-proto.workspace = true
+torii-cli-macros = { path = "../cli-macros" }
 
 [dev-dependencies]
 assert_matches.workspace = true

@@ -80,6 +80,7 @@ pub struct ToriiArgs {
     pub metrics: MetricsOptions,
 
     #[cfg(feature = "server")]
+    #[serde(rename = "http", alias = "server")]
     #[command(flatten)]
     #[merge]
     pub server: ServerOptions,
@@ -300,13 +301,13 @@ mod test {
         assert_eq!(torii_args.sql.model_indices, vec![]);
         assert_eq!(torii_args.sql.historical, Vec::<String>::new());
 
-        assert_eq!(torii_args.server.http_addr, DEFAULT_HTTP_ADDR);
-        assert_eq!(torii_args.server.http_port, DEFAULT_HTTP_PORT);
-        assert_eq!(torii_args.server.http_cors_origins, None);
+        assert_eq!(torii_args.server.addr, DEFAULT_HTTP_ADDR);
+        assert_eq!(torii_args.server.port, DEFAULT_HTTP_PORT);
+        assert_eq!(torii_args.server.cors_origins, None);
 
-        assert!(!torii_args.metrics.metrics);
-        assert_eq!(torii_args.metrics.metrics_addr, DEFAULT_METRICS_ADDR);
-        assert_eq!(torii_args.metrics.metrics_port, DEFAULT_METRICS_PORT);
+        assert!(!torii_args.metrics.enabled);
+        assert_eq!(torii_args.metrics.addr, DEFAULT_METRICS_ADDR);
+        assert_eq!(torii_args.metrics.port, DEFAULT_METRICS_PORT);
 
         assert_eq!(torii_args.relay.port, DEFAULT_RELAY_PORT);
         assert_eq!(torii_args.relay.webrtc_port, DEFAULT_RELAY_WEBRTC_PORT);
@@ -329,10 +330,10 @@ mod test {
         [events]
         raw = true
 
-        [server]
-        http_addr = "127.0.0.1"
-        http_port = 7777
-        http_cors_origins = ["*"]
+        [http]
+        addr = "127.0.0.1"
+        port = 7777
+        cors_origins = ["*"]
 
         [indexing]
         events_chunk_size = 9999
@@ -403,11 +404,8 @@ mod test {
                 fields: vec!["vec.x".to_string(), "vec.y".to_string()],
             }]
         );
-        assert_eq!(torii_args.server.http_addr, IpAddr::V4(Ipv4Addr::LOCALHOST));
-        assert_eq!(torii_args.server.http_port, 7777);
-        assert_eq!(
-            torii_args.server.http_cors_origins,
-            Some(vec!["*".to_string()])
-        );
+        assert_eq!(torii_args.server.addr, IpAddr::V4(Ipv4Addr::LOCALHOST));
+        assert_eq!(torii_args.server.port, 7777);
+        assert_eq!(torii_args.server.cors_origins, Some(vec!["*".to_string()]));
     }
 }

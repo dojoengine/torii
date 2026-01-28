@@ -500,7 +500,7 @@ impl Runner {
         }
 
         // Validate activity tracking configuration
-        if self.args.activity.activity_enabled && !self.args.indexing.transactions {
+        if self.args.activity.enabled && !self.args.indexing.transactions {
             return Err(anyhow::anyhow!(
                 "Activity tracking is enabled but transaction indexing is disabled. \
                  Activity tracking requires transaction data to function. \
@@ -556,7 +556,7 @@ impl Runner {
             aggregators: self.args.sql.aggregators.clone(),
             wal_truncate_size_threshold: self.args.sql.wal_truncate_size_threshold,
             optimize_interval: self.args.sql.optimize_interval,
-            activity_enabled: self.args.activity.activity_enabled,
+            activity_enabled: self.args.activity.enabled,
             activity_session_timeout: self.args.activity.session_timeout,
             activity_excluded_entrypoints,
             token_attributes: self.args.erc.token_attributes,
@@ -722,7 +722,7 @@ impl Runner {
         )
         .expect("Failed to start libp2p relay server");
 
-        let grpc_bind_addr = SocketAddr::new(self.args.grpc.grpc_addr, self.args.grpc.grpc_port);
+        let grpc_bind_addr = SocketAddr::new(self.args.grpc.addr, self.args.grpc.port);
         let (grpc_addr, grpc_server) = torii_grpc_server::new(
             shutdown_rx,
             storage.clone(),
@@ -740,25 +740,25 @@ impl Runner {
                     self.args.grpc.http2_keepalive_timeout,
                 ),
                 max_message_size: self.args.grpc.max_message_size,
-                raw_sql: self.args.server.raw_sql,
+                raw_sql: self.args.server.sql,
             },
             Some(grpc_bind_addr),
         )
         .await?;
 
-        let addr = SocketAddr::new(self.args.server.http_addr, self.args.server.http_port);
+        let addr = SocketAddr::new(self.args.server.addr, self.args.server.port);
 
         let mut proxy_server = Proxy::new(
             addr,
             self.args
                 .server
-                .http_cors_origins
+                .cors_origins
                 .filter(|cors_origins| !cors_origins.is_empty()),
             Some(grpc_addr),
             None,
             absolute_path.clone(),
             Arc::new(readonly_pool.clone()),
-            self.args.server.raw_sql,
+            self.args.server.sql,
             storage.clone(),
             provider.clone(),
             self.version_spec.clone(),
@@ -839,7 +839,7 @@ impl Runner {
         info!(target: LOG_TARGET, endpoint = %addr, protocol = %protocol, "Starting torii endpoint.");
         info!(target: LOG_TARGET, endpoint = %grpc_addr, "Serving gRPC endpoint.");
         info!(target: LOG_TARGET, endpoint = %gql_endpoint, "Serving Graphql playground.");
-        if self.args.server.raw_sql {
+        if self.args.server.sql {
             info!(target: LOG_TARGET, endpoint = %sql_endpoint, "Serving SQL playground.");
         } else {
             info!(target: LOG_TARGET, "SQL endpoint is disabled.");
@@ -854,11 +854,8 @@ impl Runner {
             }
         }
 
-        if self.args.metrics.metrics {
-            let addr = SocketAddr::new(
-                self.args.metrics.metrics_addr,
-                self.args.metrics.metrics_port,
-            );
+        if self.args.metrics.enabled {
+            let addr = SocketAddr::new(self.args.metrics.addr, self.args.metrics.port);
             info!(target: LOG_TARGET, %addr, "Starting metrics endpoint.");
             let prometheus_handle = PrometheusRecorder::install("torii")?;
             let server = dojo_metrics::Server::new(prometheus_handle).with_process_metrics();

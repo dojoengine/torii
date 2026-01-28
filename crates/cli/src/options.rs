@@ -9,6 +9,7 @@ use merge_options::MergeOptions;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
 use starknet::core::types::Felt;
+use torii_cli_macros::prefixed_args;
 use torii_proto::{ContractDefinition, ContractType};
 use torii_sqlite_types::{Aggregation, AggregatorConfig, Hook, HookEvent, ModelIndices, SortOrder};
 
@@ -65,13 +66,13 @@ pub const DEFAULT_SEARCH_MIN_QUERY_LENGTH: usize = 2;
 /// Default snippet length for search result highlighting
 pub const DEFAULT_SEARCH_SNIPPET_LENGTH: usize = 64;
 
+#[prefixed_args(prefix = "relay")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Relay options")]
 pub struct RelayOptions {
     /// Port to serve Libp2p TCP & UDP Quic transports
     #[arg(
-        long = "relay.port",
         value_name = "PORT",
         default_value_t = DEFAULT_RELAY_PORT,
         help = "Port to serve Libp2p TCP & UDP Quic transports."
@@ -80,7 +81,6 @@ pub struct RelayOptions {
 
     /// Port to serve Libp2p WebRTC transport
     #[arg(
-        long = "relay.webrtc_port",
         value_name = "PORT",
         default_value_t = DEFAULT_RELAY_WEBRTC_PORT,
         help = "Port to serve Libp2p WebRTC transport."
@@ -89,7 +89,6 @@ pub struct RelayOptions {
 
     /// Port to serve Libp2p WebRTC transport
     #[arg(
-        long = "relay.websocket_port",
         value_name = "PORT",
         default_value_t = DEFAULT_RELAY_WEBSOCKET_PORT,
         help = "Port to serve Libp2p WebRTC transport."
@@ -98,7 +97,6 @@ pub struct RelayOptions {
 
     /// Path to a local identity key file. If not specified, a new identity will be generated
     #[arg(
-        long = "relay.local_key_path",
         value_name = "PATH",
         help = "Path to a local identity key file. If not specified, a new identity will be \
                 generated."
@@ -108,7 +106,6 @@ pub struct RelayOptions {
     /// Path to a local certificate file. If not specified, a new certificate will be generated
     /// for WebRTC connections
     #[arg(
-        long = "relay.cert_path",
         value_name = "PATH",
         help = "Path to a local certificate file. If not specified, a new certificate will be \
                 generated for WebRTC connections."
@@ -118,7 +115,6 @@ pub struct RelayOptions {
     /// A list of other torii relays to connect to and sync with.
     /// Right now, only offchain messages broadcasted by the relay will be synced.
     #[arg(
-        long = "relay.peers",
         value_delimiter = ',',
         help = "A list of other torii relays to connect to and sync with."
     )]
@@ -138,21 +134,21 @@ impl Default for RelayOptions {
     }
 }
 
+#[prefixed_args(prefix = "indexing")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Indexing options")]
 pub struct IndexingOptions {
     /// Chunk size of the events page when indexing using events
-    #[arg(long = "indexing.events_chunk_size", default_value_t = DEFAULT_EVENTS_CHUNK_SIZE, help = "Chunk size of the events page to fetch from the sequencer.")]
+    #[arg(default_value_t = DEFAULT_EVENTS_CHUNK_SIZE, help = "Chunk size of the events page to fetch from the sequencer.")]
     pub events_chunk_size: u64,
 
     /// Number of blocks to process before commiting to DB
-    #[arg(long = "indexing.blocks_chunk_size", default_value_t = DEFAULT_BLOCKS_CHUNK_SIZE, help = "Number of blocks to process before commiting to DB.")]
+    #[arg(default_value_t = DEFAULT_BLOCKS_CHUNK_SIZE, help = "Number of blocks to process before commiting to DB.")]
     pub blocks_chunk_size: u64,
 
     /// Enable indexing pending blocks
     #[arg(
-        long = "indexing.preconfirmed",
         alias = "indexing.pending",
         default_value_t = true,
         help = "Whether or not to index pending blocks."
@@ -162,7 +158,6 @@ pub struct IndexingOptions {
 
     /// Polling interval in ms
     #[arg(
-        long = "indexing.polling_interval",
         default_value_t = DEFAULT_POLLING_INTERVAL,
         help = "Polling interval in ms for Torii to check for new events."
     )]
@@ -170,7 +165,6 @@ pub struct IndexingOptions {
 
     /// Maximum number of concurrent tasks used for processing parallelizable events.
     #[arg(
-        long = "indexing.max_concurrent_tasks",
         default_value_t = DEFAULT_MAX_CONCURRENT_TASKS,
         help = "Maximum number of concurrent tasks processing parallelizable events."
     )]
@@ -178,7 +172,6 @@ pub struct IndexingOptions {
 
     /// Whether or not to index world transactions
     #[arg(
-        long = "indexing.transactions",
         default_value_t = false,
         help = "Whether or not to index world transactions and keep them in the database."
     )]
@@ -186,7 +179,6 @@ pub struct IndexingOptions {
 
     /// Whether or not to fetch and store transaction receipts
     #[arg(
-        long = "indexing.transaction_receipts",
         default_value_t = false,
         help = "Whether or not to fetch and store transaction receipts in the database."
     )]
@@ -194,7 +186,6 @@ pub struct IndexingOptions {
 
     /// ERC contract addresses to index
     #[arg(
-        long = "indexing.contracts",
         value_delimiter = ',',
         value_parser = parse_erc_contract,
         help = "The list of contracts to index, in the following format: contract_type:address or contract_type:address:starting_block. Supported contract types include ERC20, ERC721, ERC1155, WORLD, UDC, OTHER."
@@ -205,7 +196,6 @@ pub struct IndexingOptions {
 
     /// Namespaces to index
     #[arg(
-        long = "indexing.namespaces",
         value_delimiter = ',',
         help = "The namespaces of the world that torii should index. If empty, all namespaces \
                 will be indexed."
@@ -214,7 +204,6 @@ pub struct IndexingOptions {
 
     /// Models to index
     #[arg(
-        long = "indexing.models",
         value_delimiter = ',',
         help = "The models of the world that torii should index. If empty, all models will be indexed."
     )]
@@ -225,16 +214,11 @@ pub struct IndexingOptions {
     /// Warning: In the current implementation, this will break the indexing of tokens, if any.
     /// Since the tokens require the chain to be indexed from the beginning, to ensure correct
     /// balance updates.
-    #[arg(
-        long = "indexing.world_block",
-        help = "The block number to start indexing from.",
-        default_value_t = 0
-    )]
+    #[arg(help = "The block number to start indexing from.", default_value_t = 0)]
     pub world_block: u64,
 
     /// Whether or not to index Cartridge controllers.
     #[arg(
-        long = "indexing.controllers",
         default_value_t = false,
         help = "Whether or not to index Cartridge controllers."
     )]
@@ -243,7 +227,6 @@ pub struct IndexingOptions {
     /// Whether or not to read models from the block number they were registered in.
     /// If false, models will be read from the latest block.
     #[arg(
-        long = "indexing.strict_model_reader",
         default_value_t = false,
         help = "Whether or not to read models from the block number they were registered in."
     )]
@@ -251,7 +234,6 @@ pub struct IndexingOptions {
 
     /// The chunk size to use for batch requests.
     #[arg(
-        long = "indexing.batch_chunk_size",
         default_value_t = DEFAULT_BATCH_CHUNK_SIZE,
         help = "The chunk size to use for batch requests. This is used to split the requests into smaller chunks to avoid overwhelming the provider and potentially running into issues."
     )]
@@ -259,7 +241,6 @@ pub struct IndexingOptions {
 
     /// Whether or not to index external contract registration events.
     #[arg(
-        long = "indexing.external_contracts",
         default_value_t = true,
         help = "Whether or not to index external contract registration events."
     )]
@@ -268,7 +249,6 @@ pub struct IndexingOptions {
     /// Comma separated list of external contract instance names to index.
     /// If empty, all external contracts will be indexed (when external_contracts is enabled).
     #[arg(
-        long = "indexing.external_contract_whitelist",
         value_delimiter = ',',
         help = "Comma separated list of external contract instance names to index. If empty, all external contracts will be indexed (when external_contracts is enabled)."
     )]
@@ -298,50 +278,49 @@ impl Default for IndexingOptions {
     }
 }
 
+#[prefixed_args(prefix = "events")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, Default, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Events indexing options")]
 pub struct EventsOptions {
     /// Whether or not to index raw events
-    #[arg(
-        long = "events.raw",
-        default_value_t = false,
-        help = "Whether or not to index raw events."
-    )]
+    #[arg(default_value_t = false, help = "Whether or not to index raw events.")]
     pub raw: bool,
 }
 
+#[prefixed_args(prefix = "http")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "HTTP server options")]
 pub struct ServerOptions {
     /// HTTP server listening interface.
-    #[arg(long = "http.addr", value_name = "ADDRESS")]
+    #[arg(value_name = "ADDRESS")]
     #[arg(default_value_t = DEFAULT_HTTP_ADDR)]
-    pub http_addr: IpAddr,
+    #[serde(alias = "http_addr")]
+    pub addr: IpAddr,
 
     /// HTTP server listening port.
-    #[arg(long = "http.port", value_name = "PORT")]
+    #[arg(value_name = "PORT")]
     #[arg(default_value_t = DEFAULT_HTTP_PORT)]
-    pub http_port: u16,
+    #[serde(alias = "http_port")]
+    pub port: u16,
 
     /// Comma separated list of domains from which to accept cross origin requests.
-    #[arg(long = "http.cors_origins")]
     #[arg(value_delimiter = ',')]
-    pub http_cors_origins: Option<Vec<String>>,
+    #[serde(alias = "http_cors_origins")]
+    pub cors_origins: Option<Vec<String>>,
 
     /// Enable the SQL playground and query endpoint at /sql.
     #[arg(
-        long = "http.sql",
         action = clap::ArgAction::Set,
         default_value_t = true,
         help = "Enable the SQL playground and query endpoint at /sql."
     )]
-    pub raw_sql: bool,
+    #[serde(alias = "raw_sql")]
+    pub sql: bool,
 
     /// Path to the SSL certificate file (.pem)
     #[arg(
-        long = "http.tls_cert_path",
         value_name = "PATH",
         help = "Path to the SSL certificate file (.pem). If provided, the server will use HTTPS instead of HTTP."
     )]
@@ -349,7 +328,6 @@ pub struct ServerOptions {
 
     /// Path to the SSL private key file (.pem)
     #[arg(
-        long = "http.tls_key_path",
         value_name = "PATH",
         help = "Path to the SSL private key file (.pem). Required when tls_cert_path is provided."
     )]
@@ -357,7 +335,6 @@ pub struct ServerOptions {
 
     /// Use mkcert to generate and install local development certificates
     #[arg(
-        long = "http.mkcert",
         help = "Use mkcert to automatically generate and install local development certificates for HTTPS. This will create certificates for localhost and 127.0.0.1."
     )]
     pub mkcert: bool,
@@ -366,10 +343,10 @@ pub struct ServerOptions {
 impl Default for ServerOptions {
     fn default() -> Self {
         Self {
-            http_addr: DEFAULT_HTTP_ADDR,
-            http_port: DEFAULT_HTTP_PORT,
-            http_cors_origins: None,
-            raw_sql: true,
+            addr: DEFAULT_HTTP_ADDR,
+            port: DEFAULT_HTTP_PORT,
+            cors_origins: None,
+            sql: true,
             tls_cert_path: None,
             tls_key_path: None,
             mkcert: false,
@@ -377,6 +354,7 @@ impl Default for ServerOptions {
     }
 }
 
+#[prefixed_args(prefix = "metrics")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Metrics options")]
@@ -385,32 +363,35 @@ pub struct MetricsOptions {
     ///
     /// For now, metrics will still be collected even if this flag is not set. This only
     /// controls whether the metrics server is started or not.
-    #[arg(long)]
-    pub metrics: bool,
+    #[serde(alias = "metrics")]
+    pub enabled: bool,
 
     /// The metrics will be served at the given address.
-    #[arg(requires = "metrics")]
-    #[arg(long = "metrics.addr", value_name = "ADDRESS")]
+    #[arg(requires = "metrics.enabled")]
+    #[arg(value_name = "ADDRESS")]
     #[arg(default_value_t = DEFAULT_METRICS_ADDR)]
-    pub metrics_addr: IpAddr,
+    #[serde(alias = "metrics_addr")]
+    pub addr: IpAddr,
 
     /// The metrics will be served at the given port.
-    #[arg(requires = "metrics")]
-    #[arg(long = "metrics.port", value_name = "PORT")]
+    #[arg(requires = "metrics.enabled")]
+    #[arg(value_name = "PORT")]
     #[arg(default_value_t = DEFAULT_METRICS_PORT)]
-    pub metrics_port: u16,
+    #[serde(alias = "metrics_port")]
+    pub port: u16,
 }
 
 impl Default for MetricsOptions {
     fn default() -> Self {
         Self {
-            metrics: false,
-            metrics_addr: DEFAULT_METRICS_ADDR,
-            metrics_port: DEFAULT_METRICS_PORT,
+            enabled: false,
+            addr: DEFAULT_METRICS_ADDR,
+            port: DEFAULT_METRICS_PORT,
         }
     }
 }
 
+#[prefixed_args(prefix = "erc")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "ERC options")]
@@ -418,19 +399,16 @@ pub struct ErcOptions {
     /// The maximum number of concurrent tasks to use for indexing ERC721 and ERC1155 token
     /// metadata.
     #[arg(
-        long = "erc.max_metadata_tasks",
         default_value_t = DEFAULT_ERC_MAX_METADATA_TASKS,
         help = "The maximum number of concurrent tasks to use for indexing ERC721 and ERC1155 token metadata."
     )]
     pub max_metadata_tasks: usize,
 
     /// Path to a directory to store ERC artifacts
-    #[arg(long)]
     pub artifacts_path: Option<Utf8PathBuf>,
 
     /// Whether or not to index ERC721 and ERC1155 token attributes
     #[arg(
-        long = "erc.token_attributes",
         default_value_t = true,
         help = "Whether or not to index ERC721 and ERC1155 token attributes."
     )]
@@ -438,7 +416,6 @@ pub struct ErcOptions {
 
     /// Whether or not to index ERC721 and ERC1155 trait counts
     #[arg(
-        long = "erc.trait_counts",
         default_value_t = false,
         help = "Whether or not to index ERC721 and ERC1155 trait counts."
     )]
@@ -446,7 +423,6 @@ pub struct ErcOptions {
 
     /// Whether to process ERC-4906 metadata update events globally
     #[arg(
-        long = "erc.metadata_updates",
         default_value_t = true,
         help = "Whether to process ERC-4906 metadata update events (MetadataUpdate, BatchMetadataUpdate). When false, all metadata updates are ignored."
     )]
@@ -456,7 +432,6 @@ pub struct ErcOptions {
     /// If empty, all contracts are allowed (subject to metadata_updates flag).
     /// Format: comma-separated list of contract addresses in hex.
     #[arg(
-        long = "erc.metadata_update_whitelist",
         value_delimiter = ',',
         help = "Whitelist of contract addresses (hex) that should process metadata updates. If empty, all contracts are allowed."
     )]
@@ -466,7 +441,6 @@ pub struct ErcOptions {
     /// Takes precedence over whitelist.
     /// Format: comma-separated list of contract addresses in hex.
     #[arg(
-        long = "erc.metadata_update_blacklist",
         value_delimiter = ',',
         help = "Blacklist of contract addresses (hex) that should NOT process metadata updates. Takes precedence over whitelist."
     )]
@@ -476,7 +450,6 @@ pub struct ErcOptions {
     /// When true, metadata updates are deferred until the indexer has caught up with the latest block.
     /// This prevents metadata fetching from slowing down initial sync.
     #[arg(
-        long = "erc.metadata_updates_only_at_head",
         default_value_t = false,
         help = "Only process ERC-4906 metadata updates when indexer is at head (caught up). Helps speed up initial sync by deferring metadata fetching."
     )]
@@ -486,7 +459,6 @@ pub struct ErcOptions {
     /// When true, metadata fetching is spawned as a background task that updates the database once complete.
     /// This prevents slow metadata fetching from blocking the indexing pipeline.
     #[arg(
-        long = "erc.async_metadata_updates",
         default_value_t = false,
         help = "Process ERC-4906 metadata updates asynchronously without blocking. Metadata is fetched in background and database is updated when complete."
     )]
@@ -544,13 +516,13 @@ impl ErcOptions {
     }
 }
 
+#[prefixed_args(prefix = "messaging")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Messaging options")]
 pub struct MessagingOptions {
     /// Maximum age in milliseconds for message timestamps to be considered valid
     #[arg(
-        long = "messaging.max_age",
         default_value_t = DEFAULT_MESSAGING_MAX_AGE,
         help = "Maximum age in milliseconds for message timestamps to be considered valid. Messages older than this will be rejected."
     )]
@@ -558,7 +530,6 @@ pub struct MessagingOptions {
 
     /// Maximum milliseconds in the future that message timestamps are allowed
     #[arg(
-        long = "messaging.future_tolerance",
         default_value_t = DEFAULT_MESSAGING_FUTURE_TOLERANCE,
         help = "Maximum milliseconds in the future that message timestamps are allowed. Helps prevent clock skew issues."
     )]
@@ -566,7 +537,6 @@ pub struct MessagingOptions {
 
     /// Whether timestamps are required in messages
     #[arg(
-        long = "messaging.require_timestamp",
         default_value_t = false,
         help = "Whether timestamps are required in all messages. If false, timestamps are optional but validated when present."
     )]
@@ -598,13 +568,13 @@ pub const DEFAULT_DATABASE_JOURNAL_SIZE_LIMIT: u64 = 64 * 1024 * 1024;
 /// Default temporary storage location for SQLite.
 pub const DEFAULT_DATABASE_TEMP_STORE: &str = "file";
 
+#[prefixed_args(prefix = "sql")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "SQL options")]
 pub struct SqlOptions {
     /// Whether model tables should default to having indices on all columns
     #[arg(
-        long = "sql.all_model_indices",
         default_value_t = false,
         help = "If true, creates indices on all columns of model tables by default. If false, \
                 only key fields columns of model tables will have indices."
@@ -614,7 +584,6 @@ pub struct SqlOptions {
     /// Specify which fields should have indices for specific models
     /// Format: "model_name:field1,field2;another_model:field3,field4"
     #[arg(
-        long = "sql.model_indices",
         value_delimiter = ';',
         value_parser = parse_model_indices,
         help = "Specify which fields should have indices for specific models. Format: \"model_name:field1,field2;another_model:field3,field4\""
@@ -624,7 +593,6 @@ pub struct SqlOptions {
     /// Models that are going to be treated as historical during indexing. Applies to event
     /// messages and entities. A list of the model tags (namespace-name)
     #[arg(
-        long = "sql.historical",
         value_delimiter = ',',
         help = "Models that are going to be treated as historical during indexing."
     )]
@@ -633,7 +601,6 @@ pub struct SqlOptions {
     /// The page size to use for the database. The page size must be a power of two between 512 and
     /// 65536 inclusive.
     #[arg(
-        long = "sql.page_size",
         default_value_t = DEFAULT_DATABASE_PAGE_SIZE,
         help = "The page size to use for the database. The page size must be a power of two between 512 and 65536 inclusive."
     )]
@@ -641,7 +608,6 @@ pub struct SqlOptions {
 
     /// Cache size to use for the database.
     #[arg(
-        long = "sql.cache_size",
         default_value_t = DEFAULT_DATABASE_CACHE_SIZE,
         help = "The cache size to use for the database. A positive value determines a number of pages, a negative value determines a number of KiB."
     )]
@@ -650,7 +616,6 @@ pub struct SqlOptions {
     /// A set of SQL statements to execute after some specific events.
     /// Like after a model has been registered, or after an entity model has been updated etc...
     #[arg(
-        long = "sql.hooks",
         value_delimiter = ',',
         value_parser = parse_hook,
         help = "A set of SQL statements to execute after some specific events."
@@ -659,7 +624,6 @@ pub struct SqlOptions {
 
     /// A directory containing custom migrations to run.
     #[arg(
-        long = "sql.migrations",
         value_name = "PATH",
         help = "A directory containing custom migrations to run."
     )]
@@ -668,7 +632,6 @@ pub struct SqlOptions {
     /// Aggregator configurations
     /// Format: "aggregator_id:model_tag:group_by:aggregation:order"
     #[arg(
-        long = "sql.aggregators",
         value_delimiter = ';',
         value_parser = parse_aggregator_config,
         help = "Aggregator configurations. Format: \"aggregator_id:model_tag:group_by:aggregation:order\". \
@@ -681,7 +644,6 @@ pub struct SqlOptions {
 
     /// The pages interval to autocheckpoint.
     #[arg(
-        long = "sql.wal_autocheckpoint",
         default_value_t = DEFAULT_DATABASE_WAL_AUTO_CHECKPOINT,
         help = "The pages interval to autocheckpoint."
     )]
@@ -690,7 +652,6 @@ pub struct SqlOptions {
     /// Size threshold in bytes for WAL file before performing a TRUNCATE checkpoint.
     /// This is checked periodically during execute operations.
     #[arg(
-        long = "sql.wal_truncate_size_threshold",
         default_value_t = DEFAULT_DATABASE_WAL_TRUNCATE_SIZE_THRESHOLD,
         help = "Size threshold in bytes for WAL file before performing a TRUNCATE checkpoint. Set to 0 to disable. Default is 100MB."
     )]
@@ -699,7 +660,6 @@ pub struct SqlOptions {
     /// Interval in seconds between PRAGMA optimize runs after transaction commits.
     /// This intelligently updates query planner statistics for better performance.
     #[arg(
-        long = "sql.optimize_interval",
         default_value_t = DEFAULT_DATABASE_OPTIMIZE_INTERVAL,
         help = "Interval in seconds between PRAGMA optimize runs after transaction commits. Set to 0 to disable automatic optimization. Default is 3600 seconds (1 hour)."
     )]
@@ -707,7 +667,6 @@ pub struct SqlOptions {
 
     /// The timeout before the database is considered busy.
     #[arg(
-        long = "sql.busy_timeout",
         default_value_t = DEFAULT_DATABASE_BUSY_TIMEOUT,
         help = "The timeout before the database is considered busy. Helpful in situations where \
                 the database is locked for a long time."
@@ -716,7 +675,6 @@ pub struct SqlOptions {
 
     /// The timeout when acquiring a connection from the pool.
     #[arg(
-        long = "sql.acquire_timeout",
         default_value_t = DEFAULT_DATABASE_ACQUIRE_TIMEOUT,
         help = "The timeout in milliseconds when acquiring a connection from the pool. This \
                 prevents immediate failures when all connections are busy."
@@ -725,7 +683,6 @@ pub struct SqlOptions {
 
     /// The timeout before idle connections are closed.
     #[arg(
-        long = "sql.idle_timeout",
         default_value_t = DEFAULT_DATABASE_IDLE_TIMEOUT,
         help = "The timeout in milliseconds before idle connections are closed and removed \
                 from the pool."
@@ -734,7 +691,6 @@ pub struct SqlOptions {
 
     /// The maximum number of connections in the readonly pool.
     #[arg(
-        long = "sql.max_connections",
         default_value_t = DEFAULT_DATABASE_MAX_CONNECTIONS,
         help = "The maximum number of connections in the readonly connection pool. This \
                 controls how many concurrent read operations can be performed."
@@ -744,7 +700,6 @@ pub struct SqlOptions {
     /// Soft memory limit in bytes for SQLite operations. When exceeded, SQLite will try to free
     /// memory by reducing cache size and other optimizations.
     #[arg(
-        long = "sql.soft_memory_limit",
         default_value_t = DEFAULT_DATABASE_SOFT_MEMORY_LIMIT,
         help = "Soft memory limit in bytes for SQLite operations. When exceeded, SQLite will try \
                 to free memory by reducing cache size and other optimizations."
@@ -754,7 +709,6 @@ pub struct SqlOptions {
     /// Hard memory limit in bytes for SQLite operations. When exceeded, SQLite will abort
     /// operations to prevent excessive memory usage.
     #[arg(
-        long = "sql.hard_memory_limit",
         default_value_t = DEFAULT_DATABASE_HARD_MEMORY_LIMIT,
         help = "Hard memory limit in bytes for SQLite operations. When exceeded, SQLite will \
                 abort operations to prevent excessive memory usage."
@@ -763,7 +717,6 @@ pub struct SqlOptions {
 
     /// Shared cache mode for SQLite.
     #[arg(
-        long = "sql.shared_cache",
         default_value_t = false,
         help = "Shared cache mode for SQLite. When enabled, SQLite will use a shared cache for all connections."
     )]
@@ -771,7 +724,6 @@ pub struct SqlOptions {
 
     /// Temporary storage location for SQLite.
     #[arg(
-        long = "sql.temp_store",
         default_value = DEFAULT_DATABASE_TEMP_STORE,
         help = "Temporary storage location for SQLite. Options: 'default', 'file', 'memory'. \
                 'memory' stores temp tables in RAM (faster but uses more memory). \
@@ -782,7 +734,6 @@ pub struct SqlOptions {
 
     /// Memory-mapped I/O size in bytes for SQLite.
     #[arg(
-        long = "sql.mmap_size",
         default_value_t = DEFAULT_DATABASE_MMAP_SIZE,
         help = "Memory-mapped I/O size in bytes for SQLite. Default is 256MB. \
                 Memory mapping can improve performance but uses RAM. \
@@ -792,7 +743,6 @@ pub struct SqlOptions {
 
     /// Journal size limit in bytes for SQLite.
     #[arg(
-        long = "sql.journal_size_limit",
         default_value_t = DEFAULT_DATABASE_JOURNAL_SIZE_LIMIT,
         help = "Journal size limit in bytes for SQLite. Default is 64MB. \
                 Limits the size of the rollback journal. \
@@ -829,6 +779,7 @@ impl Default for SqlOptions {
     }
 }
 
+#[prefixed_args(prefix = "activity")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Activity tracking options")]
@@ -836,17 +787,16 @@ pub struct ActivityOptions {
     /// Enable activity tracking for user sessions
     /// NOTE: Requires --indexing.transactions to be enabled
     #[arg(
-        long = "activity.enabled",
         default_value_t = false,
         help = "Whether to track user activity sessions. When enabled, aggregates transaction \
                 calls into sessions for efficient activity queries. Requires transaction indexing \
                 to be enabled (--indexing.transactions)."
     )]
-    pub activity_enabled: bool,
+    #[serde(alias = "activity_enabled")]
+    pub enabled: bool,
 
     /// Session timeout in seconds
     #[arg(
-        long = "activity.session_timeout",
         default_value_t = DEFAULT_ACTIVITY_SESSION_TIMEOUT,
         help = "Duration in seconds of inactivity before starting a new session. Default is 3600 \
                 seconds (1 hour)."
@@ -864,7 +814,6 @@ pub struct ActivityOptions {
 
     /// Entrypoints to exclude from activity tracking
     #[arg(
-        long = "activity.excluded_entrypoints",
         value_delimiter = ',',
         help = "Comma-separated list of entrypoints to exclude from activity tracking. Useful for \
                 filtering out wrapper functions or system calls. Defaults include: \
@@ -878,7 +827,7 @@ pub struct ActivityOptions {
 impl Default for ActivityOptions {
     fn default() -> Self {
         Self {
-            activity_enabled: false,
+            enabled: false,
             session_timeout: DEFAULT_ACTIVITY_SESSION_TIMEOUT,
             // retention_days: DEFAULT_ACTIVITY_RETENTION_DAYS,
             excluded_entrypoints: vec![],
@@ -886,13 +835,13 @@ impl Default for ActivityOptions {
     }
 }
 
+#[prefixed_args(prefix = "achievement")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Achievement tracking options")]
 pub struct AchievementOptions {
     /// Model name for achievement registration (trophy creation)
     #[arg(
-        long = "achievement.registration_model_name",
         default_value = DEFAULT_ACHIEVEMENT_REGISTRATION_MODEL_NAME,
         help = "The model tag to listen for achievement registration events. This model should \
                 contain achievement definitions with id, title, description, tasks, etc."
@@ -901,7 +850,6 @@ pub struct AchievementOptions {
 
     /// Model name for achievement progression (trophy progression)
     #[arg(
-        long = "achievement.progression_model_name",
         default_value = DEFAULT_ACHIEVEMENT_PROGRESSION_MODEL_NAME,
         help = "The model tag to listen for achievement progression events. This model should \
                 contain player_id, task_id, and count fields to track task completion."
@@ -918,22 +866,22 @@ impl Default for AchievementOptions {
     }
 }
 
+#[prefixed_args(prefix = "search")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Search API options (SQLite FTS5)")]
 pub struct SearchOptions {
     /// Enable global search API with FTS5
     #[arg(
-        long = "search.enabled",
         default_value_t = false,
         help = "Enable global search API using SQLite FTS5 full-text search. \
                 Automatically searches all FTS5-indexed tables (achievements, controllers, token_attributes)."
     )]
-    pub search_enabled: bool,
+    #[serde(alias = "search_enabled")]
+    pub enabled: bool,
 
     /// Maximum number of search results to return per table
     #[arg(
-        long = "search.max_results",
         default_value_t = DEFAULT_SEARCH_MAX_RESULTS,
         help = "Maximum number of search results to return per table. Default is 100."
     )]
@@ -941,7 +889,6 @@ pub struct SearchOptions {
 
     /// Minimum search query length
     #[arg(
-        long = "search.min_query_length",
         default_value_t = DEFAULT_SEARCH_MIN_QUERY_LENGTH,
         help = "Minimum length of search query string. Queries shorter than this will be rejected. Default is 2."
     )]
@@ -949,7 +896,6 @@ pub struct SearchOptions {
 
     /// Return snippets with highlighted matches
     #[arg(
-        long = "search.return_snippets",
         default_value_t = true,
         help = "Return text snippets with match highlights in search results using FTS5 snippet() function. Default is true."
     )]
@@ -957,7 +903,6 @@ pub struct SearchOptions {
 
     /// Snippet length for search result highlighting
     #[arg(
-        long = "search.snippet_length",
         default_value_t = DEFAULT_SEARCH_SNIPPET_LENGTH,
         help = "Maximum length of text snippets in search results. Default is 64 characters."
     )]
@@ -965,7 +910,6 @@ pub struct SearchOptions {
 
     /// Enable prefix matching (e.g., 'dra*' matches 'dragon')
     #[arg(
-        long = "search.prefix_matching",
         default_value_t = true,
         help = "Enable prefix matching in FTS5 queries. Allows wildcard searches like 'dra*'. Default is true."
     )]
@@ -975,7 +919,7 @@ pub struct SearchOptions {
 impl Default for SearchOptions {
     fn default() -> Self {
         Self {
-            search_enabled: false,
+            enabled: false,
             max_results: DEFAULT_SEARCH_MAX_RESULTS,
             min_query_length: DEFAULT_SEARCH_MIN_QUERY_LENGTH,
             return_snippets: true,
@@ -985,37 +929,33 @@ impl Default for SearchOptions {
     }
 }
 
+#[prefixed_args(prefix = "snapshot")]
 #[derive(Default, Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Snapshot options")]
 pub struct SnapshotOptions {
     /// Snapshot URL to download
-    #[arg(long = "snapshot.url", help = "The snapshot URL to download.")]
+    #[arg(help = "The snapshot URL to download.")]
     pub url: Option<String>,
 
     /// Optional version of the remote snapshot torii version
     #[arg(
-        long = "snapshot.version",
         help = "Optional version of the torii the snapshot has been made from. This is only used to give a warning if there is a version mismatch between the snapshot and this torii."
     )]
     pub version: Option<String>,
 }
 
+#[prefixed_args(prefix = "runner")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "Runner options")]
 pub struct RunnerOptions {
     /// Open World Explorer on the browser.
-    #[arg(
-        long = "runner.explorer",
-        default_value_t = false,
-        help = "Open World Explorer on the browser."
-    )]
+    #[arg(default_value_t = false, help = "Open World Explorer on the browser.")]
     pub explorer: bool,
 
     /// Check if contracts are deployed before starting torii.
     #[arg(
-        long = "runner.check_contracts",
         default_value_t = false,
         help = "Check if contracts are deployed before starting torii."
     )]
@@ -1023,7 +963,6 @@ pub struct RunnerOptions {
 
     /// Number of threads for the query runtime (GraphQL/gRPC API).
     #[arg(
-        long = "runner.query_threads",
         default_value_t = 0,
         help = "Number of threads for the query runtime handling GraphQL and gRPC API requests. \
                 If 0, uses adaptive allocation based on CPU count and workload."
@@ -1032,7 +971,6 @@ pub struct RunnerOptions {
 
     /// Number of threads for the indexer runtime.
     #[arg(
-        long = "runner.indexer_threads",
         default_value_t = 0,
         help = "Number of threads for the indexer runtime handling block processing and event indexing. \
                 If 0, uses adaptive allocation. During heavy indexing, more threads are allocated to indexer."
@@ -1041,7 +979,6 @@ pub struct RunnerOptions {
 
     /// Runtime allocation strategy for balancing indexing vs query performance.
     #[arg(
-        long = "runner.allocation_strategy",
         default_value = "adaptive",
         help = "Strategy for allocating CPU resources: \
                 'adaptive' - automatically adjusts based on workload, \
@@ -1064,23 +1001,25 @@ impl Default for RunnerOptions {
     }
 }
 
+#[prefixed_args(prefix = "grpc")]
 #[derive(Debug, clap::Args, Clone, Serialize, Deserialize, PartialEq, MergeOptions)]
 #[serde(default)]
 #[command(next_help_heading = "GRPC options")]
 pub struct GrpcOptions {
     /// gRPC server listening interface.
-    #[arg(long = "grpc.addr", value_name = "ADDRESS")]
+    #[arg(value_name = "ADDRESS")]
     #[arg(default_value_t = DEFAULT_GRPC_ADDR)]
-    pub grpc_addr: IpAddr,
+    #[serde(alias = "grpc_addr")]
+    pub addr: IpAddr,
 
     /// gRPC server listening port.
-    #[arg(long = "grpc.port", value_name = "PORT")]
+    #[arg(value_name = "PORT")]
     #[arg(default_value_t = DEFAULT_GRPC_PORT)]
-    pub grpc_port: u16,
+    #[serde(alias = "grpc_port")]
+    pub port: u16,
 
     /// The buffer size for the subscription channel.
     #[arg(
-        long = "grpc.subscription_buffer_size",
         default_value_t = DEFAULT_GRPC_SUBSCRIPTION_BUFFER_SIZE,
         help = "The buffer size for the subscription channel."
     )]
@@ -1088,7 +1027,6 @@ pub struct GrpcOptions {
 
     /// Whether or not to broadcast optimistic updates to the subscribers.
     #[arg(
-        long = "grpc.optimistic",
         default_value_t = false,
         help = "Whether or not to broadcast optimistic updates to the subscribers. If enabled, \
                 the subscribers will receive optimistic updates for the events that are not yet \
@@ -1098,7 +1036,6 @@ pub struct GrpcOptions {
 
     /// TCP keepalive interval in seconds. Set to 0 to disable.
     #[arg(
-        long = "grpc.tcp_keepalive_interval",
         default_value_t = DEFAULT_GRPC_TCP_KEEPALIVE_SECS,
         help = "TCP keepalive interval in seconds for gRPC connections. Set to 0 to disable TCP keepalive."
     )]
@@ -1106,7 +1043,6 @@ pub struct GrpcOptions {
 
     /// HTTP/2 keepalive interval in seconds. Set to 0 to disable.
     #[arg(
-        long = "grpc.http2_keepalive_interval",
         default_value_t = DEFAULT_GRPC_HTTP2_KEEPALIVE_INTERVAL_SECS,
         help = "HTTP/2 keepalive interval in seconds for gRPC connections. Set to 0 to disable HTTP/2 keepalive."
     )]
@@ -1114,7 +1050,6 @@ pub struct GrpcOptions {
 
     /// HTTP/2 keepalive timeout in seconds.
     #[arg(
-        long = "grpc.http2_keepalive_timeout",
         default_value_t = DEFAULT_GRPC_HTTP2_KEEPALIVE_TIMEOUT_SECS,
         help = "HTTP/2 keepalive timeout in seconds for gRPC connections. How long to wait for keepalive ping responses."
     )]
@@ -1122,7 +1057,6 @@ pub struct GrpcOptions {
 
     /// Maximum size in bytes for gRPC messages (both incoming and outgoing).
     #[arg(
-        long = "grpc.max_message_size",
         default_value_t = DEFAULT_GRPC_MAX_MESSAGE_SIZE,
         help = "Maximum size in bytes for gRPC messages (both incoming and outgoing). Default is 16MB."
     )]
@@ -1159,8 +1093,8 @@ impl GrpcOptions {
 impl Default for GrpcOptions {
     fn default() -> Self {
         Self {
-            grpc_addr: DEFAULT_GRPC_ADDR,
-            grpc_port: DEFAULT_GRPC_PORT,
+            addr: DEFAULT_GRPC_ADDR,
+            port: DEFAULT_GRPC_PORT,
             subscription_buffer_size: DEFAULT_GRPC_SUBSCRIPTION_BUFFER_SIZE,
             optimistic: false,
             tcp_keepalive_interval: DEFAULT_GRPC_TCP_KEEPALIVE_SECS,
