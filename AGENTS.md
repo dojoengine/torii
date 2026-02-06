@@ -37,3 +37,28 @@
 
 ## Security & Configuration Tips
 - Stick to versions pinned in `.tool-versions`, keep secrets out of the repo, pass config with env vars or `torii` CLI flags, and front exposed metrics with `metrics_proxy.py` or another proxy.
+
+## Agent Tooling
+
+- **Pre-commit hooks:** run `bin/setup-githooks` (configures `core.hooksPath` for this repo).
+
+- **Source of truth:** `.agents/`.
+- **Symlinks:** `CLAUDE.md` is a symlink to this file (`AGENTS.md`). Editor/agent configs should symlink skills from `.agents/skills`.
+- **Skills install/update:**
+
+```bash
+npm_config_cache=/tmp/npm-cache npx -y skills add https://github.com/cartridge-gg/agents   --skill create-pr create-a-plan   --agent claude-code cursor   -y
+```
+
+- **Configs:**
+  - `.agents/skills/` (canonical)
+  - `.claude/skills` -> `../.agents/skills`
+  - `.cursor/skills` -> `../.agents/skills`
+
+## Code Review Invariants
+
+- No secrets in code or logs.
+- Keep diffs small and focused; avoid drive-by refactors.
+- Add/adjust tests for behavior changes; keep CI green.
+- Prefer check-only commands in CI (`format:check`, `lint:check`) and keep local hooks aligned.
+- For Starknet/Cairo/Rust/crypto code: treat input validation, authZ, serialization, and signature/origin checks as **blocking** review items.
