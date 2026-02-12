@@ -1,0 +1,4 @@
+interface:
+  display_name: "Torii Development"
+  short_description: "Contributor workflow for dojoengine/torii"
+  default_prompt: "Use $torii-development to implement and validate changes in torii."
