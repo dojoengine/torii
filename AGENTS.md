@@ -47,7 +47,7 @@
 - **Skills install/update:**
 
 ```bash
-npm_config_cache=/tmp/npm-cache npx -y skills add https://github.com/cartridge-gg/agents   --skill create-pr create-a-plan   --agent claude-code cursor   -y
+npm_config_cache=/tmp/npm-cache npx -y skills add https://github.com/cartridge-gg/agents   --skill create-pr create-a-plan torii-operator   --agent claude-code cursor   -y
 ```
 
 - **Configs:**
