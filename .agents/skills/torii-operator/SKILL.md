@@ -1,6 +1,6 @@
 ---
 name: torii-operator
-description: Run Torii for Dojo/Starknet: configure startup and options, verify endpoints, and query indexed data via SQL, gRPC, GraphQL, MCP, static routes, and metrics.
+description: "Run Torii for Dojo/Starknet: configure startup and options, verify endpoints, and query indexed data via SQL, gRPC, GraphQL, MCP, static routes, and metrics."
 ---
 
 # Torii Operator
