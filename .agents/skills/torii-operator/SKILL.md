@@ -1,6 +1,6 @@
 ---
 name: torii-operator
-description: Operate Torii (Dojo Starknet indexer) end-to-end: start and configure torii, explain and tune CLI/TOML options, verify protocol endpoints, and query indexed game data through SQL, gRPC, GraphQL, MCP, static artifact routes, metadata reindex, and metrics. Use when requests involve running torii, debugging indexing/query behavior, or extracting onchain game data from torii storage APIs.
+description: Run Torii for Dojo/Starknet: configure startup and options, verify endpoints, and query indexed data via SQL, gRPC, GraphQL, MCP, static routes, and metrics.
 ---
 
 # Torii Operator
@@ -47,4 +47,3 @@ Execute this workflow to run and query Torii with source-accurate behavior.
 - GraphQL schema/runtime: `crates/graphql/src/schema.rs`, `crates/graphql/src/server.rs`
 - gRPC API: `crates/proto/proto/world.proto`, `crates/proto/proto/types.proto`, `crates/grpc/server/src/lib.rs`
 - Storage/search behavior: `crates/sqlite/sqlite/src/storage.rs`, `crates/migrations/`
-
