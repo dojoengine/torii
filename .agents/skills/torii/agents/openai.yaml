@@ -1,0 +1,4 @@
+interface:
+  display_name: "Torii"
+  short_description: "Run Torii and query SQL, gRPC, GraphQL"
+  default_prompt: "Use $torii to run Torii, tune options, and query data over SQL, gRPC, GraphQL, and MCP."
