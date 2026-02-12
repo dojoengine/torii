@@ -8,6 +8,7 @@ use starknet::core::types::{Event, TransactionContent};
 use starknet::macros::selector;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
+use tokio::runtime::Runtime;
 use std::sync::LazyLock;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Semaphore;
@@ -64,6 +65,7 @@ pub struct Engine<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static>
     controllers: Option<Arc<ControllersSync>>,
     fetcher: Fetcher<P>,
     nft_metadata_semaphore: Arc<Semaphore>,
+    nft_metadata_runtime: Arc<Runtime>,
     // The last fetch result & cursors, in case the processing fails, but not fetching.
     // Thus we can retry the processing with the same data instead of fetching again.
     cached_fetch: Option<(Box<FetchResult>, HashMap<Felt, ContractType>)>,
@@ -96,6 +98,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         processors: Arc<Processors<P>>,
         config: EngineConfig,
         shutdown_tx: Sender<()>,
+        nft_metadata_runtime: Arc<Runtime>
     ) -> Self {
         Self::new_with_controllers(
             storage,
@@ -105,6 +108,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
             config,
             shutdown_tx,
             None,
+            nft_metadata_runtime
         )
     }
 
@@ -117,6 +121,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
         config: EngineConfig,
         shutdown_tx: Sender<()>,
         controllers: Option<Arc<ControllersSync>>,
+        nft_metadata_runtime: Arc<Runtime>,
     ) -> Self {
         let max_concurrent_tasks = config.max_concurrent_tasks;
         let event_processor_config = config.event_processor_config.clone();
@@ -138,11 +143,13 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 processors,
                 max_concurrent_tasks,
                 event_processor_config,
+                nft_metadata_runtime.clone()
             ),
             contract_class_cache: Arc::new(ContractClassCache::new(provider.clone())),
             controllers,
             fetcher: Fetcher::new(provider.clone(), fetcher_config),
             nft_metadata_semaphore,
+            nft_metadata_runtime,
             cached_fetch: None,
         }
     }
@@ -568,6 +575,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> Engine<P> {
                 event: event.clone(),
                 nft_metadata_semaphore: self.nft_metadata_semaphore.clone(),
                 is_at_head,
+                nft_metadata_runtime: self.nft_metadata_runtime.clone()
             };
             if self.processors.catch_all_event.validate(event) {
                 if let Err(e) = self.processors.catch_all_event.process(&ctx).await {

@@ -634,6 +634,7 @@ impl Runner {
             "Runtime allocation calculated"
         );
 
+        let nft_metadata_runtime = Arc::new(Runtime::new()?);
         let mut engine: Engine<Arc<JsonRpcClient<HttpTransport>>> = Engine::new_with_controllers(
             storage.clone(),
             cache.clone(),
@@ -686,6 +687,7 @@ impl Runner {
             },
             shutdown_tx.clone(),
             controllers,
+            nft_metadata_runtime,
         );
 
         let shutdown_rx = shutdown_tx.subscribe();
