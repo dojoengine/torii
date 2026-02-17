@@ -4,6 +4,7 @@ use hashlink::LinkedHashMap;
 use starknet::core::types::Event;
 use starknet::providers::Provider;
 use starknet_crypto::Felt;
+use tokio::runtime::Runtime;
 use tokio::sync::Semaphore;
 use torii_cache::Cache;
 use torii_proto::ContractType;
@@ -48,6 +49,7 @@ pub struct TaskManager<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'st
     processors: Arc<Processors<P>>,
     event_processor_config: EventProcessorConfig,
     nft_metadata_semaphore: Arc<Semaphore>,
+    nft_metadata_runtime: Arc<Runtime>,
 }
 
 impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<P> {
@@ -58,6 +60,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
         processors: Arc<Processors<P>>,
         max_concurrent_tasks: usize,
         event_processor_config: EventProcessorConfig,
+        nft_metadata_runtime: Arc<Runtime>,
     ) -> Self {
         Self {
             storage,
@@ -69,6 +72,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                 event_processor_config.max_metadata_tasks,
             )),
             event_processor_config,
+            nft_metadata_runtime,
         }
     }
 
@@ -144,6 +148,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
         let event_processor_config = self.event_processor_config.clone();
         let cache = self.cache.clone();
         let nft_metadata_semaphore = self.nft_metadata_semaphore.clone();
+        let nft_metadata_runtime = self.nft_metadata_runtime.clone();
 
         self.task_network
             .process_tasks(move |task_id, task_data| {
@@ -153,6 +158,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                 let event_processor_config = event_processor_config.clone();
                 let cache = cache.clone();
                 let nft_metadata_semaphore = nft_metadata_semaphore.clone();
+                let nft_metadata_runtime = nft_metadata_runtime.clone();
 
                 async move {
                     // Process all events for this task sequentially
@@ -209,6 +215,7 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                                 config: event_processor_config.clone(),
                                 nft_metadata_semaphore: nft_metadata_semaphore.clone(),
                                 is_at_head: *is_at_head,
+                                nft_metadata_runtime: nft_metadata_runtime.clone(),
                             };
 
                             // Record processor timing and success/error metrics

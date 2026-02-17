@@ -93,11 +93,12 @@ where
         while token_id <= to_token_id {
             let storage = ctx.storage.clone();
             let nft_metadata_semaphore = ctx.nft_metadata_semaphore.clone();
+            let runtime = ctx.nft_metadata_runtime.clone();
             let provider = ctx.provider.clone();
             let token_address_clone = token_address;
             let current_token_id = token_id;
 
-            tasks.push(tokio::spawn(async move {
+            tasks.push(runtime.spawn(async move {
                 let _permit = nft_metadata_semaphore
                     .acquire()
                     .await
