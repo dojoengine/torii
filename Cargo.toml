@@ -23,6 +23,64 @@ license-file = "LICENSE"
 repository = "https://github.com/dojoengine/torii"
 version = "1.8.15"
 
+[workspace.lints.clippy]
+# Enable pedantic lints for stricter code quality
+pedantic = { level = "warn", priority = -1 }
+
+# Pedantic overrides - these are too noisy or don't fit this codebase
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+doc_markdown = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+module_name_repetitions = "allow"
+struct_excessive_bools = "allow"
+fn_params_excessive_bools = "allow"
+items_after_statements = "allow"
+uninlined_format_args = "allow"
+return_self_not_must_use = "allow"
+# Cast lints - many false positives where values are known to be in range
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+cast_possible_wrap = "allow"
+default_trait_access = "allow"
+match_same_arms = "allow"
+unused_async = "allow"
+manual_let_else = "allow"
+used_underscore_binding = "allow"
+ref_option_ref = "allow"
+ref_option = "allow"
+format_push_string = "allow"
+case_sensitive_file_extension_comparisons = "allow"
+unnecessary_wraps = "allow"
+needless_pass_by_value = "allow"
+trivially_copy_pass_by_ref = "allow"
+no_effect_underscore_binding = "allow"
+redundant_closure_for_method_calls = "allow"
+
+# Panic safety - deny any operations that could panic
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+# Prohibit all allow attributes - no exceptions
+allow_attributes = "deny"
+
+# Allow large error types
+result_large_err = "allow"
+
+# No debug macros in production code
+dbg_macro = "deny"
+# No incomplete code markers
+todo = "deny"
+unimplemented = "deny"
+
+# Use tracing instead of println/eprintln in library code
+print_stdout = "deny"
+print_stderr = "deny"
+
 [profile.performance]
 codegen-units = 1
 incremental = false

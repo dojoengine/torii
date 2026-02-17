@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: clippy
+        name: cargo clippy (workspace)
+        entry: bash -lc './scripts/clippy.sh'
+        language: system
+        pass_filenames: false
+        always_run: true
