@@ -8,3 +8,10 @@
 #
 # gh workflow run custom-release.yml --ref feat/your-branch -f preview=v1.7.0-custom.1
 #
+on:
+  workflow_dispatch:
+    inputs:
+      preview:
+        description: Useless just to have valid workflow file
+        required: true
+        type: string
