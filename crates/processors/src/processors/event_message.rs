@@ -6,8 +6,7 @@ use dojo_world::contracts::abigen::world::Event as WorldEvent;
 use starknet::core::types::{Event, Felt};
 use starknet::providers::Provider;
 use starknet_crypto::poseidon_hash_many;
-use torii_cache::CacheError;
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::error::Error;
 use crate::task_manager::TaskId;
@@ -81,18 +80,8 @@ where
             }
         };
 
-        // silently ignore if the model is not found
-        let model = match ctx.cache.model(ctx.contract_address, event.selector).await {
-            Ok(model) => model,
-            Err(CacheError::ModelNotFound(_)) if !ctx.config.namespaces.is_empty() => {
-                debug!(
-                    target: LOG_TARGET,
-                    selector = %event.selector,
-                    "Model not found in cache, skipping. This can happen if only specific namespaces are indexed."
-                );
-                return Ok(());
-            }
-            Err(e) => return Err(e.into()),
+        let Some(model) = ctx.resolve_model_or_skip(event.selector).await? else {
+            return Ok(());
         };
 
         info!(
@@ -103,7 +92,7 @@ where
             "Store event message."
         );
 
-        let mut keys_and_unpacked = [event.keys.clone(), event.values].concat();
+        let mut keys_and_unpacked = [event.keys.as_slice(), event.values.as_slice()].concat();
 
         let mut entity = model.schema.clone();
         entity.deserialize(&mut keys_and_unpacked, model.use_legacy_store)?;

@@ -1,3 +1,4 @@
+use starknet::core::types::Felt;
 use starknet::core::utils::ParseCairoShortStringError;
 use thiserror::Error;
 
@@ -13,6 +14,8 @@ pub enum Error {
     ModelError(#[from] dojo_world::contracts::model::ModelError),
     #[error(transparent)]
     PrimitiveError(#[from] dojo_types::primitive::PrimitiveError),
+    #[error("Model not found: {0:#x}")]
+    ModelNotFound(Felt),
     #[error("Model member not found: {0}")]
     ModelMemberNotFound(String),
     #[error("Uri is malformed")]

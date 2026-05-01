@@ -34,6 +34,18 @@ pub trait ReadOnlyStorage: Send + Sync + Debug {
     /// Returns the model metadata for the storage.
     async fn model(&self, world_address: Felt, model: Felt) -> Result<Model, StorageError>;
 
+    /// Returns the model metadata if it is registered in the storage, or `Ok(None)`
+    /// when no row exists for `(world_address, selector)`.
+    ///
+    /// Only "no such row" returns `Ok(None)` — any other failure (DB error, decode error,
+    /// connection issue, etc.) propagates as `Err`. Callers that need to distinguish
+    /// "model is unknown" from "lookup failed" should prefer this method over [`model`].
+    async fn model_optional(
+        &self,
+        world_address: Felt,
+        model: Felt,
+    ) -> Result<Option<Model>, StorageError>;
+
     /// Returns the models for the storage.
     /// If world_addresses is empty, returns models from all worlds.
     /// If selectors is empty, returns all models from the specified worlds.

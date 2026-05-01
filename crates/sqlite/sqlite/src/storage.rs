@@ -54,9 +54,20 @@ impl ReadOnlyStorage for Sql {
 
     /// Returns the model metadata for the storage.
     async fn model(&self, world_address: Felt, selector: Felt) -> Result<Model, StorageError> {
+        match self.model_optional(world_address, selector).await? {
+            Some(model) => Ok(model),
+            None => Err(Box::new(sqlx::Error::RowNotFound)),
+        }
+    }
+
+    async fn model_optional(
+        &self,
+        world_address: Felt,
+        selector: Felt,
+    ) -> Result<Option<Model>, StorageError> {
         if let Some(cache) = &self.cache {
             if let Ok(model) = cache.model(world_address, selector).await {
-                return Ok(model);
+                return Ok(Some(model));
             } else {
                 warn!(
                     target: LOG_TARGET,
@@ -66,10 +77,14 @@ impl ReadOnlyStorage for Sql {
             }
         }
 
-        let model = sqlx::query_as::<_, SQLModel>("SELECT * FROM models WHERE id = ?")
+        let row = sqlx::query_as::<_, SQLModel>("SELECT * FROM models WHERE id = ?")
             .bind(format_world_scoped_id(&world_address, &selector))
-            .fetch_one(&self.pool)
+            .fetch_optional(&self.pool)
             .await?;
+
+        let Some(model) = row else {
+            return Ok(None);
+        };
         let model: torii_proto::Model = model.into();
 
         // Update cache to prevent repeated cache misses
@@ -79,7 +94,7 @@ impl ReadOnlyStorage for Sql {
                 .await;
         }
 
-        Ok(model)
+        Ok(Some(model))
     }
 
     /// Returns the models for the storage.
@@ -2597,5 +2612,254 @@ impl Sql {
         }
 
         Ok(unique_models)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::str::FromStr;
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use tempfile::TempDir;
+    use tokio::sync::mpsc::unbounded_channel;
+    use torii_cache::{CacheError, InMemoryCache, ReadOnlyCache};
+    use torii_proto::{
+        Achievement, AchievementQuery, PlayerAchievementEntry, PlayerAchievementQuery,
+    };
+    use torii_storage::utils::format_world_scoped_id;
+
+    use super::*;
+    use crate::SqlConfig;
+
+    #[derive(Debug)]
+    struct EmptyStorage;
+
+    #[async_trait]
+    impl ReadOnlyStorage for EmptyStorage {
+        fn as_read_only(&self) -> &dyn ReadOnlyStorage {
+            self
+        }
+
+        async fn model(&self, _world_address: Felt, _model: Felt) -> Result<Model, StorageError> {
+            Err(Box::new(sqlx::Error::RowNotFound))
+        }
+
+        async fn model_optional(
+            &self,
+            _world_address: Felt,
+            _model: Felt,
+        ) -> Result<Option<Model>, StorageError> {
+            Ok(None)
+        }
+
+        async fn models(
+            &self,
+            _world_addresses: &[Felt],
+            _selectors: &[Felt],
+        ) -> Result<Vec<Model>, StorageError> {
+            Ok(vec![])
+        }
+
+        async fn token_ids(&self) -> Result<HashSet<TokenId>, StorageError> {
+            Ok(HashSet::new())
+        }
+
+        async fn controllers(
+            &self,
+            _query: &ControllerQuery,
+        ) -> Result<Page<Controller>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn contracts(&self, _query: &ContractQuery) -> Result<Vec<Contract>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn tokens(&self, _query: &TokenQuery) -> Result<Page<Token>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn token_balances(
+            &self,
+            _query: &TokenBalanceQuery,
+        ) -> Result<Page<TokenBalance>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn token_contracts(
+            &self,
+            _query: &TokenContractQuery,
+        ) -> Result<Page<TokenContract>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn token_transfers(
+            &self,
+            _query: &TokenTransferQuery,
+        ) -> Result<Page<TokenTransfer>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn transactions(
+            &self,
+            _query: &TransactionQuery,
+        ) -> Result<Page<Transaction>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn events(&self, _query: EventQuery) -> Result<Page<Event>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn entities(&self, _query: &Query) -> Result<Page<Entity>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn event_messages(&self, _query: &Query) -> Result<Page<Entity>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn entity_model(
+            &self,
+            _world_address: Felt,
+            _entity_id: Felt,
+            _model_selector: Felt,
+        ) -> Result<Option<Ty>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn aggregations(
+            &self,
+            _query: &AggregationQuery,
+        ) -> Result<Page<AggregationEntry>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn activities(&self, _query: &ActivityQuery) -> Result<Page<Activity>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn achievements(
+            &self,
+            _query: &AchievementQuery,
+        ) -> Result<Page<Achievement>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn player_achievements(
+            &self,
+            _query: &PlayerAchievementQuery,
+        ) -> Result<Page<PlayerAchievementEntry>, StorageError> {
+            unimplemented!()
+        }
+
+        async fn search(&self, _query: &SearchQuery) -> Result<SearchResponse, StorageError> {
+            unimplemented!()
+        }
+    }
+
+    async fn setup_sql() -> (TempDir, sqlx::Pool<sqlx::Sqlite>, Sql) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("storage-tests.db");
+        let options = SqliteConnectOptions::from_str(db_path.to_str().unwrap())
+            .unwrap()
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+
+        let (executor, _rx) = unbounded_channel();
+        let sql = Sql {
+            pool: pool.clone(),
+            executor,
+            config: SqlConfig::default(),
+            cache: None,
+        };
+
+        (temp_dir, pool, sql)
+    }
+
+    async fn insert_model_row(
+        pool: &sqlx::Pool<sqlx::Sqlite>,
+        world_address: Felt,
+        selector: Felt,
+    ) {
+        sqlx::query(
+            "INSERT INTO models (id, world_address, model_selector, namespace, name, class_hash, contract_address, layout, legacy_store, schema, packed_size, unpacked_size, executed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(format_world_scoped_id(&world_address, &selector))
+        .bind(felt_to_sql_string(&world_address))
+        .bind(felt_to_sql_string(&selector))
+        .bind("ns")
+        .bind("Model")
+        .bind(felt_to_sql_string(&Felt::from(0x123u64)))
+        .bind(felt_to_sql_string(&Felt::from(0x456u64)))
+        .bind(serde_json::to_string(&Layout::Fixed(vec![])).unwrap())
+        .bind(true)
+        .bind(serde_json::to_string(&Ty::Tuple(vec![])).unwrap())
+        .bind(0_i64)
+        .bind(0_i64)
+        .bind("2026-05-01T00:00:00Z")
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn model_optional_returns_none_when_model_is_missing() {
+        let (_temp_dir, _pool, sql) = setup_sql().await;
+        let world = Felt::from(0xa_u8);
+        let selector = Felt::from(0xb_u8);
+
+        assert!(sql.model_optional(world, selector).await.unwrap().is_none());
+
+        let err = sql.model(world, selector).await.unwrap_err();
+        assert!(matches!(
+            err.downcast_ref::<sqlx::Error>(),
+            Some(sqlx::Error::RowNotFound)
+        ));
+    }
+
+    #[tokio::test]
+    async fn model_optional_repopulates_cache_after_database_fallback() {
+        let (_temp_dir, pool, sql_no_cache) = setup_sql().await;
+        let cache = Arc::new(InMemoryCache::new(Arc::new(EmptyStorage)).await.unwrap());
+        let world = Felt::from(0xc_u8);
+        let selector = Felt::from(0xd_u8);
+
+        insert_model_row(&pool, world, selector).await;
+
+        assert!(matches!(
+            cache.model(world, selector).await,
+            Err(CacheError::ModelNotFound(s)) if s == selector
+        ));
+
+        let sql = sql_no_cache.with_cache(cache.clone());
+        let fetched = sql.model_optional(world, selector).await.unwrap().unwrap();
+        assert_eq!(fetched.world_address, world);
+        assert_eq!(fetched.selector, selector);
+        assert_eq!(fetched.namespace, "ns");
+        assert_eq!(fetched.name, "Model");
+
+        let cached = cache.model(world, selector).await.unwrap();
+        assert_eq!(cached.selector, selector);
+        assert_eq!(cached.name, "Model");
+
+        sqlx::query("DELETE FROM models WHERE id = ?")
+            .bind(format_world_scoped_id(&world, &selector))
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let cached_after_delete = sql.model_optional(world, selector).await.unwrap().unwrap();
+        assert_eq!(cached_after_delete.selector, selector);
+        assert_eq!(cached_after_delete.name, "Model");
     }
 }
