@@ -291,14 +291,25 @@ impl Runner {
         );
         let provider: Arc<_> = JsonRpcClient::new(transport).into();
 
-        // Check provider spec version. We only support v0.9.
+        // Check provider spec version. Torii supports v0.9.0; a mismatch is non-fatal.
         let supported_spec = "0.9";
-        let spec_version = provider.spec_version().await?;
-        if !spec_version.starts_with(supported_spec) {
-            return Err(anyhow::anyhow!(
-                "Provider spec version is not supported. Please use a provider that supports v{supported_spec}. Got: {spec_version}. You might need to add a `rpc/v{}` to the end of the URL.",
-                supported_spec.replace('.', "_")
-            ));
+        match provider.spec_version().await {
+            Ok(spec_version) => {
+                if !spec_version.starts_with(supported_spec) {
+                    warn!(
+                        target: LOG_TARGET,
+                        spec_version = %spec_version,
+                        "Provider spec version mismatch. Torii supports v0.9.0. Continuing anyway; you may experience unexpected behaviours.",
+                    );
+                }
+            }
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    error = ?e,
+                    "Could not query Starknet RPC spec version. Torii supports v0.9.0. Continuing anyway; you may experience unexpected behaviours.",
+                );
+            }
         }
 
         // Verify contracts are deployed
