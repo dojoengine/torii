@@ -4,6 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use starknet::core::types::{Event, Felt, TransactionContent};
 use starknet::providers::Provider;
+use tokio::runtime::Runtime;
 use tokio::sync::Semaphore;
 use torii_cache::{Cache, ContractClassCache};
 use torii_storage::Storage;
@@ -34,6 +35,7 @@ pub struct EventProcessorContext<P: Provider + Sync + Send + 'static> {
     pub event: Event,
     pub config: EventProcessorConfig,
     pub nft_metadata_semaphore: Arc<Semaphore>,
+    pub nft_metadata_runtime: Arc<Runtime>,
     pub is_at_head: bool,
 }
 

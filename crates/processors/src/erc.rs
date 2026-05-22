@@ -11,7 +11,7 @@ use starknet::{
     providers::{Provider, ProviderError, ProviderRequestData, ProviderResponseData},
 };
 use starknet_crypto::Felt;
-use tokio::sync::Semaphore;
+use tokio::{runtime::Runtime, sync::Semaphore};
 use torii_cache::Cache;
 use torii_storage::Storage;
 use tracing::{debug, warn};
@@ -409,6 +409,7 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
     cache: Arc<dyn Cache + Send + Sync>,
     storage: Arc<dyn Storage>,
     nft_metadata_semaphore: Arc<Semaphore>,
+    runtime: Arc<Runtime>,
 ) -> Result<(), Error> {
     let _lock = match cache.get_token_registration_lock(id.clone()).await {
         Some(lock) => lock,
@@ -419,18 +420,22 @@ pub async fn try_register_nft_token_metadata<P: Provider + Sync>(
         return Ok(());
     }
 
-    let _permit = nft_metadata_semaphore
-        .acquire()
-        .await
-        .map_err(|e| Error::TokenMetadataError(TokenMetadataError::AcquireError(e)))?;
-    let metadata = fetch_token_metadata(contract_address, actual_token_id, provider).await?;
+    runtime.spawn(async move {
+        let _permit = nft_metadata_semaphore
+            .acquire()
+            .await
+            .map_err(|e| Error::TokenMetadataError(TokenMetadataError::AcquireError(e)))?;
+        let metadata = fetch_token_metadata(contract_address, actual_token_id, provider).await?;
 
-    storage
-        .register_nft_token(contract_address, actual_token_id, metadata)
-        .await?;
+        storage
+            .register_nft_token(contract_address, actual_token_id, metadata)
+            .await?;
 
-    cache.mark_token_registered(id).await;
+        cache.mark_token_registered(id).await;
 
+        Result::<(), Error>::Ok(())
+    });
+    
     // For ERC-1155, we need to track unique token count at contract level
     // This is called when a new token is being registered, so we increment by 1
     // We can't distinguish ERC-721 vs ERC-1155 here, but ERC-721 will also increment by 1
