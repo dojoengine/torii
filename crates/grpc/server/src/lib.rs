@@ -188,10 +188,13 @@ impl<P: Provider + Sync> DojoWorld<P> {
 
         let mut worlds = HashMap::<Felt, Vec<proto::types::Model>>::new();
         for model in models {
+            let proto_model: proto::types::Model = model
+                .try_into()
+                .map_err(|e| anyhow!("Failed to serialize model: {}", e))?;
             worlds
                 .entry(model.world_address)
                 .or_default()
-                .push(model.into())
+                .push(proto_model);
         }
 
         Ok(worlds
@@ -218,7 +221,9 @@ impl<P: Provider + Sync> DojoWorld<P> {
             .await
             .map_err(|e| anyhow!("Failed to get model from cache: {}", e))?;
 
-        Ok(model.into())
+        Ok(model
+            .try_into()
+            .map_err(|e| anyhow!("Failed to serialize model: {}", e))?)
     }
 }
 

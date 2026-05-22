@@ -5,6 +5,9 @@ name = "torii-grpc-client"
 repository.workspace = true
 version.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 futures.workspace = true
 futures-util.workspace = true

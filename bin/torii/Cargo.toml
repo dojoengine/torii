@@ -3,6 +3,9 @@ edition.workspace = true
 name = "torii"
 version.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 torii-cli.workspace = true
 torii-runner.workspace = true

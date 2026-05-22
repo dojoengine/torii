@@ -5,6 +5,9 @@ name = "torii-adigraphmap"
 repository.workspace = true
 version.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 petgraph = "0.6"
 thiserror.workspace = true
