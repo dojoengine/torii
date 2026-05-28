@@ -4,6 +4,7 @@ pub use error::TaskNetworkError;
 
 pub type Result<T> = std::result::Result<T, TaskNetworkError>;
 
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::hash::Hash;
 use std::sync::Arc;
@@ -22,6 +23,7 @@ where
     T: Clone + Send + Sync + 'static,
 {
     tasks: AcyclicDigraphMap<K, T>,
+    pending_dependents: HashMap<K, HashSet<K>>,
     semaphore: Arc<Semaphore>,
 }
 
@@ -33,6 +35,7 @@ where
     pub fn new(max_concurrent_tasks: usize) -> Self {
         Self {
             tasks: AcyclicDigraphMap::new(),
+            pending_dependents: HashMap::new(),
             semaphore: Arc::new(Semaphore::new(max_concurrent_tasks)),
         }
     }
@@ -52,17 +55,15 @@ where
             .add_node(task_id.clone(), task)
             .map_err(TaskNetworkError::GraphError)?;
 
+        self.resolve_pending_dependents(&task_id)?;
+        self.add_dependencies(task_id, dependencies)?;
+
+        Ok(())
+    }
+
+    pub fn add_dependencies(&mut self, task_id: K, dependencies: Vec<K>) -> Result<()> {
         for dep in dependencies {
-            if self.tasks.contains_key(&dep) {
-                self.add_dependency(dep, task_id.clone())?;
-            } else {
-                debug!(
-                    target: LOG_TARGET,
-                    task_id = ?task_id,
-                    dependency = ?dep,
-                    "Ignoring non-existent dependency."
-                );
-            }
+            self.add_dependency_or_defer(dep, task_id.clone())?;
         }
 
         Ok(())
@@ -72,6 +73,35 @@ where
         self.tasks
             .add_dependency(&from, &to)
             .map_err(TaskNetworkError::GraphError)
+    }
+
+    fn add_dependency_or_defer(&mut self, from: K, to: K) -> Result<()> {
+        if self.tasks.contains_key(&from) {
+            self.add_dependency(from, to)
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                task_id = ?to,
+                dependency = ?from,
+                "Deferring dependency until prerequisite task exists."
+            );
+            self.pending_dependents.entry(from).or_default().insert(to);
+            Ok(())
+        }
+    }
+
+    fn resolve_pending_dependents(&mut self, task_id: &K) -> Result<()> {
+        let Some(dependents) = self.pending_dependents.remove(task_id) else {
+            return Ok(());
+        };
+
+        for dependent in dependents {
+            if self.tasks.contains_key(&dependent) {
+                self.add_dependency(task_id.clone(), dependent)?;
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn process_tasks<F, Fut, O, E>(&mut self, task_handler: F) -> Result<()>
@@ -142,6 +172,7 @@ where
         }
 
         self.tasks.clear();
+        self.pending_dependents.clear();
 
         Ok(())
     }
@@ -160,6 +191,7 @@ where
 
     pub fn clear(&mut self) {
         self.tasks.clear();
+        self.pending_dependents.clear();
     }
 }
 
@@ -230,6 +262,61 @@ mod tests {
         assert_eq!(result[0], 1);
         assert_eq!(result[1], 2);
         assert_eq!(result[2], 3);
+    }
+
+    #[tokio::test]
+    async fn test_late_dependency_becomes_active() {
+        let mut manager = TaskNetwork::<u64, String>::new(4);
+
+        manager
+            .add_task_with_dependencies(1, "Task 1".to_string(), vec![99])
+            .unwrap();
+        manager.add_task(99, "Task 99".to_string()).unwrap();
+
+        let executed = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+
+        let executed_clone = executed.clone();
+        manager
+            .process_tasks(move |id, _task| {
+                let executed = executed_clone.clone();
+                async move {
+                    let mut locked = executed.lock().await;
+                    locked.push(id);
+                    Ok::<_, std::io::Error>(())
+                }
+            })
+            .await
+            .unwrap();
+
+        let result = executed.lock().await;
+        assert_eq!(&*result, &[99, 1]);
+    }
+
+    #[tokio::test]
+    async fn test_add_dependencies_to_existing_task() {
+        let mut manager = TaskNetwork::<u64, String>::new(4);
+
+        manager.add_task(1, "Task 1".to_string()).unwrap();
+        manager.add_task(2, "Task 2".to_string()).unwrap();
+        manager.add_dependencies(1, vec![2]).unwrap();
+
+        let executed = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+
+        let executed_clone = executed.clone();
+        manager
+            .process_tasks(move |id, _task| {
+                let executed = executed_clone.clone();
+                async move {
+                    let mut locked = executed.lock().await;
+                    locked.push(id);
+                    Ok::<_, std::io::Error>(())
+                }
+            })
+            .await
+            .unwrap();
+
+        let result = executed.lock().await;
+        assert_eq!(&*result, &[2, 1]);
     }
 
     #[tokio::test]

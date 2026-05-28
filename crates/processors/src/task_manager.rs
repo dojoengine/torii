@@ -101,6 +101,19 @@ impl<P: Provider + Send + Sync + Clone + std::fmt::Debug + 'static> TaskManager<
                     task_data.events.push(parallelized_event);
                 }
             }
+
+            if let Err(e) = self
+                .task_network
+                .add_dependencies(task_identifier, dependencies.clone())
+            {
+                error!(
+                    target: LOG_TARGET,
+                    error = ?e,
+                    task_id = %task_identifier,
+                    dependencies = ?dependencies,
+                    "Failed to add dependencies to existing task."
+                );
+            }
         } else {
             let task_data = match parallelized_event.indexing_mode {
                 IndexingMode::Latest(event_key) => TaskData {
